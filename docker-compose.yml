@@ -8,13 +8,19 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
     restart: always
+    volumes:
+      - ./src:/app/src
+      - ./swagger.js:/app/swagger.js
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
-    command: sh -c "npm run start:dev"
+    command: sh -c "npm run dev"
 
   postgres:
     image: postgres:18
@@ -24,8 +30,8 @@ services:
       POSTGRES_USER: mostanad_app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: mostanad_app
-    expose:
-      - "5432"
+    ports:
+      - "5432:5432"
     volumes:
       - mostanad_postgres_data:/var/lib/postgresql
     healthcheck:
@@ -39,18 +45,18 @@ services:
     image: redis:8
     container_name: mostanad-redis
     restart: always
-    expose:
-      - "6379"
+    ports:
+      - "6379:6379"
   pgweb:
     image: sosedoff/pgweb
     container_name: pgweb
     restart: always
     profiles:
       - dev-tools
-    expose:
-      - "8081"
+    ports:
+      - "8081:8081"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - PGWEB_AUTH_USER=${PGWEB_AUTH_USER}
       - PGWEB_AUTH_PASS=${PGWEB_AUTH_PASS}
     depends_on:

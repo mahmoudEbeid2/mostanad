@@ -1,22 +1,27 @@
 {
   "name": "mostanad",
   "version": "1.0.0",
-  "description": "",
+  "description": "API for managing documents in the Mostanad application.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "start:dev": "nodemon src/server.js"
+    "dev": "nodemon -L src/server.js --exec node",
+    "start:dev": "npm run dev",
+    "docs:export": "redocly bundle src/docs/swagger.yaml -o src/docs/bundled.yaml && openapi2postmanv2 -s src/docs/bundled.yaml -o src/docs/postman_collection.json -p -c postman_config.json"
   },
   "keywords": [],
-  "author": "",
+  "author": "mahmoud ebeid",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@apidevtools/json-schema-ref-parser": "^15.3.5",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "pg": "^8.21.0"
+    "js-yaml": "^4.2.0",
+    "pg": "^8.21.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
