@@ -1,0 +1,62 @@
+services:
+  mostanad-app:
+    container_name: mostanad-app
+    build: .
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: sh -c "npm run start:dev"
+
+  postgres:
+    image: postgres:18
+    container_name: mostanad-db
+    restart: always
+    environment:
+      POSTGRES_USER: mostanad_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: mostanad_app
+    expose:
+      - "5432"
+    volumes:
+      - mostanad_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mostanad_app -d mostanad_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:8
+    container_name: mostanad-redis
+    restart: always
+    expose:
+      - "6379"
+  pgweb:
+    image: sosedoff/pgweb
+    container_name: pgweb
+    restart: always
+    profiles:
+      - dev-tools
+    expose:
+      - "8081"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - PGWEB_AUTH_USER=${PGWEB_AUTH_USER}
+      - PGWEB_AUTH_PASS=${PGWEB_AUTH_PASS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  mostanad_postgres_data:
+  mostanad_mongo_data:

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+loggers/
+*.log
+npm-debug.log*
+
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose*
+
+# Git
+.git
+.gitignore
+
+
+# Documentation and Assets
+*.pdf
+*.md
+*.png
+
+# Editors
+.vscode/
+.idea/
+
+# Uploads
+public/uploads/*
+!public/uploads/.gitkeep
