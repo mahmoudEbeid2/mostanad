@@ -1,5 +1,7 @@
 import express from "express";
 import routes from "./routes/index.js";
+import { globalErrorHandler } from "./middleware/index.js";
+import { AppError } from "./utils/index.js";
 
 const app = express();
 
@@ -8,5 +10,13 @@ app.use(express.json());
 
 // Use the defined routes
 app.use("/api/v1", routes);
+
+// Handle undefined routes
+app.use((req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+});
+
+// Global error handling middleware
+app.use(globalErrorHandler);
 
 export default app;
