@@ -1,26 +1,26 @@
 services:
-  mostanad-app:
-    container_name: mostanad-app
-    build: .
-    expose:
-      - "3000"
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
-      - REDIS_URL=redis://redis:6379
-    restart: always
-    volumes:
-      - ./src:/app/src
-      - ./swagger.js:/app/swagger.js
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    command: sh -c "npm run dev"
+  # mostanad-app:
+  #   container_name: mostanad-app
+  #   build: .
+  #   expose:
+  #     - "3000"
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+  #     - REDIS_URL=redis://redis:6379
+  #   restart: always
+  #   volumes:
+  #     - ./src:/app/src
+  #     - ./swagger.js:/app/swagger.js
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_started
+  #   command: sh -c "npm run dev"
 
   postgres:
     image: postgres:18
@@ -65,4 +65,3 @@ services:
 
 volumes:
   mostanad_postgres_data:
-  mostanad_mongo_data:
