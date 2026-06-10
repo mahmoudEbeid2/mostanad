@@ -1,0 +1,41 @@
+get:
+  tags:
+    - Users
+  summary: Get all users
+  description: Retrieve a paginated list of all active users. Supports filtering, searching, and sorting.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+    - name: isActive
+      in: query
+      required: false
+      description: Filter by active status
+      schema:
+        type: boolean
+      example: true
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/UsersListResponse'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Users
+  summary: Create a new user
+  description: Create a new system user with name, email, username and password.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateUserBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/UserResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
