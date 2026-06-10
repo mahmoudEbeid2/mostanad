@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Users
+  summary: Get user by ID
+  description: Retrieve a single user by their UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/UserId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/UserResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Users
+  summary: Update a user
+  description: Update one or more fields of an existing user. All fields are optional.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/UserId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateUserBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/UserResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Users
+  summary: Delete a user
+  description: Permanently delete a user by their UUID. This action is irreversible.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/UserId'
+  responses:
+    '204':
+      description: User deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
