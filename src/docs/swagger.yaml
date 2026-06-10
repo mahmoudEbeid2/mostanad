@@ -16,12 +16,18 @@ servers:
 tags:
   - name: Users
     description: Internal system user management
+  - name: Companies
+    description: Company account management
 
 paths:
   /users:
     $ref: './paths/users/users.yaml'
   /users/{id}:
     $ref: './paths/users/users-id.yaml'
+  /companies:
+    $ref: './paths/companies/companies.yaml'
+  /companies/{id}:
+    $ref: './paths/companies/companies-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

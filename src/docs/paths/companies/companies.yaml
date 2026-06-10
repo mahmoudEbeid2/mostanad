@@ -1,0 +1,34 @@
+get:
+  tags:
+    - Companies
+  summary: Get all companies
+  description: Retrieve a paginated list of all companies. Supports filtering, searching, and sorting.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CompaniesListResponse'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Companies
+  summary: Create a new company
+  description: Create a new company with name, username, and password. Email, phone, address, and logoUrl are optional.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateCompanyBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/CompanyResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

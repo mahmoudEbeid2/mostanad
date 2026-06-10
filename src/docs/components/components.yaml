@@ -94,6 +94,126 @@ components:
           type: boolean
           example: false
 
+    Company:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        name:
+          type: string
+          example: "Acme Corp"
+        username:
+          type: string
+          example: "acme_corp"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "info@acme.com"
+        phone:
+          type: string
+          nullable: true
+          example: "01012345678"
+        address:
+          type: string
+          nullable: true
+          example: "123 Main St, Cairo, Egypt"
+        logoUrl:
+          type: string
+          nullable: true
+          example: "https://example.com/logos/acme.png"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-10T10:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-10T12:00:00.000Z"
+
+    CreateCompanyBody:
+      type: object
+      required:
+        - name
+        - username
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Acme Corp"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: "^[a-zA-Z0-9_]+$"
+          example: "acme_corp"
+        password:
+          type: string
+          minLength: 6
+          example: "secret123"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "info@acme.com"
+        phone:
+          type: string
+          nullable: true
+          example: "01012345678"
+        address:
+          type: string
+          nullable: true
+          example: "123 Main St, Cairo, Egypt"
+        logoUrl:
+          type: string
+          nullable: true
+          example: "https://example.com/logos/acme.png"
+
+    UpdateCompanyBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Acme Corp Updated"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: "acme_updated"
+        password:
+          type: string
+          minLength: 6
+          example: "newpassword123"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "updated@acme.com"
+        phone:
+          type: string
+          nullable: true
+          example: "01098765432"
+        address:
+          type: string
+          nullable: true
+          example: "456 Side St, Alexandria, Egypt"
+        logoUrl:
+          type: string
+          nullable: true
+          example: "https://example.com/logos/acme-new.png"
+        isActive:
+          type: boolean
+          example: false
+
   parameters:
     UserId:
       name: id
@@ -104,6 +224,16 @@ components:
         type: string
         format: uuid
       example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    CompanyId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the company
+      schema:
+        type: string
+        format: uuid
+      example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 
     PageParam:
       name: page
@@ -193,6 +323,55 @@ components:
                     type: array
                     items:
                       $ref: '#/components/schemas/User'
+
+    CompanyResponse:
+      description: Single company response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  company:
+                    $ref: '#/components/schemas/Company'
+
+    CompaniesListResponse:
+      description: Paginated list of companies
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 30
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 3
+              data:
+                type: object
+                properties:
+                  companies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Company'
 
     BadRequestError:
       description: Validation error or bad input

@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Companies
+  summary: Get company by ID
+  description: Retrieve a single company by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CompanyId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CompanyResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Companies
+  summary: Update a company
+  description: Update one or more fields of an existing company. All fields are optional.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CompanyId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateCompanyBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CompanyResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Companies
+  summary: Delete a company
+  description: Permanently delete a company by its UUID. This action is irreversible.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CompanyId'
+  responses:
+    '204':
+      description: Company deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
