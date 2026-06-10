@@ -6,7 +6,211 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ==========================================
+// 1. Internal Administration & RBAC
+// ==========================================
+
 model User {
-  id    String @id @default(uuid())
-  email String @unique
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  username  String   @unique
+  password  String
+  phone     String?
+  roleId    String   @map("role_id")
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
 }
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String           @id @default(uuid())
+  name      String
+  slug      String           @unique
+  module    String           // e.g. "companies", "plans", "settings"
+  roles     RolePermission[]
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String     @map("role_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @map("permission_id")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ==========================================
+// 2. Client Companies (Tenants)
+// ==========================================
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  password  String
+  email     String?  @unique
+  phone     String?
+  address   String?
+  logoUrl   String?  @map("logo_url")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Scoped Relations
+  products      Product[]
+  images        CompanyImage[]
+  subscriptions Subscription[]
+  templates     Template[]
+
+  @@map("companies")
+}
+
+model CompanyImage {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String   // e.g. "header_logo", "official_stamp", "signature_admin"
+  imageUrl  String   @map("image_url") @db.Text // Can store URLs or inline Base64 data strings
+  imageType String?  @map("image_type") // e.g. "stamp", "logo", "signature", "footer"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("company_images")
+}
+
+
+// ==========================================
+// 3. Product Catalog
+// ==========================================
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("categories")
+}
+
+model Product {
+  id                 String               @id @default(uuid())
+  name               String
+  productCode        String?              @map("product_code")
+  description        String?              @db.Text
+  indications        String?              @db.Text
+  targetSpecies      String[]             @map("target_species") // Postgres native array type
+  physicalForm       String?              @map("physical_form")
+  appearance         String?
+  activeIngredients  Json?                @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
+  dosage             String?              @db.Text
+  mixingInstructions String?              @map("mixing_instructions") @db.Text
+  withdrawalPeriod   String?              @map("withdrawal_period")
+  contraindications  String?              @db.Text
+  userSafety         String[]             @map("user_safety") // Postgres native array type
+  storage            String?              @db.Text
+  packaging          String?              // e.g. "25KG Bag", "1L Bottle"
+  registrationNumber String?              @map("registration_number")
+  origin             String?
+  producer           String?
+  specifications     Json?                // stores { "type": "string", "values": { "pH": "...", "Assay": "..." } }
+  
+  // Relations
+  categoryId         String?              @map("category_id")
+  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  companyId          String               @map("company_id")
+  company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@map("products")
+}
+
+// ==========================================
+// 4. Templates & Customization
+// ==========================================
+
+model Template {
+  id           String          @id @default(uuid())
+  name         String
+  brand        String?         // e.g., "addvet", "hipro", "unipharma"
+  htmlContent  String          @map("html_content") @db.Text
+  cssContent   String?         @map("css_content") @db.Text
+  companyId    String?         @map("company_id") // Null means system-wide default template
+  company      Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  isActive     Boolean         @default(true) @map("is_active")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  images       TemplateImage[]
+
+  @@map("templates")
+}
+
+model TemplateImage {
+  id         String   @id @default(uuid())
+  templateId String   @map("template_id")
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name       String   // e.g. "background", "stamp_placeholder"
+  imageUrl   String   @map("image_url") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("template_images")
+}
+
+// ==========================================
+// 5. Plans & Subscriptions
+// ==========================================
+
+model Plan {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  description   String?        @db.Text
+  price         Decimal        @db.Decimal(10, 2)
+  interval      String         // e.g., "month", "year"
+  features      String[]       // Postgres native array type
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planId    String   @map("plan_id")
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  startDate DateTime @default(now()) @map("start_date")
+  endDate   DateTime @map("end_date")
+  status    String   // e.g. "active", "expired", "cancelled"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("subscriptions")
+}
+
