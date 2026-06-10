@@ -1,0 +1,237 @@
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        name:
+          type: string
+          example: "Ahmed Mohamed"
+        email:
+          type: string
+          format: email
+          example: "ahmed@example.com"
+        username:
+          type: string
+          example: "ahmed_m"
+        phone:
+          type: string
+          nullable: true
+          example: "01012345678"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-10T10:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-10T12:00:00.000Z"
+
+    CreateUserBody:
+      type: object
+      required:
+        - name
+        - email
+        - username
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Ahmed Mohamed"
+        email:
+          type: string
+          format: email
+          example: "ahmed@example.com"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: "^[a-zA-Z0-9_]+$"
+          example: "ahmed_m"
+        password:
+          type: string
+          minLength: 6
+          example: "secret123"
+        phone:
+          type: string
+          nullable: true
+          example: "01012345678"
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Ahmed Updated"
+        email:
+          type: string
+          format: email
+          example: "updated@example.com"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: "ahmed_updated"
+        password:
+          type: string
+          minLength: 6
+          example: "newpassword123"
+        phone:
+          type: string
+          nullable: true
+          example: "01098765432"
+        isActive:
+          type: boolean
+          example: false
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the user
+      schema:
+        type: string
+        format: uuid
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: Page number (starts from 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+    SortParam:
+      name: sort
+      in: query
+      required: false
+      description: "Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name"
+      schema:
+        type: string
+      example: "-createdAt"
+
+    SearchParam:
+      name: search
+      in: query
+      required: false
+      description: "Search term matched against name, email, or username"
+      schema:
+        type: string
+      example: "ahmed"
+
+  responses:
+    UserResponse:
+      description: Single user response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+
+    UsersListResponse:
+      description: Paginated list of users
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 50
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 5
+              data:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+    BadRequestError:
+      description: Validation error or bad input
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "Validation error in body: name: Required"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "User not found!"
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "error"
+              message:
+                type: string
+                example: "Something went very wrong!"
