@@ -5,7 +5,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "0f64ffa3-a4ec-44a8-b619-c31a593eb805",
+                    "id": "308a03ac-d137-495f-87a7-c408c89b486f",
                     "name": "Get all users",
                     "request": {
                         "name": "Get all users",
@@ -81,7 +81,7 @@
                     },
                     "response": [
                         {
-                            "id": "9f187e5b-12be-41e1-b583-0c0722dbe0b3",
+                            "id": "1613050e-e03e-4e10-9b88-3fa0234bd9a1",
                             "name": "Paginated list of users",
                             "originalRequest": {
                                 "url": {
@@ -162,7 +162,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "b744c975-662a-48c1-896a-2236b35803c6",
+                            "id": "b2f1ade1-307c-4c39-aaf1-accd86484a50",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -249,7 +249,7 @@
                     }
                 },
                 {
-                    "id": "1fa12fde-644c-44ac-aa89-b15c5a4df0f1",
+                    "id": "1c620eb4-fe0d-4b6b-967a-c3bf58c93c66",
                     "name": "Create a new user",
                     "request": {
                         "name": "Create a new user",
@@ -280,7 +280,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"vhvh\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"eeee\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -292,7 +292,7 @@
                     },
                     "response": [
                         {
-                            "id": "e8139601-81d5-40ec-81e5-27cf0d290f94",
+                            "id": "8f9ba2f3-3247-467c-8e13-7c9ff483c05b",
                             "name": "Single user response",
                             "originalRequest": {
                                 "url": {
@@ -318,7 +318,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"vhvh\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"eeee\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -340,7 +340,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "a8ac4d06-3f23-4054-86fa-9782f6af7cab",
+                            "id": "939a195b-db05-48b4-9bec-1c5320ba6686",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -366,7 +366,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"vhvh\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"eeee\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -388,7 +388,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "6d63a9c2-a106-4ca8-8f0c-b89b6500246e",
+                            "id": "037a216d-c83e-4886-8cda-2d66a5c526ee",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -414,7 +414,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"vhvh\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"eeee\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -446,7 +446,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "9cb3939d-ac2c-42aa-8055-08c6ea18ec78",
+                            "id": "7e5b2013-bcb6-4f99-9232-47f1e3ac6bbd",
                             "name": "Get user by ID",
                             "request": {
                                 "name": "Get user by ID",
@@ -488,7 +488,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "10aa587a-a517-4216-bfd3-1df75c47e6eb",
+                                    "id": "ef4e2d61-2805-49da-adfc-ee05a42a5b2b",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -535,7 +535,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "6c0d68f9-2a9b-4984-9411-bd14326041be",
+                                    "id": "4c5a50b2-27c3-4f52-bbe8-3a4d978ae62a",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -582,7 +582,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "59c4d826-2a67-4120-a812-66fb0dbe3960",
+                                    "id": "466e90af-12d0-414a-af8f-d059196587c4",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -629,7 +629,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "7b499951-27aa-41b9-a0f1-409815e51d65",
+                                    "id": "3ef85ee5-5615-4470-b9a2-34d342e1f022",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -682,7 +682,7 @@
                             }
                         },
                         {
-                            "id": "e5f60ee9-6352-4b48-b20e-979b6c6ad7f2",
+                            "id": "fc49a796-05c0-4fdc-8048-5955731c85eb",
                             "name": "Update a user",
                             "request": {
                                 "name": "Update a user",
@@ -737,7 +737,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "ef879dfb-99ad-4c0b-b78d-8dc3f85d9177",
+                                    "id": "7cd2ae8c-2e85-49ad-ba4e-25afcf50356f",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -797,7 +797,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "571f7a8f-9f5b-4353-8497-99226dc71c18",
+                                    "id": "39211ca5-6658-4884-8812-cf4de6ef3c59",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -857,7 +857,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "d6150a5f-1175-4f52-b773-c9bc54061fc3",
+                                    "id": "b135d6be-ac56-43bd-97a8-b70c84d6b86c",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -917,7 +917,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "cd2298ac-425d-4d9c-91d1-0099640ea76b",
+                                    "id": "30f0f0b6-9ecb-43a3-a10f-277fde9e0865",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -983,7 +983,7 @@
                             }
                         },
                         {
-                            "id": "c9848ddd-5921-4ca8-b60a-25c860ddcc09",
+                            "id": "fe0a3015-ea01-489d-be01-b45b129f5745",
                             "name": "Delete a user",
                             "request": {
                                 "name": "Delete a user",
@@ -1025,7 +1025,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "08150cd8-e956-4d4d-9102-fd1a8938fc15",
+                                    "id": "b2b92aef-678c-49de-b4bf-6df8c6b25976",
                                     "name": "User deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -1060,7 +1060,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "0d459f9c-3790-4707-80b4-647aae0c4be0",
+                                    "id": "4e3704ff-4178-4547-9ab6-667f249b100f",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1107,7 +1107,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "030604ba-0375-4f6d-a5b1-9e7653e391f7",
+                                    "id": "40f1cf39-9c7c-41f6-b300-8ddeff4a2bb6",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1154,7 +1154,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "436d4d97-3626-43e8-8b54-17da2d1af990",
+                                    "id": "5b97682d-1fca-4441-bdc9-7b69395550f0",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1215,7 +1215,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "6a70fac9-976e-4bab-9686-835526fcd61c",
+                    "id": "105e8fb6-54a9-425b-aa48-9505ad54bdb8",
                     "name": "Get all companies",
                     "request": {
                         "name": "Get all companies",
@@ -1282,7 +1282,7 @@
                     },
                     "response": [
                         {
-                            "id": "f084d455-b539-40bc-98b3-23213eaaba51",
+                            "id": "6bd0e76f-652f-4461-b0bd-1cba3f79acd8",
                             "name": "Paginated list of companies",
                             "originalRequest": {
                                 "url": {
@@ -1354,7 +1354,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "33c67421-47d9-4a43-9c1e-7472b616758a",
+                            "id": "469d4c3f-1725-4a9d-a437-77c78fdec989",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1432,7 +1432,7 @@
                     }
                 },
                 {
-                    "id": "d4680187-5ae5-415c-908d-c9ee3623bd5e",
+                    "id": "40944ed5-d409-4065-a7cc-8056506dcbe7",
                     "name": "Create a new company",
                     "request": {
                         "name": "Create a new company",
@@ -1463,7 +1463,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"S_HEs8aX1HC\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"z0wpPjEKlQl\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -1475,7 +1475,7 @@
                     },
                     "response": [
                         {
-                            "id": "390fef0b-0909-4bc3-9d73-ad54195de95f",
+                            "id": "6a56574d-34dd-45e9-8449-0d6e2a6ffdea",
                             "name": "Single company response",
                             "originalRequest": {
                                 "url": {
@@ -1501,7 +1501,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"S_HEs8aX1HC\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"z0wpPjEKlQl\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1523,7 +1523,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "2f927fce-a7f6-4e4f-b0a8-1576ee331dbb",
+                            "id": "529b5b01-77b1-4bd4-938c-cb8195865549",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -1549,7 +1549,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"S_HEs8aX1HC\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"z0wpPjEKlQl\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1571,7 +1571,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "727dabbf-f6bd-4672-8b83-35a9e8b07adf",
+                            "id": "390962b4-6e87-4285-9052-261b335ce11c",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1597,7 +1597,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"S_HEs8aX1HC\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"z0wpPjEKlQl\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1629,7 +1629,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "60d929ab-7a87-4ee1-9824-a1dc34b493ed",
+                            "id": "b28b6dff-76d3-4943-9225-a6a552fc85d8",
                             "name": "Get company by ID",
                             "request": {
                                 "name": "Get company by ID",
@@ -1671,7 +1671,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "a59c84d6-3b56-4df2-b8b6-abd15674ee74",
+                                    "id": "9c53f853-c8a0-4815-ad62-aeb8bffa1007",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1718,7 +1718,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3baf65d5-8584-47ee-8847-fc9e116c9479",
+                                    "id": "413c2db2-f71e-4a8e-9fbb-e6892f46b782",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1765,7 +1765,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "bb31ab03-4ef5-4c29-b6ff-9ff67ac8eb20",
+                                    "id": "9ff63d34-b511-4bef-b6be-93f4022d1afe",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1812,7 +1812,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "7f8d1cc0-17a4-4550-be3d-2eebd2afee7d",
+                                    "id": "3a4c73d4-72ef-41cd-9813-4e987d83596b",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1865,7 +1865,7 @@
                             }
                         },
                         {
-                            "id": "559e3388-971a-43f4-a7b2-90f65622d806",
+                            "id": "3988165d-d174-4470-a69a-fb73ad5ae128",
                             "name": "Update a company",
                             "request": {
                                 "name": "Update a company",
@@ -1920,7 +1920,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "705fdd76-641d-43c9-81fb-1908f4279f1e",
+                                    "id": "51517c06-050c-4193-9aa4-5587e218b43d",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1980,7 +1980,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a1d2625b-f635-4f70-977a-655f18e12449",
+                                    "id": "2400e487-ba9c-4956-a74c-81b7e6884fdf",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2040,7 +2040,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "9a3af300-844b-47f9-9632-27ac11b26c62",
+                                    "id": "3f37f8fe-9f1b-49f2-abca-1032cc82cf75",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2100,7 +2100,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "24672cb6-3099-4ae6-b3e8-7fe2543b6190",
+                                    "id": "961a7a01-b00c-431a-bdbd-3a010d8cafdc",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2166,7 +2166,7 @@
                             }
                         },
                         {
-                            "id": "d7b29a95-bbe7-45e8-ab8b-1a1aa11f7941",
+                            "id": "9db8c6f1-7025-482d-a522-438c5a1021ce",
                             "name": "Delete a company",
                             "request": {
                                 "name": "Delete a company",
@@ -2208,7 +2208,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "8d865574-fd4b-47dd-bbc5-0edf0e15b31b",
+                                    "id": "0769f55e-4673-4272-8561-ee2fe7173e61",
                                     "name": "Company deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -2243,7 +2243,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "7415d200-10f2-4629-b179-d96184a1ae9d",
+                                    "id": "3aca17b9-a1f5-4710-9f2f-8bb17a73f94c",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2290,7 +2290,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "85061138-2eb9-421f-8d0d-c8dc7d5343ac",
+                                    "id": "e63610bb-5fbe-4cf2-8824-2c493468af4d",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2337,7 +2337,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "640acfec-b52b-45d3-9515-853275358d5c",
+                                    "id": "2bce6c9b-6dc4-460b-be89-c760609311c2",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2390,6 +2390,350 @@
                             }
                         }
                     ]
+                },
+                {
+                    "name": "{companyId}",
+                    "description": "",
+                    "item": [
+                        {
+                            "name": "products",
+                            "description": "",
+                            "item": [
+                                {
+                                    "name": "upload-catalog",
+                                    "description": "",
+                                    "item": [
+                                        {
+                                            "id": "f19f1e36-7221-498a-b308-c323b7f31a7f",
+                                            "name": "Upload PDF catalog and extract products",
+                                            "request": {
+                                                "name": "Upload PDF catalog and extract products",
+                                                "description": {
+                                                    "content": "Upload an animal feed or veterinary PDF catalog. The system will upload it to the Gemini File API, extract all products and categories using Gemini 2.5 Flash, resolve categories without duplication, and store them in the database associated with the target company.",
+                                                    "type": "text/plain"
+                                                },
+                                                "url": {
+                                                    "path": [
+                                                        "companies",
+                                                        ":companyId",
+                                                        "products",
+                                                        "upload-catalog"
+                                                    ],
+                                                    "host": [
+                                                        "{{baseUrl}}"
+                                                    ],
+                                                    "query": [],
+                                                    "variable": [
+                                                        {
+                                                            "type": "any",
+                                                            "value": "<uuid>",
+                                                            "key": "companyId",
+                                                            "disabled": false,
+                                                            "description": {
+                                                                "content": "(Required) UUID of the company to associate the extracted products with",
+                                                                "type": "text/plain"
+                                                            }
+                                                        }
+                                                    ]
+                                                },
+                                                "header": [
+                                                    {
+                                                        "key": "Content-Type",
+                                                        "value": "multipart/form-data"
+                                                    },
+                                                    {
+                                                        "key": "Accept",
+                                                        "value": "application/json"
+                                                    }
+                                                ],
+                                                "method": "POST",
+                                                "body": {
+                                                    "mode": "formdata",
+                                                    "formdata": [
+                                                        {
+                                                            "description": {
+                                                                "content": "The PDF catalog file (max 15MB)",
+                                                                "type": "text/plain"
+                                                            },
+                                                            "key": "catalog",
+                                                            "type": "file"
+                                                        }
+                                                    ]
+                                                },
+                                                "auth": null
+                                            },
+                                            "response": [
+                                                {
+                                                    "id": "54cb08af-091e-4048-8fbb-ea206daea92c",
+                                                    "name": "Catalog processed and products successfully extracted and saved",
+                                                    "originalRequest": {
+                                                        "url": {
+                                                            "path": [
+                                                                "companies",
+                                                                ":companyId",
+                                                                "products",
+                                                                "upload-catalog"
+                                                            ],
+                                                            "host": [
+                                                                "{{baseUrl}}"
+                                                            ],
+                                                            "query": [],
+                                                            "variable": [
+                                                                {
+                                                                    "disabled": false,
+                                                                    "description": {
+                                                                        "content": "(Required) UUID of the company to associate the extracted products with",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "type": "any",
+                                                                    "value": "<uuid>",
+                                                                    "key": "companyId"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "header": [
+                                                            {
+                                                                "key": "Content-Type",
+                                                                "value": "multipart/form-data"
+                                                            },
+                                                            {
+                                                                "key": "Accept",
+                                                                "value": "application/json"
+                                                            }
+                                                        ],
+                                                        "method": "POST",
+                                                        "body": {
+                                                            "mode": "formdata",
+                                                            "formdata": [
+                                                                {
+                                                                    "description": {
+                                                                        "content": "The PDF catalog file (max 15MB)",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "key": "catalog",
+                                                                    "type": "file"
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                    "status": "Created",
+                                                    "code": 201,
+                                                    "header": [
+                                                        {
+                                                            "key": "Content-Type",
+                                                            "value": "application/json"
+                                                        }
+                                                    ],
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\",\n  \"data\": {\n    \"totalProductsExtracted\": \"<integer>\",\n    \"categoriesCreated\": \"<integer>\",\n    \"categoriesReused\": \"<integer>\",\n    \"productsCreated\": \"<integer>\",\n    \"productsUpdated\": \"<integer>\",\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"updated\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"updated\"\n      }\n    ]\n  }\n}",
+                                                    "cookie": [],
+                                                    "_postman_previewlanguage": "json"
+                                                },
+                                                {
+                                                    "id": "0d3084e5-27ef-422e-82bd-eed050e7df73",
+                                                    "name": "Validation error or bad input",
+                                                    "originalRequest": {
+                                                        "url": {
+                                                            "path": [
+                                                                "companies",
+                                                                ":companyId",
+                                                                "products",
+                                                                "upload-catalog"
+                                                            ],
+                                                            "host": [
+                                                                "{{baseUrl}}"
+                                                            ],
+                                                            "query": [],
+                                                            "variable": [
+                                                                {
+                                                                    "disabled": false,
+                                                                    "description": {
+                                                                        "content": "(Required) UUID of the company to associate the extracted products with",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "type": "any",
+                                                                    "value": "<uuid>",
+                                                                    "key": "companyId"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "header": [
+                                                            {
+                                                                "key": "Content-Type",
+                                                                "value": "multipart/form-data"
+                                                            },
+                                                            {
+                                                                "key": "Accept",
+                                                                "value": "application/json"
+                                                            }
+                                                        ],
+                                                        "method": "POST",
+                                                        "body": {
+                                                            "mode": "formdata",
+                                                            "formdata": [
+                                                                {
+                                                                    "description": {
+                                                                        "content": "The PDF catalog file (max 15MB)",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "key": "catalog",
+                                                                    "type": "file"
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                    "status": "Bad Request",
+                                                    "code": 400,
+                                                    "header": [
+                                                        {
+                                                            "key": "Content-Type",
+                                                            "value": "application/json"
+                                                        }
+                                                    ],
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                                    "cookie": [],
+                                                    "_postman_previewlanguage": "json"
+                                                },
+                                                {
+                                                    "id": "f85e782f-bab2-4e53-861b-21bc50c554ff",
+                                                    "name": "Resource not found",
+                                                    "originalRequest": {
+                                                        "url": {
+                                                            "path": [
+                                                                "companies",
+                                                                ":companyId",
+                                                                "products",
+                                                                "upload-catalog"
+                                                            ],
+                                                            "host": [
+                                                                "{{baseUrl}}"
+                                                            ],
+                                                            "query": [],
+                                                            "variable": [
+                                                                {
+                                                                    "disabled": false,
+                                                                    "description": {
+                                                                        "content": "(Required) UUID of the company to associate the extracted products with",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "type": "any",
+                                                                    "value": "<uuid>",
+                                                                    "key": "companyId"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "header": [
+                                                            {
+                                                                "key": "Content-Type",
+                                                                "value": "multipart/form-data"
+                                                            },
+                                                            {
+                                                                "key": "Accept",
+                                                                "value": "application/json"
+                                                            }
+                                                        ],
+                                                        "method": "POST",
+                                                        "body": {
+                                                            "mode": "formdata",
+                                                            "formdata": [
+                                                                {
+                                                                    "description": {
+                                                                        "content": "The PDF catalog file (max 15MB)",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "key": "catalog",
+                                                                    "type": "file"
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                    "status": "Not Found",
+                                                    "code": 404,
+                                                    "header": [
+                                                        {
+                                                            "key": "Content-Type",
+                                                            "value": "application/json"
+                                                        }
+                                                    ],
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                                    "cookie": [],
+                                                    "_postman_previewlanguage": "json"
+                                                },
+                                                {
+                                                    "id": "145cb7c3-e627-44b1-981c-e3c40f5099e2",
+                                                    "name": "Internal server error",
+                                                    "originalRequest": {
+                                                        "url": {
+                                                            "path": [
+                                                                "companies",
+                                                                ":companyId",
+                                                                "products",
+                                                                "upload-catalog"
+                                                            ],
+                                                            "host": [
+                                                                "{{baseUrl}}"
+                                                            ],
+                                                            "query": [],
+                                                            "variable": [
+                                                                {
+                                                                    "disabled": false,
+                                                                    "description": {
+                                                                        "content": "(Required) UUID of the company to associate the extracted products with",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "type": "any",
+                                                                    "value": "<uuid>",
+                                                                    "key": "companyId"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "header": [
+                                                            {
+                                                                "key": "Content-Type",
+                                                                "value": "multipart/form-data"
+                                                            },
+                                                            {
+                                                                "key": "Accept",
+                                                                "value": "application/json"
+                                                            }
+                                                        ],
+                                                        "method": "POST",
+                                                        "body": {
+                                                            "mode": "formdata",
+                                                            "formdata": [
+                                                                {
+                                                                    "description": {
+                                                                        "content": "The PDF catalog file (max 15MB)",
+                                                                        "type": "text/plain"
+                                                                    },
+                                                                    "key": "catalog",
+                                                                    "type": "file"
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                    "status": "Internal Server Error",
+                                                    "code": 500,
+                                                    "header": [
+                                                        {
+                                                            "key": "Content-Type",
+                                                            "value": "application/json"
+                                                        }
+                                                    ],
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                                    "cookie": [],
+                                                    "_postman_previewlanguage": "json"
+                                                }
+                                            ],
+                                            "event": [],
+                                            "protocolProfileBehavior": {
+                                                "disableBodyPruning": true
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
                 }
             ]
         },
@@ -2398,7 +2742,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "5aa2773b-f0d8-4017-8220-3cdd3b0166d3",
+                    "id": "7c6b2a03-b443-445a-bc55-92298c43cf0a",
                     "name": "Get all plans",
                     "request": {
                         "name": "Get all plans",
@@ -2474,7 +2818,7 @@
                     },
                     "response": [
                         {
-                            "id": "9d137438-6083-451a-90f9-6c82c8149450",
+                            "id": "830bf44f-3fbe-4d9d-a8ac-7e4e0ca75e15",
                             "name": "Paginated list of plans",
                             "originalRequest": {
                                 "url": {
@@ -2555,7 +2899,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "426ba9d7-8694-4002-bd5c-100198a7c00a",
+                            "id": "8fbfcedc-809d-4752-acd8-1948b9de2252",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -2642,7 +2986,7 @@
                     }
                 },
                 {
-                    "id": "96d17872-a5b3-4533-ad2e-cf7b8a0cdb70",
+                    "id": "d3deaaaf-63fa-43f0-973f-7cbf7523789b",
                     "name": "Create a new subscription plan",
                     "request": {
                         "name": "Create a new subscription plan",
@@ -2673,7 +3017,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -2685,7 +3029,7 @@
                     },
                     "response": [
                         {
-                            "id": "8d2f73cd-c76a-4ee2-b730-97bba4b3acc0",
+                            "id": "203e8009-4e4c-402c-a166-c4364f994569",
                             "name": "Single plan response",
                             "originalRequest": {
                                 "url": {
@@ -2711,7 +3055,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -2733,7 +3077,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "713bd259-8f52-481c-b4ea-ee9271960aec",
+                            "id": "0d260dbd-2a74-48dc-97dd-0343f374fece",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -2759,7 +3103,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -2781,7 +3125,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "c1e12c7e-2a40-4884-aeff-ad2f1618beb5",
+                            "id": "e73b5325-f84d-468d-8cfc-65c3f6ef5605",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -2807,7 +3151,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -2839,7 +3183,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "99f9fc5a-4615-4c4e-b66f-393765102ae3",
+                            "id": "4aaf2159-a4d7-467a-8b13-179dc46ad913",
                             "name": "Get plan by ID",
                             "request": {
                                 "name": "Get plan by ID",
@@ -2881,7 +3225,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "1a8c522a-225a-435c-bf6d-07e80799636b",
+                                    "id": "1d895e24-959a-497d-b56b-73655dae4bcf",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -2928,7 +3272,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "d99cb197-9422-4b2d-bc21-97c7b0e4a5fb",
+                                    "id": "1836b897-a077-4f20-b062-97eb00c0a8d8",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2975,7 +3319,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "6d6ce59f-80ad-4aa5-a8a8-21ddf9d70eaf",
+                                    "id": "b3782574-48c8-465d-ba63-f8934fb1c166",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3022,7 +3366,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "760b901a-f64b-4954-8842-ce2a1fc02a68",
+                                    "id": "58f6809d-4f12-439c-8253-6a643e85d731",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -3075,7 +3419,7 @@
                             }
                         },
                         {
-                            "id": "1fe117f8-ebc2-45fc-b48d-fe6a722dae47",
+                            "id": "43d20974-d853-41c5-853d-8272f9ae1d7d",
                             "name": "Update a plan",
                             "request": {
                                 "name": "Update a plan",
@@ -3130,7 +3474,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "d80cdcf0-b085-4a70-9c69-cb0d9ef0d705",
+                                    "id": "15988eed-2664-4749-9d70-b090d96adc20",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -3190,7 +3534,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "751e5c27-476a-4c1a-aa39-002d311e5eab",
+                                    "id": "85b76763-5b70-4650-9955-b5f9a29c98dd",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3250,7 +3594,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "b78d0220-556d-4b2f-8ac6-120fa5e80d18",
+                                    "id": "aed34948-5bba-452c-8ee0-19ca083953af",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3310,7 +3654,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3f29d079-a83b-4c68-a268-d5180c04b827",
+                                    "id": "e58589d5-afd0-44e6-a9dc-2eb726d1f46c",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -3376,7 +3720,7 @@
                             }
                         },
                         {
-                            "id": "a230baa9-7bc5-49d7-84e7-38fa4668a50e",
+                            "id": "655766fb-53eb-4ef8-a8b8-7e0f5c4467b2",
                             "name": "Delete a plan",
                             "request": {
                                 "name": "Delete a plan",
@@ -3418,7 +3762,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "8067050b-e017-410b-9fb0-8d1f78adeeca",
+                                    "id": "517a265b-fc46-48c6-87e6-66d9bdc8d6ea",
                                     "name": "Plan deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -3453,7 +3797,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "764c3b9f-071c-4ac8-8b70-267eeda677df",
+                                    "id": "0b2bec14-cac5-4aa6-8188-7f971b927f5d",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3500,7 +3844,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a65b82cb-78f8-4879-96d1-323dd99bb1ad",
+                                    "id": "91fede28-6fcd-43ea-89df-95d94f0ac8de",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3547,7 +3891,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "19e8d4e9-89f6-4c70-9198-7a5e0942d3bd",
+                                    "id": "c789024a-371e-4bbd-9989-54483f97816d",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -3612,7 +3956,7 @@
         }
     ],
     "info": {
-        "_postman_id": "a660a460-bdc7-4f75-a970-03a675f82968",
+        "_postman_id": "51e45e05-540a-4671-8c7b-a0fbec526203",
         "name": "Mostanad API",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "description": {

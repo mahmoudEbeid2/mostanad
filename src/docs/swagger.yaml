@@ -30,6 +30,8 @@ paths:
     $ref: './paths/companies/companies.yaml'
   /companies/{id}:
     $ref: './paths/companies/companies-id.yaml'
+  /companies/{companyId}/products/upload-catalog:
+    $ref: './paths/companies/catalog.yaml'
   /plans:
     $ref: './paths/plans/plans.yaml'
   /plans/{id}:

@@ -1,0 +1,82 @@
+post:
+  tags:
+    - Companies
+  summary: Upload PDF catalog and extract products
+  description: Upload an animal feed or veterinary PDF catalog. The system will upload it to the Gemini File API, extract all products and categories using Gemini 2.5 Flash, resolve categories without duplication, and store them in the database associated with the target company.
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company to associate the extracted products with
+      schema:
+        type: string
+        format: uuid
+      example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          properties:
+            catalog:
+              type: string
+              format: binary
+              description: The PDF catalog file (max 15MB)
+  responses:
+    '201':
+      description: Catalog processed and products successfully extracted and saved
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+                example: "Catalog processed and products extracted successfully!"
+              data:
+                type: object
+                properties:
+                  totalProductsExtracted:
+                    type: integer
+                    example: 12
+                  categoriesCreated:
+                    type: integer
+                    example: 2
+                  categoriesReused:
+                    type: integer
+                    example: 1
+                  productsCreated:
+                    type: integer
+                    example: 10
+                  productsUpdated:
+                    type: integer
+                    example: 2
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                          example: "d1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                        name:
+                          type: string
+                          example: "BROILER STARTER CONCENTRATE 5%"
+                        category:
+                          type: string
+                          example: "CONCENTRATES"
+                        action:
+                          type: string
+                          enum: [created, updated]
+                          example: "created"
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
