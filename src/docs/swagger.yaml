@@ -18,6 +18,8 @@ tags:
     description: Internal system user management
   - name: Companies
     description: Company account management
+  - name: Plans
+    description: SaaS Subscription Plan management
 
 paths:
   /users:
@@ -28,6 +30,10 @@ paths:
     $ref: './paths/companies/companies.yaml'
   /companies/{id}:
     $ref: './paths/companies/companies-id.yaml'
+  /plans:
+    $ref: './paths/plans/plans.yaml'
+  /plans/{id}:
+    $ref: './paths/plans/plans-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

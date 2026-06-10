@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Plans
+  summary: Get plan by ID
+  description: Retrieve details of a single plan by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PlanId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/PlanResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Plans
+  summary: Update a plan
+  description: Update details of an existing plan by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PlanId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdatePlanBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/PlanResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Plans
+  summary: Delete a plan
+  description: Permanently delete a subscription plan. Note that a plan cannot be deleted if it has associated active subscriptions.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PlanId'
+  responses:
+    '204':
+      description: Plan deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

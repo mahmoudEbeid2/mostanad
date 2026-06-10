@@ -15,6 +15,8 @@ tags:
     description: Internal system user management
   - name: Companies
     description: Company account management
+  - name: Plans
+    description: SaaS Subscription Plan management
 paths:
   /users:
     get:
@@ -201,6 +203,102 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /plans:
+    get:
+      tags:
+        - Plans
+      summary: Get all plans
+      description: Retrieve a paginated list of all active plans. Supports filtering, searching, and sorting.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+        - name: isActive
+          in: query
+          required: false
+          description: Filter by active status
+          schema:
+            type: boolean
+          example: true
+      responses:
+        '200':
+          $ref: '#/components/responses/PlansListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Plans
+      summary: Create a new subscription plan
+      description: Create a new SaaS subscription plan with a unique name, price, interval, and list of features.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/PlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /plans/{id}:
+    get:
+      tags:
+        - Plans
+      summary: Get plan by ID
+      description: Retrieve details of a single plan by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Plans
+      summary: Update a plan
+      description: Update details of an existing plan by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Plans
+      summary: Delete a plan
+      description: Permanently delete a subscription plan. Note that a plan cannot be deleted if it has associated active subscriptions.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '204':
+          description: Plan deleted successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
 components:
   parameters:
     PageParam:
@@ -256,6 +354,15 @@ components:
         type: string
         format: uuid
       example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+    PlanId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the plan
+      schema:
+        type: string
+        format: uuid
+      example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
   schemas:
     User:
       type: object
@@ -465,6 +572,112 @@ components:
         isActive:
           type: boolean
           example: false
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+        name:
+          type: string
+          example: Enterprise
+        description:
+          type: string
+          nullable: true
+          example: Full access for large teams
+        price:
+          type: string
+          example: '99.99'
+        interval:
+          type: string
+          enum:
+            - month
+            - year
+          example: month
+        features:
+          type: array
+          items:
+            type: string
+          example:
+            - unlimited certificates
+            - custom domains
+            - 24/7 support
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T12:00:00.000Z'
+    CreatePlanBody:
+      type: object
+      required:
+        - name
+        - price
+        - interval
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Enterprise
+        description:
+          type: string
+          nullable: true
+          example: Full access for large teams
+        price:
+          type: number
+          example: 99.99
+        interval:
+          type: string
+          enum:
+            - month
+            - year
+          example: month
+        features:
+          type: array
+          items:
+            type: string
+          example:
+            - unlimited certificates
+            - custom domains
+            - 24/7 support
+    UpdatePlanBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Enterprise Updated
+        description:
+          type: string
+          nullable: true
+          example: Updated description text
+        price:
+          type: number
+          example: 129.99
+        interval:
+          type: string
+          enum:
+            - month
+            - year
+          example: year
+        features:
+          type: array
+          items:
+            type: string
+          example:
+            - unlimited certificates
+            - custom domains
+        isActive:
+          type: boolean
+          example: false
   responses:
     UsersListResponse:
       description: Paginated list of users
@@ -599,3 +812,50 @@ components:
                 properties:
                   company:
                     $ref: '#/components/schemas/Company'
+    PlansListResponse:
+      description: Paginated list of plans
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 5
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 1
+              data:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+    PlanResponse:
+      description: Single plan response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/Plan'
