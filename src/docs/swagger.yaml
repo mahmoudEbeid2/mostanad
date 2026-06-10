@@ -3,8 +3,25 @@ openapi: 3.0.0
 info:
   title: Mostanad API
   version: 1.0.0
-  description: API for managing documents in the Mostanad application.
+  description: |
+    API for managing documents and users in the **Mostanad** application.
+
+    ## Authentication
+    This is an internal system. Authentication details will be added later.
 
 servers:
-  - url: http://localhost:3000/
+  - url: http://localhost:3000/api/v1
     description: Development server
+
+tags:
+  - name: Users
+    description: Internal system user management
+
+paths:
+  /users:
+    $ref: './paths/users/users.yaml'
+  /users/{id}:
+    $ref: './paths/users/users-id.yaml'
+
+components:
+  $ref: './components/components.yaml#/components'
