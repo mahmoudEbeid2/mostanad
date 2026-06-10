@@ -4,7 +4,7 @@ import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
 import { excludeFields } from "../utils/helpers.js";
 
-// Helper to exclude password
+// Helper to exclude password from user object
 const excludePassword = (user) => excludeFields(user, ["password"]);
 
 /**
@@ -14,47 +14,31 @@ export const createUser = async (userData) => {
   const { name, email, username, password, phone } = userData;
 
   // Check if email already exists
-  const emailExists = await prisma.user.findUnique({
-    where: { email },
-  });
+  const emailExists = await prisma.user.findUnique({ where: { email } });
   if (emailExists) {
     throw new AppError("Email is already registered!", 400);
   }
 
   // Check if username already exists
-  const usernameExists = await prisma.user.findUnique({
-    where: { username },
-  });
+  const usernameExists = await prisma.user.findUnique({ where: { username } });
   if (usernameExists) {
     throw new AppError("Username is already taken!", 400);
   }
 
-  // Hash password
   const hashedPassword = await bcrypt.hash(password, 12);
 
   const newUser = await prisma.user.create({
-    data: {
-      name,
-      email,
-      username,
-      password: hashedPassword,
-      phone,
-    },
+    data: { name, email, username, password: hashedPassword, phone },
   });
 
   return excludePassword(newUser);
 };
 
 /**
- * Get all users with filtering, sorting, search, pagination
+ * Get all users with filtering, sorting, search, and pagination
  */
 export const getAllUsers = async (queryString) => {
-  const query = { ...queryString };
-  
-  // Ensure we only query non-deleted users by default
-  query.isDeleted = "false";
-
-  const features = new PrismaFeatures(prisma.user, query)
+  const features = new PrismaFeatures(prisma.user, queryString)
     .filter()
     .search(["name", "email", "username"])
     .sort()
@@ -72,12 +56,7 @@ export const getAllUsers = async (queryString) => {
  * Get a user by ID
  */
 export const getUserById = async (id) => {
-  const user = await prisma.user.findFirst({
-    where: {
-      id,
-      isDeleted: false,
-    },
-  });
+  const user = await prisma.user.findUnique({ where: { id } });
 
   if (!user) {
     throw new AppError("User not found!", 404);
@@ -90,13 +69,7 @@ export const getUserById = async (id) => {
  * Update a user
  */
 export const updateUser = async (id, updateData) => {
-  // Check if user exists
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      id,
-      isDeleted: false,
-    },
-  });
+  const existingUser = await prisma.user.findUnique({ where: { id } });
 
   if (!existingUser) {
     throw new AppError("User not found!", 404);
@@ -106,23 +79,22 @@ export const updateUser = async (id, updateData) => {
   const finalUpdateData = {};
 
   if (name) finalUpdateData.name = name;
-  
+
   if (email && email !== existingUser.email) {
     const emailExists = await prisma.user.findUnique({ where: { email } });
-    if (emailExists) throw new AppError("Email is already registered by another user!", 400);
+    if (emailExists) throw new AppError("Email is already used by another user!", 400);
     finalUpdateData.email = email;
   }
-  
+
   if (username && username !== existingUser.username) {
     const usernameExists = await prisma.user.findUnique({ where: { username } });
     if (usernameExists) throw new AppError("Username is already taken by another user!", 400);
     finalUpdateData.username = username;
   }
-  
+
   if (phone !== undefined) finalUpdateData.phone = phone;
   if (isActive !== undefined) finalUpdateData.isActive = isActive;
 
-  // Hash password if updating it
   if (password) {
     finalUpdateData.password = await bcrypt.hash(password, 12);
   }
@@ -136,27 +108,16 @@ export const updateUser = async (id, updateData) => {
 };
 
 /**
- * Delete a user (Soft Delete)
+ * Delete a user (Hard Delete)
  */
 export const deleteUser = async (id) => {
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      id,
-      isDeleted: false,
-    },
-  });
+  const existingUser = await prisma.user.findUnique({ where: { id } });
 
   if (!existingUser) {
     throw new AppError("User not found!", 404);
   }
 
-  await prisma.user.update({
-    where: { id },
-    data: {
-      isDeleted: true,
-      isActive: false,
-    },
-  });
+  await prisma.user.delete({ where: { id } });
 
   return null;
 };
