@@ -41,7 +41,7 @@ const sendErrorProd = (err, res) => {
     });
   } else {
     // Programming or other unknown error: don't leak error details
-    console.error("ERROR 💥", err);
+    console.error("ERROR 💥", err.stack || err);
     res.status(500).json({
       status: "error",
       message: "Something went very wrong!",
@@ -60,6 +60,7 @@ const globalErrorHandler = (err, req, res, next) => {
     error.message = err.message;
     error.statusCode = err.statusCode;
     error.status = err.status;
+    error.stack = err.stack;
 
     // Prisma Known Request Errors
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
