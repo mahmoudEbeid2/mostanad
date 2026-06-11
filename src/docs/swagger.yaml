@@ -20,6 +20,8 @@ tags:
     description: Company account management
   - name: Plans
     description: SaaS Subscription Plan management
+  - name: Products
+    description: Product catalog management
 
 paths:
   /users:
@@ -32,6 +34,10 @@ paths:
     $ref: './paths/companies/companies-id.yaml'
   /companies/{companyId}/products/upload-catalog:
     $ref: './paths/companies/catalog.yaml'
+  /companies/{companyId}/products:
+    $ref: './paths/products/products.yaml'
+  /products/{id}:
+    $ref: './paths/products/products-id.yaml'
   /plans:
     $ref: './paths/plans/plans.yaml'
   /plans/{id}:

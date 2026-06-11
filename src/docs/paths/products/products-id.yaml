@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Products
+  summary: Get product by ID
+  description: Retrieve details of a single product by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/ProductId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/ProductResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Products
+  summary: Update a product
+  description: Update details of an existing product by its UUID. All body fields are optional.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/ProductId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateProductBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/ProductResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Products
+  summary: Delete a product
+  description: Permanently hard-delete a product by its UUID. This action is irreversible.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/ProductId'
+  responses:
+    '204':
+      description: Product deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

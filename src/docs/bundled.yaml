@@ -17,6 +17,8 @@ tags:
     description: Company account management
   - name: Plans
     description: SaaS Subscription Plan management
+  - name: Products
+    description: Product catalog management
 paths:
   /users:
     get:
@@ -288,6 +290,126 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /companies/{companyId}/products:
+    get:
+      tags:
+        - Products
+      summary: Get all products scoped to a company
+      description: Retrieve a paginated list of all products belonging to a company. Supports filtering, searching, and sorting.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          description: UUID of the company to list products for
+          schema:
+            type: string
+            format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+        - name: categoryId
+          in: query
+          required: false
+          description: Filter products by category UUID
+          schema:
+            type: string
+            format: uuid
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
+      responses:
+        '200':
+          $ref: '#/components/responses/ProductsListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Products
+      summary: Create a new product scoped to a company
+      description: Add a new product to the company's catalog.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          description: UUID of the company to add the product to
+          schema:
+            type: string
+            format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /products/{id}:
+    get:
+      tags:
+        - Products
+      summary: Get product by ID
+      description: Retrieve details of a single product by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Products
+      summary: Update a product
+      description: Update details of an existing product by its UUID. All body fields are optional.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Products
+      summary: Delete a product
+      description: Permanently hard-delete a product by its UUID. This action is irreversible.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Product deleted successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
   /plans:
     get:
       tags:
@@ -439,6 +561,15 @@ components:
         type: string
         format: uuid
       example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the product
+      schema:
+        type: string
+        format: uuid
+      example: d1b2c3d4-e5f6-7890-abcd-ef1234567890
     PlanId:
       name: id
       in: path
@@ -657,6 +788,340 @@ components:
         isActive:
           type: boolean
           example: false
+    ActiveIngredient:
+      type: object
+      required:
+        - name
+        - concentration
+      properties:
+        name:
+          type: string
+          example: L-Lysine
+        concentration:
+          type: string
+          example: 98.5%
+    ProductSpecification:
+      type: object
+      required:
+        - type
+        - values
+      properties:
+        type:
+          type: string
+          example: Specification
+        values:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            Moisture: max 12%
+            Purity: min 98.5%
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
+        name:
+          type: string
+          example: CONCENTRATES
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T12:00:00.000Z'
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: d1b2c3d4-e5f6-7890-abcd-ef1234567890
+        name:
+          type: string
+          example: BROILER STARTER CONCENTRATE 5%
+        productCode:
+          type: string
+          nullable: true
+          example: BSC-005
+        description:
+          type: string
+          nullable: true
+          example: Premium starter concentrate for broilers
+        indications:
+          type: string
+          nullable: true
+          example: Promotes early stage growth and immunity
+        targetSpecies:
+          type: array
+          items:
+            type: string
+          example:
+            - Broiler
+            - Poultry
+        physicalForm:
+          type: string
+          nullable: true
+          example: Powder
+        appearance:
+          type: string
+          nullable: true
+          example: Yellowish-brown powder
+        activeIngredients:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ActiveIngredient'
+        dosage:
+          type: string
+          nullable: true
+          example: 50 kg per ton of feed
+        mixingInstructions:
+          type: string
+          nullable: true
+          example: Mix thoroughly with yellow corn and soybean meal
+        withdrawalPeriod:
+          type: string
+          nullable: true
+          example: 5 days before slaughter
+        contraindications:
+          type: string
+          nullable: true
+          example: Do not feed to horses or other equids
+        userSafety:
+          type: array
+          items:
+            type: string
+          example:
+            - Wear protective mask
+            - Avoid direct contact with eyes
+        storage:
+          type: string
+          nullable: true
+          example: Store in a cool, dry place
+        packaging:
+          type: string
+          nullable: true
+          example: 25KG Bag
+        registrationNumber:
+          type: string
+          nullable: true
+          example: REG-2026-9876
+        origin:
+          type: string
+          nullable: true
+          example: Egypt
+        producer:
+          type: string
+          nullable: true
+          example: Addvet Egypt
+        specifications:
+          $ref: '#/components/schemas/ProductSpecification'
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
+        category:
+          $ref: '#/components/schemas/Category'
+          nullable: true
+        companyId:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T12:00:00.000Z'
+    CreateProductBody:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: BROILER STARTER CONCENTRATE 5%
+        productCode:
+          type: string
+          nullable: true
+          example: BSC-005
+        description:
+          type: string
+          nullable: true
+          example: Premium starter concentrate for broilers
+        indications:
+          type: string
+          nullable: true
+          example: Promotes early stage growth and immunity
+        targetSpecies:
+          type: array
+          items:
+            type: string
+          example:
+            - Broiler
+            - Poultry
+        physicalForm:
+          type: string
+          nullable: true
+          example: Powder
+        appearance:
+          type: string
+          nullable: true
+          example: Yellowish-brown powder
+        activeIngredients:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ActiveIngredient'
+        dosage:
+          type: string
+          nullable: true
+          example: 50 kg per ton of feed
+        mixingInstructions:
+          type: string
+          nullable: true
+          example: Mix thoroughly with yellow corn and soybean meal
+        withdrawalPeriod:
+          type: string
+          nullable: true
+          example: 5 days before slaughter
+        contraindications:
+          type: string
+          nullable: true
+          example: Do not feed to horses or other equids
+        userSafety:
+          type: array
+          items:
+            type: string
+          example:
+            - Wear protective mask
+            - Avoid direct contact with eyes
+        storage:
+          type: string
+          nullable: true
+          example: Store in a cool, dry place
+        packaging:
+          type: string
+          nullable: true
+          example: 25KG Bag
+        registrationNumber:
+          type: string
+          nullable: true
+          example: REG-2026-9876
+        origin:
+          type: string
+          nullable: true
+          example: Egypt
+        producer:
+          type: string
+          nullable: true
+          example: Addvet Egypt
+        specifications:
+          $ref: '#/components/schemas/ProductSpecification'
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
+    UpdateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: BSC 5% Premium
+        productCode:
+          type: string
+          nullable: true
+          example: BSC-005-PREM
+        description:
+          type: string
+          nullable: true
+          example: Updated product description
+        indications:
+          type: string
+          nullable: true
+          example: Updated indications
+        targetSpecies:
+          type: array
+          items:
+            type: string
+          example:
+            - Broiler
+        physicalForm:
+          type: string
+          nullable: true
+          example: Granules
+        appearance:
+          type: string
+          nullable: true
+          example: Light brown granules
+        activeIngredients:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ActiveIngredient'
+        dosage:
+          type: string
+          nullable: true
+          example: 40 kg per ton of feed
+        mixingInstructions:
+          type: string
+          nullable: true
+          example: Updated mixing instructions
+        withdrawalPeriod:
+          type: string
+          nullable: true
+          example: 3 days before slaughter
+        contraindications:
+          type: string
+          nullable: true
+          example: None
+        userSafety:
+          type: array
+          items:
+            type: string
+          example:
+            - Wear gloves
+        storage:
+          type: string
+          nullable: true
+          example: Store below 30C
+        packaging:
+          type: string
+          nullable: true
+          example: 50KG Bag
+        registrationNumber:
+          type: string
+          nullable: true
+          example: REG-2026-9876-V2
+        origin:
+          type: string
+          nullable: true
+          example: Egypt
+        producer:
+          type: string
+          nullable: true
+          example: Addvet Egypt
+        specifications:
+          $ref: '#/components/schemas/ProductSpecification'
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
     Plan:
       type: object
       properties:
@@ -897,6 +1362,53 @@ components:
                 properties:
                   company:
                     $ref: '#/components/schemas/Company'
+    ProductsListResponse:
+      description: Paginated list of products scoped to a company
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 15
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 2
+              data:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+    ProductResponse:
+      description: Single product response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  product:
+                    $ref: '#/components/schemas/Product'
     PlansListResponse:
       description: Paginated list of plans
       content:

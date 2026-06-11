@@ -1,0 +1,65 @@
+get:
+  tags:
+    - Products
+  summary: Get all products scoped to a company
+  description: Retrieve a paginated list of all products belonging to a company. Supports filtering, searching, and sorting.
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company to list products for
+      schema:
+        type: string
+        format: uuid
+      example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+    - name: categoryId
+      in: query
+      required: false
+      description: Filter products by category UUID
+      schema:
+        type: string
+        format: uuid
+      example: "c2d3e4f5-a6b7-8901-cdef-012345678901"
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/ProductsListResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Products
+  summary: Create a new product scoped to a company
+  description: Add a new product to the company's catalog.
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company to add the product to
+      schema:
+        type: string
+        format: uuid
+      example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateProductBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/ProductResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
