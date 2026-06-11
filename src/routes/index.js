@@ -3,6 +3,7 @@ import { swaggerUi, swaggerSpec } from "../../swagger.js";
 import userRoutes from "./userRoutes.js";
 import companyRoutes from "./companyRoutes.js";
 import planRoutes from "./planRoutes.js";
+import productRoutes from "./productRoutes.js";
 
 const router = express.Router();
 
@@ -13,7 +14,9 @@ router.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 router.use("/users", userRoutes);
 router.use("/companies", companyRoutes);
 router.use("/plans", planRoutes);
+router.use("/", productRoutes);
 
 export default router;
+
 
 
