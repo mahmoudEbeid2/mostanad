@@ -639,6 +639,116 @@ components:
           nullable: true
           example: "c2d3e4f5-a6b7-8901-cdef-012345678901"
 
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "e1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        companyId:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        company:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            username:
+              type: string
+          example:
+            id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+            name: "Acme Corp"
+            username: "acme_corp"
+        planId:
+          type: string
+          format: uuid
+          example: "c1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        plan:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            price:
+              type: string
+            interval:
+              type: string
+          example:
+            id: "c1b2c3d4-e5f6-7890-abcd-ef1234567890"
+            name: "Enterprise"
+            price: "99.99"
+            interval: "month"
+        startDate:
+          type: string
+          format: date-time
+          example: "2026-06-11T10:00:00.000Z"
+        endDate:
+          type: string
+          format: date-time
+          example: "2026-07-11T10:00:00.000Z"
+        status:
+          type: string
+          enum: [active, expired, cancelled]
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-11T10:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-11T10:00:00.000Z"
+
+    CreateSubscriptionBody:
+      type: object
+      required:
+        - companyId
+        - planId
+      properties:
+        companyId:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        planId:
+          type: string
+          format: uuid
+          example: "c1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        startDate:
+          type: string
+          format: date-time
+          example: "2026-06-11T10:00:00.000Z"
+        endDate:
+          type: string
+          format: date-time
+          example: "2026-07-11T10:00:00.000Z"
+        status:
+          type: string
+          enum: [active, expired, cancelled]
+          example: "active"
+
+    UpdateSubscriptionBody:
+      type: object
+      properties:
+        planId:
+          type: string
+          format: uuid
+          example: "c1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        endDate:
+          type: string
+          format: date-time
+          example: "2026-08-11T10:00:00.000Z"
+        status:
+          type: string
+          enum: [active, expired, cancelled]
+          example: "expired"
+
   parameters:
     UserId:
       name: id
@@ -718,6 +828,16 @@ components:
       schema:
         type: string
       example: "ahmed"
+
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the subscription
+      schema:
+        type: string
+        format: uuid
+      example: "e1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
   responses:
     UserResponse:
@@ -957,3 +1077,53 @@ components:
               message:
                 type: string
                 example: "Something went very wrong!"
+
+    SubscriptionResponse:
+      description: Single subscription response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  subscription:
+                    $ref: '#/components/schemas/Subscription'
+
+    SubscriptionsListResponse:
+      description: Paginated list of subscriptions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 2
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 1
+              data:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+

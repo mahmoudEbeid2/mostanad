@@ -19,6 +19,8 @@ tags:
     description: SaaS Subscription Plan management
   - name: Products
     description: Product catalog management
+  - name: Subscriptions
+    description: Tenant subscription lifecycle management
 paths:
   /users:
     get:
@@ -506,6 +508,123 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /subscriptions:
+    get:
+      tags:
+        - Subscriptions
+      summary: Get all subscriptions
+      description: Retrieve a list of subscriptions with support for pagination, sorting, and exact filtering by companyId, planId, and status.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: companyId
+          in: query
+          required: false
+          description: Filter by company ID
+          schema:
+            type: string
+            format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        - name: planId
+          in: query
+          required: false
+          description: Filter by subscription plan ID
+          schema:
+            type: string
+            format: uuid
+          example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+        - name: status
+          in: query
+          required: false
+          description: Filter by subscription status
+          schema:
+            type: string
+            enum:
+              - active
+              - expired
+              - cancelled
+          example: active
+      responses:
+        '200':
+          $ref: '#/components/responses/SubscriptionsListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Subscriptions
+      summary: Create a new subscription
+      description: Subscribe a company to a SaaS plan. If status is "active", it automatically cancels other active subscriptions for this company.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /subscriptions/{id}:
+    get:
+      tags:
+        - Subscriptions
+      summary: Get subscription by ID
+      description: Retrieve details of a single subscription record by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Subscriptions
+      summary: Update a subscription
+      description: Update an existing subscription (e.g. extending endDate, updating plan, or changing status). If status is updated to "active", it automatically cancels other active subscriptions for this company.
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Subscriptions
+      summary: Delete a subscription
+      description: Permanently delete a subscription record.
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '204':
+          description: Subscription deleted successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
 components:
   parameters:
     PageParam:
@@ -579,6 +698,15 @@ components:
         type: string
         format: uuid
       example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the subscription
+      schema:
+        type: string
+        format: uuid
+      example: e1b2c3d4-e5f6-7890-abcd-ef1234567890
   schemas:
     User:
       type: object
@@ -1228,6 +1356,122 @@ components:
         isActive:
           type: boolean
           example: false
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: e1b2c3d4-e5f6-7890-abcd-ef1234567890
+        companyId:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        company:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            username:
+              type: string
+          example:
+            id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+            name: Acme Corp
+            username: acme_corp
+        planId:
+          type: string
+          format: uuid
+          example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+        plan:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            price:
+              type: string
+            interval:
+              type: string
+          example:
+            id: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+            name: Enterprise
+            price: '99.99'
+            interval: month
+        startDate:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+        endDate:
+          type: string
+          format: date-time
+          example: '2026-07-11T10:00:00.000Z'
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - cancelled
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+    CreateSubscriptionBody:
+      type: object
+      required:
+        - companyId
+        - planId
+      properties:
+        companyId:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        planId:
+          type: string
+          format: uuid
+          example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+        startDate:
+          type: string
+          format: date-time
+          example: '2026-06-11T10:00:00.000Z'
+        endDate:
+          type: string
+          format: date-time
+          example: '2026-07-11T10:00:00.000Z'
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - cancelled
+          example: active
+    UpdateSubscriptionBody:
+      type: object
+      properties:
+        planId:
+          type: string
+          format: uuid
+          example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+        endDate:
+          type: string
+          format: date-time
+          example: '2026-08-11T10:00:00.000Z'
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - cancelled
+          example: expired
   responses:
     UsersListResponse:
       description: Paginated list of users
@@ -1456,3 +1700,50 @@ components:
                 properties:
                   plan:
                     $ref: '#/components/schemas/Plan'
+    SubscriptionsListResponse:
+      description: Paginated list of subscriptions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 2
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 1
+              data:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+    SubscriptionResponse:
+      description: Single subscription response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  subscription:
+                    $ref: '#/components/schemas/Subscription'

@@ -5,7 +5,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "e9e1bdb9-77ed-4d9e-a5a4-a8a0ed672f5b",
+                    "id": "6e97341f-09af-4b59-afe6-c26143290ba7",
                     "name": "Get all users",
                     "request": {
                         "name": "Get all users",
@@ -81,7 +81,7 @@
                     },
                     "response": [
                         {
-                            "id": "6c193cf5-5957-46a3-9453-305d10c47a48",
+                            "id": "db509916-3863-4d40-9d5e-c03ca2f17a13",
                             "name": "Paginated list of users",
                             "originalRequest": {
                                 "url": {
@@ -162,7 +162,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "b5549d61-2a59-4036-8918-685610e1fcc3",
+                            "id": "bdc12b1b-8321-48d6-a4d9-090b5da572e5",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -249,7 +249,7 @@
                     }
                 },
                 {
-                    "id": "d9e30a44-256e-4698-aba4-b123973d2aeb",
+                    "id": "5bd3730a-5419-408b-9156-559ddb24bc3f",
                     "name": "Create a new user",
                     "request": {
                         "name": "Create a new user",
@@ -280,7 +280,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"WTag\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -292,7 +292,7 @@
                     },
                     "response": [
                         {
-                            "id": "5ab2bbc4-ff93-48f1-a647-83874b3f811e",
+                            "id": "97226551-f351-42f2-8e68-3eda049e07b5",
                             "name": "Single user response",
                             "originalRequest": {
                                 "url": {
@@ -318,7 +318,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"WTag\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -340,7 +340,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "dbca2a98-7111-490a-b19e-c34020febdf2",
+                            "id": "c393c7a9-9211-4ad5-87d4-991fb9aa6ac4",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -366,7 +366,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"WTag\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -388,7 +388,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "44a784c7-6091-4fbe-b62b-86b0910c34b0",
+                            "id": "0ab02fc0-3656-4370-8ab8-76f1930fdfd3",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -414,7 +414,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"WTag\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -446,7 +446,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "27227380-a85f-46a8-96e5-da12e820996e",
+                            "id": "fedb1e2c-0049-4a01-931e-615a1c0a4600",
                             "name": "Get user by ID",
                             "request": {
                                 "name": "Get user by ID",
@@ -488,7 +488,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "9b9090ec-ffbb-4277-9eb5-2155838e06be",
+                                    "id": "6ad5c9d3-f7af-46fc-8a96-cccc3db8cc86",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -535,7 +535,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ade22ca7-fd58-4114-a872-4ed223295f6e",
+                                    "id": "eb00298d-2157-482e-91eb-726f4be990d9",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -582,7 +582,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "f2ba4184-93f3-40a6-b0a7-2ce005bd4687",
+                                    "id": "e3cb229c-961d-46a7-b13f-41cdf7b0f681",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -629,7 +629,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "9bf0b931-27ef-4ce1-8990-8ca8bb373b3c",
+                                    "id": "18461ba3-72ce-4b82-b89e-752ea9e52d2a",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -682,7 +682,7 @@
                             }
                         },
                         {
-                            "id": "aab7adf0-797b-42fb-b1b7-63a7933dc16e",
+                            "id": "f5efa365-b178-4a00-a14e-56ae3aeb6f82",
                             "name": "Update a user",
                             "request": {
                                 "name": "Update a user",
@@ -737,7 +737,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "bb4abd6f-157c-4163-9dc9-4311facd5cb5",
+                                    "id": "131a1ab1-2628-4a4c-8180-86ff8177325b",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -797,7 +797,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "63cdb2b1-7fde-42b3-98da-418cf724abbf",
+                                    "id": "87d641ed-01f8-4fe0-9a94-1c3e7cb7da4f",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -857,7 +857,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a6900e40-7be4-4f38-a074-0c4eb491563d",
+                                    "id": "cb831974-71a2-4f39-bbba-b976f494dbee",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -917,7 +917,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "b2fba269-c2da-4d16-ac31-98ac9e4dd798",
+                                    "id": "2e52e914-93db-4d42-8196-061671b97468",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -983,7 +983,7 @@
                             }
                         },
                         {
-                            "id": "49f20799-a13d-45dd-a621-125faf348163",
+                            "id": "dc350cf8-b3db-4f8d-9215-5e35d09cb6ee",
                             "name": "Delete a user",
                             "request": {
                                 "name": "Delete a user",
@@ -1025,7 +1025,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "4eb4b877-0ce4-45b9-9c04-f8ab1220b824",
+                                    "id": "a3867c76-f010-458f-8e98-157df6eda809",
                                     "name": "User deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -1060,7 +1060,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "037a3e82-ef6e-40f0-b6d2-2daa6cf91429",
+                                    "id": "842d0516-539f-4257-b161-f2cd29516d67",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1107,7 +1107,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "f71e6aa4-b9fe-488b-bf27-6ccde6e0f719",
+                                    "id": "23014479-f0dc-4463-9973-c3a517a80b55",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1154,7 +1154,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "5f60e177-b8ea-44ef-b91c-e3104b64f924",
+                                    "id": "757a79cc-faa0-4fb6-90e3-4d56ae6442bc",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1215,7 +1215,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "6742aa64-ea7e-400a-af9f-fb0a60678aa5",
+                    "id": "61662328-96d9-48f8-81c7-940cb011af70",
                     "name": "Get all companies",
                     "request": {
                         "name": "Get all companies",
@@ -1282,7 +1282,7 @@
                     },
                     "response": [
                         {
-                            "id": "6417d515-b475-401d-b27d-6872ca1a04e3",
+                            "id": "dc4266bc-e104-4493-a459-63ec51a8ff4b",
                             "name": "Paginated list of companies",
                             "originalRequest": {
                                 "url": {
@@ -1354,7 +1354,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "a7b8cfb7-0f02-4adc-b210-3b23d4c59228",
+                            "id": "cedc6a92-71d6-40de-94a1-6f737cfe6d83",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1432,7 +1432,7 @@
                     }
                 },
                 {
-                    "id": "a0274ff4-4891-4211-8c90-e23789368489",
+                    "id": "54059457-8b71-4a17-9572-832b5a77c2f4",
                     "name": "Create a new company",
                     "request": {
                         "name": "Create a new company",
@@ -1463,7 +1463,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"DxbyQBQq\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -1475,7 +1475,7 @@
                     },
                     "response": [
                         {
-                            "id": "f3caffd4-3526-4c33-aef1-f9b21671a92b",
+                            "id": "a5cbe6c8-36fa-4703-8465-b366c1bd2141",
                             "name": "Single company response",
                             "originalRequest": {
                                 "url": {
@@ -1501,7 +1501,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"DxbyQBQq\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1523,7 +1523,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "a623b9a5-6386-44b2-bab1-f39d5099b176",
+                            "id": "e961ef4c-4a63-48a0-af40-85c1da587785",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -1549,7 +1549,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"DxbyQBQq\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1571,7 +1571,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "5688a583-d115-472f-9f00-902bb1664a97",
+                            "id": "91c02d01-6b37-4d9f-a44b-915f9422cbf9",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1597,7 +1597,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"DxbyQBQq\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1629,7 +1629,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "c32859d9-c279-4af9-8f93-3c3970e3ee6c",
+                            "id": "389d38e6-6db5-4912-9d2e-bd33991cb84e",
                             "name": "Get company by ID",
                             "request": {
                                 "name": "Get company by ID",
@@ -1671,7 +1671,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "5f386d4e-996b-4bf8-974d-a15d039bdec3",
+                                    "id": "00c4bf83-839f-4b83-8c4c-968072e1c2e5",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1718,7 +1718,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "74589e17-ed30-4cf2-84dc-60431c87e681",
+                                    "id": "8f26849a-12f0-479e-806a-0bc405d22d09",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1765,7 +1765,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "5a47ec59-0d1a-452b-b1f2-c6cc9d12a174",
+                                    "id": "1f9bb34c-83e9-4e92-b4de-3bdf58cbfd64",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1812,7 +1812,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "0831a647-9667-49c4-8a49-7d48c5186045",
+                                    "id": "49651dcc-6f39-46a5-ab2a-6769a802d4ea",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1865,7 +1865,7 @@
                             }
                         },
                         {
-                            "id": "bc8e1de2-d8b5-4f57-b60a-9276693015be",
+                            "id": "51fc8b5b-998d-455e-8182-1defe60b7eaf",
                             "name": "Update a company",
                             "request": {
                                 "name": "Update a company",
@@ -1920,7 +1920,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "af912c94-6f35-46d0-8ea5-1b1f90719fd1",
+                                    "id": "7ce2d728-6969-4edd-8093-b2ceca253835",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1980,7 +1980,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "b761727d-d8dd-4d19-a16d-91e4990082c3",
+                                    "id": "6cb07c36-cf89-4f9c-aad6-d87e6671755f",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2040,7 +2040,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3d5d29d0-d2f0-418b-a5fe-1660a91bd2a8",
+                                    "id": "7c17ed36-58d6-4afa-838a-4ae91714b307",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2100,7 +2100,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "82ba96e3-8b3c-483c-aff2-010ccdadde64",
+                                    "id": "40363e18-3024-43e9-b229-e9e6951e3a45",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2166,7 +2166,7 @@
                             }
                         },
                         {
-                            "id": "c2a861d0-e6b0-4a28-860b-8ec3dc510fd4",
+                            "id": "a448d76d-13af-41bd-8e4a-672513af122d",
                             "name": "Delete a company",
                             "request": {
                                 "name": "Delete a company",
@@ -2208,7 +2208,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "f07ecb0d-d7c8-4f2b-b9cd-e5bc8b90d931",
+                                    "id": "fe82d6c9-14d8-45b7-8056-9cfbf950b0a7",
                                     "name": "Company deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -2243,7 +2243,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "99927468-652e-422e-aa0e-756919b32c94",
+                                    "id": "206ff1d3-5bd6-4fbe-85d2-bfdb723e5e5d",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2290,7 +2290,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "b4d5a03f-d517-458b-99d7-e372f593c1a4",
+                                    "id": "cdd5f7ed-cd81-45c6-ba13-f15463907a86",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2337,7 +2337,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "81e53245-1844-4550-8801-9cb6b54ef368",
+                                    "id": "dde49f67-5202-4ac0-8784-647aafb343d4",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2404,7 +2404,7 @@
                                     "description": "",
                                     "item": [
                                         {
-                                            "id": "d5d461b8-bf1c-44e8-b79b-c741e2e24f38",
+                                            "id": "e7f1a806-57bc-469b-8dd5-f9238ddd875b",
                                             "name": "Upload PDF catalog and extract products",
                                             "request": {
                                                 "name": "Upload PDF catalog and extract products",
@@ -2464,7 +2464,7 @@
                                             },
                                             "response": [
                                                 {
-                                                    "id": "59a487b1-2039-42c8-aa52-9f077dd91d7f",
+                                                    "id": "733c80fc-3c88-42a1-b544-7239c113ef55",
                                                     "name": "Catalog processed and products successfully extracted and saved",
                                                     "originalRequest": {
                                                         "url": {
@@ -2524,12 +2524,12 @@
                                                             "value": "application/json"
                                                         }
                                                     ],
-                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\",\n  \"data\": {\n    \"totalProductsExtracted\": \"<integer>\",\n    \"categoriesCreated\": \"<integer>\",\n    \"categoriesReused\": \"<integer>\",\n    \"productsCreated\": \"<integer>\",\n    \"productsUpdated\": \"<integer>\",\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"updated\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"created\"\n      }\n    ]\n  }\n}",
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\",\n  \"data\": {\n    \"totalProductsExtracted\": \"<integer>\",\n    \"categoriesCreated\": \"<integer>\",\n    \"categoriesReused\": \"<integer>\",\n    \"productsCreated\": \"<integer>\",\n    \"productsUpdated\": \"<integer>\",\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"created\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"created\"\n      }\n    ]\n  }\n}",
                                                     "cookie": [],
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "0b45c78f-90bf-41a7-a644-a6968f758cb9",
+                                                    "id": "53089a8b-2150-404b-9f7c-41e5004b7f1d",
                                                     "name": "Validation error or bad input",
                                                     "originalRequest": {
                                                         "url": {
@@ -2594,7 +2594,7 @@
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "81182138-5bff-4f9b-adb5-aab2d5790b02",
+                                                    "id": "d1f3ff75-68b1-4d57-b8f9-1f972913563e",
                                                     "name": "Resource not found",
                                                     "originalRequest": {
                                                         "url": {
@@ -2659,7 +2659,7 @@
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "67be969e-ea3c-462d-af78-a8066d050c63",
+                                                    "id": "cd05a907-ebfb-4887-aa8d-10a5e4c0682d",
                                                     "name": "Internal server error",
                                                     "originalRequest": {
                                                         "url": {
@@ -2732,7 +2732,7 @@
                                     ]
                                 },
                                 {
-                                    "id": "5345f6f8-bc26-4401-a282-fafab7433a98",
+                                    "id": "b7e96317-6cfc-49bd-8594-c9825010ef00",
                                     "name": "Get all products scoped to a company",
                                     "request": {
                                         "name": "Get all products scoped to a company",
@@ -2821,7 +2821,7 @@
                                     },
                                     "response": [
                                         {
-                                            "id": "44611017-7a10-4fc5-8340-fbf79f7ac4cf",
+                                            "id": "4a06ac82-1e37-44b6-ae1b-f6d38dd1cbc7",
                                             "name": "Paginated list of products scoped to a company",
                                             "originalRequest": {
                                                 "url": {
@@ -2910,12 +2910,12 @@
                                                     "value": "application/json"
                                                 }
                                             ],
-                                            "body": "{\n  \"status\": \"<string>\",\n  \"meta\": {\n    \"total\": \"<integer>\",\n    \"page\": \"<integer>\",\n    \"limit\": \"<integer>\",\n    \"totalPages\": \"<integer>\"\n  },\n  \"data\": {\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\",\n            \"key_2\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
+                                            "body": "{\n  \"status\": \"<string>\",\n  \"meta\": {\n    \"total\": \"<integer>\",\n    \"page\": \"<integer>\",\n    \"limit\": \"<integer>\",\n    \"totalPages\": \"<integer>\"\n  },\n  \"data\": {\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\",\n            \"key_2\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
                                             "cookie": [],
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "cdb65bd4-e73e-4238-8cee-7b6bc4b812da",
+                                            "id": "89ce09f2-81bd-4460-8b4f-e29e38dfbe2c",
                                             "name": "Validation error or bad input",
                                             "originalRequest": {
                                                 "url": {
@@ -3009,7 +3009,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "85155d34-b211-4f50-8b6b-fd9c6d0f8e6b",
+                                            "id": "c4980b78-860e-4369-9eb8-1768882ecf6e",
                                             "name": "Resource not found",
                                             "originalRequest": {
                                                 "url": {
@@ -3103,7 +3103,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "106ee673-7ebd-49a2-835e-d3cf6bf96e57",
+                                            "id": "c8a55772-da0c-4d8d-ba48-5e4f7e88da79",
                                             "name": "Internal server error",
                                             "originalRequest": {
                                                 "url": {
@@ -3203,7 +3203,7 @@
                                     }
                                 },
                                 {
-                                    "id": "9dba48c7-0310-445a-8b5d-e78175fcbd8d",
+                                    "id": "a4dc8501-9cfa-451f-b5a6-7ca7c48fa1e6",
                                     "name": "Create a new product scoped to a company",
                                     "request": {
                                         "name": "Create a new product scoped to a company",
@@ -3259,7 +3259,7 @@
                                     },
                                     "response": [
                                         {
-                                            "id": "39e811ed-022d-4812-88df-d08baad0f138",
+                                            "id": "f1eb3262-fda3-49e9-aa80-8b2e4fd52ecd",
                                             "name": "Single product response",
                                             "originalRequest": {
                                                 "url": {
@@ -3315,12 +3315,12 @@
                                                     "value": "application/json"
                                                 }
                                             ],
-                                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                             "cookie": [],
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "3dbe87ba-e319-4605-b171-725b248d100c",
+                                            "id": "cd6ebbff-9093-4359-9d0d-92897c3c6fae",
                                             "name": "Validation error or bad input",
                                             "originalRequest": {
                                                 "url": {
@@ -3381,7 +3381,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "9bf26923-1bf1-4a49-a95a-b8911aa1a136",
+                                            "id": "06a5146d-3723-43d8-ae0d-bd8aa4d01a27",
                                             "name": "Resource not found",
                                             "originalRequest": {
                                                 "url": {
@@ -3442,7 +3442,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "32701445-4d53-4b46-9f51-315f6fd8e1c1",
+                                            "id": "e5a13553-ee64-452a-8277-4d7467152ee8",
                                             "name": "Internal server error",
                                             "originalRequest": {
                                                 "url": {
@@ -3523,7 +3523,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "3b08425d-f74d-40c2-9de6-50e10cedca76",
+                            "id": "b2aa3c35-60c6-46e3-aad1-2002def77465",
                             "name": "Get product by ID",
                             "request": {
                                 "name": "Get product by ID",
@@ -3565,7 +3565,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "66f2e8fb-d8e6-46ca-8b97-3c107e9848e9",
+                                    "id": "88a4ee99-00d2-45e5-b3d3-212e08692d31",
                                     "name": "Single product response",
                                     "originalRequest": {
                                         "url": {
@@ -3607,12 +3607,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "efce3405-209c-42a4-847f-c2429cef068e",
+                                    "id": "5bf11a05-1ac6-4bd2-9ec9-9dcd9248ca1f",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3659,7 +3659,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "cfac0f64-b4f0-402d-96ce-791415179ca5",
+                                    "id": "96b62964-cc71-4501-ad81-7254de0fd1ca",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3706,7 +3706,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3605bf70-67d3-4fb6-958e-323d99f2cc15",
+                                    "id": "414a9af5-d11c-497e-98fa-6f45d672767d",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -3759,7 +3759,7 @@
                             }
                         },
                         {
-                            "id": "efdae12a-9275-46a2-97c1-c6da139a6c43",
+                            "id": "e5229aa6-2adc-44c8-999f-48fd543fddf3",
                             "name": "Update a product",
                             "request": {
                                 "name": "Update a product",
@@ -3814,7 +3814,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "f3d01179-910d-4580-a3b3-e6a0ce3e6885",
+                                    "id": "8afeb35d-6f64-431c-954c-0e06493539bb",
                                     "name": "Single product response",
                                     "originalRequest": {
                                         "url": {
@@ -3869,12 +3869,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "6e856463-1b9c-49c9-8e02-3fd67c05641f",
+                                    "id": "21251d6e-ac70-47e8-b0d1-7103f3cb38ab",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3934,7 +3934,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "17d03ac3-5d64-4fbe-b701-bc89620e5dc0",
+                                    "id": "10b83289-75e0-4035-98b4-4e5e1d5d4107",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3994,7 +3994,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "c139d117-e9ee-449b-8481-fb9bb17deb00",
+                                    "id": "60c72805-17cc-4b54-b2a9-c7e220ab723f",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4060,7 +4060,7 @@
                             }
                         },
                         {
-                            "id": "574f2204-9f26-47da-9ef4-d6d2d10a38e8",
+                            "id": "917ea1ba-283a-453d-900b-58875b6d7651",
                             "name": "Delete a product",
                             "request": {
                                 "name": "Delete a product",
@@ -4102,7 +4102,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "4c46c983-fe39-4db0-a53c-f3c3777f8234",
+                                    "id": "f939fe13-c489-42c0-8da9-37e238bd2c68",
                                     "name": "Product deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -4137,7 +4137,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "e82148e4-a3e0-4886-9702-c01f12958921",
+                                    "id": "eb89c867-4791-448b-88fb-89a4f7724f9d",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -4184,7 +4184,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ef7b6b8f-e411-4e57-8d2e-d47f4dad5b0f",
+                                    "id": "e2dde933-3e66-4cb0-a4cb-419d4d110ea7",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -4231,7 +4231,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "8b6435e2-5f22-4446-b57e-174889d4e0e6",
+                                    "id": "e942cd5c-a859-433c-a3ff-9e634d5a2c3c",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4292,7 +4292,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "64f7f355-1cc4-414f-b9e6-036278595095",
+                    "id": "b9505e49-625c-4a83-91fb-ddc4c5ad9eed",
                     "name": "Get all plans",
                     "request": {
                         "name": "Get all plans",
@@ -4368,7 +4368,7 @@
                     },
                     "response": [
                         {
-                            "id": "d09d66fa-c2c4-4c0b-b97b-8329e4d46d6d",
+                            "id": "f43046e6-51e5-4834-82de-22d5db0110ea",
                             "name": "Paginated list of plans",
                             "originalRequest": {
                                 "url": {
@@ -4449,7 +4449,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "587d23f2-27a0-4263-a8f5-c13aebabba1a",
+                            "id": "ddcd8e31-6ab1-4173-b370-cc9d1dc6f352",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -4536,7 +4536,7 @@
                     }
                 },
                 {
-                    "id": "1215ed67-28be-4500-82fa-6de62fae1290",
+                    "id": "7530ed32-f855-49d7-9794-8f4a0d1e7a4f",
                     "name": "Create a new subscription plan",
                     "request": {
                         "name": "Create a new subscription plan",
@@ -4567,7 +4567,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -4579,7 +4579,7 @@
                     },
                     "response": [
                         {
-                            "id": "7fd415fa-c58b-4e64-8298-eabb507df223",
+                            "id": "b9ac9783-bafe-412c-a36e-0159bdce7663",
                             "name": "Single plan response",
                             "originalRequest": {
                                 "url": {
@@ -4605,7 +4605,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4622,12 +4622,12 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"year\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"month\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                             "cookie": [],
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "8475c93c-0783-4c7c-b080-009b947ae754",
+                            "id": "9bac054c-f185-4648-a03b-c4c084eca454",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -4653,7 +4653,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4675,7 +4675,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "809ec7cd-80fa-4c06-a567-2f29dda107a8",
+                            "id": "f5af9f53-8a88-46d8-8bc0-120c5e9e9b43",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -4701,7 +4701,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4733,7 +4733,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "f73b2464-2bb3-44b5-8981-897fc0b1936d",
+                            "id": "1be6a2cb-8057-4cce-bdeb-50d8e50e3545",
                             "name": "Get plan by ID",
                             "request": {
                                 "name": "Get plan by ID",
@@ -4775,7 +4775,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "bebcaa88-99ff-46f4-bfed-2718b3723d8f",
+                                    "id": "e7d9073a-d404-4b63-823b-0794042987f8",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -4817,12 +4817,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"year\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"month\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "498fe7a6-7681-40d9-9f65-57b2a58c3901",
+                                    "id": "590407be-eacf-42eb-9941-6e69bc7f43d8",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -4869,7 +4869,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a7bca32f-7496-4b0f-8124-f1520e6a2eb9",
+                                    "id": "91c6c600-3565-40f8-ab4c-624bf39ba71a",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -4916,7 +4916,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "94239472-10e6-478f-92f3-cc4b4be47caf",
+                                    "id": "c3271c84-56d5-44ed-947a-e1cb8129787a",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4969,7 +4969,7 @@
                             }
                         },
                         {
-                            "id": "80a0c7a0-7ff7-4f61-be66-b62be37c439f",
+                            "id": "3585b177-08ce-460b-a928-255ab9bd9832",
                             "name": "Update a plan",
                             "request": {
                                 "name": "Update a plan",
@@ -5024,7 +5024,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "92fcf71d-c350-4722-bb16-1058ee64ad53",
+                                    "id": "cde96f5d-3e75-478c-9e27-e87f456f9fef",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -5079,12 +5079,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"year\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"plan\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<string>\",\n      \"interval\": \"month\",\n      \"features\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"isActive\": \"<boolean>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a632c763-9732-461d-9c46-641096270ebd",
+                                    "id": "770ab128-f095-4810-9c30-14c02e43e95d",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -5144,7 +5144,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "1642493d-8881-4363-be30-bf8f1a592360",
+                                    "id": "5000f7c1-cc68-4420-8abe-60cf455babd4",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -5204,7 +5204,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "986b2bb4-f358-4d89-9783-b7ce7f8d35c4",
+                                    "id": "e832adb0-bdfd-4f5f-9f0f-29e23bfcb434",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -5270,7 +5270,7 @@
                             }
                         },
                         {
-                            "id": "7d8bbbd9-6d8a-4d3e-aa85-f388eda9ed1c",
+                            "id": "9393dfc7-b609-4e2b-bf15-922e2cae6939",
                             "name": "Delete a plan",
                             "request": {
                                 "name": "Delete a plan",
@@ -5312,7 +5312,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "2b9fe1b5-e911-4476-ac49-ba3da53762c7",
+                                    "id": "34ace0d3-30ef-497d-93af-016c8f020f12",
                                     "name": "Plan deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -5347,7 +5347,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "0b2b63e2-5ddd-4861-852e-cb227acb31fb",
+                                    "id": "ba2812fe-447b-4751-8bed-508517789b18",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -5394,7 +5394,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "9b2b3b50-9d66-477f-aea2-d7d17aca10c4",
+                                    "id": "d00a1d60-c8e6-4221-8058-1bba24423026",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -5441,7 +5441,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "45d1318b-a910-4739-b865-4141b9068e81",
+                                    "id": "60e5fa8f-bb6f-44ed-8073-dbb5749beed3",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -5496,6 +5496,1291 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "subscriptions",
+            "description": "",
+            "item": [
+                {
+                    "id": "83c9da16-5680-492f-8a14-a7519a3ecedf",
+                    "name": "Get all subscriptions",
+                    "request": {
+                        "name": "Get all subscriptions",
+                        "description": {
+                            "content": "Retrieve a list of subscriptions with support for pagination, sorting, and exact filtering by companyId, planId, and status.",
+                            "type": "text/plain"
+                        },
+                        "url": {
+                            "path": [
+                                "subscriptions"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Page number (starts from 1)",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Number of items per page",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "sort",
+                                    "value": "<string>"
+                                },
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Filter by company ID",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "companyId",
+                                    "value": "<uuid>"
+                                },
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Filter by subscription plan ID",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "planId",
+                                    "value": "<uuid>"
+                                },
+                                {
+                                    "disabled": false,
+                                    "description": {
+                                        "content": "Filter by subscription status (This can only be one of active,expired,cancelled)",
+                                        "type": "text/plain"
+                                    },
+                                    "key": "status",
+                                    "value": "expired"
+                                }
+                            ],
+                            "variable": []
+                        },
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "method": "GET",
+                        "body": {},
+                        "auth": null
+                    },
+                    "response": [
+                        {
+                            "id": "8832e5b8-8f9d-4f52-835a-677c11d41a36",
+                            "name": "Paginated list of subscriptions",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Page number (starts from 1)",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Number of items per page",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "sort",
+                                            "value": "<string>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by company ID",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "companyId",
+                                            "value": "<uuid>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by subscription plan ID",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "planId",
+                                            "value": "<uuid>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by subscription status (This can only be one of active,expired,cancelled)",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "status",
+                                            "value": "expired"
+                                        }
+                                    ],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "GET",
+                                "body": {}
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"meta\": {\n    \"total\": \"<integer>\",\n    \"page\": \"<integer>\",\n    \"limit\": \"<integer>\",\n    \"totalPages\": \"<integer>\"\n  },\n  \"data\": {\n    \"subscriptions\": [\n      {\n        \"id\": \"<uuid>\",\n        \"companyId\": \"<uuid>\",\n        \"company\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"username\": \"<string>\"\n        },\n        \"planId\": \"<uuid>\",\n        \"plan\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"price\": \"<string>\",\n          \"interval\": \"<string>\"\n        },\n        \"startDate\": \"<dateTime>\",\n        \"endDate\": \"<dateTime>\",\n        \"status\": \"expired\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"companyId\": \"<uuid>\",\n        \"company\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"username\": \"<string>\"\n        },\n        \"planId\": \"<uuid>\",\n        \"plan\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"price\": \"<string>\",\n          \"interval\": \"<string>\"\n        },\n        \"startDate\": \"<dateTime>\",\n        \"endDate\": \"<dateTime>\",\n        \"status\": \"cancelled\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        },
+                        {
+                            "id": "a3f1e1b3-0c42-4335-b531-bfb37f1a6079",
+                            "name": "Internal server error",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Page number (starts from 1)",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Number of items per page",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "sort",
+                                            "value": "<string>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by company ID",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "companyId",
+                                            "value": "<uuid>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by subscription plan ID",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "planId",
+                                            "value": "<uuid>"
+                                        },
+                                        {
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "Filter by subscription status (This can only be one of active,expired,cancelled)",
+                                                "type": "text/plain"
+                                            },
+                                            "key": "status",
+                                            "value": "expired"
+                                        }
+                                    ],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "GET",
+                                "body": {}
+                            },
+                            "status": "Internal Server Error",
+                            "code": 500,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        }
+                    ],
+                    "event": [],
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    }
+                },
+                {
+                    "id": "5085032a-0d62-469d-919f-9873496732d3",
+                    "name": "Create a new subscription",
+                    "request": {
+                        "name": "Create a new subscription",
+                        "description": {
+                            "content": "Subscribe a company to a SaaS plan. If status is \"active\", it automatically cancels other active subscriptions for this company.",
+                            "type": "text/plain"
+                        },
+                        "url": {
+                            "path": [
+                                "subscriptions"
+                            ],
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "query": [],
+                            "variable": []
+                        },
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"companyId\": \"<uuid>\",\n  \"planId\": \"<uuid>\",\n  \"startDate\": \"<dateTime>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"cancelled\"\n}",
+                            "options": {
+                                "raw": {
+                                    "headerFamily": "json",
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    },
+                    "response": [
+                        {
+                            "id": "141bedf7-620c-4843-a5d0-e8a8908eb92c",
+                            "name": "Single subscription response",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "POST",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"companyId\": \"<uuid>\",\n  \"planId\": \"<uuid>\",\n  \"startDate\": \"<dateTime>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"cancelled\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "Created",
+                            "code": 201,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"subscription\": {\n      \"id\": \"<uuid>\",\n      \"companyId\": \"<uuid>\",\n      \"company\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"username\": \"<string>\"\n      },\n      \"planId\": \"<uuid>\",\n      \"plan\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"price\": \"<string>\",\n        \"interval\": \"<string>\"\n      },\n      \"startDate\": \"<dateTime>\",\n      \"endDate\": \"<dateTime>\",\n      \"status\": \"active\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        },
+                        {
+                            "id": "0526d8f5-2fc9-44b0-9d5c-8913468ae185",
+                            "name": "Validation error or bad input",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "POST",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"companyId\": \"<uuid>\",\n  \"planId\": \"<uuid>\",\n  \"startDate\": \"<dateTime>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"cancelled\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "Bad Request",
+                            "code": 400,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        },
+                        {
+                            "id": "55bccbac-7215-4408-a68b-a68d141d5b69",
+                            "name": "Resource not found",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "POST",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"companyId\": \"<uuid>\",\n  \"planId\": \"<uuid>\",\n  \"startDate\": \"<dateTime>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"cancelled\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        },
+                        {
+                            "id": "934b3d9e-ebb4-4d48-9bcf-543ac18ffd82",
+                            "name": "Internal server error",
+                            "originalRequest": {
+                                "url": {
+                                    "path": [
+                                        "subscriptions"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": []
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "POST",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"companyId\": \"<uuid>\",\n  \"planId\": \"<uuid>\",\n  \"startDate\": \"<dateTime>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"cancelled\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "Internal Server Error",
+                            "code": 500,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                            "cookie": [],
+                            "_postman_previewlanguage": "json"
+                        }
+                    ],
+                    "event": [],
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    }
+                },
+                {
+                    "name": "{id}",
+                    "description": "",
+                    "item": [
+                        {
+                            "id": "3589bbfd-e961-4b2d-ae5a-bea9e9d51ba2",
+                            "name": "Get subscription by ID",
+                            "request": {
+                                "name": "Get subscription by ID",
+                                "description": {
+                                    "content": "Retrieve details of a single subscription record by its UUID.",
+                                    "type": "text/plain"
+                                },
+                                "url": {
+                                    "path": [
+                                        "subscriptions",
+                                        ":id"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": [
+                                        {
+                                            "type": "any",
+                                            "value": "<uuid>",
+                                            "key": "id",
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "(Required) UUID of the subscription",
+                                                "type": "text/plain"
+                                            }
+                                        }
+                                    ]
+                                },
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "GET",
+                                "body": {},
+                                "auth": null
+                            },
+                            "response": [
+                                {
+                                    "id": "f02e56f3-3f42-4b00-b975-5c95375cd4af",
+                                    "name": "Single subscription response",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "GET",
+                                        "body": {}
+                                    },
+                                    "status": "OK",
+                                    "code": 200,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"subscription\": {\n      \"id\": \"<uuid>\",\n      \"companyId\": \"<uuid>\",\n      \"company\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"username\": \"<string>\"\n      },\n      \"planId\": \"<uuid>\",\n      \"plan\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"price\": \"<string>\",\n        \"interval\": \"<string>\"\n      },\n      \"startDate\": \"<dateTime>\",\n      \"endDate\": \"<dateTime>\",\n      \"status\": \"active\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "0fd0edaa-968a-439b-a7e9-834491bbdf3a",
+                                    "name": "Validation error or bad input",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "GET",
+                                        "body": {}
+                                    },
+                                    "status": "Bad Request",
+                                    "code": 400,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "7f30a70d-19bb-488e-9cbc-6474984a824d",
+                                    "name": "Resource not found",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "GET",
+                                        "body": {}
+                                    },
+                                    "status": "Not Found",
+                                    "code": 404,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "9b30bee0-d9c7-476b-8435-fe5e0a1f20f6",
+                                    "name": "Internal server error",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "GET",
+                                        "body": {}
+                                    },
+                                    "status": "Internal Server Error",
+                                    "code": 500,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                }
+                            ],
+                            "event": [],
+                            "protocolProfileBehavior": {
+                                "disableBodyPruning": true
+                            }
+                        },
+                        {
+                            "id": "187373a6-b9c5-466d-a00d-3e1f89ebe33c",
+                            "name": "Update a subscription",
+                            "request": {
+                                "name": "Update a subscription",
+                                "description": {
+                                    "content": "Update an existing subscription (e.g. extending endDate, updating plan, or changing status). If status is updated to \"active\", it automatically cancels other active subscriptions for this company.",
+                                    "type": "text/plain"
+                                },
+                                "url": {
+                                    "path": [
+                                        "subscriptions",
+                                        ":id"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": [
+                                        {
+                                            "type": "any",
+                                            "value": "<uuid>",
+                                            "key": "id",
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "(Required) UUID of the subscription",
+                                                "type": "text/plain"
+                                            }
+                                        }
+                                    ]
+                                },
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "PATCH",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"planId\": \"<uuid>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"active\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "headerFamily": "json",
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "auth": null
+                            },
+                            "response": [
+                                {
+                                    "id": "10ae1135-349a-4234-84ce-e67545da1a17",
+                                    "name": "Single subscription response",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "PATCH",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"planId\": \"<uuid>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"active\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "OK",
+                                    "code": 200,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"subscription\": {\n      \"id\": \"<uuid>\",\n      \"companyId\": \"<uuid>\",\n      \"company\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"username\": \"<string>\"\n      },\n      \"planId\": \"<uuid>\",\n      \"plan\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"price\": \"<string>\",\n        \"interval\": \"<string>\"\n      },\n      \"startDate\": \"<dateTime>\",\n      \"endDate\": \"<dateTime>\",\n      \"status\": \"active\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "ee55fc9a-5a66-46a4-a2cf-44521875180e",
+                                    "name": "Validation error or bad input",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "PATCH",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"planId\": \"<uuid>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"active\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "Bad Request",
+                                    "code": 400,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "3b5d6e31-7b4b-4727-9153-b2384430aef9",
+                                    "name": "Resource not found",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "PATCH",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"planId\": \"<uuid>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"active\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "Not Found",
+                                    "code": 404,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "fd31f2ba-92df-499d-af38-57b0b6eeb9c5",
+                                    "name": "Internal server error",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Content-Type",
+                                                "value": "application/json"
+                                            },
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "PATCH",
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": "{\n  \"planId\": \"<uuid>\",\n  \"endDate\": \"<dateTime>\",\n  \"status\": \"active\"\n}",
+                                            "options": {
+                                                "raw": {
+                                                    "headerFamily": "json",
+                                                    "language": "json"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "status": "Internal Server Error",
+                                    "code": 500,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                }
+                            ],
+                            "event": [],
+                            "protocolProfileBehavior": {
+                                "disableBodyPruning": true
+                            }
+                        },
+                        {
+                            "id": "0c4ce8e9-20f9-4e7a-bffd-8b1d12a086f1",
+                            "name": "Delete a subscription",
+                            "request": {
+                                "name": "Delete a subscription",
+                                "description": {
+                                    "content": "Permanently delete a subscription record.",
+                                    "type": "text/plain"
+                                },
+                                "url": {
+                                    "path": [
+                                        "subscriptions",
+                                        ":id"
+                                    ],
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "query": [],
+                                    "variable": [
+                                        {
+                                            "type": "any",
+                                            "value": "<uuid>",
+                                            "key": "id",
+                                            "disabled": false,
+                                            "description": {
+                                                "content": "(Required) UUID of the subscription",
+                                                "type": "text/plain"
+                                            }
+                                        }
+                                    ]
+                                },
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "method": "DELETE",
+                                "body": {},
+                                "auth": null
+                            },
+                            "response": [
+                                {
+                                    "id": "01e5ffb7-2e13-436f-8a0f-c3b58b33c7c1",
+                                    "name": "Subscription deleted successfully (no content)",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "method": "DELETE",
+                                        "body": {}
+                                    },
+                                    "status": "No Content",
+                                    "code": 204,
+                                    "header": [],
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "text"
+                                },
+                                {
+                                    "id": "0c461745-8634-4fad-a85f-df45258bc6c8",
+                                    "name": "Validation error or bad input",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "DELETE",
+                                        "body": {}
+                                    },
+                                    "status": "Bad Request",
+                                    "code": 400,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "fbb716d2-2419-42d1-8580-fdc39f12e3e8",
+                                    "name": "Resource not found",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "DELETE",
+                                        "body": {}
+                                    },
+                                    "status": "Not Found",
+                                    "code": 404,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                },
+                                {
+                                    "id": "e7d57f5e-c478-430b-8d1b-60ed6f5a9c84",
+                                    "name": "Internal server error",
+                                    "originalRequest": {
+                                        "url": {
+                                            "path": [
+                                                "subscriptions",
+                                                ":id"
+                                            ],
+                                            "host": [
+                                                "{{baseUrl}}"
+                                            ],
+                                            "query": [],
+                                            "variable": [
+                                                {
+                                                    "disabled": false,
+                                                    "description": {
+                                                        "content": "(Required) UUID of the subscription",
+                                                        "type": "text/plain"
+                                                    },
+                                                    "type": "any",
+                                                    "value": "<uuid>",
+                                                    "key": "id"
+                                                }
+                                            ]
+                                        },
+                                        "header": [
+                                            {
+                                                "key": "Accept",
+                                                "value": "application/json"
+                                            }
+                                        ],
+                                        "method": "DELETE",
+                                        "body": {}
+                                    },
+                                    "status": "Internal Server Error",
+                                    "code": 500,
+                                    "header": [
+                                        {
+                                            "key": "Content-Type",
+                                            "value": "application/json"
+                                        }
+                                    ],
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\"\n}",
+                                    "cookie": [],
+                                    "_postman_previewlanguage": "json"
+                                }
+                            ],
+                            "event": [],
+                            "protocolProfileBehavior": {
+                                "disableBodyPruning": true
+                            }
+                        }
+                    ]
+                }
+            ]
         }
     ],
     "event": [],
@@ -5506,7 +6791,7 @@
         }
     ],
     "info": {
-        "_postman_id": "c3870021-5c2f-434e-a318-7a14afb42352",
+        "_postman_id": "b2f62c8a-022b-414f-aba4-730b4621d005",
         "name": "Mostanad API",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "description": {

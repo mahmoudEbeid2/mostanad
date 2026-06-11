@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Subscriptions
+  summary: Get subscription by ID
+  description: Retrieve details of a single subscription record by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/SubscriptionId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/SubscriptionResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Subscriptions
+  summary: Update a subscription
+  description: Update an existing subscription (e.g. extending endDate, updating plan, or changing status). If status is updated to "active", it automatically cancels other active subscriptions for this company.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/SubscriptionId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateSubscriptionBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/SubscriptionResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Subscriptions
+  summary: Delete a subscription
+  description: Permanently delete a subscription record.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/SubscriptionId'
+  responses:
+    '204':
+      description: Subscription deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

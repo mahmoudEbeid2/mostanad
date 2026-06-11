@@ -22,6 +22,8 @@ tags:
     description: SaaS Subscription Plan management
   - name: Products
     description: Product catalog management
+  - name: Subscriptions
+    description: Tenant subscription lifecycle management
 
 paths:
   /users:
@@ -42,6 +44,10 @@ paths:
     $ref: './paths/plans/plans.yaml'
   /plans/{id}:
     $ref: './paths/plans/plans-id.yaml'
+  /subscriptions:
+    $ref: './paths/subscriptions/subscriptions.yaml'
+  /subscriptions/{id}:
+    $ref: './paths/subscriptions/subscriptions-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'
