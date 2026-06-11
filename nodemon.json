@@ -1,0 +1,10 @@
+{
+  "ignore": [
+    "*.pdf",
+    "temp_*",
+    "tmp/*",
+    "tests/*",
+    "src/docs/*",
+    "*.log"
+  ]
+}

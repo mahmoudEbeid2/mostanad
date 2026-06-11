@@ -5,7 +5,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "90eaee57-2566-4f57-8862-cd5815713fa3",
+                    "id": "e9e1bdb9-77ed-4d9e-a5a4-a8a0ed672f5b",
                     "name": "Get all users",
                     "request": {
                         "name": "Get all users",
@@ -81,7 +81,7 @@
                     },
                     "response": [
                         {
-                            "id": "e22cc991-6464-4247-af04-1758037b325e",
+                            "id": "6c193cf5-5957-46a3-9453-305d10c47a48",
                             "name": "Paginated list of users",
                             "originalRequest": {
                                 "url": {
@@ -162,7 +162,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "21b8c015-434f-4b2f-b896-3be5ec3c3841",
+                            "id": "b5549d61-2a59-4036-8918-685610e1fcc3",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -249,7 +249,7 @@
                     }
                 },
                 {
-                    "id": "107d5fbd-f741-4fda-9c1e-cfdf4a08b964",
+                    "id": "d9e30a44-256e-4698-aba4-b123973d2aeb",
                     "name": "Create a new user",
                     "request": {
                         "name": "Create a new user",
@@ -280,7 +280,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"JADeNS\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -292,7 +292,7 @@
                     },
                     "response": [
                         {
-                            "id": "41329b73-2de3-4975-a843-5bb548fde19b",
+                            "id": "5ab2bbc4-ff93-48f1-a647-83874b3f811e",
                             "name": "Single user response",
                             "originalRequest": {
                                 "url": {
@@ -318,7 +318,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"JADeNS\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -340,7 +340,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "dc6cbd32-b1ff-45b8-9dd1-9f00ccfbfa7c",
+                            "id": "dbca2a98-7111-490a-b19e-c34020febdf2",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -366,7 +366,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"JADeNS\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -388,7 +388,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "d4cdc8d8-c221-47c7-9a06-bb52a75acf4d",
+                            "id": "44a784c7-6091-4fbe-b62b-86b0910c34b0",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -414,7 +414,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"JADeNS\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"email\": \"<email>\",\n  \"username\": \"0dPZKEJlq\",\n  \"password\": \"<string>\",\n  \"phone\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -446,7 +446,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "38b5b89b-ae58-4e22-a14e-771a6d68fdde",
+                            "id": "27227380-a85f-46a8-96e5-da12e820996e",
                             "name": "Get user by ID",
                             "request": {
                                 "name": "Get user by ID",
@@ -488,7 +488,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "3c2a5ad8-0dd6-45dc-b678-98b5be0e7764",
+                                    "id": "9b9090ec-ffbb-4277-9eb5-2155838e06be",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -535,7 +535,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "02ffed2c-652b-4bfe-b448-be58e0c4ee35",
+                                    "id": "ade22ca7-fd58-4114-a872-4ed223295f6e",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -582,7 +582,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "f1b9dea5-a654-4d4e-82cb-e116b327c7de",
+                                    "id": "f2ba4184-93f3-40a6-b0a7-2ce005bd4687",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -629,7 +629,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "2411e144-97b9-4076-9293-510265e961f2",
+                                    "id": "9bf0b931-27ef-4ce1-8990-8ca8bb373b3c",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -682,7 +682,7 @@
                             }
                         },
                         {
-                            "id": "021fac52-a98e-4191-ae0c-8c8d8dba808e",
+                            "id": "aab7adf0-797b-42fb-b1b7-63a7933dc16e",
                             "name": "Update a user",
                             "request": {
                                 "name": "Update a user",
@@ -737,7 +737,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "e01d4b72-f7ac-4d88-808f-572f9e720413",
+                                    "id": "bb4abd6f-157c-4163-9dc9-4311facd5cb5",
                                     "name": "Single user response",
                                     "originalRequest": {
                                         "url": {
@@ -797,7 +797,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "32d62e47-a685-44d9-8035-a473658d1457",
+                                    "id": "63cdb2b1-7fde-42b3-98da-418cf724abbf",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -857,7 +857,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ce97851e-8bdb-4603-9d0e-318336092c77",
+                                    "id": "a6900e40-7be4-4f38-a074-0c4eb491563d",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -917,7 +917,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "4e6d8750-5013-4f56-ae65-9a9fb511373b",
+                                    "id": "b2fba269-c2da-4d16-ac31-98ac9e4dd798",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -983,7 +983,7 @@
                             }
                         },
                         {
-                            "id": "f68de984-cfba-4cca-b658-44595e4776cb",
+                            "id": "49f20799-a13d-45dd-a621-125faf348163",
                             "name": "Delete a user",
                             "request": {
                                 "name": "Delete a user",
@@ -1025,7 +1025,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "3c5239df-326e-4522-98a9-0f30803ec932",
+                                    "id": "4eb4b877-0ce4-45b9-9c04-f8ab1220b824",
                                     "name": "User deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -1060,7 +1060,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "e22396b7-a084-45c2-ad28-2e8e43b4c2a8",
+                                    "id": "037a3e82-ef6e-40f0-b6d2-2daa6cf91429",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1107,7 +1107,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "42a7ca98-9aad-45c3-8cec-d91c7ef3a88a",
+                                    "id": "f71e6aa4-b9fe-488b-bf27-6ccde6e0f719",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1154,7 +1154,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "6fe9e790-33e9-4abe-8a95-9f51ab665251",
+                                    "id": "5f60e177-b8ea-44ef-b91c-e3104b64f924",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1215,7 +1215,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "fe7da93c-5437-4663-8a74-1c5c477a53fc",
+                    "id": "6742aa64-ea7e-400a-af9f-fb0a60678aa5",
                     "name": "Get all companies",
                     "request": {
                         "name": "Get all companies",
@@ -1282,7 +1282,7 @@
                     },
                     "response": [
                         {
-                            "id": "2edab760-82a2-40b2-b955-1e485d7a068a",
+                            "id": "6417d515-b475-401d-b27d-6872ca1a04e3",
                             "name": "Paginated list of companies",
                             "originalRequest": {
                                 "url": {
@@ -1354,7 +1354,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "f22bad1a-38f4-4224-978a-1c31b12c4a9e",
+                            "id": "a7b8cfb7-0f02-4adc-b210-3b23d4c59228",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1432,7 +1432,7 @@
                     }
                 },
                 {
-                    "id": "52b64bf3-7cfe-47e4-aa5d-a0b147675a46",
+                    "id": "a0274ff4-4891-4211-8c90-e23789368489",
                     "name": "Create a new company",
                     "request": {
                         "name": "Create a new company",
@@ -1463,7 +1463,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"R41OJ\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -1475,7 +1475,7 @@
                     },
                     "response": [
                         {
-                            "id": "fabea346-817e-469a-af73-fd3e1411b36f",
+                            "id": "f3caffd4-3526-4c33-aef1-f9b21671a92b",
                             "name": "Single company response",
                             "originalRequest": {
                                 "url": {
@@ -1501,7 +1501,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"R41OJ\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1523,7 +1523,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "8ad0bca4-cdf3-4c79-b0b3-4c8a35ccaebf",
+                            "id": "a623b9a5-6386-44b2-bab1-f39d5099b176",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -1549,7 +1549,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"R41OJ\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1571,7 +1571,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "e79e08d2-907c-4842-9219-3bfe9df0b257",
+                            "id": "5688a583-d115-472f-9f00-902bb1664a97",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -1597,7 +1597,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"R41OJ\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"username\": \"cG_\",\n  \"password\": \"<string>\",\n  \"email\": \"<email>\",\n  \"phone\": \"<string>\",\n  \"address\": \"<string>\",\n  \"logoUrl\": \"<string>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -1629,7 +1629,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "63e8481c-9dc2-4505-ad9c-be44898975ea",
+                            "id": "c32859d9-c279-4af9-8f93-3c3970e3ee6c",
                             "name": "Get company by ID",
                             "request": {
                                 "name": "Get company by ID",
@@ -1671,7 +1671,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "46f8a251-f091-4a70-8b2a-ae73abeb4db9",
+                                    "id": "5f386d4e-996b-4bf8-974d-a15d039bdec3",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1718,7 +1718,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ca4dd5e1-5a4b-4bc6-b210-ddbbbe609c10",
+                                    "id": "74589e17-ed30-4cf2-84dc-60431c87e681",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -1765,7 +1765,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "2cb4aac5-cd74-46db-afd6-9585e524dd2c",
+                                    "id": "5a47ec59-0d1a-452b-b1f2-c6cc9d12a174",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -1812,7 +1812,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "aa511430-07dc-4c1e-9738-e49d7fd74f9e",
+                                    "id": "0831a647-9667-49c4-8a49-7d48c5186045",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -1865,7 +1865,7 @@
                             }
                         },
                         {
-                            "id": "62d241e3-ee88-4892-97ce-22d46df7830b",
+                            "id": "bc8e1de2-d8b5-4f57-b60a-9276693015be",
                             "name": "Update a company",
                             "request": {
                                 "name": "Update a company",
@@ -1920,7 +1920,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "0108b327-5594-4f55-af53-dc4b9197092c",
+                                    "id": "af912c94-6f35-46d0-8ea5-1b1f90719fd1",
                                     "name": "Single company response",
                                     "originalRequest": {
                                         "url": {
@@ -1980,7 +1980,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "ea8f68d2-fc1e-41cc-ac28-9f0c6e208a76",
+                                    "id": "b761727d-d8dd-4d19-a16d-91e4990082c3",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2040,7 +2040,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "604629b7-8943-4f57-b90e-834d085ae314",
+                                    "id": "3d5d29d0-d2f0-418b-a5fe-1660a91bd2a8",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2100,7 +2100,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "7ec20845-a47e-4786-a335-fa5bedddd673",
+                                    "id": "82ba96e3-8b3c-483c-aff2-010ccdadde64",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2166,7 +2166,7 @@
                             }
                         },
                         {
-                            "id": "30640251-979d-4698-87f0-ccbfb640687f",
+                            "id": "c2a861d0-e6b0-4a28-860b-8ec3dc510fd4",
                             "name": "Delete a company",
                             "request": {
                                 "name": "Delete a company",
@@ -2208,7 +2208,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "05564ca8-086c-4646-867d-af0db35c9b27",
+                                    "id": "f07ecb0d-d7c8-4f2b-b9cd-e5bc8b90d931",
                                     "name": "Company deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -2243,7 +2243,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "b941b665-7dc7-420a-98e2-e7767c917224",
+                                    "id": "99927468-652e-422e-aa0e-756919b32c94",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -2290,7 +2290,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "54bc66af-b495-4761-bfff-9d82cf22d1c8",
+                                    "id": "b4d5a03f-d517-458b-99d7-e372f593c1a4",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -2337,7 +2337,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "933151a2-bed6-475a-a769-29d1e3d8b996",
+                                    "id": "81e53245-1844-4550-8801-9cb6b54ef368",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -2404,7 +2404,7 @@
                                     "description": "",
                                     "item": [
                                         {
-                                            "id": "adf1b838-9f78-4dd8-952b-f6e3b278f34f",
+                                            "id": "d5d461b8-bf1c-44e8-b79b-c741e2e24f38",
                                             "name": "Upload PDF catalog and extract products",
                                             "request": {
                                                 "name": "Upload PDF catalog and extract products",
@@ -2464,7 +2464,7 @@
                                             },
                                             "response": [
                                                 {
-                                                    "id": "66481f45-d981-46bc-8a46-c920d492b62c",
+                                                    "id": "59a487b1-2039-42c8-aa52-9f077dd91d7f",
                                                     "name": "Catalog processed and products successfully extracted and saved",
                                                     "originalRequest": {
                                                         "url": {
@@ -2524,12 +2524,12 @@
                                                             "value": "application/json"
                                                         }
                                                     ],
-                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\",\n  \"data\": {\n    \"totalProductsExtracted\": \"<integer>\",\n    \"categoriesCreated\": \"<integer>\",\n    \"categoriesReused\": \"<integer>\",\n    \"productsCreated\": \"<integer>\",\n    \"productsUpdated\": \"<integer>\",\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"created\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"updated\"\n      }\n    ]\n  }\n}",
+                                                    "body": "{\n  \"status\": \"<string>\",\n  \"message\": \"<string>\",\n  \"data\": {\n    \"totalProductsExtracted\": \"<integer>\",\n    \"categoriesCreated\": \"<integer>\",\n    \"categoriesReused\": \"<integer>\",\n    \"productsCreated\": \"<integer>\",\n    \"productsUpdated\": \"<integer>\",\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"updated\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"category\": \"<string>\",\n        \"action\": \"created\"\n      }\n    ]\n  }\n}",
                                                     "cookie": [],
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "7d78b6de-dbf6-4093-81d1-55837c7055bd",
+                                                    "id": "0b45c78f-90bf-41a7-a644-a6968f758cb9",
                                                     "name": "Validation error or bad input",
                                                     "originalRequest": {
                                                         "url": {
@@ -2594,7 +2594,7 @@
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "84c37fbe-9afd-45f9-8be0-9a3b4245128a",
+                                                    "id": "81182138-5bff-4f9b-adb5-aab2d5790b02",
                                                     "name": "Resource not found",
                                                     "originalRequest": {
                                                         "url": {
@@ -2659,7 +2659,7 @@
                                                     "_postman_previewlanguage": "json"
                                                 },
                                                 {
-                                                    "id": "5c1c07e8-b7aa-4a70-b2f6-bea3fb197a02",
+                                                    "id": "67be969e-ea3c-462d-af78-a8066d050c63",
                                                     "name": "Internal server error",
                                                     "originalRequest": {
                                                         "url": {
@@ -2732,7 +2732,7 @@
                                     ]
                                 },
                                 {
-                                    "id": "2290fc80-a945-40a3-8bfd-67c1ed97b8af",
+                                    "id": "5345f6f8-bc26-4401-a282-fafab7433a98",
                                     "name": "Get all products scoped to a company",
                                     "request": {
                                         "name": "Get all products scoped to a company",
@@ -2821,7 +2821,7 @@
                                     },
                                     "response": [
                                         {
-                                            "id": "ccffa644-0904-48d0-a2fc-64b988317415",
+                                            "id": "44611017-7a10-4fc5-8340-fbf79f7ac4cf",
                                             "name": "Paginated list of products scoped to a company",
                                             "originalRequest": {
                                                 "url": {
@@ -2910,12 +2910,12 @@
                                                     "value": "application/json"
                                                 }
                                             ],
-                                            "body": "{\n  \"status\": \"<string>\",\n  \"meta\": {\n    \"total\": \"<integer>\",\n    \"page\": \"<integer>\",\n    \"limit\": \"<integer>\",\n    \"totalPages\": \"<integer>\"\n  },\n  \"data\": {\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
+                                            "body": "{\n  \"status\": \"<string>\",\n  \"meta\": {\n    \"total\": \"<integer>\",\n    \"page\": \"<integer>\",\n    \"limit\": \"<integer>\",\n    \"totalPages\": \"<integer>\"\n  },\n  \"data\": {\n    \"products\": [\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\",\n            \"key_2\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"productCode\": \"<string>\",\n        \"description\": \"<string>\",\n        \"indications\": \"<string>\",\n        \"targetSpecies\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"physicalForm\": \"<string>\",\n        \"appearance\": \"<string>\",\n        \"activeIngredients\": [\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          },\n          {\n            \"name\": \"<string>\",\n            \"concentration\": \"<string>\"\n          }\n        ],\n        \"dosage\": \"<string>\",\n        \"mixingInstructions\": \"<string>\",\n        \"withdrawalPeriod\": \"<string>\",\n        \"contraindications\": \"<string>\",\n        \"userSafety\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"storage\": \"<string>\",\n        \"packaging\": \"<string>\",\n        \"registrationNumber\": \"<string>\",\n        \"origin\": \"<string>\",\n        \"producer\": \"<string>\",\n        \"specifications\": {\n          \"type\": \"<string>\",\n          \"values\": {\n            \"key_0\": \"<string>\",\n            \"key_1\": \"<string>\"\n          }\n        },\n        \"categoryId\": \"<uuid>\",\n        \"category\": {\n          \"id\": \"<uuid>\",\n          \"name\": \"<string>\",\n          \"createdAt\": \"<dateTime>\",\n          \"updatedAt\": \"<dateTime>\"\n        },\n        \"companyId\": \"<uuid>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
                                             "cookie": [],
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "43160b9b-d5fd-4cce-8cdb-71db720b8ecc",
+                                            "id": "cdb65bd4-e73e-4238-8cee-7b6bc4b812da",
                                             "name": "Validation error or bad input",
                                             "originalRequest": {
                                                 "url": {
@@ -3009,7 +3009,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "fcc71a70-773b-49ab-a9e5-209baede21bc",
+                                            "id": "85155d34-b211-4f50-8b6b-fd9c6d0f8e6b",
                                             "name": "Resource not found",
                                             "originalRequest": {
                                                 "url": {
@@ -3103,7 +3103,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "fc499939-e471-4647-a601-250d7cdb0207",
+                                            "id": "106ee673-7ebd-49a2-835e-d3cf6bf96e57",
                                             "name": "Internal server error",
                                             "originalRequest": {
                                                 "url": {
@@ -3203,7 +3203,7 @@
                                     }
                                 },
                                 {
-                                    "id": "f9fad64e-834d-4c74-a1b9-663e3ca0a196",
+                                    "id": "9dba48c7-0310-445a-8b5d-e78175fcbd8d",
                                     "name": "Create a new product scoped to a company",
                                     "request": {
                                         "name": "Create a new product scoped to a company",
@@ -3247,7 +3247,7 @@
                                         "method": "POST",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -3259,7 +3259,7 @@
                                     },
                                     "response": [
                                         {
-                                            "id": "d7de26cd-2666-4c08-9ad9-c3399cb9c042",
+                                            "id": "39e811ed-022d-4812-88df-d08baad0f138",
                                             "name": "Single product response",
                                             "originalRequest": {
                                                 "url": {
@@ -3298,7 +3298,7 @@
                                                 "method": "POST",
                                                 "body": {
                                                     "mode": "raw",
-                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                                     "options": {
                                                         "raw": {
                                                             "headerFamily": "json",
@@ -3315,12 +3315,12 @@
                                                     "value": "application/json"
                                                 }
                                             ],
-                                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\",\n          \"key_2\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                            "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                             "cookie": [],
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "24e892d2-bf92-415e-8687-a3c2af7b7cd0",
+                                            "id": "3dbe87ba-e319-4605-b171-725b248d100c",
                                             "name": "Validation error or bad input",
                                             "originalRequest": {
                                                 "url": {
@@ -3359,7 +3359,7 @@
                                                 "method": "POST",
                                                 "body": {
                                                     "mode": "raw",
-                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                                     "options": {
                                                         "raw": {
                                                             "headerFamily": "json",
@@ -3381,7 +3381,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "781a6482-dc47-4e81-96ec-70947b501b92",
+                                            "id": "9bf26923-1bf1-4a49-a95a-b8911aa1a136",
                                             "name": "Resource not found",
                                             "originalRequest": {
                                                 "url": {
@@ -3420,7 +3420,7 @@
                                                 "method": "POST",
                                                 "body": {
                                                     "mode": "raw",
-                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                                     "options": {
                                                         "raw": {
                                                             "headerFamily": "json",
@@ -3442,7 +3442,7 @@
                                             "_postman_previewlanguage": "json"
                                         },
                                         {
-                                            "id": "4cf97ff0-7604-4ee0-af26-3568bf79846d",
+                                            "id": "32701445-4d53-4b46-9f51-315f6fd8e1c1",
                                             "name": "Internal server error",
                                             "originalRequest": {
                                                 "url": {
@@ -3481,7 +3481,7 @@
                                                 "method": "POST",
                                                 "body": {
                                                     "mode": "raw",
-                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                                     "options": {
                                                         "raw": {
                                                             "headerFamily": "json",
@@ -3523,7 +3523,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "fd918137-99c5-445d-ab84-f444aec034b2",
+                            "id": "3b08425d-f74d-40c2-9de6-50e10cedca76",
                             "name": "Get product by ID",
                             "request": {
                                 "name": "Get product by ID",
@@ -3565,7 +3565,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "e390ef45-8cda-4c73-b5a1-72bc4237b2ce",
+                                    "id": "66f2e8fb-d8e6-46ca-8b97-3c107e9848e9",
                                     "name": "Single product response",
                                     "originalRequest": {
                                         "url": {
@@ -3607,12 +3607,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\",\n          \"key_2\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "77f8d99b-dc68-49af-9ea2-31bc5f07ef62",
+                                    "id": "efce3405-209c-42a4-847f-c2429cef068e",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3659,7 +3659,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "7b63b316-10d0-4275-a78c-2009ac8b321f",
+                                    "id": "cfac0f64-b4f0-402d-96ce-791415179ca5",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3706,7 +3706,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "8a725422-a6d7-485e-9c7e-0b70f2e1e46c",
+                                    "id": "3605bf70-67d3-4fb6-958e-323d99f2cc15",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -3759,7 +3759,7 @@
                             }
                         },
                         {
-                            "id": "e84b434c-c3a9-476c-b3b6-5570ec3b0c9b",
+                            "id": "efdae12a-9275-46a2-97c1-c6da139a6c43",
                             "name": "Update a product",
                             "request": {
                                 "name": "Update a product",
@@ -3802,7 +3802,7 @@
                                 "method": "PATCH",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\",\n      \"key_4\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -3814,7 +3814,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "8049b803-cd76-437b-a6f0-05145ec62f1f",
+                                    "id": "f3d01179-910d-4580-a3b3-e6a0ce3e6885",
                                     "name": "Single product response",
                                     "originalRequest": {
                                         "url": {
@@ -3852,7 +3852,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\",\n      \"key_4\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -3869,12 +3869,12 @@
                                             "value": "application/json"
                                         }
                                     ],
-                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\",\n          \"key_1\": \"<string>\",\n          \"key_2\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
+                                    "body": "{\n  \"status\": \"<string>\",\n  \"data\": {\n    \"product\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"<string>\",\n      \"productCode\": \"<string>\",\n      \"description\": \"<string>\",\n      \"indications\": \"<string>\",\n      \"targetSpecies\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"physicalForm\": \"<string>\",\n      \"appearance\": \"<string>\",\n      \"activeIngredients\": [\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        },\n        {\n          \"name\": \"<string>\",\n          \"concentration\": \"<string>\"\n        }\n      ],\n      \"dosage\": \"<string>\",\n      \"mixingInstructions\": \"<string>\",\n      \"withdrawalPeriod\": \"<string>\",\n      \"contraindications\": \"<string>\",\n      \"userSafety\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"storage\": \"<string>\",\n      \"packaging\": \"<string>\",\n      \"registrationNumber\": \"<string>\",\n      \"origin\": \"<string>\",\n      \"producer\": \"<string>\",\n      \"specifications\": {\n        \"type\": \"<string>\",\n        \"values\": {\n          \"key_0\": \"<string>\"\n        }\n      },\n      \"categoryId\": \"<uuid>\",\n      \"category\": {\n        \"id\": \"<uuid>\",\n        \"name\": \"<string>\",\n        \"createdAt\": \"<dateTime>\",\n        \"updatedAt\": \"<dateTime>\"\n      },\n      \"companyId\": \"<uuid>\",\n      \"createdAt\": \"<dateTime>\",\n      \"updatedAt\": \"<dateTime>\"\n    }\n  }\n}",
                                     "cookie": [],
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "99d59602-efbd-45ef-9500-5e17fd6aad69",
+                                    "id": "6e856463-1b9c-49c9-8e02-3fd67c05641f",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -3912,7 +3912,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\",\n      \"key_4\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -3934,7 +3934,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "f37ab673-1d65-4b55-bcc6-b6e7b6d21cee",
+                                    "id": "17d03ac3-5d64-4fbe-b701-bc89620e5dc0",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -3972,7 +3972,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\",\n      \"key_4\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -3994,7 +3994,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "22bef920-ccda-40e1-a365-0c5f0f6a2faf",
+                                    "id": "c139d117-e9ee-449b-8481-fb9bb17deb00",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4032,7 +4032,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\",\n      \"key_2\": \"<string>\",\n      \"key_3\": \"<string>\",\n      \"key_4\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"productCode\": \"<string>\",\n  \"description\": \"<string>\",\n  \"indications\": \"<string>\",\n  \"targetSpecies\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"physicalForm\": \"<string>\",\n  \"appearance\": \"<string>\",\n  \"activeIngredients\": [\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    },\n    {\n      \"name\": \"<string>\",\n      \"concentration\": \"<string>\"\n    }\n  ],\n  \"dosage\": \"<string>\",\n  \"mixingInstructions\": \"<string>\",\n  \"withdrawalPeriod\": \"<string>\",\n  \"contraindications\": \"<string>\",\n  \"userSafety\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"storage\": \"<string>\",\n  \"packaging\": \"<string>\",\n  \"registrationNumber\": \"<string>\",\n  \"origin\": \"<string>\",\n  \"producer\": \"<string>\",\n  \"specifications\": {\n    \"type\": \"<string>\",\n    \"values\": {\n      \"key_0\": \"<string>\",\n      \"key_1\": \"<string>\"\n    }\n  },\n  \"categoryId\": \"<uuid>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -4060,7 +4060,7 @@
                             }
                         },
                         {
-                            "id": "5c2c0c89-5771-45ee-8f06-4a4f1c50e2f7",
+                            "id": "574f2204-9f26-47da-9ef4-d6d2d10a38e8",
                             "name": "Delete a product",
                             "request": {
                                 "name": "Delete a product",
@@ -4102,7 +4102,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "65eb225c-a099-4366-9985-66a0d3fbc6ea",
+                                    "id": "4c46c983-fe39-4db0-a53c-f3c3777f8234",
                                     "name": "Product deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -4137,7 +4137,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "029354f0-3a04-4cc0-9ced-6abbabfedea0",
+                                    "id": "e82148e4-a3e0-4886-9702-c01f12958921",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -4184,7 +4184,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "09d16ed3-b908-4036-91c9-f7b7a619ceeb",
+                                    "id": "ef7b6b8f-e411-4e57-8d2e-d47f4dad5b0f",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -4231,7 +4231,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "5d598a3a-78f7-4873-b080-fe8d56c725cb",
+                                    "id": "8b6435e2-5f22-4446-b57e-174889d4e0e6",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4292,7 +4292,7 @@
             "description": "",
             "item": [
                 {
-                    "id": "782787b6-0fdb-4975-b7e0-af0a521d746c",
+                    "id": "64f7f355-1cc4-414f-b9e6-036278595095",
                     "name": "Get all plans",
                     "request": {
                         "name": "Get all plans",
@@ -4368,7 +4368,7 @@
                     },
                     "response": [
                         {
-                            "id": "0738cb9c-aca4-47f7-bdf1-27d677088ba3",
+                            "id": "d09d66fa-c2c4-4c0b-b97b-8329e4d46d6d",
                             "name": "Paginated list of plans",
                             "originalRequest": {
                                 "url": {
@@ -4449,7 +4449,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "5924c502-8b55-4402-b05f-67d6e773bd88",
+                            "id": "587d23f2-27a0-4263-a8f5-c13aebabba1a",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -4536,7 +4536,7 @@
                     }
                 },
                 {
-                    "id": "a480e653-d7c5-4c95-a341-a3c4967c04ec",
+                    "id": "1215ed67-28be-4500-82fa-6de62fae1290",
                     "name": "Create a new subscription plan",
                     "request": {
                         "name": "Create a new subscription plan",
@@ -4567,7 +4567,7 @@
                         "method": "POST",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                            "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                             "options": {
                                 "raw": {
                                     "headerFamily": "json",
@@ -4579,7 +4579,7 @@
                     },
                     "response": [
                         {
-                            "id": "4a658318-48f7-4b80-83a4-c6839187a84c",
+                            "id": "7fd415fa-c58b-4e64-8298-eabb507df223",
                             "name": "Single plan response",
                             "originalRequest": {
                                 "url": {
@@ -4605,7 +4605,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4627,7 +4627,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "e380a689-be9f-4979-9d68-496cee4fbd7c",
+                            "id": "8475c93c-0783-4c7c-b080-009b947ae754",
                             "name": "Validation error or bad input",
                             "originalRequest": {
                                 "url": {
@@ -4653,7 +4653,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4675,7 +4675,7 @@
                             "_postman_previewlanguage": "json"
                         },
                         {
-                            "id": "95d72697-a88d-457b-9a2f-d312d444a953",
+                            "id": "809ec7cd-80fa-4c06-a567-2f29dda107a8",
                             "name": "Internal server error",
                             "originalRequest": {
                                 "url": {
@@ -4701,7 +4701,7 @@
                                 "method": "POST",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"description\": \"<string>\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ]\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -4733,7 +4733,7 @@
                     "description": "",
                     "item": [
                         {
-                            "id": "76dbdddf-b4cf-4ddf-833b-b1106fc7a602",
+                            "id": "f73b2464-2bb3-44b5-8981-897fc0b1936d",
                             "name": "Get plan by ID",
                             "request": {
                                 "name": "Get plan by ID",
@@ -4775,7 +4775,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "6496c927-351b-418e-9415-0c897ecb7361",
+                                    "id": "bebcaa88-99ff-46f4-bfed-2718b3723d8f",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -4822,7 +4822,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "3bbb868c-37d1-49d5-a0b8-e2963c4db011",
+                                    "id": "498fe7a6-7681-40d9-9f65-57b2a58c3901",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -4869,7 +4869,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "5159eac8-28a4-4dfa-b018-5affc23b7e3a",
+                                    "id": "a7bca32f-7496-4b0f-8124-f1520e6a2eb9",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -4916,7 +4916,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "55da8003-0b6f-4741-80ce-af0c4650ab9d",
+                                    "id": "94239472-10e6-478f-92f3-cc4b4be47caf",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -4969,7 +4969,7 @@
                             }
                         },
                         {
-                            "id": "7b6d9c3a-7e88-403c-aca9-7d6ffd74d205",
+                            "id": "80a0c7a0-7ff7-4f61-be66-b62be37c439f",
                             "name": "Update a plan",
                             "request": {
                                 "name": "Update a plan",
@@ -5012,7 +5012,7 @@
                                 "method": "PATCH",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
+                                    "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
                                     "options": {
                                         "raw": {
                                             "headerFamily": "json",
@@ -5024,7 +5024,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "a94b6778-3ed6-4ba5-a6e3-f8b5a2c547d2",
+                                    "id": "92fcf71d-c350-4722-bb16-1058ee64ad53",
                                     "name": "Single plan response",
                                     "originalRequest": {
                                         "url": {
@@ -5062,7 +5062,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -5084,7 +5084,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "a36a5332-b134-475e-a543-9559b9c83d3a",
+                                    "id": "a632c763-9732-461d-9c46-641096270ebd",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -5122,7 +5122,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -5144,7 +5144,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "4433ccbf-f540-4fa1-8b24-829c265389aa",
+                                    "id": "1642493d-8881-4363-be30-bf8f1a592360",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -5182,7 +5182,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -5204,7 +5204,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "51857538-1ab0-42fe-a7ce-7aa012920d83",
+                                    "id": "986b2bb4-f358-4d89-9783-b7ce7f8d35c4",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -5242,7 +5242,7 @@
                                         "method": "PATCH",
                                         "body": {
                                             "mode": "raw",
-                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"year\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
+                                            "raw": "{\n  \"name\": \"<string>\",\n  \"description\": \"<string>\",\n  \"price\": \"<number>\",\n  \"interval\": \"month\",\n  \"features\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"isActive\": \"<boolean>\"\n}",
                                             "options": {
                                                 "raw": {
                                                     "headerFamily": "json",
@@ -5270,7 +5270,7 @@
                             }
                         },
                         {
-                            "id": "b758f74a-45e6-494d-b878-e28869aa2786",
+                            "id": "7d8bbbd9-6d8a-4d3e-aa85-f388eda9ed1c",
                             "name": "Delete a plan",
                             "request": {
                                 "name": "Delete a plan",
@@ -5312,7 +5312,7 @@
                             },
                             "response": [
                                 {
-                                    "id": "154159c9-4b1c-4f30-b5de-06ff4ab38913",
+                                    "id": "2b9fe1b5-e911-4476-ac49-ba3da53762c7",
                                     "name": "Plan deleted successfully (no content)",
                                     "originalRequest": {
                                         "url": {
@@ -5347,7 +5347,7 @@
                                     "_postman_previewlanguage": "text"
                                 },
                                 {
-                                    "id": "1d7cdd7b-c2ba-4e3d-b761-38a40ec7ba0b",
+                                    "id": "0b2b63e2-5ddd-4861-852e-cb227acb31fb",
                                     "name": "Validation error or bad input",
                                     "originalRequest": {
                                         "url": {
@@ -5394,7 +5394,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "de60102b-7c41-48b7-a4da-1e9990159d8c",
+                                    "id": "9b2b3b50-9d66-477f-aea2-d7d17aca10c4",
                                     "name": "Resource not found",
                                     "originalRequest": {
                                         "url": {
@@ -5441,7 +5441,7 @@
                                     "_postman_previewlanguage": "json"
                                 },
                                 {
-                                    "id": "bc642db7-da07-4118-bda5-02a72730fa83",
+                                    "id": "45d1318b-a910-4739-b865-4141b9068e81",
                                     "name": "Internal server error",
                                     "originalRequest": {
                                         "url": {
@@ -5506,7 +5506,7 @@
         }
     ],
     "info": {
-        "_postman_id": "a4629fa3-b54f-496b-be82-421e4865ebd3",
+        "_postman_id": "c3870021-5c2f-434e-a318-7a14afb42352",
         "name": "Mostanad API",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "description": {

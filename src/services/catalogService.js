@@ -23,6 +23,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   const tempFileName = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`;
   const tempFilePath = path.join(process.cwd(), tempFileName);
   
+  console.log(`[CatalogService] Writing temp file to ${tempFilePath}...`);
   fs.writeFileSync(tempFilePath, fileBuffer);
 
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
@@ -40,26 +41,31 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
   try {
     // 2. Upload file to Gemini File API
+    console.log("[CatalogService] Uploading file to Gemini File API...");
     uploadResult = await fileManager.uploadFile(tempFilePath, {
       mimeType: "application/pdf",
       displayName: fileName,
     });
+    console.log(`[CatalogService] Upload succeeded. File Name: ${uploadResult.file.name}, URI: ${uploadResult.file.uri}`);
 
     // 3. Poll for the file to be processed (state ACTIVE)
+    console.log("[CatalogService] Polling file state...");
     let file = await fileManager.getFile(uploadResult.file.name);
     let attempts = 0;
     while (file.state === "PROCESSING" && attempts < 12) {
+      console.log(`[CatalogService] File state is processing. Attempt ${attempts + 1}/12. Waiting 5s...`);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       file = await fileManager.getFile(uploadResult.file.name);
       attempts++;
     }
+    console.log(`[CatalogService] File state is now: ${file.state}`);
 
     if (file.state !== "ACTIVE") {
       throw new AppError(`File processing failed at Gemini API. State: ${file.state}`, 500);
     }
 
     // 4. Invoke Gemini 2.5 Flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    console.log("[CatalogService] Invoking Gemini model...");
 
     const prompt = `
       You are an expert data extractor specializing in animal feed catalogs and veterinary product labels.
@@ -89,6 +95,9 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
          - origin: Country of origin.
          - producer: Producer or manufacturer name.
          - specifications: JSON object representing specifications/matrix values (e.g., {"type": "Specification", "values": {"Moisture": "max 12%", "Purity": "min 98.5%"}}).
+      4. INFERENCE OF MISSING DATA: If any fields (like description, indications, targetSpecies, physicalForm, activeIngredients, dosage, mixingInstructions, storage, specifications, userSafety, packaging, producer, registrationNumber) are missing or not explicitly stated in the catalog, you MUST use your domain knowledge to infer and estimate highly accurate, standard, and professional values for them.
+         - Do NOT leave fields like targetSpecies, physicalForm, activeIngredients, or specifications blank if they can be logically inferred from the product name and category.
+         - EXCEPT FOR COUNTRY OF ORIGIN ('origin'): Do NOT infer the country of origin. If 'origin' is not explicitly mentioned in the text for that product, set it to null.
       
       Return the output ONLY as a valid JSON array of product objects matching the schema below.
       Do not include any chat, markdown code blocks, or explanations outside the JSON array.
@@ -132,12 +141,15 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     // Try generating content
     let resultText = "";
     let success = false;
-    let retries = 3;
-    let delay = 5000;
+    let retries = 4;
+    let delay = 3000;
+    let currentModelName = "gemini-2.5-flash";
 
     while (retries > 0 && !success) {
       try {
-        const response = await model.generateContent([
+        console.log(`[CatalogService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
+        const activeModel = genAI.getGenerativeModel({ model: currentModelName });
+        const response = await activeModel.generateContent([
           {
             fileData: {
               mimeType: uploadResult.file.mimeType,
@@ -146,15 +158,33 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
           },
           prompt,
         ]);
+        console.log("[CatalogService] Received response from model!");
         resultText = response.response.text();
         success = true;
       } catch (error) {
-        if (error.message.includes("429") || error.message.includes("Too Many Requests")) {
+        console.warn(`[CatalogService] Error during generateContent: ${error.message}`);
+        const errMsg = error.message || "";
+        const isQuotaOrDemand = 
+          errMsg.includes("503") || 
+          errMsg.includes("Service Unavailable") || 
+          errMsg.includes("429") || 
+          errMsg.includes("Too Many Requests") ||
+          errMsg.includes("demand") ||
+          errMsg.includes("quota");
+
+        if (isQuotaOrDemand && currentModelName === "gemini-2.5-flash") {
+          console.warn("[CatalogService] High demand/quota error detected on gemini-2.5-flash. Falling back to gemini-2.0-flash...");
+          currentModelName = "gemini-2.0-flash";
+          retries--;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } else if (isQuotaOrDemand) {
+          console.warn(`[CatalogService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
           retries--;
           if (retries === 0) throw error;
           await new Promise((resolve) => setTimeout(resolve, delay));
           delay *= 1.5;
         } else {
+          console.error("[CatalogService] Non-quota error, throwing immediately.");
           throw error;
         }
       }
