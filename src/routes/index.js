@@ -5,6 +5,7 @@ import companyRoutes from "./companyRoutes.js";
 import planRoutes from "./planRoutes.js";
 import productRoutes from "./productRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
+import categoryRoutes from "./categoryRoutes.js";
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.use("/users", userRoutes);
 router.use("/companies", companyRoutes);
 router.use("/plans", planRoutes);
 router.use("/subscriptions", subscriptionRoutes);
+router.use("/categories", categoryRoutes);
 router.use("/", productRoutes);
 
 export default router;

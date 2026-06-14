@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Categories
+  summary: Get category by ID
+  description: Retrieve details of a single category by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CategoryId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CategoryResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Categories
+  summary: Update a category
+  description: Update the name of an existing product category.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CategoryId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateCategoryBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CategoryResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Categories
+  summary: Delete a category
+  description: Permanently delete a product category. Note that a category cannot be deleted if it contains products.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/CategoryId'
+  responses:
+    '204':
+      description: Category deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

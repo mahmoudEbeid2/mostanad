@@ -1,0 +1,34 @@
+get:
+  tags:
+    - Categories
+  summary: Get all categories
+  description: Retrieve a paginated list of product categories. Supports filtering, searching by name, and sorting.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/CategoriesListResponse'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Categories
+  summary: Create a new category
+  description: Create a new product category with a unique name.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateCategoryBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/CategoryResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

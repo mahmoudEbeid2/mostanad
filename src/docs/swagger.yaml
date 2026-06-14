@@ -24,6 +24,8 @@ tags:
     description: Product catalog management
   - name: Subscriptions
     description: Tenant subscription lifecycle management
+  - name: Categories
+    description: Product category management
 
 paths:
   /users:
@@ -48,6 +50,10 @@ paths:
     $ref: './paths/subscriptions/subscriptions.yaml'
   /subscriptions/{id}:
     $ref: './paths/subscriptions/subscriptions-id.yaml'
+  /categories:
+    $ref: './paths/categories/categories.yaml'
+  /categories/{id}:
+    $ref: './paths/categories/categories-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

@@ -21,6 +21,8 @@ tags:
     description: Product catalog management
   - name: Subscriptions
     description: Tenant subscription lifecycle management
+  - name: Categories
+    description: Product category management
 paths:
   /users:
     get:
@@ -625,6 +627,95 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /categories:
+    get:
+      tags:
+        - Categories
+      summary: Get all categories
+      description: Retrieve a paginated list of product categories. Supports filtering, searching by name, and sorting.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/CategoriesListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Categories
+      summary: Create a new category
+      description: Create a new product category with a unique name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/CategoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /categories/{id}:
+    get:
+      tags:
+        - Categories
+      summary: Get category by ID
+      description: Retrieve details of a single category by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '200':
+          $ref: '#/components/responses/CategoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Categories
+      summary: Update a category
+      description: Update the name of an existing product category.
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/CategoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Categories
+      summary: Delete a category
+      description: Permanently delete a product category. Note that a category cannot be deleted if it contains products.
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '204':
+          description: Category deleted successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
 components:
   parameters:
     PageParam:
@@ -705,8 +796,16 @@ components:
       description: UUID of the subscription
       schema:
         type: string
-        format: uuid
       example: e1b2c3d4-e5f6-7890-abcd-ef1234567890
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the category
+      schema:
+        type: string
+        format: uuid
+      example: c2d3e4f5-a6b7-8901-cdef-012345678901
   schemas:
     User:
       type: object
@@ -1471,7 +1570,26 @@ components:
             - active
             - expired
             - cancelled
-          example: expired
+    CreateCategoryBody:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: CONCENTRATES
+    UpdateCategoryBody:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: VITAMINS
   responses:
     UsersListResponse:
       description: Paginated list of users
@@ -1747,3 +1865,50 @@ components:
                 properties:
                   subscription:
                     $ref: '#/components/schemas/Subscription'
+    CategoriesListResponse:
+      description: Paginated list of categories
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 12
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 2
+              data:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+    CategoryResponse:
+      description: Single category response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  category:
+                    $ref: '#/components/schemas/Category'
