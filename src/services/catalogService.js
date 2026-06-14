@@ -8,7 +8,7 @@ import { GoogleAIFileManager } from "@google/generative-ai/server";
 /**
  * Process uploaded PDF catalog using Gemini File API and store categories/products.
  */
-export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catalog.pdf") => {
+export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catalog.pdf", brandId = null) => {
   if (!process.env.GEMINI_API_KEY) {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
@@ -17,6 +17,16 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) {
     throw new AppError("Target company not found!", 404);
+  }
+
+  // Verify brand exists and belongs to company if brandId provided
+  if (brandId) {
+    const brandExists = await prisma.brand.findFirst({
+      where: { id: brandId, companyId },
+    });
+    if (!brandExists) {
+      throw new AppError("Selected brand not found or does not belong to this company!", 400);
+    }
   }
 
   // 1. Write buffer to a temp file in the workspace
@@ -257,6 +267,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
         specifications: prodData.specifications || null,
         categoryId: categoryId,
         companyId: companyId,
+        brandId: brandId || null,
       };
 
       let product;

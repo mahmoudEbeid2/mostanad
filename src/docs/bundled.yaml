@@ -23,6 +23,8 @@ tags:
     description: Tenant subscription lifecycle management
   - name: Categories
     description: Product category management
+  - name: Templates
+    description: Document templates management
 paths:
   /users:
     get:
@@ -716,6 +718,131 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /companies/{companyId}/templates:
+    get:
+      tags:
+        - Templates
+      summary: Get all company templates
+      description: Retrieve a paginated list of templates scoped to a specific company. Supports filtering by brandId and type.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          description: UUID of the company
+          schema:
+            type: string
+            format: uuid
+          example: 9ef1dbaa-fc25-4438-8698-8d597f1de6b3
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+        - name: brandId
+          in: query
+          required: false
+          description: Filter by brand UUID
+          schema:
+            type: string
+            format: uuid
+          example: d810cf7f-57ce-4d84-b1b1-c3a782893072
+        - name: type
+          in: query
+          required: false
+          description: Filter by template type
+          schema:
+            type: string
+          example: manifest
+      responses:
+        '200':
+          $ref: '#/components/responses/TemplatesListResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Templates
+      summary: Create a new template
+      description: Create a new document template scoped to a company and optionally a brand. A company can only have one template per type per brand (or default).
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          description: UUID of the company
+          schema:
+            type: string
+            format: uuid
+          example: 9ef1dbaa-fc25-4438-8698-8d597f1de6b3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/TemplateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /templates/{id}:
+    get:
+      tags:
+        - Templates
+      summary: Get template by ID
+      description: Retrieve details of a single template by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          $ref: '#/components/responses/TemplateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Templates
+      summary: Update a template
+      description: Update details of an existing template by its UUID. If updating type or brand, duplicate checks are performed.
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/TemplateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Templates
+      summary: Delete a template
+      description: Hard delete a template by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '204':
+          description: Template deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
 components:
   parameters:
     PageParam:
@@ -806,6 +933,15 @@ components:
         type: string
         format: uuid
       example: c2d3e4f5-a6b7-8901-cdef-012345678901
+    TemplateId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the template
+      schema:
+        type: string
+        format: uuid
+      example: f1b2c3d4-e5f6-7890-abcd-ef1234567890
   schemas:
     User:
       type: object
@@ -1590,6 +1726,96 @@ components:
           minLength: 2
           maxLength: 50
           example: VITAMINS
+    Template:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - htmlContent
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: f1b2c3d4-e5f6-7890-abcd-ef1234567890
+        name:
+          type: string
+          example: Standard Catalog Template
+        type:
+          type: string
+          example: catalog
+        htmlContent:
+          type: string
+          example: <html><body>...</body></html>
+        brandId:
+          type: string
+          format: uuid
+          nullable: true
+          example: d810cf7f-57ce-4d84-b1b1-c3a782893072
+        companyId:
+          type: string
+          format: uuid
+          nullable: true
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-14T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-14T12:00:00.000Z'
+    CreateTemplateBody:
+      type: object
+      required:
+        - name
+        - type
+        - htmlContent
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: Standard Catalog Template
+        type:
+          type: string
+          minLength: 2
+          example: catalog
+        htmlContent:
+          type: string
+          example: <html><body>...</body></html>
+        brandId:
+          type: string
+          format: uuid
+          nullable: true
+          example: d810cf7f-57ce-4d84-b1b1-c3a782893072
+        isActive:
+          type: boolean
+          example: true
+    UpdateTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: Updated Template Name
+        type:
+          type: string
+          minLength: 2
+          example: manifest
+        htmlContent:
+          type: string
+          example: <html><body>Updated content</body></html>
+        brandId:
+          type: string
+          format: uuid
+          nullable: true
+          example: d810cf7f-57ce-4d84-b1b1-c3a782893072
+        isActive:
+          type: boolean
+          example: false
   responses:
     UsersListResponse:
       description: Paginated list of users
@@ -1912,3 +2138,50 @@ components:
                 properties:
                   category:
                     $ref: '#/components/schemas/Category'
+    TemplatesListResponse:
+      description: Paginated list of templates
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 5
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 1
+              data:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+    TemplateResponse:
+      description: Single template response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/Template'

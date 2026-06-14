@@ -37,6 +37,7 @@ export const createProductSchema = {
     producer: z.string().optional().nullable(),
     specifications: specificationsSchema.optional().nullable(),
     categoryId: z.string().uuid("Invalid category ID format").optional().nullable(),
+    brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
   }),
 };
 
@@ -65,6 +66,7 @@ export const updateProductSchema = {
     producer: z.string().optional().nullable(),
     specifications: specificationsSchema.optional().nullable(),
     categoryId: z.string().uuid("Invalid category ID format").optional().nullable(),
+    brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
   }),
 };
 

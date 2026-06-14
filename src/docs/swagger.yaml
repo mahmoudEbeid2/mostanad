@@ -26,6 +26,8 @@ tags:
     description: Tenant subscription lifecycle management
   - name: Categories
     description: Product category management
+  - name: Templates
+    description: Document templates management
 
 paths:
   /users:
@@ -54,6 +56,10 @@ paths:
     $ref: './paths/categories/categories.yaml'
   /categories/{id}:
     $ref: './paths/categories/categories-id.yaml'
+  /companies/{companyId}/templates:
+    $ref: './paths/templates/templates.yaml'
+  /templates/{id}:
+    $ref: './paths/templates/templates-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

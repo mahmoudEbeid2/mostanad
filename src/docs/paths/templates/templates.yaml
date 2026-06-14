@@ -1,0 +1,70 @@
+get:
+  tags:
+    - Templates
+  summary: Get all company templates
+  description: Retrieve a paginated list of templates scoped to a specific company. Supports filtering by brandId and type.
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company
+      schema:
+        type: string
+        format: uuid
+      example: "9ef1dbaa-fc25-4438-8698-8d597f1de6b3"
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+    - name: brandId
+      in: query
+      required: false
+      description: Filter by brand UUID
+      schema:
+        type: string
+        format: uuid
+      example: "d810cf7f-57ce-4d84-b1b1-c3a782893072"
+    - name: type
+      in: query
+      required: false
+      description: Filter by template type
+      schema:
+        type: string
+      example: "manifest"
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/TemplatesListResponse'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Templates
+  summary: Create a new template
+  description: Create a new document template scoped to a company and optionally a brand. A company can only have one template per type per brand (or default).
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company
+      schema:
+        type: string
+        format: uuid
+      example: "9ef1dbaa-fc25-4438-8698-8d597f1de6b3"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateTemplateBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/TemplateResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

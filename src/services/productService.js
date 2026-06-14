@@ -6,7 +6,7 @@ import { PrismaFeatures } from "../utils/PrismaFeatures.js";
  * Create a new product scoped to a company
  */
 export const createProduct = async (companyId, data) => {
-  const { categoryId, ...productData } = data;
+  const { categoryId, brandId, ...productData } = data;
 
   // Verify company exists
   const companyExists = await prisma.company.findUnique({ where: { id: companyId } });
@@ -22,14 +22,26 @@ export const createProduct = async (companyId, data) => {
     }
   }
 
+  // Verify brand exists and belongs to company if brandId provided
+  if (brandId) {
+    const brandExists = await prisma.brand.findFirst({
+      where: { id: brandId, companyId },
+    });
+    if (!brandExists) {
+      throw new AppError("Selected brand not found or does not belong to this company!", 400);
+    }
+  }
+
   const product = await prisma.product.create({
     data: {
       ...productData,
       companyId,
       categoryId: categoryId || null,
+      brandId: brandId || null,
     },
     include: {
       category: true,
+      brand: true,
     },
   });
 
@@ -54,7 +66,7 @@ export const getAllProducts = async (companyId, queryString) => {
 
   // Enforce company scoping and include category details
   features.queryOptions.where.companyId = companyId;
-  features.queryOptions.include = { category: true };
+  features.queryOptions.include = { category: true, brand: true };
 
   const result = await features.exec();
 
@@ -70,7 +82,7 @@ export const getAllProducts = async (companyId, queryString) => {
 export const getProductById = async (id) => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { category: true },
+    include: { category: true, brand: true },
   });
 
   if (!product) {
@@ -89,7 +101,7 @@ export const updateProduct = async (id, data) => {
     throw new AppError("Product not found!", 404);
   }
 
-  const { categoryId, ...updateFields } = data;
+  const { categoryId, brandId, ...updateFields } = data;
 
   // Verify category exists if provided and is different
   if (categoryId && categoryId !== existingProduct.categoryId) {
@@ -99,15 +111,28 @@ export const updateProduct = async (id, data) => {
     }
   }
 
+  // Verify brand exists and belongs to company if brandId provided and is different
+  if (brandId && brandId !== existingProduct.brandId) {
+    const brandExists = await prisma.brand.findFirst({
+      where: { id: brandId, companyId: existingProduct.companyId },
+    });
+    if (!brandExists) {
+      throw new AppError("Selected brand not found or does not belong to this company!", 400);
+    }
+  }
+
   const updateData = { ...updateFields };
   if (categoryId !== undefined) {
     updateData.categoryId = categoryId || null;
+  }
+  if (brandId !== undefined) {
+    updateData.brandId = brandId || null;
   }
 
   const updatedProduct = await prisma.product.update({
     where: { id },
     data: updateData,
-    include: { category: true },
+    include: { category: true, brand: true },
   });
 
   return updatedProduct;

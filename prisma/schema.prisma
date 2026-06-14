@@ -82,6 +82,7 @@ model Company {
   images        CompanyImage[]
   subscriptions Subscription[]
   templates     Template[]
+  brands        Brand[]
 
   @@map("companies")
 }
@@ -139,6 +140,8 @@ model Product {
   // Relations
   categoryId         String?              @map("category_id")
   category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandId            String?              @map("brand_id")
+  brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
   companyId          String               @map("company_id")
   company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt          DateTime             @default(now()) @map("created_at")
@@ -154,9 +157,10 @@ model Product {
 model Template {
   id           String          @id @default(uuid())
   name         String
-  brand        String?         // e.g., "addvet", "hipro", "unipharma"
+  type         String
+  brandId      String?         @map("brand_id")
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
   htmlContent  String          @map("html_content") @db.Text
-  cssContent   String?         @map("css_content") @db.Text
   companyId    String?         @map("company_id") // Null means system-wide default template
   company      Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   isActive     Boolean         @default(true) @map("is_active")
@@ -178,6 +182,21 @@ model TemplateImage {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@map("template_images")
+}
+
+model Brand {
+  id        String   @id @default(uuid())
+  name      String
+  companyId String   @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products  Product[]
+  templates Template[]
+
+  @@map("brands")
 }
 
 // ==========================================

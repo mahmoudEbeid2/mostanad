@@ -6,6 +6,7 @@ import planRoutes from "./planRoutes.js";
 import productRoutes from "./productRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
 import categoryRoutes from "./categoryRoutes.js";
+import templateRoutes from "./templateRoutes.js";
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ router.use("/plans", planRoutes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/", productRoutes);
+router.use("/", templateRoutes);
 
 export default router;
 

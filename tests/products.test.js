@@ -16,6 +16,7 @@ let passed = 0;
 let failed = 0;
 let testCompanyId = null;
 let testCategoryId = null;
+let testBrandId = null;
 let createdProductId = null;
 
 const log = (msg, color = "white") =>
@@ -75,6 +76,16 @@ async function run() {
   });
   testCategoryId = category.id;
   log(`  Test Category Created: ${testCategoryId}`, "green");
+
+  // 3. Create test brand in DB using Prisma
+  const brand = await prisma.brand.create({
+    data: {
+      name: `TEST_BRAND_${ts}`,
+      companyId: testCompanyId,
+    }
+  });
+  testBrandId = brand.id;
+  log(`  Test Brand Created: ${testBrandId}`, "green");
 
   // ─────────────────────────────────────────────────────
   // 1. CREATE - Validation: empty body
@@ -275,6 +286,58 @@ async function run() {
     log(`  Response: ${JSON.stringify(data)}`, "white");
   } else {
     log("  ⚠️  SKIPPED", "yellow");
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 12. CREATE WITH BRAND - Success
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 12: POST /companies/:id/products with Brand — Success", "bold");
+  {
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+      name: `Product with Brand ${ts}`,
+      brandId: testBrandId,
+    });
+    assert("Status is 201", status === 201, `Got ${status}`);
+    assert("Product has brandId", data?.data?.product?.brandId === testBrandId, JSON.stringify(data));
+    assert("Brand relation included", data?.data?.product?.brand?.name === `TEST_BRAND_${ts}`, JSON.stringify(data));
+    if (data?.data?.product?.id) {
+      await request("DELETE", `/products/${data.data.product.id}`);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 13. CREATE WITH BRAND - Validation Error (belongs to another company)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 13: POST /companies/:id/products with foreign Brand — Validation Error", "bold");
+  {
+    // Create a different company
+    const otherCompany = await prisma.company.create({
+      data: {
+        name: "Other Company",
+        username: `other_co_${ts}`,
+        password: "securepassword123",
+      }
+    });
+    // Create brand under other company
+    const otherBrand = await prisma.brand.create({
+      data: {
+        name: `OTHER_BRAND_${ts}`,
+        companyId: otherCompany.id,
+      }
+    });
+
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+      name: `Bad Product with Brand ${ts}`,
+      brandId: otherBrand.id,
+    });
+    assert("Status is 400", status === 400, `Got ${status}`);
+    assert("Error message is correct", data?.message === "Selected brand not found or does not belong to this company!", data?.message);
+
+    // clean up foreign brand and company
+    await prisma.brand.delete({ where: { id: otherBrand.id } });
+    await prisma.company.delete({ where: { id: otherCompany.id } });
   }
 
   // ─────────────────────────────────────────────────────

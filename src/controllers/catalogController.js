@@ -10,14 +10,14 @@ export const uploadCatalog = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload a PDF file using the 'catalog' field!", 400));
   }
 
-  // Resolve companyId from path params or request body/query
   const companyId = req.params.companyId || req.body.companyId;
-  
   if (!companyId) {
     return next(new AppError("Company ID is required to associate the catalog products!", 400));
   }
 
-  const result = await processCatalogPDF(companyId, req.file.buffer, req.file.originalname);
+  const brandId = req.body.brandId || req.query.brandId;
+
+  const result = await processCatalogPDF(companyId, req.file.buffer, req.file.originalname, brandId);
 
   res.status(201).json({
     status: "success",
