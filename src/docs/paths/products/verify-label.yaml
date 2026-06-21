@@ -1,6 +1,6 @@
 post:
   tags:
-    - Products
+    - Label Verification
   summary: General PDF or image drug label compliance verification
   description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, optionally check the database for a matching product under the optional `companyId` (or globally if omitted), and return the combined analysis.
   requestBody:
@@ -60,16 +60,17 @@ post:
                       country:
                         type: string
                         example: "Saudi Arabia"
-                      issues:
+                      results:
                         type: array
                         items:
-                          type: string
-                        example: ["Missing bilingual Arabic/English warnings", "Storage temperature conditions must be explicitly stated"]
-                      solutions:
-                        type: array
-                        items:
-                          type: string
-                        example: ["Translate all safety warning paragraphs into Arabic", "Specify storage temperature (e.g. 'Store below 25°C') on the label"]
+                          type: object
+                          properties:
+                            issue:
+                              type: string
+                              example: "Missing bilingual Arabic/English warnings"
+                            solution:
+                              type: string
+                              example: "Translate all safety warning paragraphs into Arabic"
     '400':
       $ref: '../../components/components.yaml#/components/responses/BadRequestError'
     '404':

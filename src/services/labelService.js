@@ -136,8 +136,12 @@ export const verifyProductLabel = async (companyId, fileBuffer, fileName, mimeTy
         },
         "validation": {
           "compliant": boolean,
-          "issues": ["string"],
-          "solutions": ["string"]
+          "results": [
+            {
+              "issue": "string describing the regulatory issue",
+              "solution": "string describing the actionable solution/fix"
+            }
+          ]
         }
       }
     `;
@@ -257,8 +261,7 @@ export const verifyProductLabel = async (companyId, fileBuffer, fileName, mimeTy
     validation: {
       compliant: parsedAIResponse.validation.compliant,
       country: country,
-      issues: parsedAIResponse.validation.issues,
-      solutions: parsedAIResponse.validation.solutions,
+      results: parsedAIResponse.validation.results || [],
     },
   };
 };

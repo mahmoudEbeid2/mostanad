@@ -28,6 +28,8 @@ tags:
     description: Product category management
   - name: Templates
     description: Document templates management
+  - name: Label Verification
+    description: AI-powered medicine and supplement label compliance verification
 
 paths:
   /users:

@@ -25,6 +25,8 @@ tags:
     description: Product category management
   - name: Templates
     description: Document templates management
+  - name: Label Verification
+    description: AI-powered medicine and supplement label compliance verification
 paths:
   /users:
     get:
@@ -299,7 +301,7 @@ paths:
   /companies/{companyId}/products/verify-label:
     post:
       tags:
-        - Companies
+        - Label Verification
       summary: Verify PDF or image drug label compliance and extract details
       description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, check the database for any product with a case-insensitive matching name under this company, and return the combined analysis.
       parameters:
@@ -368,20 +370,17 @@ paths:
                           country:
                             type: string
                             example: Saudi Arabia
-                          issues:
+                          results:
                             type: array
                             items:
-                              type: string
-                            example:
-                              - Missing bilingual Arabic/English warnings
-                              - Storage temperature conditions must be explicitly stated
-                          solutions:
-                            type: array
-                            items:
-                              type: string
-                            example:
-                              - Translate all safety warning paragraphs into Arabic
-                              - Specify storage temperature (e.g. 'Store below 25°C') on the label
+                              type: object
+                              properties:
+                                issue:
+                                  type: string
+                                  example: Missing bilingual Arabic/English warnings
+                                solution:
+                                  type: string
+                                  example: Translate all safety warning paragraphs into Arabic
         '400':
           $ref: '#/components/responses/BadRequestError'
         '404':
@@ -456,7 +455,7 @@ paths:
   /products/verify-label:
     post:
       tags:
-        - Products
+        - Label Verification
       summary: General PDF or image drug label compliance verification
       description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, optionally check the database for a matching product under the optional `companyId` (or globally if omitted), and return the combined analysis.
       requestBody:
@@ -516,20 +515,17 @@ paths:
                           country:
                             type: string
                             example: Saudi Arabia
-                          issues:
+                          results:
                             type: array
                             items:
-                              type: string
-                            example:
-                              - Missing bilingual Arabic/English warnings
-                              - Storage temperature conditions must be explicitly stated
-                          solutions:
-                            type: array
-                            items:
-                              type: string
-                            example:
-                              - Translate all safety warning paragraphs into Arabic
-                              - Specify storage temperature (e.g. 'Store below 25°C') on the label
+                              type: object
+                              properties:
+                                issue:
+                                  type: string
+                                  example: Missing bilingual Arabic/English warnings
+                                solution:
+                                  type: string
+                                  example: Translate all safety warning paragraphs into Arabic
         '400':
           $ref: '#/components/responses/BadRequestError'
         '404':

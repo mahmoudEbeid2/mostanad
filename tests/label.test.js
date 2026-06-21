@@ -206,14 +206,16 @@ async function run() {
     assert("existsInDb is false", data.product?.existsInDb === false, "Expected existsInDb to be false");
     assert("dbProduct is null", data.product?.dbProduct === null, "Expected dbProduct to be null");
     assert("Contains validation", data.validation?.compliant !== undefined, "Missing validation.compliant");
-    assert("Contains issues list", Array.isArray(data.validation?.issues), "Missing validation.issues array");
-    assert("Contains solutions list", Array.isArray(data.validation?.solutions), "Missing validation.solutions array");
+    assert("Contains results list", Array.isArray(data.validation?.results), "Missing validation.results array");
+    if (Array.isArray(data.validation?.results) && data.validation.results.length > 0) {
+      assert("Result object contains issue", data.validation.results[0].issue !== undefined, "Missing result.issue");
+      assert("Result object contains solution", data.validation.results[0].solution !== undefined, "Missing result.solution");
+    }
 
     extractedProductName = data.product?.extractedDetails?.name || "EXTRACTED_PRODUCT";
     log(`  Extracted Product Name: ${extractedProductName}`, "green");
     log(`  Validation compliance: ${data.validation?.compliant}`, "green");
-    log(`  Issues count: ${data.validation?.issues?.length}`, "green");
-    log(`  Solutions count: ${data.validation?.solutions?.length}`, "green");
+    log(`  Results count: ${data.validation?.results?.length}`, "green");
 
     // ─────────────────────────────────────────────────────
     // 5. VERIFY LABEL - Success path (Product in DB)
