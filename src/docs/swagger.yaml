@@ -40,6 +40,8 @@ paths:
     $ref: './paths/companies/companies-id.yaml'
   /companies/{companyId}/products/upload-catalog:
     $ref: './paths/companies/catalog.yaml'
+  /companies/{companyId}/products/verify-label:
+    $ref: './paths/companies/verify-label.yaml'
   /companies/{companyId}/products:
     $ref: './paths/products/products.yaml'
   /products/{id}:
