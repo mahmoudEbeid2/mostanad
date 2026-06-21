@@ -44,6 +44,8 @@ paths:
     $ref: './paths/companies/verify-label.yaml'
   /companies/{companyId}/products:
     $ref: './paths/products/products.yaml'
+  /products/verify-label:
+    $ref: './paths/products/verify-label.yaml'
   /products/{id}:
     $ref: './paths/products/products-id.yaml'
   /plans:

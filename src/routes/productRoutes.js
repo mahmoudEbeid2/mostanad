@@ -6,13 +6,16 @@ import {
   updateProduct,
   deleteProduct,
 } from "../controllers/productController.js";
+import { verifyLabel } from "../controllers/labelController.js";
 import { validate } from "../middleware/validateMiddleware.js";
+import { uploadLabel } from "../middleware/uploadMiddleware.js";
 import {
   createProductSchema,
   updateProductSchema,
   getProductByIdSchema,
   deleteProductSchema,
 } from "../validators/productValidator.js";
+import { verifyLabelSchemaGeneral } from "../validators/labelValidator.js";
 
 const router = express.Router();
 
@@ -23,6 +26,14 @@ router.post(
   createProduct
 );
 router.get("/companies/:companyId/products", getAllProducts);
+
+// General label AI verification and compliance route (companyId is optional)
+router.post(
+  "/products/verify-label",
+  uploadLabel.single("label"),
+  validate(verifyLabelSchemaGeneral),
+  verifyLabel
+);
 
 // Scoped under products
 router

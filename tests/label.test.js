@@ -247,6 +247,55 @@ async function run() {
     assert("Status is 200", verifyStatus2 === 200, `Got ${verifyStatus2}`);
     assert("existsInDb is true", verifyData2?.data?.product?.existsInDb === true, "Expected existsInDb to be true");
     assert("dbProduct matches database record", verifyData2?.data?.product?.dbProduct?.id === testProductId, `Expected ${testProductId}, got ${verifyData2?.data?.product?.dbProduct?.id}`);
+
+    // ─────────────────────────────────────────────────────
+    // 6. VERIFY LABEL - General endpoint (No companyId)
+    // ─────────────────────────────────────────────────────
+    separator();
+    log("📋 TEST 6: POST /products/verify-label — General Endpoint (No companyId)", "bold");
+    
+    const formGeneral = new FormData();
+    formGeneral.append("label", fileBlob, labelName);
+    formGeneral.append("country", "Saudi Arabia");
+
+    log("⏳ Sending label to general endpoint...", "cyan");
+    const verifyRes3 = await fetch(`${BASE_URL}/products/verify-label`, {
+      method: "POST",
+      body: formGeneral,
+    });
+    const verifyStatus3 = verifyRes3.status;
+    let verifyData3 = null;
+    try { verifyData3 = await verifyRes3.json(); } catch (_) {}
+
+    assert("Status is 200", verifyStatus3 === 200, `Got ${verifyStatus3}`);
+    assert("existsInDb is true (global match)", verifyData3?.data?.product?.existsInDb === true, "Expected global match to be true");
+    assert("dbProduct matches database record", verifyData3?.data?.product?.dbProduct?.id === testProductId, `Expected ${testProductId}`);
+    assert("companyId is NOT present in dbProduct response", verifyData3?.data?.product?.dbProduct?.companyId === undefined, "companyId should be stripped for external route");
+
+    // ─────────────────────────────────────────────────────
+    // 7. VERIFY LABEL - General endpoint with companyId in body (should be stripped/ignored)
+    // ─────────────────────────────────────────────────────
+    separator();
+    log("📋 TEST 7: POST /products/verify-label — General Endpoint with companyId in Body (Stripped)", "bold");
+    
+    const formGeneralWithCompany = new FormData();
+    formGeneralWithCompany.append("label", fileBlob, labelName);
+    formGeneralWithCompany.append("country", "Saudi Arabia");
+    formGeneralWithCompany.append("companyId", testCompanyId);
+
+    log("⏳ Sending label to general endpoint with companyId...", "cyan");
+    const verifyRes4 = await fetch(`${BASE_URL}/products/verify-label`, {
+      method: "POST",
+      body: formGeneralWithCompany,
+    });
+    const verifyStatus4 = verifyRes4.status;
+    let verifyData4 = null;
+    try { verifyData4 = await verifyRes4.json(); } catch (_) {}
+
+    assert("Status is 200", verifyStatus4 === 200, `Got ${verifyStatus4}`);
+    assert("existsInDb is true", verifyData4?.data?.product?.existsInDb === true, "Expected existsInDb to be true");
+    assert("dbProduct matches database record", verifyData4?.data?.product?.dbProduct?.id === testProductId, `Expected ${testProductId}`);
+    assert("companyId is NOT present in dbProduct response (even if passed)", verifyData4?.data?.product?.dbProduct?.companyId === undefined, "companyId should be stripped");
   }
 
   // Cleanup temp files

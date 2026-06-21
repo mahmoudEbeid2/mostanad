@@ -453,6 +453,89 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /products/verify-label:
+    post:
+      tags:
+        - Products
+      summary: General PDF or image drug label compliance verification
+      description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, optionally check the database for a matching product under the optional `companyId` (or globally if omitted), and return the combined analysis.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  format: binary
+                  description: The PDF or image (PNG, JPEG, WebP) label file (max 15MB)
+                country:
+                  type: string
+                  description: The target country to run the drug regulatory compliance check for
+                  example: Saudi Arabia
+              required:
+                - label
+                - country
+      responses:
+        '200':
+          description: Label successfully verified and compliance report generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Label verified successfully!
+                  data:
+                    type: object
+                    properties:
+                      product:
+                        type: object
+                        properties:
+                          extractedDetails:
+                            type: object
+                            description: Product metadata extracted from the label by Gemini AI
+                          existsInDb:
+                            type: boolean
+                            example: true
+                          dbProduct:
+                            type: object
+                            nullable: true
+                            description: The matching database product if found, otherwise null
+                      validation:
+                        type: object
+                        properties:
+                          compliant:
+                            type: boolean
+                            example: false
+                          country:
+                            type: string
+                            example: Saudi Arabia
+                          issues:
+                            type: array
+                            items:
+                              type: string
+                            example:
+                              - Missing bilingual Arabic/English warnings
+                              - Storage temperature conditions must be explicitly stated
+                          solutions:
+                            type: array
+                            items:
+                              type: string
+                            example:
+                              - Translate all safety warning paragraphs into Arabic
+                              - Specify storage temperature (e.g. 'Store below 25°C') on the label
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
   /products/{id}:
     get:
       tags:

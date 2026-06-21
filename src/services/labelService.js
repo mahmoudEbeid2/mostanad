@@ -13,10 +13,12 @@ export const verifyProductLabel = async (companyId, fileBuffer, fileName, mimeTy
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
 
-  // 1. Verify company exists
-  const company = await prisma.company.findUnique({ where: { id: companyId } });
-  if (!company) {
-    throw new AppError("Target company not found!", 404);
+  // 1. Verify company exists if provided
+  if (companyId) {
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      throw new AppError("Target company not found!", 404);
+    }
   }
 
   // 2. Write buffer to a temp file in the workspace
@@ -220,22 +222,30 @@ export const verifyProductLabel = async (companyId, fileBuffer, fileName, mimeTy
     }
   }
 
-  // 7. Check database if the product name already exists for this company
+  // 7. Check database if the product name already exists (scope to companyId if provided, otherwise search globally)
   const productName = parsedAIResponse.extractedDetails.name || "";
   let existingProduct = null;
   if (productName.trim()) {
-    existingProduct = await prisma.product.findFirst({
-      where: {
-        companyId: companyId,
-        name: {
-          equals: productName.trim(),
-          mode: "insensitive",
-        },
+    const whereClause = {
+      name: {
+        equals: productName.trim(),
+        mode: "insensitive",
       },
+    };
+    if (companyId) {
+      whereClause.companyId = companyId;
+    }
+    existingProduct = await prisma.product.findFirst({
+      where: whereClause,
       include: {
         category: true,
       },
     });
+
+    // Strip companyId if it was not provided (meaning query is external/global)
+    if (existingProduct && !companyId) {
+      delete existingProduct.companyId;
+    }
   }
 
   return {

@@ -10,10 +10,7 @@ export const verifyLabel = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload a PDF or image file using the 'label' field!", 400));
   }
 
-  const companyId = req.params.companyId || req.body.companyId;
-  if (!companyId) {
-    return next(new AppError("Company ID is required!", 400));
-  }
+  const companyId = req.params.companyId || req.body.companyId || req.query.companyId || null;
 
   const country = req.body.country || req.query.country;
   if (!country) {
