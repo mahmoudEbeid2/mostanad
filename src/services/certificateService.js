@@ -17,7 +17,7 @@ async function callGemini(genAI, modelName, fileData, promptText) {
 
   while (retries > 0 && !success) {
     try {
-      console.log(`[InvoiceService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
+      console.log(`[CertificateService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
       const activeModel = genAI.getGenerativeModel({ model: currentModelName });
       
       const contents = [];
@@ -35,7 +35,7 @@ async function callGemini(genAI, modelName, fileData, promptText) {
       resultText = response.response.text();
       success = true;
     } catch (error) {
-      console.warn(`[InvoiceService] Error during generateContent: ${error.message}`);
+      console.warn(`[CertificateService] Error during generateContent: ${error.message}`);
       const errMsg = error.message || "";
       const isQuotaOrDemand = 
         errMsg.includes("503") || 
@@ -46,18 +46,18 @@ async function callGemini(genAI, modelName, fileData, promptText) {
         errMsg.includes("quota");
 
       if (isQuotaOrDemand && currentModelName === "gemini-2.5-flash") {
-        console.warn("[InvoiceService] High demand/quota error detected on gemini-2.5-flash. Falling back to gemini-2.0-flash...");
+        console.warn("[CertificateService] High demand/quota error detected on gemini-2.5-flash. Falling back to gemini-2.0-flash...");
         currentModelName = "gemini-2.0-flash";
         retries--;
         await new Promise((resolve) => setTimeout(resolve, 1000));
       } else if (isQuotaOrDemand) {
-        console.warn(`[InvoiceService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
+        console.warn(`[CertificateService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
         retries--;
         if (retries === 0) throw error;
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 1.5;
       } else {
-        console.error("[InvoiceService] Non-quota error, throwing immediately.");
+        console.error("[CertificateService] Non-quota error, throwing immediately.");
         throw error;
       }
     }
@@ -77,7 +77,7 @@ async function callGemini(genAI, modelName, fileData, promptText) {
 /**
  * Extract products from invoice, lookup database, resolve templates, populate fields and HTML using Gemini
  */
-export const extractInvoiceAndPopulateTemplates = async (
+export const generateCertificatesAndPopulateTemplates = async (
   companyId,
   brandId,
   transactionType,
@@ -100,7 +100,7 @@ export const extractInvoiceAndPopulateTemplates = async (
   const tempFileName = `temp_invoice_${Date.now()}_${Math.random().toString(36).substring(7)}${extension}`;
   const tempFilePath = path.join(process.cwd(), tempFileName);
 
-  console.log(`[InvoiceService] Writing temp file to ${tempFilePath}...`);
+  console.log(`[CertificateService] Writing temp file to ${tempFilePath}...`);
   fs.writeFileSync(tempFilePath, fileBuffer);
 
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
@@ -109,14 +109,14 @@ export const extractInvoiceAndPopulateTemplates = async (
   let uploadResult = null;
   try {
     // 3. Upload file to Gemini File API
-    console.log(`[InvoiceService] Uploading file to Gemini File API (MimeType: ${mimeType})...`);
+    console.log(`[CertificateService] Uploading file to Gemini File API (MimeType: ${mimeType})...`);
     uploadResult = await fileManager.uploadFile(tempFilePath, {
       mimeType: mimeType,
       displayName: fileName,
     });
 
     // Poll for the file to be processed (state ACTIVE)
-    console.log("[InvoiceService] Polling file state...");
+    console.log("[CertificateService] Polling file state...");
     let file = await fileManager.getFile(uploadResult.file.name);
     let attempts = 0;
     while (file.state === "PROCESSING" && attempts < 12) {
@@ -129,7 +129,7 @@ export const extractInvoiceAndPopulateTemplates = async (
     }
 
     // 4. STAGE 1: Extract Products from Invoice
-    console.log("[InvoiceService] Stage 1: Extracting product list from invoice...");
+    console.log("[CertificateService] Stage 1: Extracting product list from invoice...");
     const stage1Prompt = `
       You are an expert systems integration specialist.
       Analyze the uploaded invoice image or PDF.
@@ -153,7 +153,7 @@ export const extractInvoiceAndPopulateTemplates = async (
     const stage1Json = await callGemini(genAI, "gemini-2.5-flash", uploadResult.file, stage1Prompt);
     const stage1Data = JSON.parse(stage1Json);
     const extractedProducts = stage1Data.products || [];
-    console.log(`[InvoiceService] Extracted ${extractedProducts.length} products from invoice.`);
+    console.log(`[CertificateService] Extracted ${extractedProducts.length} products from invoice.`);
 
     // 5. Database lookup for products
     const matchedProducts = [];
@@ -225,7 +225,7 @@ export const extractInvoiceAndPopulateTemplates = async (
     }));
 
     // 7. STAGE 2: Extract & Infer Fields using Product Data and Invoice details
-    console.log("[InvoiceService] Stage 2: Populating template fields using Gemini...");
+    console.log("[CertificateService] Stage 2: Populating template fields using Gemini...");
     const stage2Prompt = `
       You are an expert systems integration and document population specialist.
       Analyze the uploaded invoice, the provided matched products database records, the unmatched products list, and the list of requested document templates.
@@ -257,7 +257,7 @@ export const extractInvoiceAndPopulateTemplates = async (
         "populatedTemplates": [
           {
             "templateId": "string",
-            "productId": "string or null (the specific database product ID if matched, or the product name if unmatched, or null if the template is global)",
+            "productId": "string or null (the specific database product ID or product name if unmatched, or null if the template is global)",
             "filledFields": {
               "fieldName": "inferred or extracted value"
             }

@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-export const extractInvoiceSchema = {
+export const generateCertificatesSchema = {
   params: z.object({
-    companyId: z.string().uuid("Invalid company ID format"),
+    companyId: z.string().uuid("Invalid company ID format").optional(),
   }),
   body: z.object({
     brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),

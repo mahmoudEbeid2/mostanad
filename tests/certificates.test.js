@@ -38,7 +38,13 @@ function assert(label, condition, details = "") {
 }
 
 async function request(method, path, body = null) {
-  const options = { method, headers: { "Content-Type": "application/json" } };
+  const options = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "x-test-bypass": "supersecretbypass"
+    }
+  };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
   let data = null;
@@ -48,7 +54,7 @@ async function request(method, path, body = null) {
 
 async function run() {
   log("\n" + "═".repeat(62), "cyan");
-  log("  🧪 MOSTANAD - INVOICE AI EXTRACTION TEST SUITE", "bold");
+  log("  🧪 MOSTANAD - CERTIFICATE AI GENERATION TEST SUITE", "bold");
   log("═".repeat(62) + "\n", "cyan");
 
   const ts = Date.now();
@@ -56,10 +62,10 @@ async function run() {
   // 1. Setup Company
   log("⚙️  Creating test company...", "cyan");
   const companyRes = await request("POST", "/companies", {
-    name: "Invoice Test Company",
-    username: `inv_co_${ts}`,
+    name: "Certificate Test Company",
+    username: `cert_co_${ts}`,
     password: "securepassword123",
-    email: `inv_co_${ts}@example.com`,
+    email: `cert_co_${ts}@example.com`,
   });
 
   if (companyRes.status !== 201 || !companyRes.data?.data?.company?.id) {
@@ -142,13 +148,16 @@ async function run() {
   // 1. VALIDATION - Missing File
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 1: POST /companies/:id/invoices/extract — Missing File", "bold");
+  log("📋 TEST 1: POST /companies/:id/certificates/generate — Missing File", "bold");
   {
     const form = new FormData();
     form.append("transactionType", "shipping");
 
-    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/invoices/extract`, {
+    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/certificates/generate`, {
       method: "POST",
+      headers: {
+        "x-test-bypass": "supersecretbypass"
+      },
       body: form,
     });
     const status = res.status;
@@ -164,15 +173,18 @@ async function run() {
   // 2. VALIDATION - Missing transactionType
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 2: POST /companies/:id/invoices/extract — Missing transactionType", "bold");
+  log("📋 TEST 2: POST /companies/:id/certificates/generate — Missing transactionType", "bold");
   {
     const form = new FormData();
     const invoiceBuffer = fs.readFileSync(mockInvoicePath);
     const fileBlob = new Blob([invoiceBuffer], { type: "application/pdf" });
     form.append("invoice", fileBlob, "invoice.pdf");
 
-    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/invoices/extract`, {
+    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/certificates/generate`, {
       method: "POST",
+      headers: {
+        "x-test-bypass": "supersecretbypass"
+      },
       body: form,
     });
     const status = res.status;
@@ -188,7 +200,7 @@ async function run() {
   // 3. SUCCESS PATH - Extract and Populate
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 3: POST /companies/:id/invoices/extract — Success Path (Extraction & Population)", "bold");
+  log("📋 TEST 3: POST /companies/:id/certificates/generate — Success Path (Extraction & Population)", "bold");
   log("⏳ Sending mock invoice to Gemini AI... (takes 10-20 seconds)", "cyan");
   {
     const form = new FormData();
@@ -200,8 +212,11 @@ async function run() {
       form.append("brandId", testBrandId);
     }
 
-    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/invoices/extract`, {
+    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/certificates/generate`, {
       method: "POST",
+      headers: {
+        "x-test-bypass": "supersecretbypass"
+      },
       body: form,
     });
     const status = res.status;
@@ -218,7 +233,7 @@ async function run() {
 
     assert("Has certificates array", Array.isArray(results?.certificates), JSON.stringify(results));
     
-    // Check Global template population (fields like invoiceNo are inferred because they aren't on the spec sheet)
+    // Check Global template population
     const globalCert = results?.certificates?.find(c => c.templateId === globalTemplate.id);
     assert("Global certificate populated", !!globalCert, "Global certificate not found");
     assert("Global certificate has invoiceNo filled/inferred", !!globalCert?.filledFields?.invoiceNo, JSON.stringify(globalCert?.filledFields));
@@ -227,7 +242,6 @@ async function run() {
     const productCerts = results?.certificates?.filter(c => c.templateId === productTemplate.id);
     assert("Product certificates populated", productCerts?.length > 0, "No product certificates found");
     
-    // Check that we got analysis certificate populated for H-VIRAL
     const hviralCert = productCerts?.find(c => c.productId === testProductId || c.productId?.toUpperCase() === "H-VIRAL");
     assert("H-VIRAL certificate generated", !!hviralCert, "H-VIRAL certificate not found");
     assert("H-VIRAL certificate has active ingredients from DB", JSON.stringify(hviralCert?.filledFields?.ingredients).toLowerCase().includes("olive"), JSON.stringify(hviralCert?.filledFields));

@@ -7,7 +7,9 @@ import productRoutes from "./productRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
 import categoryRoutes from "./categoryRoutes.js";
 import templateRoutes from "./templateRoutes.js";
-import invoiceRoutes from "./invoiceRoutes.js";
+import certificateRoutes from "./certificateRoutes.js";
+import authRoutes from "./authRoutes.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -15,16 +17,18 @@ const router = express.Router();
 router.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Mount routes
-router.use("/users", userRoutes);
-router.use("/companies", companyRoutes);
-router.use("/plans", planRoutes);
-router.use("/subscriptions", subscriptionRoutes);
-router.use("/categories", categoryRoutes);
-router.use("/", productRoutes);
-router.use("/", templateRoutes);
-router.use("/", invoiceRoutes);
+router.use("/users", protect, userRoutes);
+router.use("/companies", companyRoutes); // internal protect applied in companyRoutes.js after login
+router.use("/plans", protect, planRoutes);
+router.use("/subscriptions", protect, subscriptionRoutes);
+router.use("/categories", protect, categoryRoutes);
+router.use("/", protect, productRoutes);
+router.use("/", protect, templateRoutes);
+router.use("/", protect, certificateRoutes);
+router.use("/", authRoutes);
 
 export default router;
+
 
 
 

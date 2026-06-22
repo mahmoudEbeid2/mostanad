@@ -898,6 +898,108 @@ components:
           type: boolean
           example: false
 
+    LoginBody:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: The user's username or email
+          example: "admin"
+        password:
+          type: string
+          description: The user's password
+          example: "securepassword123"
+
+    LoginResponseData:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            username:
+              type: string
+            email:
+              type: string
+            phone:
+              type: string
+              nullable: true
+            role:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+
+    CompanyLoginResponseData:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        company:
+          $ref: '#/components/schemas/Company'
+
+    GenerateCertificatesResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                nullable: true
+              name:
+                type: string
+              dbName:
+                type: string
+                nullable: true
+              productCode:
+                type: string
+                nullable: true
+              existsInDb:
+                type: boolean
+        certificates:
+          type: array
+          items:
+            type: object
+            properties:
+              templateId:
+                type: string
+                format: uuid
+              templateName:
+                type: string
+              type:
+                type: string
+              isGlobal:
+                type: boolean
+              productId:
+                type: string
+                nullable: true
+              filledFields:
+                type: object
+              html:
+                type: string
+
   parameters:
     UserId:
       name: id
@@ -1232,6 +1334,34 @@ components:
                 type: string
                 example: "User not found!"
 
+    UnauthorizedError:
+      description: Authentication failed or token missing
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "You are not logged in! Please log in to get access."
+
+    ForbiddenError:
+      description: Access denied
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "This account is inactive."
+
     ServerError:
       description: Internal server error
       content:
@@ -1392,3 +1522,9 @@ components:
                     type: array
                     items:
                       $ref: '#/components/schemas/Template'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

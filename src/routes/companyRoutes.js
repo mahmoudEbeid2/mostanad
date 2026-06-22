@@ -18,7 +18,17 @@ import {
 } from "../validators/companyValidator.js";
 import { verifyLabelSchema } from "../validators/labelValidator.js";
 
+import { protect } from "../middleware/authMiddleware.js";
+import { companyLogin } from "../controllers/authController.js";
+import { loginSchema } from "../validators/authValidator.js";
+
 const router = express.Router();
+
+// Public route for company login
+router.post("/login", validate(loginSchema), companyLogin);
+
+// Protect all other company routes
+router.use(protect);
 
 router
   .route("/")

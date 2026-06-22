@@ -30,8 +30,14 @@ tags:
     description: Document templates management
   - name: Label Verification
     description: AI-powered medicine and supplement label compliance verification
+  - name: Authentication
+    description: Internal user authentication and login
+  - name: Certificates
+    description: Product extraction from invoices and auto-populating certificate templates
 
 paths:
+  /auth/login:
+    $ref: './paths/auth/auth.yaml'
   /users:
     $ref: './paths/users/users.yaml'
   /users/{id}:
@@ -40,6 +46,8 @@ paths:
     $ref: './paths/companies/companies.yaml'
   /companies/{id}:
     $ref: './paths/companies/companies-id.yaml'
+  /companies/login:
+    $ref: './paths/companies/login.yaml'
   /companies/{companyId}/products/upload-catalog:
     $ref: './paths/companies/catalog.yaml'
   /companies/{companyId}/products/verify-label:
@@ -66,6 +74,10 @@ paths:
     $ref: './paths/templates/templates.yaml'
   /templates/{id}:
     $ref: './paths/templates/templates-id.yaml'
+  /companies/{companyId}/certificates/generate:
+    $ref: './paths/certificates/certificates.yaml'
+  /certificates/generate:
+    $ref: './paths/certificates/certificates-token.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

@@ -1,0 +1,52 @@
+post:
+  tags:
+    - Certificates
+  summary: Generate certificates by Company ID
+  description: Upload an invoice (PDF/image) and populate global and product-scoped templates associated with the company ID.
+  parameters:
+    - name: companyId
+      in: path
+      required: true
+      description: UUID of the company
+      schema:
+        type: string
+        format: uuid
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required:
+            - invoice
+            - transactionType
+          properties:
+            invoice:
+              type: string
+              format: binary
+              description: Invoice file (PDF or Image)
+            brandId:
+              type: string
+              format: uuid
+              description: Optional brand ID filter
+            transactionType:
+              type: string
+              enum: [shipping, registration]
+              description: Transaction type
+  responses:
+    '200':
+      description: Successfully generated certificates
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                $ref: '../../components/components.yaml#/components/schemas/GenerateCertificatesResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'

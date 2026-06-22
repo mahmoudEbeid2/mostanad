@@ -1,0 +1,30 @@
+post:
+  tags:
+    - Companies
+  summary: Log in company account
+  description: Authenticate a company account (tenant) using their username or email and password to receive a company JWT.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/LoginBody'
+  responses:
+    '200':
+      description: Successful login
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                $ref: '../../components/components.yaml#/components/schemas/CompanyLoginResponseData'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
