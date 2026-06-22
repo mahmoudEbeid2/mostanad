@@ -161,6 +161,9 @@ model Template {
   brandId      String?         @map("brand_id")
   brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
   htmlContent  String          @map("html_content") @db.Text
+  fields       Json?
+  isGlobal     Boolean         @default(true) @map("is_global")
+  productId    String?         @map("product_id")
   companyId    String?         @map("company_id") // Null means system-wide default template
   company      Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   isActive     Boolean         @default(true) @map("is_active")

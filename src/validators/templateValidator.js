@@ -16,6 +16,9 @@ export const createTemplateSchema = {
       .min(1, "HTML content cannot be empty"),
     brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
     isActive: z.boolean().optional(),
+    fields: z.any().optional().nullable(),
+    isGlobal: z.boolean().optional(),
+    productId: z.string().uuid("Invalid product ID format").optional().nullable(),
   }),
 };
 
@@ -29,6 +32,9 @@ export const updateTemplateSchema = {
     htmlContent: z.string().min(1).optional(),
     brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
     isActive: z.boolean().optional(),
+    fields: z.any().optional().nullable(),
+    isGlobal: z.boolean().optional(),
+    productId: z.string().uuid("Invalid product ID format").optional().nullable(),
   }),
 };
 

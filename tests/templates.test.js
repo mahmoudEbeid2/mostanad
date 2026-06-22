@@ -16,6 +16,7 @@ let passed = 0;
 let failed = 0;
 let testCompanyId = null;
 let testBrandId = null;
+let testProductId = null;
 let createdTemplateId1 = null;
 let createdTemplateId2 = null;
 
@@ -79,6 +80,18 @@ async function run() {
   });
   testBrandId = brand.id;
   log(`  Test Brand Created: ${testBrandId}`, "green");
+
+  // 3. Create product under the company/brand using Prisma
+  const product = await prisma.product.create({
+    data: {
+      name: `TEST_PRODUCT_${ts}`,
+      productCode: `TP_${ts}`,
+      companyId: testCompanyId,
+      brandId: testBrandId,
+    }
+  });
+  testProductId = product.id;
+  log(`  Test Product Created: ${testProductId}`, "green");
 
   // ─────────────────────────────────────────────────────
   // 1. CREATE - Validation: empty body
@@ -245,6 +258,105 @@ async function run() {
     assert("Status is 201", status === 201, `Got ${status}`);
     // Cleanup the new template
     await prisma.template.delete({ where: { id: data.data.template.id } });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 12. CREATE - With fields JSON & isGlobal = true (Success)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 12: POST /companies/:id/templates with JSON fields & isGlobal=true — Success", "bold");
+  let testTemplateIdFields = null;
+  {
+    const fieldsPayload = {
+      header: { x: 10, y: 20, font: "Arial" },
+      footer: { text: "Page 1", align: "center" }
+    };
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/templates`, {
+      name: "Global Layout Template",
+      type: "layout",
+      htmlContent: "<html><body>Global Layout</body></html>",
+      fields: fieldsPayload,
+      isGlobal: true
+    });
+    assert("Status is 201", status === 201, `Got ${status}`);
+    const fields = data?.data?.template?.fields;
+    const isFieldsValid = fields && fields.header && fields.header.x === 10 && fields.footer && fields.footer.align === "center";
+    assert("fields matches payload", !!isFieldsValid, `Got ${JSON.stringify(fields)}`);
+    assert("isGlobal is true", data?.data?.template?.isGlobal === true, "isGlobal is not true");
+    assert("productId is null", data?.data?.template?.productId === null, "productId is not null");
+    testTemplateIdFields = data?.data?.template?.id;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 13. CREATE - Product-scoped template (Success)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 13: POST /companies/:id/templates product-scoped template — Success", "bold");
+  let testTemplateIdProduct = null;
+  {
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/templates`, {
+      name: "Product-Specific Template",
+      type: "layout",
+      htmlContent: "<html><body>Product Layout</body></html>",
+      isGlobal: false,
+      productId: testProductId
+    });
+    assert("Status is 201", status === 201, `Got ${status}`);
+    assert("isGlobal is false", data?.data?.template?.isGlobal === false, "isGlobal is not false");
+    assert("productId matches testProductId", data?.data?.template?.productId === testProductId, "productId mismatch");
+    testTemplateIdProduct = data?.data?.template?.id;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 14. CREATE - Product-scoped template - Missing Product ID (Error)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 14: POST /companies/:id/templates product-scoped template with missing productId — Error", "bold");
+  {
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/templates`, {
+      name: "Bad Product Template",
+      type: "layout",
+      htmlContent: "<html><body>Bad Layout</body></html>",
+      isGlobal: false
+    });
+    assert("Status is 400", status === 400, `Got ${status}`);
+    assert("Message indicates productId error", data?.message?.includes("Product ID is required"), data?.message);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 15. CREATE - Product-scoped template - Conflict Duplicate (Error)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 15: POST /companies/:id/templates product-scoped duplicate template — Conflict Rejection", "bold");
+  {
+    const { status, data } = await request("POST", `/companies/${testCompanyId}/templates`, {
+      name: "Duplicate Product Template",
+      type: "layout",
+      htmlContent: "<html><body>Duplicate Layout</body></html>",
+      isGlobal: false,
+      productId: testProductId
+    });
+    assert("Status is 400", status === 400, `Got ${status}`);
+    assert("Error message is correct", data?.message?.includes("already exists for this company and product"), data?.message);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 16. UPDATE - template fields, isGlobal and productId (Success)
+  // ─────────────────────────────────────────────────────
+  separator();
+  log("📋 TEST 16: PATCH /templates/:id updating fields and switching scoping — Success", "bold");
+  {
+    const updatedFields = {
+      body: { margin: "20px" }
+    };
+    const { status, data } = await request("PATCH", `/templates/${testTemplateIdFields}`, {
+      name: "Updated Scoped Layout Template",
+      fields: updatedFields,
+    });
+    assert("Status is 200", status === 200, `Got ${status}`);
+    const fields = data?.data?.template?.fields;
+    const isFieldsValid = fields && fields.body && fields.body.margin === "20px";
+    assert("fields updated", !!isFieldsValid, `Got ${JSON.stringify(fields)}`);
   }
 
   // ─────────────────────────────────────────────────────

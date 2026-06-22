@@ -790,6 +790,18 @@ components:
         htmlContent:
           type: string
           example: "<html><body>...</body></html>"
+        fields:
+          type: object
+          nullable: true
+          example: {"header": {"x": 10, "y": 20}}
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
         brandId:
           type: string
           format: uuid
@@ -830,6 +842,18 @@ components:
         htmlContent:
           type: string
           example: "<html><body>...</body></html>"
+        fields:
+          type: object
+          nullable: true
+          example: {"header": {"x": 10, "y": 20}}
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
         brandId:
           type: string
           format: uuid
@@ -853,6 +877,18 @@ components:
         htmlContent:
           type: string
           example: "<html><body>Updated content</body></html>"
+        fields:
+          type: object
+          nullable: true
+          example: {"header": {"x": 10, "y": 20}}
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
         brandId:
           type: string
           format: uuid
