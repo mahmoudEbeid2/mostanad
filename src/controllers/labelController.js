@@ -3,14 +3,14 @@ import AppError from "../utils/appError.js";
 import { verifyProductLabel } from "../services/labelService.js";
 
 /**
- * Handle POST request for uploading a PDF or image label and verifying compliance against country guidelines.
+ * POST /products/verify-label
+ * Upload a PDF or image label and verify compliance against country regulations.
+ * Searches globally across all products in the DB — no company scope needed.
  */
 export const verifyLabel = catchAsync(async (req, res, next) => {
   if (!req.file) {
     return next(new AppError("Please upload a PDF or image file using the 'label' field!", 400));
   }
-
-  const companyId = req.params.companyId || req.body.companyId || req.query.companyId || null;
 
   const country = req.body.country || req.query.country;
   if (!country) {
@@ -18,7 +18,6 @@ export const verifyLabel = catchAsync(async (req, res, next) => {
   }
 
   const result = await verifyProductLabel(
-    companyId,
     req.file.buffer,
     req.file.originalname,
     req.file.mimetype,

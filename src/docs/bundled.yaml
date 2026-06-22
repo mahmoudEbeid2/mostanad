@@ -27,7 +27,42 @@ tags:
     description: Document templates management
   - name: Label Verification
     description: AI-powered medicine and supplement label compliance verification
+  - name: Authentication
+    description: Internal user authentication and login
+  - name: Certificates
+    description: Product extraction from invoices and auto-populating certificate templates
 paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in internal user
+      description: Authenticate an internal user (admin/staff) using their username or email and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginBody'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/LoginResponseData'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
   /users:
     get:
       tags:
@@ -213,6 +248,37 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /companies/login:
+    post:
+      tags:
+        - Companies
+      summary: Log in company account
+      description: Authenticate a company account (tenant) using their username or email and password to receive a company JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginBody'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/CompanyLoginResponseData'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
   /companies/{companyId}/products/upload-catalog:
     post:
       tags:
@@ -457,7 +523,7 @@ paths:
       tags:
         - Label Verification
       summary: General PDF or image drug label compliance verification
-      description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, optionally check the database for a matching product under the optional `companyId` (or globally if omitted), and return the combined analysis.
+      description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini, search the database globally (by exact name or active ingredient overlap) for matching/alternative products, verify compliance against the target country's drug regulatory requirements, and return the combined analysis.
       requestBody:
         required: true
         content:
@@ -502,6 +568,9 @@ paths:
                           existsInDb:
                             type: boolean
                             example: true
+                          isExactMatch:
+                            type: boolean
+                            example: true
                           dbProduct:
                             type: object
                             nullable: true
@@ -512,6 +581,16 @@ paths:
                           compliant:
                             type: boolean
                             example: false
+                          checkedAgainstDb:
+                            type: boolean
+                            example: true
+                          isExactMatch:
+                            type: boolean
+                            example: true
+                          dbProductName:
+                            type: string
+                            nullable: true
+                            example: H-Viral
                           country:
                             type: string
                             example: Saudi Arabia
@@ -520,9 +599,16 @@ paths:
                             items:
                               type: object
                               properties:
+                                category:
+                                  type: string
+                                  example: regulatory
                                 issue:
                                   type: string
                                   example: Missing bilingual Arabic/English warnings
+                                location:
+                                  type: string
+                                  nullable: true
+                                  example: Active ingredients section
                                 solution:
                                   type: string
                                   example: Translate all safety warning paragraphs into Arabic
@@ -1014,106 +1100,161 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /companies/{companyId}/certificates/generate:
+    post:
+      tags:
+        - Certificates
+      summary: Generate certificates by Company ID
+      description: Upload an invoice (PDF/image) and populate global and product-scoped templates associated with the company ID.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          description: UUID of the company
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - invoice
+                - transactionType
+              properties:
+                invoice:
+                  type: string
+                  format: binary
+                  description: Invoice file (PDF or Image)
+                brandId:
+                  type: string
+                  format: uuid
+                  description: Optional brand ID filter
+                transactionType:
+                  type: string
+                  enum:
+                    - shipping
+                    - registration
+                  description: Transaction type
+      responses:
+        '200':
+          description: Successfully generated certificates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/GenerateCertificatesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /certificates/generate:
+    post:
+      tags:
+        - Certificates
+      summary: Generate certificates (Authenticated Company)
+      description: Upload an invoice (PDF/image) and populate templates. The company is identified by the Bearer token.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - invoice
+                - transactionType
+              properties:
+                invoice:
+                  type: string
+                  format: binary
+                  description: Invoice file (PDF or Image)
+                brandId:
+                  type: string
+                  format: uuid
+                  description: Optional brand ID filter
+                transactionType:
+                  type: string
+                  enum:
+                    - shipping
+                    - registration
+                  description: Transaction type
+      responses:
+        '200':
+          description: Successfully generated certificates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/GenerateCertificatesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
 components:
-  parameters:
-    PageParam:
-      name: page
-      in: query
-      required: false
-      description: Page number (starts from 1)
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-    LimitParam:
-      name: limit
-      in: query
-      required: false
-      description: Number of items per page
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 100
-        default: 10
-    SortParam:
-      name: sort
-      in: query
-      required: false
-      description: 'Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name'
-      schema:
-        type: string
-      example: '-createdAt'
-    SearchParam:
-      name: search
-      in: query
-      required: false
-      description: Search term matched against name, email, or username
-      schema:
-        type: string
-      example: ahmed
-    UserId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the user
-      schema:
-        type: string
-        format: uuid
-      example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    CompanyId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the company
-      schema:
-        type: string
-        format: uuid
-      example: b2c3d4e5-f6a7-8901-bcde-f12345678901
-    ProductId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the product
-      schema:
-        type: string
-        format: uuid
-      example: d1b2c3d4-e5f6-7890-abcd-ef1234567890
-    PlanId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the plan
-      schema:
-        type: string
-        format: uuid
-      example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
-    SubscriptionId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the subscription
-      schema:
-        type: string
-      example: e1b2c3d4-e5f6-7890-abcd-ef1234567890
-    CategoryId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the category
-      schema:
-        type: string
-        format: uuid
-      example: c2d3e4f5-a6b7-8901-cdef-012345678901
-    TemplateId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the template
-      schema:
-        type: string
-        format: uuid
-      example: f1b2c3d4-e5f6-7890-abcd-ef1234567890
   schemas:
+    LoginBody:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: The user's username or email
+          example: admin
+        password:
+          type: string
+          description: The user's password
+          example: securepassword123
+    LoginResponseData:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            username:
+              type: string
+            email:
+              type: string
+            phone:
+              type: string
+              nullable: true
+            role:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
     User:
       type: object
       properties:
@@ -1322,6 +1463,14 @@ components:
         isActive:
           type: boolean
           example: false
+    CompanyLoginResponseData:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        company:
+          $ref: '#/components/schemas/Company'
     ActiveIngredient:
       type: object
       required:
@@ -1918,6 +2067,21 @@ components:
         htmlContent:
           type: string
           example: <html><body>...</body></html>
+        fields:
+          type: object
+          nullable: true
+          example:
+            header:
+              x: 10
+              'y': 20
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: a810cf7f-57ce-4d84-b1b1-c3a782893072
         brandId:
           type: string
           format: uuid
@@ -1957,6 +2121,21 @@ components:
         htmlContent:
           type: string
           example: <html><body>...</body></html>
+        fields:
+          type: object
+          nullable: true
+          example:
+            header:
+              x: 10
+              'y': 20
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: a810cf7f-57ce-4d84-b1b1-c3a782893072
         brandId:
           type: string
           format: uuid
@@ -1979,6 +2158,21 @@ components:
         htmlContent:
           type: string
           example: <html><body>Updated content</body></html>
+        fields:
+          type: object
+          nullable: true
+          example:
+            header:
+              x: 10
+              'y': 20
+        isGlobal:
+          type: boolean
+          example: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+          example: a810cf7f-57ce-4d84-b1b1-c3a782893072
         brandId:
           type: string
           format: uuid
@@ -1987,7 +2181,89 @@ components:
         isActive:
           type: boolean
           example: false
+    GenerateCertificatesResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                nullable: true
+              name:
+                type: string
+              dbName:
+                type: string
+                nullable: true
+              productCode:
+                type: string
+                nullable: true
+              existsInDb:
+                type: boolean
+        certificates:
+          type: array
+          items:
+            type: object
+            properties:
+              templateId:
+                type: string
+                format: uuid
+              templateName:
+                type: string
+              type:
+                type: string
+              isGlobal:
+                type: boolean
+              productId:
+                type: string
+                nullable: true
+              filledFields:
+                type: object
+              html:
+                type: string
   responses:
+    BadRequestError:
+      description: Validation error or bad input
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: 'Validation error in body: name: Required'
+    UnauthorizedError:
+      description: Authentication failed or token missing
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: You are not logged in! Please log in to get access.
+    ForbiddenError:
+      description: Access denied
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: This account is inactive.
     UsersListResponse:
       description: Paginated list of users
       content:
@@ -2048,19 +2324,6 @@ components:
                 properties:
                   user:
                     $ref: '#/components/schemas/User'
-    BadRequestError:
-      description: Validation error or bad input
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: string
-                example: fail
-              message:
-                type: string
-                example: 'Validation error in body: name: Required'
     NotFoundError:
       description: Resource not found
       content:
@@ -2356,3 +2619,106 @@ components:
                 properties:
                   template:
                     $ref: '#/components/schemas/Template'
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: Page number (starts from 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    SortParam:
+      name: sort
+      in: query
+      required: false
+      description: 'Sort fields. Use comma to separate. Prefix with - for descending. Example: -createdAt,name'
+      schema:
+        type: string
+      example: '-createdAt'
+    SearchParam:
+      name: search
+      in: query
+      required: false
+      description: Search term matched against name, email, or username
+      schema:
+        type: string
+      example: ahmed
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the user
+      schema:
+        type: string
+        format: uuid
+      example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    CompanyId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the company
+      schema:
+        type: string
+        format: uuid
+      example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the product
+      schema:
+        type: string
+        format: uuid
+      example: d1b2c3d4-e5f6-7890-abcd-ef1234567890
+    PlanId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the plan
+      schema:
+        type: string
+        format: uuid
+      example: c1b2c3d4-e5f6-7890-abcd-ef1234567890
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the subscription
+      schema:
+        type: string
+      example: e1b2c3d4-e5f6-7890-abcd-ef1234567890
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the category
+      schema:
+        type: string
+        format: uuid
+      example: c2d3e4f5-a6b7-8901-cdef-012345678901
+    TemplateId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the template
+      schema:
+        type: string
+        format: uuid
+      example: f1b2c3d4-e5f6-7890-abcd-ef1234567890
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

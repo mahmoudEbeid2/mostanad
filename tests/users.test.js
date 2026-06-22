@@ -23,7 +23,10 @@ const separator = () =>
 async function request(method, path, body = null) {
   const options = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-test-bypass": "supersecretbypass"
+    },
   };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);

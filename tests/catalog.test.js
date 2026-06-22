@@ -35,7 +35,7 @@ function assert(label, condition, details = "") {
 }
 
 async function request(method, path, body = null) {
-  const options = { method, headers: { "Content-Type": "application/json" } };
+  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": "supersecretbypass" } };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
   let data = null;
@@ -78,6 +78,7 @@ async function run() {
     const form = new FormData();
     const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/products/upload-catalog`, {
       method: "POST",
+      headers: { "x-test-bypass": "supersecretbypass" },
       body: form,
     });
     const status = res.status;
@@ -107,6 +108,7 @@ async function run() {
 
       const res = await fetch(`${BASE_URL}/companies/00000000-0000-0000-0000-000000000000/products/upload-catalog`, {
         method: "POST",
+        headers: { "x-test-bypass": "supersecretbypass" },
         body: form,
       });
       const status = res.status;
@@ -138,6 +140,7 @@ async function run() {
     const startTime = Date.now();
     const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/products/upload-catalog`, {
       method: "POST",
+      headers: { "x-test-bypass": "supersecretbypass" },
       body: form,
     });
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);

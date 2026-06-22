@@ -15,7 +15,7 @@ import {
   getProductByIdSchema,
   deleteProductSchema,
 } from "../validators/productValidator.js";
-import { verifyLabelSchemaGeneral } from "../validators/labelValidator.js";
+import { verifyLabelSchema } from "../validators/labelValidator.js";
 
 const router = express.Router();
 
@@ -27,11 +27,12 @@ router.post(
 );
 router.get("/companies/:companyId/products", getAllProducts);
 
-// General label AI verification and compliance route (companyId is optional)
+// Label AI verification — global, no company scope
+// POST /products/verify-label  (multipart: label file + country in body)
 router.post(
   "/products/verify-label",
   uploadLabel.single("label"),
-  validate(verifyLabelSchemaGeneral),
+  validate(verifyLabelSchema),
   verifyLabel
 );
 

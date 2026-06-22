@@ -5,263 +5,371 @@ import AppError from "../utils/appError.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 
-/**
- * Verify medicine label PDF or image, extract details, and perform regulatory checks using Gemini AI.
- */
-export const verifyProductLabel = async (companyId, fileBuffer, fileName, mimeType, country) => {
+// ─────────────────────────────────────────────────────────────
+// Helper: call Gemini with retry + model fallback
+// ─────────────────────────────────────────────────────────────
+async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
+  let retries = 4;
+  let delay = 3000;
+  let modelName = "gemini-2.5-flash";
+
+  while (retries > 0) {
+    try {
+      console.log(`[LabelService][${label}] Calling ${modelName}... (retries left: ${retries})`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const response = await model.generateContent(parts);
+      console.log(`[LabelService][${label}] Response received.`);
+      return response.response.text();
+    } catch (error) {
+      const msg = error.message || "";
+      const isQuotaOrDemand =
+        msg.includes("503") ||
+        msg.includes("Service Unavailable") ||
+        msg.includes("429") ||
+        msg.includes("Too Many Requests") ||
+        msg.includes("demand") ||
+        msg.includes("quota");
+
+      if (isQuotaOrDemand && modelName === "gemini-2.5-flash") {
+        console.warn(`[LabelService][${label}] Quota on gemini-2.5-flash — falling back to gemini-2.0-flash...`);
+        modelName = "gemini-2.0-flash";
+        retries--;
+        await new Promise((r) => setTimeout(r, 1000));
+      } else if (isQuotaOrDemand && retries > 1) {
+        console.warn(`[LabelService][${label}] Quota hit — retrying in ${delay}ms...`);
+        retries--;
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.floor(delay * 1.5);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new AppError(`[${label}] Failed after all retries.`, 500);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helper: parse JSON from Gemini response (strip fences)
+// ─────────────────────────────────────────────────────────────
+function parseGeminiJson(raw) {
+  let clean = raw.trim();
+  if (clean.startsWith("```json")) clean = clean.slice(7);
+  if (clean.startsWith("```")) clean = clean.slice(3);
+  if (clean.endsWith("```")) clean = clean.slice(0, -3);
+  return JSON.parse(clean.trim());
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main: verify a medicine/product label
+//
+// Flow:
+//   1. Upload file to Gemini File API
+//   2. AI Call 1 — extract product name + active ingredients
+//   3. DB search globally (all products, no company scope)
+//      → by name first, then by active ingredient overlap
+//   4. AI Call 2 — deep compliance check:
+//        • compare label vs DB data (if found)
+//        • OR use AI's own knowledge (if not found)
+//        • + regulatory requirements for the given country
+// ─────────────────────────────────────────────────────────────
+export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country) => {
   if (!process.env.GEMINI_API_KEY) {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
 
-  // 1. Verify company exists if provided
-  if (companyId) {
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
-    if (!company) {
-      throw new AppError("Target company not found!", 404);
-    }
-  }
-
-  // 2. Write buffer to a temp file in the workspace
-  const extension = path.extname(fileName) || (mimeType === "application/pdf" ? ".pdf" : ".png");
-  const tempFileName = `temp_label_${Date.now()}_${Math.random().toString(36).substring(7)}${extension}`;
+  // Write buffer to temp file
+  const ext = path.extname(fileName) || (mimeType === "application/pdf" ? ".pdf" : ".png");
+  const tempFileName = `temp_label_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
   const tempFilePath = path.join(process.cwd(), tempFileName);
 
-  console.log(`[LabelService] Writing temp file to ${tempFilePath}...`);
+  console.log(`[LabelService] Writing temp file: ${tempFilePath}`);
   fs.writeFileSync(tempFilePath, fileBuffer);
 
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
   let uploadResult = null;
-  let parsedAIResponse = null;
 
   try {
-    // 3. Upload file to Gemini File API
-    console.log(`[LabelService] Uploading file to Gemini File API (MimeType: ${mimeType})...`);
+    // ════════════════════════════════════════════════════════
+    // UPLOAD to Gemini File API
+    // ════════════════════════════════════════════════════════
+    console.log(`[LabelService] Uploading to Gemini File API (${mimeType})...`);
     uploadResult = await fileManager.uploadFile(tempFilePath, {
-      mimeType: mimeType,
+      mimeType,
       displayName: fileName,
     });
-    console.log(`[LabelService] Upload succeeded. File Name: ${uploadResult.file.name}, URI: ${uploadResult.file.uri}`);
+    console.log(`[LabelService] Uploaded: ${uploadResult.file.name}`);
 
-    // 4. Poll for the file to be processed (state ACTIVE)
-    console.log("[LabelService] Polling file state...");
+    // Poll until ACTIVE
     let file = await fileManager.getFile(uploadResult.file.name);
     let attempts = 0;
     while (file.state === "PROCESSING" && attempts < 12) {
-      console.log(`[LabelService] File state is processing. Attempt ${attempts + 1}/12. Waiting 5s...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      console.log(`[LabelService] File processing... attempt ${attempts + 1}/12`);
+      await new Promise((r) => setTimeout(r, 5000));
       file = await fileManager.getFile(uploadResult.file.name);
       attempts++;
     }
-    console.log(`[LabelService] File state is now: ${file.state}`);
-
     if (file.state !== "ACTIVE") {
-      throw new AppError(`File processing failed at Gemini API. State: ${file.state}`, 500);
+      throw new AppError(`Gemini file processing failed. State: ${file.state}`, 500);
     }
+    console.log("[LabelService] File is ACTIVE.");
 
-    // 5. Invoke Gemini model
-    console.log("[LabelService] Invoking Gemini model for label extraction and compliance validation...");
-
-    const prompt = `
-      You are an expert pharmaceutical and veterinary drug regulatory affairs specialist.
-      Analyze the uploaded PDF or image drug/supplement label or leaflet.
-
-      STEP 1: Extract the product information.
-      Extract the following fields from the label/leaflet. If any fields are not explicitly present in the text, you must use your domain knowledge to infer and estimate highly accurate, standard, and professional values for them (except for country of origin, which should be set to null if not explicitly mentioned).
-      The extracted fields are:
-      - name: Exact product name.
-      - category: Product category (e.g. "Antibiotics", "Vitamins", "Feed Additive").
-      - productCode: Product code if available (or null).
-      - description: Description of the product.
-      - indications: Indications, purposes, or benefits.
-      - targetSpecies: List of target species (e.g., ["Broiler", "Sheep", "Cattle"]) if applicable. Array of strings.
-      - physicalForm: Physical form (e.g., "Liquid", "Powder").
-      - appearance: Visual appearance/color.
-      - activeIngredients: Array of active ingredients with concentrations, formatted as objects: [{"name": "L-Lysine", "concentration": "98.5%"}].
-      - dosage: Dosage and administration instructions.
-      - mixingInstructions: Mixing instructions.
-      - withdrawalPeriod: Withdrawal period if applicable.
-      - contraindications: Contraindications or warnings.
-      - userSafety: Array of safety instructions for the user.
-      - storage: Storage conditions.
-      - packaging: Pack size or packaging type.
-      - registrationNumber: Registration or license number.
-      - origin: Country of origin (set to null if not explicitly mentioned).
-      - producer: Producer/manufacturer name.
-      - specifications: Specifications/matrix values (e.g., {"type": "Specification", "values": {"pH": "...", "Assay": "..."}}).
-
-      STEP 2: Regulatory compliance check for target country: "${country}".
-      Assess whether the label meets the regulatory labeling requirements for pharmaceutical, supplement, or veterinary products of the specified target country: "${country}".
-      Check details such as:
-      - Whether required warning statements, language requirements (e.g. bilingual Arabic/English for Gulf countries like Saudi Arabia/SFDA or Egypt/EDA), storage temperature statements, active ingredient labeling, batch/expiry placeholders, and manufacturing details are correct and present.
-      - Identify any non-compliance issues (e.g. missing warnings, wrong language, missing storage temperature specifications, missing drug registration number or warning sections required by that country).
-      - For each issue, provide a clear, actionable solution/fix.
-
-      Return the output ONLY as a valid JSON object matching the schema below.
-      Do not include any chat, markdown code blocks, or explanations outside the JSON object.
-
-      {
-        "extractedDetails": {
-          "name": "string",
-          "category": "string",
-          "productCode": "string or null",
-          "description": "string or null",
-          "indications": "string or null",
-          "targetSpecies": ["string"],
-          "physicalForm": "string or null",
-          "appearance": "string or null",
-          "activeIngredients": [
-            {
-              "name": "string",
-              "concentration": "string"
-            }
-          ],
-          "dosage": "string or null",
-          "mixingInstructions": "string or null",
-          "withdrawalPeriod": "string or null",
-          "contraindications": "string or null",
-          "userSafety": ["string"],
-          "storage": "string or null",
-          "packaging": "string or null",
-          "registrationNumber": "string or null",
-          "origin": "string or null",
-          "producer": "string or null",
-          "specifications": {
-            "type": "string",
-            "values": {
-              "key": "value"
-            }
-          }
-        },
-        "validation": {
-          "compliant": boolean,
-          "results": [
-            {
-              "issue": "string describing the regulatory issue",
-              "solution": "string describing the actionable solution/fix"
-            }
-          ]
-        }
-      }
-    `;
-
-    let resultText = "";
-    let success = false;
-    let retries = 4;
-    let delay = 3000;
-    let currentModelName = "gemini-2.5-flash";
-
-    while (retries > 0 && !success) {
-      try {
-        console.log(`[LabelService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
-        const activeModel = genAI.getGenerativeModel({ model: currentModelName });
-        const response = await activeModel.generateContent([
-          {
-            fileData: {
-              mimeType: uploadResult.file.mimeType,
-              fileUri: uploadResult.file.uri,
-            },
-          },
-          prompt,
-        ]);
-        console.log("[LabelService] Received response from model!");
-        resultText = response.response.text();
-        success = true;
-      } catch (error) {
-        console.warn(`[LabelService] Error during generateContent: ${error.message}`);
-        const errMsg = error.message || "";
-        const isQuotaOrDemand = 
-          errMsg.includes("503") || 
-          errMsg.includes("Service Unavailable") || 
-          errMsg.includes("429") || 
-          errMsg.includes("Too Many Requests") ||
-          errMsg.includes("demand") ||
-          errMsg.includes("quota");
-
-        if (isQuotaOrDemand && currentModelName === "gemini-2.5-flash") {
-          console.warn("[LabelService] High demand/quota error detected on gemini-2.5-flash. Falling back to gemini-2.0-flash...");
-          currentModelName = "gemini-2.0-flash";
-          retries--;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } else if (isQuotaOrDemand) {
-          console.warn(`[LabelService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
-          retries--;
-          if (retries === 0) throw error;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= 1.5;
-        } else {
-          console.error("[LabelService] Non-quota error, throwing immediately.");
-          throw error;
-        }
-      }
-    }
-
-    // Clean up Gemini Markdown formatting if returned
-    let cleanJson = resultText.trim();
-    if (cleanJson.startsWith("```json")) {
-      cleanJson = cleanJson.substring(7);
-    }
-    if (cleanJson.endsWith("```")) {
-      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-    }
-    cleanJson = cleanJson.trim();
-
-    parsedAIResponse = JSON.parse(cleanJson);
-  } catch (error) {
-    throw new AppError(`Failed to verify label: ${error.message}`, 500);
-  } finally {
-    // 6. Clean up files
-    // Delete local temp file
-    if (fs.existsSync(tempFilePath)) {
-      try {
-        fs.unlinkSync(tempFilePath);
-      } catch (_) {}
-    }
-    // Delete file on Gemini API storage
-    if (uploadResult && uploadResult.file) {
-      try {
-        await fileManager.deleteFile(uploadResult.file.name);
-      } catch (_) {}
-    }
-  }
-
-  // 7. Check database if the product name already exists (scope to companyId if provided, otherwise search globally)
-  const productName = parsedAIResponse.extractedDetails.name || "";
-  let existingProduct = null;
-  if (productName.trim()) {
-    const whereClause = {
-      name: {
-        equals: productName.trim(),
-        mode: "insensitive",
+    const fileRef = {
+      fileData: {
+        mimeType: uploadResult.file.mimeType,
+        fileUri: uploadResult.file.uri,
       },
     };
-    if (companyId) {
-      whereClause.companyId = companyId;
-    }
-    existingProduct = await prisma.product.findFirst({
-      where: whereClause,
-      include: {
-        category: true,
-      },
-    });
 
-    // Strip companyId if it was not provided (meaning query is external/global)
-    if (existingProduct && !companyId) {
-      delete existingProduct.companyId;
+    // ════════════════════════════════════════════════════════
+    // STEP 1 — AI: Extract product identity (name + ingredients)
+    // ════════════════════════════════════════════════════════
+    console.log("[LabelService] STEP 1: Extracting product identity...");
+
+    const step1Prompt = `
+You are an expert pharmaceutical and veterinary regulatory specialist.
+Analyze this label/leaflet and extract ONLY the product identity fields.
+
+Return ONLY a valid JSON object — no markdown, no explanation:
+{
+  "name": "exact product name as written on the label",
+  "activeIngredients": [
+    { "name": "ingredient name", "concentration": "value with unit" }
+  ]
+}
+    `.trim();
+
+    const step1Raw = await callGeminiWithRetry(genAI, [fileRef, step1Prompt], "Step1-Identity");
+    const identity = parseGeminiJson(step1Raw);
+
+    const extractedName = (identity.name || "").trim();
+    const extractedIngredients = Array.isArray(identity.activeIngredients)
+      ? identity.activeIngredients
+      : [];
+
+    console.log(
+      `[LabelService] Extracted: "${extractedName}", ${extractedIngredients.length} ingredient(s)`
+    );
+
+    // ════════════════════════════════════════════════════════
+    // STEP 2 — DB: Global search (no company scope)
+    //   Priority 1: exact name match (case-insensitive)
+    //   Priority 2: any product sharing an active ingredient name
+    // ════════════════════════════════════════════════════════
+    console.log("[LabelService] STEP 2: Searching DB globally...");
+
+    let dbProduct = null;
+    let isExactMatch = false;
+
+    if (extractedName) {
+      dbProduct = await prisma.product.findFirst({
+        where: { name: { equals: extractedName, mode: "insensitive" } },
+        include: { category: true, brand: true },
+      });
+      if (dbProduct) {
+        console.log(`[LabelService] Found by name: "${dbProduct.name}"`);
+        isExactMatch = true;
+      }
+    }
+
+    if (!dbProduct && extractedIngredients.length > 0) {
+      const ingredientNames = extractedIngredients.map((i) =>
+        (i.name || "").toLowerCase()
+      );
+
+      const candidates = await prisma.product.findMany({
+        where: { activeIngredients: { not: null } },
+        include: { category: true, brand: true },
+      });
+
+      dbProduct =
+        candidates.find((p) => {
+          if (!Array.isArray(p.activeIngredients)) return false;
+          return p.activeIngredients.some((ing) =>
+            ingredientNames.includes((ing.name || "").toLowerCase())
+          );
+        }) || null;
+
+      if (dbProduct) {
+        console.log(`[LabelService] Found by ingredient match: "${dbProduct.name}"`);
+        isExactMatch = false;
+      }
+    }
+
+    const foundInDb = !!dbProduct;
+    console.log(`[LabelService] DB result: ${foundInDb ? `"${dbProduct.name}" (Exact: ${isExactMatch})` : "Not found"}`);
+
+    // ════════════════════════════════════════════════════════
+    // STEP 3 — AI: Deep compliance check
+    // ════════════════════════════════════════════════════════
+    console.log("[LabelService] STEP 3: Deep compliance check...");
+
+    // Build DB context section for the prompt
+    let dbContext = "";
+    if (foundInDb) {
+      if (isExactMatch) {
+        dbContext = `
+=== PRODUCT FOUND IN DATABASE (EXACT MATCH BY NAME) ===
+Use this reference data for direct comparison with the label. Since this is the exact same product, flag any discrepancies in name, ingredients, concentration, dosage, target species, etc., as errors:
+
+Name (DB):               ${dbProduct.name}
+Category:                ${dbProduct.category?.name || "N/A"}
+Active Ingredients (DB): ${JSON.stringify(dbProduct.activeIngredients || [], null, 2)}
+Dosage (DB):             ${dbProduct.dosage || "N/A"}
+Physical Form (DB):      ${dbProduct.physicalForm || "N/A"}
+Appearance (DB):         ${dbProduct.appearance || "N/A"}
+Target Species (DB):     ${JSON.stringify(dbProduct.targetSpecies || [])}
+Storage (DB):            ${dbProduct.storage || "N/A"}
+Withdrawal Period (DB):  ${dbProduct.withdrawalPeriod || "N/A"}
+Packaging (DB):          ${dbProduct.packaging || "N/A"}
+Registration No (DB):    ${dbProduct.registrationNumber || "N/A"}
+Producer (DB):           ${dbProduct.producer || "N/A"}
+Specifications (DB):     ${JSON.stringify(dbProduct.specifications || {})}
+
+Flag any discrepancies between the label and the DB data above.`;
+      } else {
+        dbContext = `
+=== ALTERNATIVE PRODUCT FOUND IN DATABASE (SAME ACTIVE INGREDIENTS, DIFFERENT NAME) ===
+We found a product in the database that shares one or more active ingredients with the label, but it has a different name (it is an alternative or generic product).
+Name of Alternative Product (DB): ${dbProduct.name}
+Category:                          ${dbProduct.category?.name || "N/A"}
+Active Ingredients (DB):           ${JSON.stringify(dbProduct.activeIngredients || [], null, 2)}
+Dosage (DB):                       ${dbProduct.dosage || "N/A"}
+Physical Form (DB):                ${dbProduct.physicalForm || "N/A"}
+Appearance (DB):                   ${dbProduct.appearance || "N/A"}
+Target Species (DB):               ${JSON.stringify(dbProduct.targetSpecies || [])}
+Storage (DB):                      ${dbProduct.storage || "N/A"}
+Withdrawal Period (DB):            ${dbProduct.withdrawalPeriod || "N/A"}
+Specifications (DB):               ${JSON.stringify(dbProduct.specifications || {})}
+
+IMPORTANT instructions for alternative product reference:
+- Do NOT flag the product name difference as an error (the label has a different brand name, which is expected for alternative products).
+- Use this alternative product's active ingredients, concentrations, dosage, species, withdrawal, etc., as a scientific/technical reference to verify if the label's active ingredients and specifications are scientifically reasonable or if they have major/suspicious differences.`;
+      }
+    } else {
+      dbContext = `
+=== PRODUCT NOT FOUND IN DATABASE ===
+This product is not in our system. Use your expert pharmaceutical/veterinary knowledge to:
+- Identify the product type and its standard formulation.
+- Check whether the stated concentrations are scientifically correct.
+- Flag incorrect units, impossible concentrations, or missing standard ingredients.`;
+    }
+
+    const step3Prompt = `
+You are an expert pharmaceutical and veterinary regulatory affairs specialist.
+
+Analyze the uploaded product label/leaflet carefully.
+${dbContext}
+
+=== REGULATORY COMPLIANCE CHECK FOR: "${country}" ===
+
+Perform a thorough check covering these areas:
+
+1. LABEL vs DATABASE DISCREPANCIES (ONLY if a matching product or alternative product is found in the database):
+   - Compare the label content against the database product details provided.
+   - If the database product is an exact match by name, flag any spelling, concentration, dosage, species, or storage mismatch as errors.
+   - If the database product is an ALTERNATIVE product (different name, same active ingredients), do NOT flag the name difference as an error. Compare the concentrations, dosages, and active ingredients to ensure consistency or scientific correctness.
+
+2. TECHNICAL ACCURACY (CRITICAL: If the product is NOT found in the database at all, you must evaluate the product entirely based on your own expert pharmaceutical and veterinary knowledge):
+   - Assess if the active ingredients, their concentrations, and combinations are scientifically valid and standard.
+   - Check if units are appropriate and consistent (e.g., g/kg, mg/ml).
+   - Verify if dosage and administration instructions are clinically sound for the target species.
+   - Flag any impossible, dangerous, or highly suspicious values/formulations.
+
+3. REGULATORY REQUIREMENTS for "${country}" (CRITICAL: You MUST check this in ALL cases, whether the product is in the database or not):
+   - Verify compliance against "${country}" drug authority guidelines.
+   - Check for mandatory warning statements and safety sections.
+   - Verify language requirements (e.g., bilingual Arabic/English for Saudi Arabia SFDA, Egypt EDA/NODCAR, UAE MoHAP).
+   - Ensure presence of mandatory fields: batch number, manufacturing date, expiry date, storage conditions/temperature, manufacturer/producer details, and drug registration/license number.
+   - Flag any missing mandatory information or format violations according to the regulations of "${country}".
+
+For EACH issue found, provide:
+- category: one of "db_mismatch", "technical_error", or "regulatory"
+- issue: clear description of the problem
+- location: where on the label (e.g. "Active ingredients section", "Front panel") or null
+- solution: specific and actionable fix
+
+Return ONLY a valid JSON object — no markdown, no explanation:
+{
+  "extractedDetails": {
+    "name": "string",
+    "category": "string or null",
+    "productCode": "string or null",
+    "description": "string or null",
+    "indications": "string or null",
+    "targetSpecies": ["string"],
+    "physicalForm": "string or null",
+    "appearance": "string or null",
+    "activeIngredients": [{ "name": "string", "concentration": "string" }],
+    "dosage": "string or null",
+    "mixingInstructions": "string or null",
+    "withdrawalPeriod": "string or null",
+    "contraindications": "string or null",
+    "userSafety": ["string"],
+    "storage": "string or null",
+    "packaging": "string or null",
+    "registrationNumber": "string or null",
+    "origin": "string or null",
+    "producer": "string or null",
+    "specifications": { "type": "string", "values": {} }
+  },
+  "validation": {
+    "compliant": false,
+    "checkedAgainstDb": ${foundInDb},
+    "dbProductName": ${foundInDb ? `"${dbProduct.name}"` : "null"},
+    "results": [
+      {
+        "category": "db_mismatch | technical_error | regulatory",
+        "issue": "string",
+        "location": "string or null",
+        "solution": "string"
+      }
+    ]
+  }
+}
+    `.trim();
+
+    const step3Raw = await callGeminiWithRetry(genAI, [fileRef, step3Prompt], "Step3-Compliance");
+    const complianceResult = parseGeminiJson(step3Raw);
+
+    // ════════════════════════════════════════════════════════
+    // Build final response — strip sensitive fields
+    // ════════════════════════════════════════════════════════
+    let safeDbProduct = null;
+    if (dbProduct) {
+      // eslint-disable-next-line no-unused-vars
+      const { password, companyId, ...rest } = dbProduct;
+      safeDbProduct = rest;
+    }
+
+    return {
+      product: {
+        extractedDetails: complianceResult.extractedDetails,
+        existsInDb: foundInDb,
+        isExactMatch: foundInDb ? isExactMatch : false,
+        dbProduct: safeDbProduct,
+      },
+      validation: {
+        compliant: complianceResult.validation?.compliant ?? false,
+        checkedAgainstDb: foundInDb,
+        isExactMatch: foundInDb ? isExactMatch : false,
+        dbProductName: foundInDb ? dbProduct.name : null,
+        country,
+        results: complianceResult.validation?.results || [],
+      },
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`Failed to verify label: ${error.message}`, 500);
+  } finally {
+    // Cleanup local temp file
+    if (fs.existsSync(tempFilePath)) {
+      try { fs.unlinkSync(tempFilePath); } catch (_) {}
+    }
+    // Cleanup Gemini File API storage
+    if (uploadResult?.file) {
+      try { await fileManager.deleteFile(uploadResult.file.name); } catch (_) {}
     }
   }
-
-  return {
-    product: {
-      extractedDetails: parsedAIResponse.extractedDetails,
-      existsInDb: !!existingProduct,
-      dbProduct: existingProduct,
-    },
-    validation: {
-      compliant: parsedAIResponse.validation.compliant,
-      country: country,
-      results: parsedAIResponse.validation.results || [],
-    },
-  };
 };

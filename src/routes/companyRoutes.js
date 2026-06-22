@@ -7,8 +7,7 @@ import {
   deleteCompany,
 } from "../controllers/companyController.js";
 import { uploadCatalog } from "../controllers/catalogController.js";
-import { verifyLabel } from "../controllers/labelController.js";
-import { upload, uploadLabel } from "../middleware/uploadMiddleware.js";
+import { upload } from "../middleware/uploadMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import {
   createCompanySchema,
@@ -16,7 +15,6 @@ import {
   getCompanyByIdSchema,
   deleteCompanySchema,
 } from "../validators/companyValidator.js";
-import { verifyLabelSchema } from "../validators/labelValidator.js";
 
 import { protect } from "../middleware/authMiddleware.js";
 import { companyLogin } from "../controllers/authController.js";
@@ -46,14 +44,6 @@ router.post(
   "/:companyId/products/upload-catalog",
   upload.single("catalog"),
   uploadCatalog
-);
-
-// PDF or image Label AI verification and compliance route
-router.post(
-  "/:companyId/products/verify-label",
-  uploadLabel.single("label"),
-  validate(verifyLabelSchema),
-  verifyLabel
 );
 
 export default router;

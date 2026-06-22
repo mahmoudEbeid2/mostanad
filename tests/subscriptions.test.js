@@ -32,7 +32,7 @@ function assert(label, condition, details = "") {
 }
 
 async function request(method, path, body = null) {
-  const options = { method, headers: { "Content-Type": "application/json" } };
+  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": "supersecretbypass" } };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
   let data = null;

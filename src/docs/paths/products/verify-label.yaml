@@ -2,7 +2,7 @@ post:
   tags:
     - Label Verification
   summary: General PDF or image drug label compliance verification
-  description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, optionally check the database for a matching product under the optional `companyId` (or globally if omitted), and return the combined analysis.
+  description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini, search the database globally (by exact name or active ingredient overlap) for matching/alternative products, verify compliance against the target country's drug regulatory requirements, and return the combined analysis.
   requestBody:
     required: true
     content:
@@ -47,6 +47,9 @@ post:
                       existsInDb:
                         type: boolean
                         example: true
+                      isExactMatch:
+                        type: boolean
+                        example: true
                       dbProduct:
                         type: object
                         nullable: true
@@ -57,6 +60,16 @@ post:
                       compliant:
                         type: boolean
                         example: false
+                      checkedAgainstDb:
+                        type: boolean
+                        example: true
+                      isExactMatch:
+                        type: boolean
+                        example: true
+                      dbProductName:
+                        type: string
+                        nullable: true
+                        example: "H-Viral"
                       country:
                         type: string
                         example: "Saudi Arabia"
@@ -65,9 +78,16 @@ post:
                         items:
                           type: object
                           properties:
+                            category:
+                              type: string
+                              example: "regulatory"
                             issue:
                               type: string
                               example: "Missing bilingual Arabic/English warnings"
+                            location:
+                              type: string
+                              nullable: true
+                              example: "Active ingredients section"
                             solution:
                               type: string
                               example: "Translate all safety warning paragraphs into Arabic"
