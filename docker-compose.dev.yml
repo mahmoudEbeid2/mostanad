@@ -1,0 +1,60 @@
+services:
+  mostanad-app:
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./swagger.js:/app/swagger.js
+      - ./uploads:/app/uploads
+
+  catalog-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  label-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  certificate-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  email-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  pgweb:
+    image: sosedoff/pgweb
+    container_name: pgweb
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - PGWEB_AUTH_USER=${PGWEB_AUTH_USER}
+      - PGWEB_AUTH_PASS=${PGWEB_AUTH_PASS}
+    depends_on:
+      postgres:
+        condition: service_healthy

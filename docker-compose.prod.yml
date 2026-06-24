@@ -1,0 +1,33 @@
+services:
+  mostanad-app:
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  catalog-worker:
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  label-worker:
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  certificate-worker:
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  email-worker:
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  postgres:
+    restart: always
+
+  redis:
+    restart: always
