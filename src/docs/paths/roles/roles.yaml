@@ -1,0 +1,46 @@
+get:
+  tags:
+    - Roles
+  summary: Get all roles
+  description: Retrieve a list of all roles. Supports pagination, searching, and sorting.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+  security:
+    - BearerAuth: []
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/RolesListResponse'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Roles
+  summary: Create a new role
+  description: Add a new role to the system, optionally associating it with permission IDs or slugs.
+  security:
+    - BearerAuth: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/CreateRoleBody'
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/RoleResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

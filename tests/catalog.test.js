@@ -73,10 +73,10 @@ async function run() {
   // 1. UPLOAD CATALOG - Validation: no file
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 1: POST /companies/:id/products/upload-catalog — Missing File", "bold");
+  log("📋 TEST 1: POST /products/upload-catalog — Missing File", "bold");
   {
     const form = new FormData();
-    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/products/upload-catalog`, {
+    const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=${testCompanyId}`, {
       method: "POST",
       headers: { "x-test-bypass": "supersecretbypass" },
       body: form,
@@ -95,7 +95,7 @@ async function run() {
   // 2. UPLOAD CATALOG - Validation: nonexistent company
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 2: POST /companies/:id/products/upload-catalog — Nonexistent Company", "bold");
+  log("📋 TEST 2: POST /products/upload-catalog — Nonexistent Company", "bold");
   {
     const testPdfPath = "D:/gemini_test/Addvet Feed Catalogue 2025.pdf";
     if (!fs.existsSync(testPdfPath)) {
@@ -106,7 +106,7 @@ async function run() {
       const blob = new Blob([fileBuffer], { type: "application/pdf" });
       form.append("catalog", blob, "Addvet Feed Catalogue 2025.pdf");
 
-      const res = await fetch(`${BASE_URL}/companies/00000000-0000-0000-0000-000000000000/products/upload-catalog`, {
+      const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=00000000-0000-0000-0000-000000000000`, {
         method: "POST",
         headers: { "x-test-bypass": "supersecretbypass" },
         body: form,
@@ -126,7 +126,7 @@ async function run() {
   // 3. UPLOAD CATALOG - Success (using Gemini 2.5 Flash)
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 3: POST /companies/:id/products/upload-catalog — Successful PDF Catalog Process", "bold");
+  log("📋 TEST 3: POST /products/upload-catalog — Successful PDF Catalog Process", "bold");
   const testPdfPath = "D:/gemini_test/Addvet Feed Catalogue 2025.pdf";
   if (!fs.existsSync(testPdfPath)) {
     log(`  ⚠️ Cannot run integration upload test: Local PDF not found at ${testPdfPath}`, "red");
@@ -138,7 +138,7 @@ async function run() {
     form.append("catalog", blob, "Addvet Feed Catalogue 2025.pdf");
 
     const startTime = Date.now();
-    const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/products/upload-catalog`, {
+    const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=${testCompanyId}`, {
       method: "POST",
       headers: { "x-test-bypass": "supersecretbypass" },
       body: form,
@@ -150,14 +150,34 @@ async function run() {
 
     log(`⏱️ Request completed in ${duration} seconds.`, "cyan");
 
-    assert("Status is 201", status === 201, `Got ${status}. Response: ${JSON.stringify(data)}`);
-    assert("Status is 'success'", data?.status === "success", JSON.stringify(data));
-    assert("Contains summary results", !!data?.data?.totalProductsExtracted, JSON.stringify(data?.data));
+    assert("Status is 202", status === 202, `Got ${status}. Response: ${JSON.stringify(data)}`);
+    assert("Status is 'accepted'", data?.status === "accepted", JSON.stringify(data));
+    assert("Contains jobId", !!data?.data?.jobId, JSON.stringify(data?.data));
     
-    if (status === 201 && data?.data) {
-      log(`  Extracted ${data.data.totalProductsExtracted} products!`, "green");
-      log(`  Categories Created: ${data.data.categoriesCreated}`, "green");
-      log(`  Categories Reused: ${data.data.categoriesReused}`, "green");
+    if (status === 202 && data?.data?.jobId) {
+      const jobId = data.data.jobId;
+      log(`⏳ Polling task status for job: ${jobId}`, "cyan");
+      
+      let task = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
+          headers: { "x-test-bypass": "supersecretbypass" }
+        });
+        const checkData = await checkRes.json();
+        task = checkData?.data;
+        if (task && (task.status === "completed" || task.status === "failed")) {
+          break;
+        }
+      }
+
+      assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+      
+      if (task?.status === "completed" && task.result) {
+        const result = task.result;
+        log(`  Extracted ${result.totalProductsExtracted} products!`, "green");
+        log(`  Categories Created: ${result.categoriesCreated}`, "green");
+        log(`  Categories Reused: ${result.categoriesReused}`, "green");
 
       // Verify records in DB
       const dbProducts = await prisma.product.findMany({
@@ -183,6 +203,8 @@ async function run() {
       }
     }
   }
+}
+
 
   // ─────────────────────────────────────────────────────
   // CLEAN UP

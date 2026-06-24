@@ -16,8 +16,14 @@ servers:
 tags:
   - name: Users
     description: Internal system user management
+  - name: Roles
+    description: Role & permission management
   - name: Companies
     description: Company account management
+  - name: Brands
+    description: Product brands management
+  - name: Dashboard
+    description: Administrative system dashboard metrics
   - name: Plans
     description: SaaS Subscription Plan management
   - name: Products
@@ -42,18 +48,26 @@ paths:
     $ref: './paths/users/users.yaml'
   /users/{id}:
     $ref: './paths/users/users-id.yaml'
+  /roles:
+    $ref: './paths/roles/roles.yaml'
+  /roles/{id}:
+    $ref: './paths/roles/roles-id.yaml'
   /companies:
     $ref: './paths/companies/companies.yaml'
   /companies/{id}:
     $ref: './paths/companies/companies-id.yaml'
   /companies/login:
     $ref: './paths/companies/login.yaml'
-  /companies/{companyId}/products/upload-catalog:
-    $ref: './paths/companies/catalog.yaml'
-  /companies/{companyId}/products/verify-label:
-    $ref: './paths/companies/verify-label.yaml'
-  /companies/{companyId}/products:
+  /brands:
+    $ref: './paths/brands/brands.yaml'
+  /brands/{id}:
+    $ref: './paths/brands/brands-id.yaml'
+  /dashboard/stats:
+    $ref: './paths/dashboard/dashboard.yaml'
+  /products:
     $ref: './paths/products/products.yaml'
+  /products/upload-catalog:
+    $ref: './paths/products/catalog.yaml'
   /products/verify-label:
     $ref: './paths/products/verify-label.yaml'
   /products/{id}:

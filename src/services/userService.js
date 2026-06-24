@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
 import { excludeFields } from "../utils/helpers.js";
+import { addEmailJob } from "../lib/queue.js";
 
 // Helper to exclude password from user object
 const excludePassword = (user) => excludeFields(user, ["password"]);
@@ -29,6 +30,15 @@ export const createUser = async (userData) => {
 
   const newUser = await prisma.user.create({
     data: { name, email, username, password: hashedPassword, phone },
+  });
+
+  // Queue welcome email task in the background
+  addEmailJob({
+    type: "welcome",
+    to: email,
+    data: { name, username, password },
+  }).catch((err) => {
+    console.error(`[UserService] Failed to queue welcome email for ${email}:`, err.message);
   });
 
   return excludePassword(newUser);

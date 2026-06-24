@@ -9,13 +9,14 @@ import {
 
 // 1. CREATE PRODUCT
 export const createProduct = catchAsync(async (req, res, next) => {
-  const product = await createProductService(req.params.companyId, req.body);
+  const { companyId, ...productData } = req.body;
+  const product = await createProductService(companyId, productData);
   res.status(201).json({ status: "success", data: { product } });
 });
 
-// 2. GET ALL PRODUCTS (scoped to company)
+// 2. GET ALL PRODUCTS (global with query filters)
 export const getAllProducts = catchAsync(async (req, res, next) => {
-  const { meta, products } = await getAllProductsService(req.params.companyId, req.query);
+  const { meta, products } = await getAllProductsService(req.query);
   res.status(200).json({ status: "success", meta, data: { products } });
 });
 

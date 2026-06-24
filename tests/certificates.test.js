@@ -223,10 +223,29 @@ async function run() {
     let data = null;
     try { data = await res.json(); } catch (_) {}
 
-    assert("Status is 200", status === 200, `Got ${status}`);
-    assert("Status is 'success'", data?.status === "success", JSON.stringify(data));
+    assert("Status is 202", status === 202, `Got ${status}`);
+    assert("Status is 'accepted'", data?.status === "accepted", JSON.stringify(data));
     
-    const results = data?.data;
+    let results = null;
+    if (status === 202 && data?.data?.jobId) {
+      const jobId = data.data.jobId;
+      log(`   [Test] Polling task status for job: ${jobId}`, "cyan");
+      let task = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
+          headers: { "x-test-bypass": "supersecretbypass" }
+        });
+        const checkData = await checkRes.json();
+        task = checkData?.data;
+        if (task && (task.status === "completed" || task.status === "failed")) {
+          break;
+        }
+      }
+      assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+      results = task?.result;
+    }
+
     assert("Has products array", Array.isArray(results?.products), JSON.stringify(results));
     assert("Extracted products contains H-VIRAL", results?.products?.some(p => p.name.toUpperCase().includes("H-VIRAL")), JSON.stringify(results?.products));
     assert("H-VIRAL exists in DB", results?.products?.find(p => p.name.toUpperCase().includes("H-VIRAL"))?.existsInDb === true, JSON.stringify(results?.products));

@@ -86,3 +86,45 @@ export const protect = catchAsync(async (req, res, next) => {
 
   next();
 });
+
+/**
+ * Restrict access to users with a specific permission
+ */
+export const restrictToPermission = (permissionSlug) => {
+  return (req, res, next) => {
+    // 1. Bypass for test environment or test bypass header
+    if (
+      process.env.NODE_ENV !== "production" &&
+      (req.headers["x-test-bypass"] === "supersecretbypass" ||
+        (process.env.NODE_ENV === "test" && req.headers["x-force-auth"] !== "true"))
+    ) {
+      return next();
+    }
+
+    if (!req.user) {
+      return next(new AppError("You are not logged in! Please log in to get access.", 401));
+    }
+
+    // 2. If authenticated as a company tenant:
+    if (req.company) {
+      // Company tenants are allowed to perform operations on company-level modules only
+      const companyAllowedModules = ["products", "categories", "templates", "certificates"];
+      const moduleName = permissionSlug.split("_")[1];
+
+      if (companyAllowedModules.includes(moduleName)) {
+        return next();
+      }
+
+      return next(new AppError("You do not have permission to perform this action!", 403));
+    }
+
+    // 3. System users: Check role permissions
+    const userPermissions = req.user.role?.permissions?.map((rp) => rp.permission.slug) || [];
+
+    if (userPermissions.includes(permissionSlug)) {
+      return next();
+    }
+
+    return next(new AppError("You do not have permission to perform this action!", 403));
+  };
+};

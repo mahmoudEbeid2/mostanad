@@ -1,0 +1,91 @@
+get:
+  tags:
+    - Roles
+  summary: Get a role by ID
+  description: Retrieve detailed information about a specific role, including its associated permissions.
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: UUID of the role to retrieve
+      schema:
+        type: string
+        format: uuid
+      example: "da688042-3c7e-4537-8b88-6c060d0cdf7a"
+  security:
+    - BearerAuth: []
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/RoleResponse'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Roles
+  summary: Update a role by ID
+  description: Update a role's name, description, and permissions.
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: UUID of the role to update
+      schema:
+        type: string
+        format: uuid
+      example: "da688042-3c7e-4537-8b88-6c060d0cdf7a"
+  security:
+    - BearerAuth: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/components.yaml#/components/schemas/UpdateRoleBody'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/RoleResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Roles
+  summary: Delete a role by ID
+  description: Remove a role from the system. Associated RolePermission linkages will be cascades-deleted automatically.
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: UUID of the role to delete
+      schema:
+        type: string
+        format: uuid
+      example: "da688042-3c7e-4537-8b88-6c060d0cdf7a"
+  security:
+    - BearerAuth: []
+  responses:
+    '204':
+      description: Role successfully deleted
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

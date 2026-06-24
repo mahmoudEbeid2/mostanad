@@ -11,10 +11,8 @@ const specificationsSchema = z.object({
 });
 
 export const createProductSchema = {
-  params: z.object({
-    companyId: z.string().uuid("Invalid company ID format"),
-  }),
   body: z.object({
+    companyId: z.string({ required_error: "Company ID is required" }).uuid("Invalid company ID format"),
     name: z
       .string({ required_error: "Product name is required" })
       .min(2, "Product name must be at least 2 characters"),

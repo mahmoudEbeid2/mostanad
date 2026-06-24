@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import routes from "./routes/index.js";
 import globalErrorHandler from "./middleware/errorMiddleware.js";
 import AppError from "./utils/appError.js";
@@ -7,6 +8,9 @@ const app = express();
 
 // Middleware to parse JSON bodies
 app.use(express.json());
+
+// Serve static uploaded files
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Use the defined routes
 app.use("/api/v1", routes);

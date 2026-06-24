@@ -20,7 +20,7 @@ export const createCompanySchema = {
     email: z.string().email("Invalid email format").optional().nullable(),
     phone: z.string().optional().nullable(),
     address: z.string().optional().nullable(),
-    logoUrl: z.string().url("Invalid URL format").optional().nullable(),
+    logoUrl: z.string().optional().nullable(),
   }),
 };
 
@@ -40,7 +40,7 @@ export const updateCompanySchema = {
     email: z.string().email("Invalid email format").optional().nullable(),
     phone: z.string().optional().nullable(),
     address: z.string().optional().nullable(),
-    logoUrl: z.string().url("Invalid URL format").optional().nullable(),
+    logoUrl: z.string().optional().nullable(),
     isActive: z.boolean().optional(),
   }),
 };

@@ -1,5 +1,5 @@
 # Dependencies
-node_modules/
+# node_modules/ (we want to copy local node_modules to avoid docker build network errors)
 
 # Logs
 logs/

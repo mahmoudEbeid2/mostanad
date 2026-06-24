@@ -1,0 +1,54 @@
+get:
+  tags:
+    - Brands
+  summary: Get all brands
+  description: Retrieve a paginated list of all brands. Supports filtering by companyId, searching, and sorting.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+    - $ref: '../../components/components.yaml#/components/parameters/BrandCompanyIdQuery'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/BrandsListResponse'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Brands
+  summary: Create a new brand
+  description: Create a new brand associated with a company. Supports uploading a brand logo image.
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required:
+            - name
+            - companyId
+          properties:
+            name:
+              type: string
+              minLength: 2
+              maxLength: 100
+              example: "Araby Feed"
+            companyId:
+              type: string
+              format: uuid
+              example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+            logo:
+              type: string
+              format: binary
+              description: Brand logo image file (PNG, JPEG, WebP)
+  responses:
+    '201':
+      $ref: '../../components/components.yaml#/components/responses/BrandResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

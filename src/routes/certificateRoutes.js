@@ -6,13 +6,14 @@ import {
 import { validate } from "../middleware/validateMiddleware.js";
 import { generateCertificatesSchema } from "../validators/certificateValidator.js";
 import { uploadLabel } from "../middleware/uploadMiddleware.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // General endpoint specifying companyId in URL path
 router.post(
   "/companies/:companyId/certificates/generate",
+  restrictToPermission("create_certificates"),
   uploadLabel.single("invoice"),
   validate(generateCertificatesSchema),
   generateCertificates
@@ -22,6 +23,7 @@ router.post(
 router.post(
   "/certificates/generate",
   protect,
+  restrictToPermission("create_certificates"),
   uploadLabel.single("invoice"),
   validate(generateCertificatesSchema),
   generateCertificatesForCompanyToken

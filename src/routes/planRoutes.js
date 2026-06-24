@@ -7,6 +7,7 @@ import {
   deletePlan,
 } from "../controllers/planController.js";
 import { validate } from "../middleware/validateMiddleware.js";
+import { restrictToPermission } from "../middleware/authMiddleware.js";
 import {
   createPlanSchema,
   updatePlanSchema,
@@ -18,13 +19,13 @@ const router = express.Router();
 
 router
   .route("/")
-  .post(validate(createPlanSchema), createPlan)
-  .get(getAllPlans);
+  .post(restrictToPermission("create_plans"), validate(createPlanSchema), createPlan)
+  .get(restrictToPermission("read_plans"), getAllPlans);
 
 router
   .route("/:id")
-  .get(validate(getPlanByIdSchema), getPlanById)
-  .patch(validate(updatePlanSchema), updatePlan)
-  .delete(validate(deletePlanSchema), deletePlan);
+  .get(restrictToPermission("read_plans"), validate(getPlanByIdSchema), getPlanById)
+  .patch(restrictToPermission("update_plans"), validate(updatePlanSchema), updatePlan)
+  .delete(restrictToPermission("delete_plans"), validate(deletePlanSchema), deletePlan);
 
 export default router;

@@ -63,6 +63,7 @@ async function run() {
 
   // 1. Setup Test User in database
   log("⚙️  Creating test user...", "cyan");
+  const adminRole = await prisma.role.findFirst({ where: { name: "Admin" } });
   const hashedPassword = await bcrypt.hash(testPassword, 12);
   const user = await prisma.user.create({
     data: {
@@ -70,7 +71,8 @@ async function run() {
       username: testUsername,
       email: testEmail,
       password: hashedPassword,
-      isActive: true
+      isActive: true,
+      roleId: adminRole ? adminRole.id : null
     }
   });
   testUserId = user.id;

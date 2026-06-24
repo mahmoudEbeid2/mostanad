@@ -49,13 +49,15 @@ export const createProduct = async (companyId, data) => {
 };
 
 /**
- * Get all products scoped to a company with filtering, sorting, search, pagination
+ * Get all products with filtering, sorting, search, pagination
  */
-export const getAllProducts = async (companyId, queryString) => {
-  // Verify company exists
-  const companyExists = await prisma.company.findUnique({ where: { id: companyId } });
-  if (!companyExists) {
-    throw new AppError("Target company not found!", 404);
+export const getAllProducts = async (queryString) => {
+  // Verify company exists if companyId provided in query string
+  if (queryString?.companyId) {
+    const companyExists = await prisma.company.findUnique({ where: { id: queryString.companyId } });
+    if (!companyExists) {
+      throw new AppError("Target company not found!", 404);
+    }
   }
 
   const features = new PrismaFeatures(prisma.product, queryString)
@@ -64,8 +66,6 @@ export const getAllProducts = async (companyId, queryString) => {
     .sort()
     .paginate();
 
-  // Enforce company scoping and include category details
-  features.queryOptions.where.companyId = companyId;
   features.queryOptions.include = { category: true, brand: true };
 
   const result = await features.exec();

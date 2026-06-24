@@ -13,8 +13,14 @@ servers:
 tags:
   - name: Users
     description: Internal system user management
+  - name: Roles
+    description: Role & permission management
   - name: Companies
     description: Company account management
+  - name: Brands
+    description: Product brands management
+  - name: Dashboard
+    description: Administrative system dashboard metrics
   - name: Plans
     description: SaaS Subscription Plan management
   - name: Products
@@ -159,6 +165,142 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /roles:
+    get:
+      tags:
+        - Roles
+      summary: Get all roles
+      description: Retrieve a list of all roles. Supports pagination, searching, and sorting.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/RolesListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Roles
+      summary: Create a new role
+      description: Add a new role to the system, optionally associating it with permission IDs or slugs.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/RoleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /roles/{id}:
+    get:
+      tags:
+        - Roles
+      summary: Get a role by ID
+      description: Retrieve detailed information about a specific role, including its associated permissions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the role to retrieve
+          schema:
+            type: string
+            format: uuid
+          example: da688042-3c7e-4537-8b88-6c060d0cdf7a
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/RoleResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Roles
+      summary: Update a role by ID
+      description: Update a role's name, description, and permissions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the role to update
+          schema:
+            type: string
+            format: uuid
+          example: da688042-3c7e-4537-8b88-6c060d0cdf7a
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/RoleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Roles
+      summary: Delete a role by ID
+      description: Remove a role from the system. Associated RolePermission linkages will be cascades-deleted automatically.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the role to delete
+          schema:
+            type: string
+            format: uuid
+          example: da688042-3c7e-4537-8b88-6c060d0cdf7a
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Role successfully deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
   /companies:
     get:
       tags:
@@ -279,21 +421,232 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
-  /companies/{companyId}/products/upload-catalog:
+  /brands:
+    get:
+      tags:
+        - Brands
+      summary: Get all brands
+      description: Retrieve a paginated list of all brands. Supports filtering by companyId, searching, and sorting.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+        - $ref: '#/components/parameters/BrandCompanyIdQuery'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrandsListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
     post:
       tags:
-        - Companies
-      summary: Upload PDF catalog and extract products
-      description: Upload an animal feed or veterinary PDF catalog. The system will upload it to the Gemini File API, extract all products and categories using Gemini 2.5 Flash, resolve categories without duplication, and store them in the database associated with the target company.
+        - Brands
+      summary: Create a new brand
+      description: Create a new brand associated with a company. Supports uploading a brand logo image.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - companyId
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: Araby Feed
+                companyId:
+                  type: string
+                  format: uuid
+                  example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                logo:
+                  type: string
+                  format: binary
+                  description: Brand logo image file (PNG, JPEG, WebP)
+      responses:
+        '201':
+          $ref: '#/components/responses/BrandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /brands/{id}:
+    get:
+      tags:
+        - Brands
+      summary: Get brand by ID
+      description: Retrieve details of a single brand by its UUID.
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Brands
+      summary: Update a brand
+      description: Update one or more fields of an existing brand. Supports replacing the brand logo.
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: Araby Feed Updated
+                companyId:
+                  type: string
+                  format: uuid
+                  example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                logo:
+                  type: string
+                  format: binary
+                  description: New brand logo image file (PNG, JPEG, WebP)
+                isActive:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          $ref: '#/components/responses/BrandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Brands
+      summary: Delete a brand
+      description: Permanently delete a brand by its UUID. This cleans up associated files on disk.
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '204':
+          description: Brand deleted successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /dashboard/stats:
+    get:
+      tags:
+        - Dashboard
+      summary: Get admin dashboard statistics
+      description: Retrieve overall system administration statistics, active subscriptions counts, total monthly revenue, background task counts and breakdowns, and recent activity (registered companies and background tasks). Only accessible by authenticated administrators.
+      responses:
+        '200':
+          $ref: '#/components/responses/DashboardStatsResponse'
+        '401':
+          description: Unauthorized (Token is missing or invalid)
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /products:
+    get:
+      tags:
+        - Products
+      summary: Get all products
+      description: Retrieve a paginated list of products. Supports filtering, searching, and sorting.
       parameters:
         - name: companyId
-          in: path
+          in: query
+          required: false
+          description: Filter products by company UUID
+          schema:
+            type: string
+            format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        - name: categoryId
+          in: query
+          required: false
+          description: Filter products by category UUID
+          schema:
+            type: string
+            format: uuid
+          example: c2d3e4f5-a6b7-8901-cdef-012345678901
+        - name: brandId
+          in: query
+          required: false
+          description: Filter products by brand UUID
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProductsListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Products
+      summary: Create a new product
+      description: Add a new product to the catalog.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /products/upload-catalog:
+    post:
+      tags:
+        - Products
+      summary: Upload PDF catalog and extract products
+      description: Upload an animal feed or veterinary PDF catalog. The system will upload it to the Gemini File API, extract all products and categories using Gemini 2.0 Flash, resolve categories without duplication, and store them in the database associated with the target company.
+      parameters:
+        - name: companyId
+          in: query
           required: true
           description: UUID of the company to associate the extracted products with
           schema:
             type: string
             format: uuid
           example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        - name: brandId
+          in: query
+          required: false
+          description: UUID of the brand to associate the catalog products with
+          schema:
+            type: string
+            format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
       requestBody:
         required: true
         content:
@@ -358,160 +711,6 @@ paths:
                                 - created
                                 - updated
                               example: created
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/ServerError'
-  /companies/{companyId}/products/verify-label:
-    post:
-      tags:
-        - Label Verification
-      summary: Verify PDF or image drug label compliance and extract details
-      description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini 2.5 Flash, verify compliance against the target country's drug regulatory requirements, check the database for any product with a case-insensitive matching name under this company, and return the combined analysis.
-      parameters:
-        - name: companyId
-          in: path
-          required: true
-          description: UUID of the company to scope the verification and check database records
-          schema:
-            type: string
-            format: uuid
-          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                label:
-                  type: string
-                  format: binary
-                  description: The PDF or image (PNG, JPEG, WebP) label file (max 15MB)
-                country:
-                  type: string
-                  description: The target country to run the drug regulatory compliance check for
-                  example: Saudi Arabia
-              required:
-                - label
-                - country
-      responses:
-        '200':
-          description: Label successfully verified and compliance report generated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  message:
-                    type: string
-                    example: Label verified successfully!
-                  data:
-                    type: object
-                    properties:
-                      product:
-                        type: object
-                        properties:
-                          extractedDetails:
-                            type: object
-                            description: Product metadata extracted from the label by Gemini AI
-                          existsInDb:
-                            type: boolean
-                            example: true
-                          dbProduct:
-                            type: object
-                            nullable: true
-                            description: The matching database product if found, otherwise null
-                      validation:
-                        type: object
-                        properties:
-                          compliant:
-                            type: boolean
-                            example: false
-                          country:
-                            type: string
-                            example: Saudi Arabia
-                          results:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                issue:
-                                  type: string
-                                  example: Missing bilingual Arabic/English warnings
-                                solution:
-                                  type: string
-                                  example: Translate all safety warning paragraphs into Arabic
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/ServerError'
-  /companies/{companyId}/products:
-    get:
-      tags:
-        - Products
-      summary: Get all products scoped to a company
-      description: Retrieve a paginated list of all products belonging to a company. Supports filtering, searching, and sorting.
-      parameters:
-        - name: companyId
-          in: path
-          required: true
-          description: UUID of the company to list products for
-          schema:
-            type: string
-            format: uuid
-          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/SortParam'
-        - $ref: '#/components/parameters/SearchParam'
-        - name: categoryId
-          in: query
-          required: false
-          description: Filter products by category UUID
-          schema:
-            type: string
-            format: uuid
-          example: c2d3e4f5-a6b7-8901-cdef-012345678901
-      responses:
-        '200':
-          $ref: '#/components/responses/ProductsListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '500':
-          $ref: '#/components/responses/ServerError'
-    post:
-      tags:
-        - Products
-      summary: Create a new product scoped to a company
-      description: Add a new product to the company's catalog.
-      parameters:
-        - name: companyId
-          in: path
-          required: true
-          description: UUID of the company to add the product to
-          schema:
-            type: string
-            format: uuid
-          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateProductBody'
-      responses:
-        '201':
-          $ref: '#/components/responses/ProductResponse'
         '400':
           $ref: '#/components/responses/BadRequestError'
         '404':
@@ -1346,6 +1545,77 @@ components:
         isActive:
           type: boolean
           example: false
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: da688042-3c7e-4537-8b88-6c060d0cdf7a
+        name:
+          type: string
+          example: Admin
+        description:
+          type: string
+          nullable: true
+          example: Super Administrator with full system permissions
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T12:00:00.000Z'
+    CreateRoleBody:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Manager
+        description:
+          type: string
+          maxLength: 255
+          example: Manager role with moderate permissions
+        permissions:
+          type: array
+          items:
+            type: string
+            format: uuid
+          example:
+            - da688042-3c7e-4537-8b88-6c060d0cdf7a
+        permissionSlugs:
+          type: array
+          items:
+            type: string
+          example:
+            - create_users
+            - read_users
+    UpdateRoleBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Senior Manager
+        description:
+          type: string
+          maxLength: 255
+          example: Updated manager role description
+        permissions:
+          type: array
+          items:
+            type: string
+            format: uuid
+        permissionSlugs:
+          type: array
+          items:
+            type: string
     Company:
       type: object
       properties:
@@ -1469,6 +1739,34 @@ components:
         token:
           type: string
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        company:
+          $ref: '#/components/schemas/Company'
+    Brand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: d810cf7f-57ce-4d84-b1b1-c3a782893072
+        name:
+          type: string
+          example: Araby Feed
+        logoUrl:
+          type: string
+          nullable: true
+          example: uploads/brands/d810cf7f-57ce-4d84-b1b1-c3a782893072.png
+        companyId:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T10:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-06-10T12:00:00.000Z'
         company:
           $ref: '#/components/schemas/Company'
     ActiveIngredient:
@@ -2337,6 +2635,53 @@ components:
               message:
                 type: string
                 example: User not found!
+    RolesListResponse:
+      description: Paginated list of roles
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 2
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 1
+              data:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+    RoleResponse:
+      description: Single role response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  role:
+                    $ref: '#/components/schemas/Role'
     CompaniesListResponse:
       description: Paginated list of companies
       content:
@@ -2384,6 +2729,155 @@ components:
                 properties:
                   company:
                     $ref: '#/components/schemas/Company'
+    BrandsListResponse:
+      description: Paginated list of brands
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              meta:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 30
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 3
+              data:
+                type: object
+                properties:
+                  brands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Brand'
+    BrandResponse:
+      description: Single brand response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  brand:
+                    $ref: '#/components/schemas/Brand'
+    DashboardStatsResponse:
+      description: Dashboard analytics and system metrics
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      products:
+                        type: integer
+                        example: 150
+                      companies:
+                        type: integer
+                        example: 25
+                      users:
+                        type: integer
+                        example: 12
+                      plans:
+                        type: integer
+                        example: 4
+                      activeSubscriptions:
+                        type: integer
+                        example: 18
+                      totalMonthlyRevenue:
+                        type: number
+                        example: 3500
+                  tasks:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 85
+                      byStatus:
+                        type: object
+                        properties:
+                          pending:
+                            type: integer
+                            example: 2
+                          processing:
+                            type: integer
+                            example: 1
+                          completed:
+                            type: integer
+                            example: 78
+                          failed:
+                            type: integer
+                            example: 4
+                      byType:
+                        type: object
+                        properties:
+                          catalog_upload:
+                            type: integer
+                            example: 42
+                          label_verification:
+                            type: integer
+                            example: 28
+                          certificate_generation:
+                            type: integer
+                            example: 15
+                  recentActivity:
+                    type: object
+                    properties:
+                      companies:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                            email:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time
+                            isActive:
+                              type: boolean
+                      tasks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            type:
+                              type: string
+                            status:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time
     ProductsListResponse:
       description: Paginated list of products scoped to a company
       content:
@@ -2673,6 +3167,24 @@ components:
         type: string
         format: uuid
       example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+    BrandCompanyIdQuery:
+      name: companyId
+      in: query
+      required: false
+      description: UUID of the company to filter brands
+      schema:
+        type: string
+        format: uuid
+      example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+    BrandId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the brand
+      schema:
+        type: string
+        format: uuid
+      example: d810cf7f-57ce-4d84-b1b1-c3a782893072
     ProductId:
       name: id
       in: path

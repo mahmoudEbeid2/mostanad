@@ -120,12 +120,31 @@ async function run() {
   const form3 = new FormData();
   form3.append("label", labelBlob, labelName);
   form3.append("country", "Saudi Arabia");
-  const { status: s3, data: d3 } = await sendLabelRequest(form3);
+  const { status: s3, data: d3Raw } = await sendLabelRequest(form3);
 
-  log(`⏱️ Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`, "cyan");
+  log(`⏱️ Request completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`, "cyan");
 
-  assert("Status is 200", s3 === 200, `Got ${s3}. Response: ${JSON.stringify(d3)}`);
-  assert("Status is 'success'", d3?.status === "success", JSON.stringify(d3));
+  assert("Status is 202", s3 === 202, `Got ${s3}. Response: ${JSON.stringify(d3Raw)}`);
+  
+  let d3 = null;
+  if (s3 === 202 && d3Raw?.data?.jobId) {
+    const jobId = d3Raw.data.jobId;
+    log(`   [Test] Polling task status for job: ${jobId}`, "cyan");
+    let task = null;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
+        headers: { "x-test-bypass": "supersecretbypass" }
+      });
+      const checkData = await checkRes.json();
+      task = checkData?.data;
+      if (task && (task.status === "completed" || task.status === "failed")) {
+        break;
+      }
+    }
+    assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+    d3 = { status: "success", data: task?.result };
+  }
   assert("Has extractedDetails", !!d3?.data?.product?.extractedDetails?.name, JSON.stringify(d3?.data?.product));
   assert("existsInDb is boolean", typeof d3?.data?.product?.existsInDb === "boolean", "Expected boolean");
   assert("Has validation object", d3?.data?.validation?.results !== undefined, JSON.stringify(d3?.data?.validation));
@@ -184,10 +203,30 @@ async function run() {
   const form4 = new FormData();
   form4.append("label", labelBlob, labelName);
   form4.append("country", "Saudi Arabia");
-  const { status: s4, data: d4 } = await sendLabelRequest(form4);
-  log(`⏱️ Completed in ${((Date.now() - t1) / 1000).toFixed(1)}s`, "cyan");
+  const { status: s4, data: d4Raw } = await sendLabelRequest(form4);
+  log(`⏱️ Request completed in ${((Date.now() - t1) / 1000).toFixed(1)}s`, "cyan");
 
-  assert("Status is 200", s4 === 200, `Got ${s4}`);
+  assert("Status is 202", s4 === 202, `Got ${s4}. Response: ${JSON.stringify(d4Raw)}`);
+
+  let d4 = null;
+  if (s4 === 202 && d4Raw?.data?.jobId) {
+    const jobId = d4Raw.data.jobId;
+    log(`   [Test] Polling task status for job: ${jobId}`, "cyan");
+    let task = null;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
+        headers: { "x-test-bypass": "supersecretbypass" }
+      });
+      const checkData = await checkRes.json();
+      task = checkData?.data;
+      if (task && (task.status === "completed" || task.status === "failed")) {
+        break;
+      }
+    }
+    assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+    d4 = { status: "success", data: task?.result };
+  }
   assert("existsInDb is true", d4?.data?.product?.existsInDb === true, "Expected true");
   assert("isExactMatch in product is true", d4?.data?.product?.isExactMatch === true, "Expected true");
   assert("isExactMatch in validation is true", d4?.data?.validation?.isExactMatch === true, "Expected true");

@@ -1,0 +1,73 @@
+get:
+  tags:
+    - Brands
+  summary: Get brand by ID
+  description: Retrieve details of a single brand by its UUID.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/BrandId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/BrandResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Brands
+  summary: Update a brand
+  description: Update one or more fields of an existing brand. Supports replacing the brand logo.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/BrandId'
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              minLength: 2
+              maxLength: 100
+              example: "Araby Feed Updated"
+            companyId:
+              type: string
+              format: uuid
+              example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+            logo:
+              type: string
+              format: binary
+              description: New brand logo image file (PNG, JPEG, WebP)
+            isActive:
+              type: boolean
+              example: true
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/BrandResponse'
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Brands
+  summary: Delete a brand
+  description: Permanently delete a brand by its UUID. This cleans up associated files on disk.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/BrandId'
+  responses:
+    '204':
+      description: Brand deleted successfully (no content)
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

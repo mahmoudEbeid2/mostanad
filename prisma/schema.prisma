@@ -190,6 +190,7 @@ model TemplateImage {
 model Brand {
   id        String   @id @default(uuid())
   name      String
+  logoUrl   String?  @map("logo_url")
   companyId String   @map("company_id")
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   isActive  Boolean  @default(true) @map("is_active")
@@ -234,5 +235,19 @@ model Subscription {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("subscriptions")
+}
+
+model BackgroundTask {
+  id          String   @id @default(uuid())
+  type        String   // "catalog_upload" | "label_verification" | "certificate_generation"
+  status      String   // "pending" | "processing" | "completed" | "failed"
+  result      Json?    // Final JSON results output
+  error       String?  // Error message if failed
+  companyId   String?  @map("company_id")
+  brandId     String?  @map("brand_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("background_tasks")
 }
 

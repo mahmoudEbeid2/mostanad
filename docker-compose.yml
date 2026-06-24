@@ -1,26 +1,116 @@
 services:
-  # mostanad-app:
-  #   container_name: mostanad-app
-  #   build: .
-  #   expose:
-  #     - "3000"
-  #   ports:
-  #     - "3000:3000"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
-  #     - REDIS_URL=redis://redis:6379
-  #   restart: always
-  #   volumes:
-  #     - ./src:/app/src
-  #     - ./swagger.js:/app/swagger.js
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_started
-  #   command: sh -c "npm run dev"
+  mostanad-app:
+    container_name: mostanad-app
+    build: .
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://localhost:3000
+    restart: always
+    volumes:
+      - ./src:/app/src
+      - ./swagger.js:/app/swagger.js
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: sh ./start.sh
+
+  catalog-worker:
+    container_name: catalog-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/catalogWorker.js
+
+  label-worker:
+    container_name: label-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/labelWorker.js
+
+  certificate-worker:
+    container_name: certificate-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/certificateWorker.js
+
+  email-worker:
+    container_name: email-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/emailWorker.js
 
   postgres:
     image: postgres:18

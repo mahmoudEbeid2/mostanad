@@ -7,6 +7,7 @@ import {
   deleteSubscription,
 } from "../controllers/subscriptionController.js";
 import { validate } from "../middleware/validateMiddleware.js";
+import { restrictToPermission } from "../middleware/authMiddleware.js";
 import {
   createSubscriptionSchema,
   updateSubscriptionSchema,
@@ -18,13 +19,13 @@ const router = express.Router();
 
 router
   .route("/")
-  .post(validate(createSubscriptionSchema), createSubscription)
-  .get(getAllSubscriptions);
+  .post(restrictToPermission("create_subscriptions"), validate(createSubscriptionSchema), createSubscription)
+  .get(restrictToPermission("read_subscriptions"), getAllSubscriptions);
 
 router
   .route("/:id")
-  .get(validate(getSubscriptionByIdSchema), getSubscriptionById)
-  .patch(validate(updateSubscriptionSchema), updateSubscription)
-  .delete(validate(deleteSubscriptionSchema), deleteSubscription);
+  .get(restrictToPermission("read_subscriptions"), validate(getSubscriptionByIdSchema), getSubscriptionById)
+  .patch(restrictToPermission("update_subscriptions"), validate(updateSubscriptionSchema), updateSubscription)
+  .delete(restrictToPermission("delete_subscriptions"), validate(deleteSubscriptionSchema), deleteSubscription);
 
 export default router;

@@ -5,6 +5,7 @@
     "tmp/*",
     "tests/*",
     "src/docs/*",
-    "*.log"
+    "*.log",
+    "uploads/*"
   ]
 }

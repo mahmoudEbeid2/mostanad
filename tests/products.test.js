@@ -91,9 +91,9 @@ async function run() {
   // 1. CREATE - Validation: empty body
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 1: POST /companies/:id/products — Validation Error (empty body)", "bold");
+  log("📋 TEST 1: POST /products — Validation Error (empty body)", "bold");
   {
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {});
+    const { status, data } = await request("POST", "/products", {});
     assert("Status is 400", status === 400, `Got ${status}`);
     assert("Status is 'fail'", data?.status === "fail", JSON.stringify(data));
     assert("Message contains 'Validation error'", data?.message?.includes("Validation error"), data?.message);
@@ -104,9 +104,10 @@ async function run() {
   // 2. CREATE - Validation: invalid activeIngredients array
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 2: POST /companies/:id/products — Validation Error (bad active ingredients)", "bold");
+  log("📋 TEST 2: POST /products — Validation Error (bad active ingredients)", "bold");
   {
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+    const { status, data } = await request("POST", "/products", {
+      companyId: testCompanyId,
       name: "Bad Product",
       activeIngredients: [{ name: "Ingredient Without Concentration" }]
     });
@@ -119,9 +120,10 @@ async function run() {
   // 3. CREATE - Validation: bad specifications structure
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 3: POST /companies/:id/products — Validation Error (bad specifications)", "bold");
+  log("📋 TEST 3: POST /products — Validation Error (bad specifications)", "bold");
   {
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+    const { status, data } = await request("POST", "/products", {
+      companyId: testCompanyId,
       name: "Bad Specifications Product",
       specifications: { type: "Specification" } // values field missing
     });
@@ -134,9 +136,10 @@ async function run() {
   // 4. CREATE - Success with full fields
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 4: POST /companies/:id/products — Create product successfully", "bold");
+  log("📋 TEST 4: POST /products — Create product successfully", "bold");
   {
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+    const { status, data } = await request("POST", "/products", {
+      companyId: testCompanyId,
       name: "BROILER STARTER CONCENTRATE 5%",
       productCode: "BSC-005",
       description: "Starter concentrate for broilers",
@@ -183,9 +186,9 @@ async function run() {
   // 5. GET ALL - Scoped to company
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 5: GET /companies/:companyId/products — Get all company products", "bold");
+  log("📋 TEST 5: GET /products?companyId=:companyId — Get all company products", "bold");
   {
-    const { status, data } = await request("GET", `/companies/${testCompanyId}/products`);
+    const { status, data } = await request("GET", `/products?companyId=${testCompanyId}`);
     assert("Status is 200", status === 200, `Got ${status}`);
     assert("Has meta", !!data?.meta, JSON.stringify(data));
     assert("Has products array", Array.isArray(data?.data?.products), JSON.stringify(data));
@@ -198,9 +201,9 @@ async function run() {
   // 6. GET ALL - Search query
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 6: GET /companies/:companyId/products?search=starter — Search products", "bold");
+  log("📋 TEST 6: GET /products?companyId=:companyId&search=starter — Search products", "bold");
   {
-    const { status, data } = await request("GET", `/companies/${testCompanyId}/products?search=starter`);
+    const { status, data } = await request("GET", `/products?companyId=${testCompanyId}&search=starter`);
     assert("Status is 200", status === 200, `Got ${status}`);
     assert("Match found", data?.data?.products?.length === 1, JSON.stringify(data));
     log(`  Search matched ${data?.data?.products?.length} products`, "cyan");
@@ -292,9 +295,10 @@ async function run() {
   // 12. CREATE WITH BRAND - Success
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 12: POST /companies/:id/products with Brand — Success", "bold");
+  log("📋 TEST 12: POST /products with Brand — Success", "bold");
   {
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+    const { status, data } = await request("POST", "/products", {
+      companyId: testCompanyId,
       name: `Product with Brand ${ts}`,
       brandId: testBrandId,
     });
@@ -310,7 +314,7 @@ async function run() {
   // 13. CREATE WITH BRAND - Validation Error (belongs to another company)
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 13: POST /companies/:id/products with foreign Brand — Validation Error", "bold");
+  log("📋 TEST 13: POST /products with foreign Brand — Validation Error", "bold");
   {
     // Create a different company
     const otherCompany = await prisma.company.create({
@@ -328,7 +332,8 @@ async function run() {
       }
     });
 
-    const { status, data } = await request("POST", `/companies/${testCompanyId}/products`, {
+    const { status, data } = await request("POST", "/products", {
+      companyId: testCompanyId,
       name: `Bad Product with Brand ${ts}`,
       brandId: otherBrand.id,
     });
