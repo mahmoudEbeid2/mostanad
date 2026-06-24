@@ -138,11 +138,29 @@ async function run() {
   });
   log(`  Test Product-Scoped Template Created: ${productTemplate.id}`, "green");
 
-  // 5. Copy Real PDF File for test
+  // 5. Copy or create mock PDF File for test
   mockInvoicePath = path.join(process.cwd(), `mock_invoice_${ts}.pdf`);
   const srcPdfPath = "C:/Users/ENG MAHMOUD/Downloads/10 - H-VIRAL_1L.pdf";
-  fs.copyFileSync(srcPdfPath, mockInvoicePath);
-  log(`  Copied real PDF document for testing to ${mockInvoicePath}`, "green");
+  const fallback1 = "D:/gemini_test/Addvet Feed Catalogue 2025.pdf";
+  const fallback2 = "C:/Users/ENG MAHMOUD/Downloads/Addvet Feed Catalogue 2025.pdf";
+
+  if (fs.existsSync(srcPdfPath)) {
+    fs.copyFileSync(srcPdfPath, mockInvoicePath);
+    log(`  Copied real PDF document for testing to ${mockInvoicePath}`, "green");
+  } else if (fs.existsSync(fallback1)) {
+    fs.copyFileSync(fallback1, mockInvoicePath);
+    log(`  Copied fallback PDF document for testing to ${mockInvoicePath}`, "green");
+  } else if (fs.existsSync(fallback2)) {
+    fs.copyFileSync(fallback2, mockInvoicePath);
+    log(`  Copied fallback PDF document for testing to ${mockInvoicePath}`, "green");
+  } else {
+    // Write a mock PDF directly to mockInvoicePath
+    fs.writeFileSync(
+      mockInvoicePath,
+      "%PDF-1.4\n1 0 obj\n<</Type /Catalog>>\nendobj\nProduct: H-VIRAL, Active: Olive Leaves 10%, Storage: Below 25C\nInvoice: INV-12345\nDate: 2026-06-24\nSender: Addvet Egypt"
+    );
+    log(`  Created mock PDF document for testing at ${mockInvoicePath}`, "green");
+  }
 
   // ─────────────────────────────────────────────────────
   // 1. VALIDATION - Missing File

@@ -52,7 +52,7 @@ services:
     ports:
       - "8081:8081"
     environment:
-      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - PGWEB_DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?sslmode=disable
       - PGWEB_AUTH_USER=${PGWEB_AUTH_USER}
       - PGWEB_AUTH_PASS=${PGWEB_AUTH_PASS}
     depends_on:

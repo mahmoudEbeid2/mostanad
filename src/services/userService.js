@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
@@ -12,7 +13,8 @@ const excludePassword = (user) => excludeFields(user, ["password"]);
  * Create a new user
  */
 export const createUser = async (userData) => {
-  const { name, email, username, password, phone } = userData;
+  const { name, email, phone } = userData;
+  let { username, password } = userData;
 
   // Check if email already exists
   const emailExists = await prisma.user.findUnique({ where: { email } });
@@ -20,10 +22,37 @@ export const createUser = async (userData) => {
     throw new AppError("Email is already registered!", 400);
   }
 
-  // Check if username already exists
-  const usernameExists = await prisma.user.findUnique({ where: { username } });
-  if (usernameExists) {
-    throw new AppError("Username is already taken!", 400);
+  // 1. Generate username from email if not provided
+  if (!username) {
+    let generatedUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
+    if (generatedUsername.length < 3) {
+      generatedUsername = generatedUsername.padEnd(3, "_");
+    }
+    let finalUsername = generatedUsername;
+    let isUnique = false;
+    let counter = 1;
+
+    while (!isUnique) {
+      const existing = await prisma.user.findUnique({ where: { username: finalUsername } });
+      if (!existing) {
+        isUnique = true;
+      } else {
+        finalUsername = `${generatedUsername}${counter}`;
+        counter++;
+      }
+    }
+    username = finalUsername;
+  } else {
+    // Check if username already exists
+    const usernameExists = await prisma.user.findUnique({ where: { username } });
+    if (usernameExists) {
+      throw new AppError("Username is already taken!", 400);
+    }
+  }
+
+  // 2. Generate random password if not provided
+  if (!password) {
+    password = crypto.randomBytes(8).toString("hex");
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);

@@ -7,7 +7,16 @@ const connection = getRedisConfig();
 export const catalogQueue = new Queue("catalogQueue", { connection });
 export const labelQueue = new Queue("labelQueue", { connection });
 export const certificateQueue = new Queue("certificateQueue", { connection });
-export const emailQueue = new Queue("emailQueue", { connection });
+export const emailQueue = new Queue("emailQueue", {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: {
+      type: "exponential",
+      delay: 5000, // Wait 5 seconds, then double on subsequent attempts
+    },
+  },
+});
 
 /**
  * Add a catalog ingestion job

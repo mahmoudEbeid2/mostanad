@@ -87,11 +87,35 @@ async function run() {
     process.exit(1);
   }
 
-  // Join company room
-  socket.emit("join_company", companyId);
+  // Join company room and wait for acknowledgment
+  await new Promise((resolve) => {
+    socket.emit("join_company", companyId, () => resolve());
+    setTimeout(resolve, 500); // Safety fallback
+  });
 
   // 3. Test catalog queue asynchronously
   log("⏳ Submitting catalog upload to queue...", "cyan");
+  
+  let jobId = null;
+  let resolveJob;
+  const jobResultPromise = new Promise((resolve) => {
+    resolveJob = resolve;
+  });
+
+  const timeout = setTimeout(() => {
+    socket.off("job_status");
+    resolveJob({ error: "Timeout waiting for job completion", status: "failed" });
+  }, 15000); // Wait up to 15s
+
+  socket.on("job_status", (data) => {
+    log(`   [WS Event] Job Status: ${data.status}`, "yellow");
+    if ((data.jobId === jobId || jobId === null) && (data.status === "completed" || data.status === "failed")) {
+      clearTimeout(timeout);
+      socket.off("job_status");
+      resolveJob(data);
+    }
+  });
+
   // Create a mock PDF buffer (mock catalog logic will execute due to forced mock in tests/MOCK_GEMINI)
   const mockPdfBuffer = Buffer.from("%PDF-1.4 mock catalog content");
   const form = new FormData();
@@ -113,27 +137,13 @@ async function run() {
   assert("Status field is 'accepted'", uploadData?.status === "accepted", JSON.stringify(uploadData));
   assert("Job ID is returned", !!uploadData?.data?.jobId, JSON.stringify(uploadData));
 
-  const jobId = uploadData?.data?.jobId;
+  jobId = uploadData?.data?.jobId;
 
   if (jobId) {
     // 4. Wait for WebSocket status updates
     log(`👂 Listening for job_status events for job ID: ${jobId}`, "cyan");
 
-    const jobResult = await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        socket.off("job_status");
-        resolve({ error: "Timeout waiting for job completion", status: "failed" });
-      }, 15000); // Wait up to 15s
-
-      socket.on("job_status", (data) => {
-        log(`   [WS Event] Job Status: ${data.status}`, "yellow");
-        if (data.jobId === jobId && (data.status === "completed" || data.status === "failed")) {
-          clearTimeout(timeout);
-          socket.off("job_status");
-          resolve(data);
-        }
-      });
-    });
+    const jobResult = await jobResultPromise;
 
     assert("Job finished (status completed or failed)", jobResult.status === "completed" || jobResult.status === "failed", JSON.stringify(jobResult));
     log(`Job final response: ${JSON.stringify(jobResult)}`, "white");

@@ -5,6 +5,9 @@ set -e
 
 echo "⏳ Starting Mostanad API Initialization..."
 
+echo "🔄 Generating Prisma Client..."
+npx prisma generate
+
 if [ "$NODE_ENV" = "production" ]; then
   echo "🔄 Syncing database schema (migrate deploy)..."
   npx prisma migrate deploy

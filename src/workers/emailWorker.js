@@ -24,7 +24,13 @@ const worker = new Worker(
       throw error; // Let BullMQ mark the job as failed and potentially retry
     }
   },
-  { connection }
+  {
+    connection,
+    limiter: {
+      max: 1,
+      duration: 2000, // Limit to 1 email every 2 seconds
+    },
+  }
 );
 
 worker.on("ready", () => console.log("[Email Worker] BullMQ worker is ready."));

@@ -18,18 +18,20 @@ export const initSocketServer = (httpServer) => {
     console.log(`[Socket] New connection: ${socket.id}`);
 
     // Join company room to receive updates for all tasks of a company
-    socket.on("join_company", (companyId) => {
+    socket.on("join_company", (companyId, callback) => {
       if (companyId) {
         socket.join(`company_${companyId}`);
         console.log(`[Socket] Client ${socket.id} joined company_${companyId}`);
+        if (typeof callback === "function") callback();
       }
     });
 
     // Join job-specific room to receive updates for a single task
-    socket.on("join_job", (jobId) => {
+    socket.on("join_job", (jobId, callback) => {
       if (jobId) {
         socket.join(`job_${jobId}`);
         console.log(`[Socket] Client ${socket.id} joined job_${jobId}`);
+        if (typeof callback === "function") callback();
       }
     });
 

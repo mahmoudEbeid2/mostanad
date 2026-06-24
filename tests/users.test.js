@@ -109,6 +109,31 @@ log("📋 TEST 3: POST /users — Create user (success)", "bold");
 }
 
 // ═══════════════════════════════════════════════
+// 3b. CREATE USER - Success (Automatic Username and Password generation)
+// ═══════════════════════════════════════════════
+separator();
+log("📋 TEST 3b: POST /users — Create user with automatic username/password (success)", "bold");
+{
+  const emailPrefix = `autogen_${Date.now()}`;
+  const email = `${emailPrefix}@mostanad.com`;
+  const { status, data } = await request("POST", "/users", {
+    name: "Autogen User",
+    email,
+    phone: "01099998888",
+  });
+  assert("Status is 201", status === 201, `Got ${status}`);
+  assert("Status is 'success'", data?.status === "success", JSON.stringify(data));
+  assert("User object returned", !!data?.data?.user, JSON.stringify(data));
+  assert("Username generated from email", data?.data?.user?.username === emailPrefix, `Expected ${emailPrefix}, got ${data?.data?.user?.username}`);
+  assert("Password NOT in response", !data?.data?.user?.password, "Password was exposed!");
+  
+  // Clean up this generated user so it doesn't clutter DB
+  if (data?.data?.user?.id) {
+    await request("DELETE", `/users/${data.data.user.id}`);
+  }
+}
+
+// ═══════════════════════════════════════════════
 // 4. CREATE USER - Duplicate email
 // ═══════════════════════════════════════════════
 separator();

@@ -38,8 +38,6 @@ components:
       required:
         - name
         - email
-        - username
-        - password
       properties:
         name:
           type: string

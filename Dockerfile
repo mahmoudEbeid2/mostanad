@@ -3,7 +3,11 @@ FROM node:25-alpine
 
 WORKDIR /app
 
-# Copy project files (including local node_modules)
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy project files
 COPY . .
 
 # Generate Prisma Client at build time
