@@ -14,8 +14,8 @@ COPY . .
 RUN npx prisma generate
 
 # Fix line endings and permissions for start.sh
-RUN sed -i 's/\r$//' ./start.sh && chmod +x ./start.sh
+RUN sed -i 's/\r$//' ./scripts/start.sh && chmod +x ./scripts/start.sh
 
 EXPOSE 3000
 
-CMD ["sh", "./start.sh"]
+CMD ["sh", "./scripts/start.sh"]
