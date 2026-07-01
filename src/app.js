@@ -1,10 +1,14 @@
 import express from "express";
+import cors from "cors";
 import path from "path";
 import routes from "./routes/index.js";
 import globalErrorHandler from "./middleware/errorMiddleware.js";
 import AppError from "./utils/appError.js";
 
 const app = express();
+
+// Enable CORS for all routes
+app.use(cors());
 
 // Middleware to parse JSON bodies
 app.use(express.json());
