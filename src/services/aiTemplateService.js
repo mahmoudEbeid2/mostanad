@@ -149,8 +149,50 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
     
     htmlBuilder += `</div>`;
+    
+    // SECOND PASS: Send the drafted HTML back to AI to perfect the CSS
+    console.log(`[AITemplateService] Requesting Second Pass (HTML Refinement) from gemini-2.5-flash...`);
+    const secondPassPrompt = `
+      You are an expert front-end developer and designer.
+      I have generated a draft HTML overlay for the provided certificate image.
+      
+      DRAFT HTML:
+      ${htmlBuilder}
+      
+      The CSS positioning ('top', 'left'), 'font-size', and 'color' are slightly messy and do not align perfectly with the original text in the background image.
+      
+      YOUR EXACT MISSION:
+      1. Carefully examine the image and the draft HTML.
+      2. Fix the 'top' and 'left' pixel values, as well as 'font-size' and 'font-weight', so that each text perfectly overlays its corresponding text in the image.
+      3. DO NOT add any new text elements. Keep exactly the same <div> elements.
+      4. DO NOT change the text content inside the <div> elements.
+      5. DO NOT add background colors.
+      6. Return ONLY the final corrected HTML code. Do not include markdown blocks like \`\`\`html.
+    `;
+    
+    const secondPassContents = [
+      {
+        role: "user",
+        parts: [
+          { text: secondPassPrompt },
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: base64Image
+            }
+          }
+        ]
+      }
+    ];
 
-    return htmlBuilder;
+    const secondPassResult = await model.generateContent({ contents: secondPassContents });
+    const secondPassResponse = await secondPassResult.response;
+    let finalHtml = secondPassResponse.text();
+    
+    // Clean up any markdown formatting from the final HTML
+    finalHtml = finalHtml.replace(/```html/gi, '').replace(/```/g, '').trim();
+
+    return finalHtml;
   } catch (error) {
     console.error("[AITemplateService] Error:", error);
     throw error;
