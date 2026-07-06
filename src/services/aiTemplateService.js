@@ -52,35 +52,35 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       throw new AppError(`File processing failed at Gemini API. State: ${file.state}. Make sure the .ai file was saved with 'Create PDF Compatible File' checked.`, 500);
     }
 
-    console.log(`[AITemplateService] Requesting HTML generation from gemini-2.5-flash...`);
+    console.log(`[AITemplateService] Requesting HTML generation from gemini-1.5-pro...`);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-pro",
       generationConfig: {
         maxOutputTokens: 8192,
-        temperature: 0.1,
+        temperature: 0.0,
       }
     });
 
     const promptText = `
       You are a world-class front-end developer and Pixel-Perfect Design Integrator.
-      Your task is to convert the textual content of the attached document into an extremely precise HTML snippet.
+      Your task is to create the dynamic overlay for a Web-to-Print template.
       
       CRITICAL CONTEXT:
       The document canvas is exactly 1000px wide and 1414px high.
-      The background image, logos, stamps, lines, borders, and table grids are ALREADY HANDLED by the system.
-      Your ONLY job is to position the TEXT precisely on this 1000x1414 canvas.
+      The background image of the certificate (including ALL static text, logos, lines, and table headers) is ALREADY in the background layer.
+      
+      YOUR EXACT MISSION:
+      You must ONLY extract the DYNAMIC/FILL-IN values (the dummy data in the document) and convert them to Handlebars variables enclosed in absolute positioned <div>s.
 
       STRICT RULES:
-      1. IGNORE GRAPHICS & LOGOS: Do NOT extract text that is part of a company logo, stamp, or signature image.
-      2. CONTAINER: Use exactly: <div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">
-      3. ABSOLUTE POSITIONING ONLY: Every piece of text MUST be enclosed in a <div> with \`position: absolute\`. Do not group text from different locations. Use exact \`top\` and \`left\` pixel values.
-      4. NO HTML TABLES: Do NOT use <table> tags. Since table borders are already in the background, simply position the text of each cell as an independent absolute <div>.
-      5. TEXT WRAPPING: Add \`white-space: nowrap;\` to single-line text to prevent them from breaking into two lines.
-      6. CENTERING: For text horizontally centered on the page, use: \`left: 0; width: 100%; text-align: center;\` along with the exact \`top\`.
-      7. VARIABLES & FILL-IN LINES: Replace dynamic data with Handlebars tags (e.g., {{student_name}}, {{batch_no}}). If there is an underline like "Name: ________", output "Name: {{name}}" and ignore the underline graphic.
-      8. NO OVERLAPPING: Double-check your \`top\` values to maintain correct vertical spacing and prevent text from overlapping.
-      9. TEXT FORMATTING: Accurately estimate \`font-size\` (in px), \`color\` (exact HEX code), and \`font-weight\`.
-      10. OUTPUT FORMAT: Output ONLY raw HTML. No markdown formatting, no \`\`\`html blocks, no explanations.
+      1. IGNORE ALL STATIC TEXT: Do NOT output <div>s for static labels like "PRODUCT NAME", "BATCH NUMBER", "DESCRIPTION", "EXPORTER COMPANY", etc. The background already has them!
+      2. IGNORE LOGOS: Do NOT output the company name or logo text (e.g., "Pharmavet ANIMAL HEALTH").
+      3. ONLY DYNAMIC VALUES: Find the actual dummy values (e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG") and output them as Handlebars variables (e.g., {{product_name}}, {{expiration_date}}, {{origin}}).
+      4. PERFECT POSITIONING: For the dynamic values you extract, estimate their exact \`top\` and \`left\` pixel coordinates on the 1000x1414 canvas and position them using \`position: absolute\`.
+      5. TEXT FORMATTING: Accurately estimate the \`font-size\` (px), \`color\`, and \`font-weight\` of the dynamic value.
+      6. OUTPUT FORMAT: Output ONLY raw HTML. No markdown formatting, no \`\`\`html blocks, no explanations. 
+      
+      If you output static labels, they will double-render and ruin the design! ONLY output the dynamic variables.
     `;
 
     const contents = [
