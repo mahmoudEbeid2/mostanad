@@ -180,7 +180,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       secondPassPrompt
     ];
 
-    const secondPassResult = await model.generateContent({ contents: secondPassContents });
+    const secondPassResult = await model.generateContent(secondPassContents);
     const secondPassResponse = await secondPassResult.response;
     let finalHtml = secondPassResponse.text();
     
