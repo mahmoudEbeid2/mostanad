@@ -62,20 +62,25 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     });
 
     const promptText = `
-      You are an expert front-end developer and pixel-perfect design integrator.
-      I need you to convert the text layout of the attached document into an extremely precise HTML snippet.
-
+      You are a world-class front-end developer and Pixel-Perfect Design Integrator.
+      Your task is to convert the textual content of the attached document into an extremely precise HTML snippet.
+      
+      CRITICAL CONTEXT:
       The document canvas is exactly 1000px wide and 1414px high.
-      Your ONLY job is to position text accurately on this canvas. Do NOT recreate the background graphics or borders.
+      The background image, logos, stamps, lines, borders, and table grids are ALREADY HANDLED by the system.
+      Your ONLY job is to position the TEXT precisely on this 1000x1414 canvas.
 
-      STRICT REQUIREMENTS:
-      1. CONTAINER: Use exactly <div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">. Do not include <html> or <body> tags.
-      2. ABSOLUTE POSITIONING: Every single piece of text MUST use \`position: absolute\` with exact \`top\` and \`left\` pixel values relative to the 1000x1414 canvas. Do not use generic margins.
-      3. CENTERING: If a text block is horizontally centered on the document, use \`left: 0; width: 100%; text-align: center;\` along with the exact \`top\` position.
-      4. TEXT FORMATTING: Accurately estimate and apply inline CSS for \`font-size\` (in px), \`color\` (exact HEX code), \`font-weight\`, \`font-family\`, \`letter-spacing\`, and \`line-height\`.
-      5. VARIABLES: Replace dynamic data (names, dates, scores, batch numbers) with Handlebars variables (e.g., {{student_name}}, {{issue_date}}, {{product}}).
-      6. TABLES / GRIDS: If there is a table or a grid of text, you can use a \`<table>\` positioned absolutely, or position each line absolutely. Ensure columns align perfectly.
-      7. OUTPUT FORMAT: Output ONLY the raw, pure HTML string. No markdown formatting, no \`\`\`html blocks, no explanations.
+      STRICT RULES:
+      1. IGNORE GRAPHICS & LOGOS: Do NOT extract text that is part of a company logo, stamp, or signature image.
+      2. CONTAINER: Use exactly: <div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">
+      3. ABSOLUTE POSITIONING ONLY: Every piece of text MUST be enclosed in a <div> with \`position: absolute\`. Do not group text from different locations. Use exact \`top\` and \`left\` pixel values.
+      4. NO HTML TABLES: Do NOT use <table> tags. Since table borders are already in the background, simply position the text of each cell as an independent absolute <div>.
+      5. TEXT WRAPPING: Add \`white-space: nowrap;\` to single-line text to prevent them from breaking into two lines.
+      6. CENTERING: For text horizontally centered on the page, use: \`left: 0; width: 100%; text-align: center;\` along with the exact \`top\`.
+      7. VARIABLES & FILL-IN LINES: Replace dynamic data with Handlebars tags (e.g., {{student_name}}, {{batch_no}}). If there is an underline like "Name: ________", output "Name: {{name}}" and ignore the underline graphic.
+      8. NO OVERLAPPING: Double-check your \`top\` values to maintain correct vertical spacing and prevent text from overlapping.
+      9. TEXT FORMATTING: Accurately estimate \`font-size\` (in px), \`color\` (exact HEX code), and \`font-weight\`.
+      10. OUTPUT FORMAT: Output ONLY raw HTML. No markdown formatting, no \`\`\`html blocks, no explanations.
     `;
 
     const contents = [
