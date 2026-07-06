@@ -53,7 +53,13 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
 
     console.log(`[AITemplateService] Requesting HTML generation from gemini-2.5-flash...`);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        maxOutputTokens: 8192,
+        temperature: 0.1,
+      }
+    });
 
     const promptText = `
       You are an expert front-end developer and pixel-perfect design integrator.
@@ -82,13 +88,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       promptText
     ];
 
-    const response = await model.generateContent({
-      contents: contents,
-      generationConfig: {
-        maxOutputTokens: 8192,
-        temperature: 0.1,
-      }
-    });
+    const response = await model.generateContent(contents);
     let resultText = response.response.text();
 
     // Clean up markdown
