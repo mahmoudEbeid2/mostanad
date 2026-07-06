@@ -58,30 +58,44 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       generationConfig: {
         maxOutputTokens: 8192,
         temperature: 0.0,
+        responseMimeType: "application/json",
       }
     });
 
     const promptText = `
-      You are a world-class front-end developer and Pixel-Perfect Design Integrator.
-      Your task is to create the dynamic overlay for a Web-to-Print template.
+      You are a world-class Web-to-Print AI.
+      Your task is to identify ONLY the dynamic fill-in values on the provided document and return their exact coordinates and styles as a JSON array.
       
       CRITICAL CONTEXT:
       The document canvas is exactly 1000px wide and 1414px high.
-      The background image of the certificate (including ALL static text, logos, lines, and table headers) is ALREADY in the background layer.
+      The background image of the certificate (including ALL static text, field labels, logos, and borders) is ALREADY present.
       
       YOUR EXACT MISSION:
-      You must ONLY extract the DYNAMIC/FILL-IN values (the dummy data in the document) and convert them to Handlebars variables enclosed in absolute positioned <div>s.
+      Find the actual dynamic dummy values (e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG", the test results, etc.) and map them to logical variable names.
+      DO NOT extract static labels like "PRODUCT NAME", "BATCH NUMBER", "DESCRIPTION", "Company Address". Ignore them completely.
 
-      STRICT RULES:
-      1. IGNORE ALL STATIC TEXT: Do NOT output <div>s for static labels like "PRODUCT NAME", "BATCH NUMBER", "DESCRIPTION", "EXPORTER COMPANY", etc. The background already has them!
-      2. IGNORE LOGOS: Do NOT output the company name or logo text (e.g., "Pharmavet ANIMAL HEALTH").
-      3. ONLY DYNAMIC VALUES: Find the actual dummy values (e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG") and output them as Handlebars variables (e.g., {{product_name}}, {{expiration_date}}, {{origin}}).
-      4. PERFECT POSITIONING: For the dynamic values you extract, estimate their exact \`top\` and \`left\` pixel coordinates on the 1000x1414 canvas and position them using \`position: absolute\`.
-      5. TEXT FORMATTING: Accurately estimate the \`font-size\` (px), \`color\`, and \`font-weight\` of the dynamic value.
-      6. OUTPUT FORMAT: Output ONLY raw HTML. No markdown formatting, no \`\`\`html blocks, no explanations. 
-      
-      If you output static labels, they will double-render and ruin the design! ONLY output the dynamic variables.
-    `;
+      JSON SCHEMA REQUIRED:
+      Return a raw JSON array of objects. Do not include markdown formatting.
+      [
+        {
+          "variable_name": "product_name",
+          "top_px": 185,
+          "left_px": 170,
+          "font_size_px": 12,
+          "color_hex": "#000000",
+          "font_weight": "normal",
+          "text_align": "left",
+          "width_px": 200 // optional, use if it needs to be centered within a specific width, otherwise omit
+        }
+      ]
+
+      RULES:
+      1. IGNORE ALL STATIC TEXT. If a text is a label for a field (e.g., "Product:"), do NOT include it. Only include the value next to it.
+      2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
+      3. PERFECT POSITIONING: Estimate the exact \`top\` and \`left\` pixel coordinates on the 1000x1414 canvas.
+      4. VARIABLES: Use clear snake_case names for \`variable_name\` (e.g., \`manufacturing_date\`, \`result_1\`, \`batch_no\`).
+      5. OUTPUT ONLY JSON. No explanations, no \`\`\`json blocks.
+    \`;
 
     const contents = [
       {
@@ -96,18 +110,36 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     const response = await model.generateContent(contents);
     let resultText = response.response.text();
 
-    // Clean up markdown
-    let cleanHtml = resultText.trim();
-    if (cleanHtml.startsWith("\`\`\`html")) {
-      cleanHtml = cleanHtml.substring(7);
-    } else if (cleanHtml.startsWith("\`\`\`")) {
-      cleanHtml = cleanHtml.substring(3);
+    // Clean up markdown if any
+    let cleanJson = resultText.trim();
+    if (cleanJson.startsWith("\`\`\`json")) {
+      cleanJson = cleanJson.substring(7);
+    } else if (cleanJson.startsWith("\`\`\`")) {
+      cleanJson = cleanJson.substring(3);
     }
-    if (cleanHtml.endsWith("\`\`\`")) {
-      cleanHtml = cleanHtml.substring(0, cleanHtml.length - 3);
+    if (cleanJson.endsWith("\`\`\`")) {
+      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
     }
 
-    return cleanHtml.trim();
+    // Parse JSON and build HTML
+    let elements = [];
+    try {
+      elements = JSON.parse(cleanJson.trim());
+    } catch (parseErr) {
+      console.error("[AITemplateService] Failed to parse AI JSON:", cleanJson);
+      throw new AppError("AI failed to return valid JSON format.", 500);
+    }
+
+    let htmlBuilder = \`<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\\n\`;
+    
+    for (const el of elements) {
+      const widthStyle = el.width_px ? \`width: \${el.width_px}px;\` : '';
+      htmlBuilder += \`  <div style="position: absolute; top: \${el.top_px}px; left: \${el.left_px}px; \${widthStyle} font-size: \${el.font_size_px}px; color: \${el.color_hex}; font-weight: \${el.font_weight || 'normal'}; text-align: \${el.text_align || 'left'}; white-space: nowrap;">{{\${el.variable_name}}}</div>\\n\`;
+    }
+    
+    htmlBuilder += \`</div>\`;
+
+    return htmlBuilder;
   } catch (error) {
     console.error("[AITemplateService] Error:", error);
     throw error;
