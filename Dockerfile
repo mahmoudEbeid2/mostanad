@@ -4,6 +4,8 @@ FROM node:25-alpine
 WORKDIR /app
 
 # Copy package files and install dependencies
+RUN apk add --no-cache ghostscript imagemagick
+
 COPY package*.json ./
 RUN npm ci
 

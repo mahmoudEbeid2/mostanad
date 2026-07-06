@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -54,11 +56,39 @@ const worker = new Worker(
       fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
       // 2. Process HTML generation
-      const generatedHtml = await generateHtmlFromDesign(
+      let generatedHtml = await generateHtmlFromDesign(
         tempFilePath,
         fileName,
         mimeType
       );
+
+      // 2.5 Convert to Background Image using ImageMagick
+      const uploadsDesignsDir = path.join(process.cwd(), "uploads", "designs");
+      if (!fs.existsSync(uploadsDesignsDir)) {
+        fs.mkdirSync(uploadsDesignsDir, { recursive: true });
+      }
+
+      const bgFileName = `bg_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+      const bgFilePath = path.join(uploadsDesignsDir, bgFileName);
+      
+      const execAsync = promisify(exec);
+      try {
+        console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
+        // We use Ghostscript/ImageMagick to convert the first page to PNG
+        await execAsync(`convert -density 150 "${tempFilePath}[0]" -background white -alpha remove -alpha off "${bgFilePath}"`);
+        
+        const baseUrl = process.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
+        const backgroundUrl = `${baseUrl}/uploads/designs/${bgFileName}`;
+        console.log(`[AI Template Worker] Successfully generated background image: ${backgroundUrl}`);
+        
+        // Inject background into the HTML
+        // Find the <div class="certificate-wrapper"...> and insert the background
+        const bgLayer = `\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: cover; background-position: center; z-index: -1;"></div>\n`;
+        generatedHtml = generatedHtml.replace(/(<div[^>]*class=["']certificate-wrapper["'][^>]*>)/i, `$1${bgLayer}`);
+      } catch (convErr) {
+        console.error(`[AI Template Worker] Warning: Failed to convert design to background image:`, convErr.message);
+        // We do not fail the whole task if background conversion fails, we just log it.
+      }
 
       // Extract dynamic fields to populate requiredFields
       const extractedFields = {};
