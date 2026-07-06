@@ -60,7 +60,6 @@ export const generateTemplateViaAI = catchAsync(async (req, res, next) => {
       type: "ai_template_generation",
       status: "pending",
       companyId: companyId,
-      createdBy: req.user.id,
     },
   });
 
