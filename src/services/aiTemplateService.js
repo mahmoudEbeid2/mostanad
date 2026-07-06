@@ -71,7 +71,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       The background image of the certificate (including ALL static text, field labels, logos, and borders) is ALREADY present.
       
       YOUR EXACT MISSION:
-      Find the actual text values (the dummy data, e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG", the test results like "Conforms", etc.) and return their exact coordinates and styles as a JSON array.
+      Find the actual text values (the dummy data, e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG", the test results like "Conforms", etc.) and return their exact bounding boxes and styles as a JSON array.
       DO NOT convert them into variables. Return the exact original text.
       DO NOT extract static labels like "PRODUCT NAME", "BATCH NUMBER", "DESCRIPTION", "Company Address". Ignore them completely.
 
@@ -80,8 +80,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       [
         {
           "original_text": "DOXYPHARMA",
-          "top_px": 185,
-          "left_px": 170,
+          "box_2d": [ymin, xmin, ymax, xmax], // INT from 0 to 1000
           "font_size_px": 12,
           "color_hex": "#000000",
           "font_weight": "normal",
@@ -94,7 +93,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       1. IGNORE ALL STATIC TEXT. If a text is a label for a field (e.g., 'Product:'), do NOT include it. Only include the value next to it.
       2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
       3. IGNORE SPECIFICATIONS: In testing/analysis tables, DO NOT extract the 'Specifications', 'Limits', or 'Description' columns. Those are static! ONLY extract the 'RESULTS' column values (e.g., 'Conforms', '99%').
-      4. PERFECT POSITIONING: Estimate the exact 'top' and 'left' pixel coordinates on the 1000x1414 canvas.
+      4. PERFECT POSITIONING: Provide the exact 2D bounding box [ymin, xmin, ymax, xmax] for each text. The coordinates MUST be normalized integers between 0 and 1000 (where 0,0 is top-left and 1000,1000 is bottom-right of the image).
       5. ORIGINAL TEXT: Output the exact original text you see on the document in the 'original_text' field. Do NOT use brackets or variables.
       6. OUTPUT ONLY JSON. No explanations, no markdown blocks.
     `;
@@ -136,8 +135,20 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     let htmlBuilder = `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n`;
     
     for (const el of elements) {
-      const top = el.top_px !== undefined ? el.top_px : (el.top !== undefined ? el.top : 0);
-      const left = el.left_px !== undefined ? el.left_px : (el.left !== undefined ? el.left : 0);
+      let top = 0;
+      let left = 0;
+      
+      if (el.box_2d && Array.isArray(el.box_2d) && el.box_2d.length === 4) {
+        // box_2d is [ymin, xmin, ymax, xmax] mapped to 0-1000
+        const ymin = el.box_2d[0];
+        const xmin = el.box_2d[1];
+        top = Math.round((ymin / 1000) * 1414);
+        left = Math.round((xmin / 1000) * 1000);
+      } else {
+        // Fallback if AI didn't follow instruction
+        top = el.top_px !== undefined ? el.top_px : (el.top !== undefined ? el.top : 0);
+        left = el.left_px !== undefined ? el.left_px : (el.left !== undefined ? el.left : 0);
+      }
       const fontSize = el.font_size_px !== undefined ? el.font_size_px : (el.font_size !== undefined ? el.font_size : 12);
       const color = el.color_hex || el.color || '#000000';
       const width = el.width_px !== undefined ? el.width_px : el.width;
