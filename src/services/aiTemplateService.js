@@ -90,11 +90,11 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       ]
 
       RULES:
-      1. IGNORE ALL STATIC TEXT. If a text is a label for a field (e.g., "Product:"), do NOT include it. Only include the value next to it.
+      1. IGNORE ALL STATIC TEXT. If a text is a label for a field (e.g., 'Product:'), do NOT include it. Only include the value next to it.
       2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
-      3. PERFECT POSITIONING: Estimate the exact \`top\` and \`left\` pixel coordinates on the 1000x1414 canvas.
-      4. VARIABLES: Use clear snake_case names for \`variable_name\` (e.g., \`manufacturing_date\`, \`result_1\`, \`batch_no\`).
-      5. OUTPUT ONLY JSON. No explanations, no \`\`\`json blocks.
+      3. PERFECT POSITIONING: Estimate the exact 'top' and 'left' pixel coordinates on the 1000x1414 canvas.
+      4. VARIABLES: Use clear snake_case names for 'variable_name' (e.g., 'manufacturing_date', 'result_1', 'batch_no').
+      5. OUTPUT ONLY JSON. No explanations, no markdown blocks.
     `;
 
     const contents = [
