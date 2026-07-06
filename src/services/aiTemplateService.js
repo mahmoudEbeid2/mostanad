@@ -95,7 +95,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       3. PERFECT POSITIONING: Estimate the exact \`top\` and \`left\` pixel coordinates on the 1000x1414 canvas.
       4. VARIABLES: Use clear snake_case names for \`variable_name\` (e.g., \`manufacturing_date\`, \`result_1\`, \`batch_no\`).
       5. OUTPUT ONLY JSON. No explanations, no \`\`\`json blocks.
-    \`;
+    `;
 
     const contents = [
       {
@@ -112,12 +112,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
 
     // Clean up markdown if any
     let cleanJson = resultText.trim();
-    if (cleanJson.startsWith("\`\`\`json")) {
+    if (cleanJson.startsWith("```json")) {
       cleanJson = cleanJson.substring(7);
-    } else if (cleanJson.startsWith("\`\`\`")) {
+    } else if (cleanJson.startsWith("```")) {
       cleanJson = cleanJson.substring(3);
     }
-    if (cleanJson.endsWith("\`\`\`")) {
+    if (cleanJson.endsWith("```")) {
       cleanJson = cleanJson.substring(0, cleanJson.length - 3);
     }
 
@@ -130,14 +130,14 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       throw new AppError("AI failed to return valid JSON format.", 500);
     }
 
-    let htmlBuilder = \`<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\\n\`;
+    let htmlBuilder = `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n`;
     
     for (const el of elements) {
-      const widthStyle = el.width_px ? \`width: \${el.width_px}px;\` : '';
-      htmlBuilder += \`  <div style="position: absolute; top: \${el.top_px}px; left: \${el.left_px}px; \${widthStyle} font-size: \${el.font_size_px}px; color: \${el.color_hex}; font-weight: \${el.font_weight || 'normal'}; text-align: \${el.text_align || 'left'}; white-space: nowrap;">{{\${el.variable_name}}}</div>\\n\`;
+      const widthStyle = el.width_px ? `width: ${el.width_px}px;` : '';
+      htmlBuilder += `  <div style="position: absolute; top: ${el.top_px}px; left: ${el.left_px}px; ${widthStyle} font-size: ${el.font_size_px}px; color: ${el.color_hex}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">{{${el.variable_name}}}</div>\n`;
     }
     
-    htmlBuilder += \`</div>\`;
+    htmlBuilder += `</div>`;
 
     return htmlBuilder;
   } catch (error) {
