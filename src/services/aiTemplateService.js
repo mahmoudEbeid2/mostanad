@@ -172,17 +172,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     
     const secondPassContents = [
       {
-        role: "user",
-        parts: [
-          { text: secondPassPrompt },
-          {
-            inlineData: {
-              mimeType: "image/png",
-              data: base64Image
-            }
-          }
-        ]
-      }
+        fileData: {
+          mimeType: uploadMimeType,
+          fileUri: uploadResult.file.uri,
+        },
+      },
+      secondPassPrompt
     ];
 
     const secondPassResult = await model.generateContent({ contents: secondPassContents });
