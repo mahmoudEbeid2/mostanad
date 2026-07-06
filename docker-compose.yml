@@ -84,6 +84,7 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - NODE_OPTIONS=--dns-result-order=ipv4first
     restart: always
     depends_on:
       postgres:

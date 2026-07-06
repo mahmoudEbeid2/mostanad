@@ -63,11 +63,6 @@ export const generateTemplateViaAI = catchAsync(async (req, res, next) => {
     },
   });
 
-  // Save buffer to a temp file because worker needs a file path
-  const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}_${req.file.originalname}`;
-  const tempFilePath = path.join(process.cwd(), tempFileName);
-  fs.writeFileSync(tempFilePath, req.file.buffer);
-
   // Add to queue
   await aiTemplateQueue.add(
     "generateAITemplate",
@@ -75,7 +70,7 @@ export const generateTemplateViaAI = catchAsync(async (req, res, next) => {
       companyId,
       brandId,
       templateName,
-      filePath: tempFilePath,
+      fileBufferBase64: req.file.buffer.toString('base64'),
       fileName: req.file.originalname,
       mimeType: req.file.mimetype,
     },

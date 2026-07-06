@@ -37,6 +37,14 @@ services:
       - ./src:/app/src
       - ./uploads:/app/uploads
 
+  ai-template-worker:
+    environment:
+      - NODE_ENV=development
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
   postgres:
     ports:
       - "5432:5432"
