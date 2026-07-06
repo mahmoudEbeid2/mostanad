@@ -71,21 +71,22 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       The background image of the certificate (including ALL static text, field labels, logos, and borders) is ALREADY present.
       
       YOUR EXACT MISSION:
-      Find the actual dynamic dummy values (e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG", the test results, etc.) and map them to logical variable names.
+      Find the actual text values (the dummy data, e.g., "DOXYPHARMA", "09/2028", "TURKEY", "1KG", the test results like "Conforms", etc.) and return their exact coordinates and styles as a JSON array.
+      DO NOT convert them into variables. Return the exact original text.
       DO NOT extract static labels like "PRODUCT NAME", "BATCH NUMBER", "DESCRIPTION", "Company Address". Ignore them completely.
 
       JSON SCHEMA REQUIRED:
       Return a raw JSON array of objects. Do not include markdown formatting.
       [
         {
-          "variable_name": "product_name",
+          "original_text": "DOXYPHARMA",
           "top_px": 185,
           "left_px": 170,
           "font_size_px": 12,
           "color_hex": "#000000",
           "font_weight": "normal",
           "text_align": "left",
-          "width_px": 200 // optional, use if it needs to be centered within a specific width, otherwise omit
+          "width_px": 200 // optional
         }
       ]
 
@@ -94,7 +95,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
       3. IGNORE SPECIFICATIONS: In testing/analysis tables, DO NOT extract the 'Specifications', 'Limits', or 'Description' columns. Those are static! ONLY extract the 'RESULTS' column values (e.g., 'Conforms', '99%').
       4. PERFECT POSITIONING: Estimate the exact 'top' and 'left' pixel coordinates on the 1000x1414 canvas.
-      5. VARIABLES: Use clear snake_case names for 'variable_name' (e.g., 'product_name', 'manufacturing_date', 'result_appearance', 'batch_no').
+      5. ORIGINAL TEXT: Output the exact original text you see on the document in the 'original_text' field. Do NOT use brackets or variables.
       6. OUTPUT ONLY JSON. No explanations, no markdown blocks.
     `;
 
@@ -142,7 +143,9 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       const width = el.width_px !== undefined ? el.width_px : el.width;
       const widthStyle = width ? `width: ${width}px;` : '';
       
-      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">{{${el.variable_name || el.variable}}}</div>\n`;
+      const textToDisplay = el.original_text || el.text || el.value || "Text";
+      
+      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">${textToDisplay}</div>\n`;
     }
     
     htmlBuilder += `</div>`;
