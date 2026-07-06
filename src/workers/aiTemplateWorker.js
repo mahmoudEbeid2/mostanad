@@ -83,7 +83,7 @@ const worker = new Worker(
         
         // Inject background into the HTML
         // Find the <div class="certificate-wrapper"...> and insert the background
-        const bgLayer = `\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: cover; background-position: center; z-index: -1;"></div>\n`;
+        const bgLayer = `\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: 100% 100%; background-repeat: no-repeat; z-index: -1;"></div>\n`;
         generatedHtml = generatedHtml.replace(/(<div[^>]*class=["']certificate-wrapper["'][^>]*>)/i, `$1${bgLayer}`);
       } catch (convErr) {
         console.error(`[AI Template Worker] Warning: Failed to convert design to background image:`, convErr.message);

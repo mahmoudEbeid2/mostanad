@@ -82,7 +82,13 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       promptText
     ];
 
-    const response = await model.generateContent(contents);
+    const response = await model.generateContent({
+      contents: contents,
+      generationConfig: {
+        maxOutputTokens: 8192,
+        temperature: 0.1,
+      }
+    });
     let resultText = response.response.text();
 
     // Clean up markdown
