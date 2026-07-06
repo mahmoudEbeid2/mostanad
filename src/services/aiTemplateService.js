@@ -90,63 +90,69 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       6. OUTPUT ONLY JSON. No explanations, no markdown blocks.
     `;
 
-    const contents = [
-      {
-        fileData: {
-          mimeType: uploadMimeType,
-          fileUri: uploadResult.file.uri,
+    const extractSection = async (sectionPrompt, sectionName) => {
+      const contents = [
+        {
+          fileData: {
+            mimeType: uploadMimeType,
+            fileUri: uploadResult.file.uri,
+          },
         },
-      },
-      promptText
-    ];
+        sectionPrompt
+      ];
 
-    let response;
-    let retries = 5;
-    for (let i = 0; i < retries; i++) {
-      try {
-        const modelName = i < 2 ? "gemini-3.5-flash" : "gemini-2.5-flash";
-        console.log(`[AITemplateService] Requesting HTML generation from ${modelName} (Attempt ${i + 1})...`);
-        const currentModel = genAI.getGenerativeModel({ 
-          model: modelName,
-          generationConfig: {
-            maxOutputTokens: 8192,
-            temperature: 0.0,
-            responseMimeType: "application/json",
-          }
-        });
-        
-        response = await currentModel.generateContent(contents);
-        break; // Success
-      } catch (err) {
-        console.warn(`[AITemplateService] Attempt ${i + 1} failed: ${err.message}`);
-        if (i === retries - 1) throw err;
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+      let response;
+      let retries = 5;
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log(`[AITemplateService] Requesting HTML generation for ${sectionName} from gemini-3.5-flash (Attempt ${i + 1})...`);
+          const currentModel = genAI.getGenerativeModel({ 
+            model: "gemini-3.5-flash",
+            generationConfig: {
+              maxOutputTokens: 8192,
+              temperature: 0.0,
+              responseMimeType: "application/json",
+            }
+          });
+          
+          response = await currentModel.generateContent(contents);
+          break; // Success
+        } catch (err) {
+          console.warn(`[AITemplateService] Attempt ${i + 1} for ${sectionName} failed: ${err.message}`);
+          if (i === retries - 1) throw err;
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+        }
       }
-    }
-    
-    let resultText = response.response.text();
+      
+      let resultText = response.response.text();
+      let cleanJson = resultText.trim();
+      if (cleanJson.startsWith("```json")) {
+        cleanJson = cleanJson.substring(7);
+      } else if (cleanJson.startsWith("```")) {
+        cleanJson = cleanJson.substring(3);
+      }
+      if (cleanJson.endsWith("```")) {
+        cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+      }
 
-    // Clean up markdown if any
-    let cleanJson = resultText.trim();
-    if (cleanJson.startsWith("```json")) {
-      cleanJson = cleanJson.substring(7);
-    } else if (cleanJson.startsWith("```")) {
-      cleanJson = cleanJson.substring(3);
-    }
-    if (cleanJson.endsWith("```")) {
-      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-    }
+      try {
+        console.log(`[AITemplateService] AI JSON Output for ${sectionName}:`, cleanJson.trim());
+        return JSON.parse(cleanJson.trim());
+      } catch (parseErr) {
+        console.error(`[AITemplateService] Failed to parse AI JSON for ${sectionName}:`, cleanJson);
+        throw new AppError("AI failed to return valid JSON format.", 500);
+      }
+    };
 
-    // Parse JSON and build HTML
-    let elements = [];
-    try {
-      console.log("[AITemplateService] AI JSON Output:", cleanJson.trim());
-      elements = JSON.parse(cleanJson.trim());
-    } catch (parseErr) {
-      console.error("[AITemplateService] Failed to parse AI JSON:", cleanJson);
-      throw new AppError("AI failed to return valid JSON format.", 500);
-    }
+    const topPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located in the TOP HALF of the page (where ymin is between 0 and 500). DO NOT extract anything from the bottom half.";
+    const bottomPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located in the BOTTOM HALF of the page (where ymin is between 500 and 1000). DO NOT extract anything from the top half.";
+
+    console.log("[AITemplateService] Starting two-part extraction...");
+    const topElements = await extractSection(topPrompt, "Top Half");
+    const bottomElements = await extractSection(bottomPrompt, "Bottom Half");
+
+    const elements = [...topElements, ...bottomElements];
 
     let htmlBuilder = `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n`;
     
