@@ -156,7 +156,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       
       const textToDisplay = el.original_text || el.text || el.value || "Text";
       
-      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">${textToDisplay}</div>\n`;
+      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; background-color: #ffffff; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap; padding: 0 2px;">${textToDisplay}</div>\n`;
     }
     
     htmlBuilder += `</div>`;
