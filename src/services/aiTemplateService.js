@@ -56,16 +56,20 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const promptText = `
-      You are an expert front-end developer and designer. 
-      Analyze the attached certificate/document design. 
-      I need you to convert this design into a clean, precise, and responsive HTML snippet using inline CSS.
-      Requirements:
-      - Use absolute positioning (position: absolute) within a relative wrapper (width: 1000px; height: 1414px) to place text and elements exactly where they appear.
-      - Extract all static text and preserve formatting (font size, weight, color).
-      - Identify any dynamic text (like names, dates, product names, batch numbers) and replace them with Handlebars-style variables like {{product_name}}, {{date}}, etc.
-      - Do NOT extract or recreate the complex background graphics using CSS. Only position the text layers on a transparent background, because the original image will be used as the background behind your HTML.
-      - The output should ONLY contain valid HTML code. Do NOT output markdown code blocks (\`\`\`html). Output the raw HTML directly.
-      - Do NOT wrap it in <html><body> tags, just a <div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px;"> wrapper.
+      You are an expert front-end developer and pixel-perfect design integrator.
+      I need you to convert the text layout of the attached document into an extremely precise HTML snippet.
+
+      The document canvas is exactly 1000px wide and 1414px high.
+      Your ONLY job is to position text accurately on this canvas. Do NOT recreate the background graphics or borders.
+
+      STRICT REQUIREMENTS:
+      1. CONTAINER: Use exactly <div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">. Do not include <html> or <body> tags.
+      2. ABSOLUTE POSITIONING: Every single piece of text MUST use \`position: absolute\` with exact \`top\` and \`left\` pixel values relative to the 1000x1414 canvas. Do not use generic margins.
+      3. CENTERING: If a text block is horizontally centered on the document, use \`left: 0; width: 100%; text-align: center;\` along with the exact \`top\` position.
+      4. TEXT FORMATTING: Accurately estimate and apply inline CSS for \`font-size\` (in px), \`color\` (exact HEX code), \`font-weight\`, \`font-family\`, \`letter-spacing\`, and \`line-height\`.
+      5. VARIABLES: Replace dynamic data (names, dates, scores, batch numbers) with Handlebars variables (e.g., {{student_name}}, {{issue_date}}, {{product}}).
+      6. TABLES / GRIDS: If there is a table or a grid of text, you can use a \`<table>\` positioned absolutely, or position each line absolutely. Ensure columns align perfectly.
+      7. OUTPUT FORMAT: Output ONLY the raw, pure HTML string. No markdown formatting, no \`\`\`html blocks, no explanations.
     `;
 
     const contents = [
