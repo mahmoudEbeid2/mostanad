@@ -115,13 +115,21 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
             }
           });
           
-          response = await currentModel.generateContent(contents);
+          const generatePromise = currentModel.generateContent(contents);
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Request timed out after 60 seconds')), 60000)
+          );
+          
+          response = await Promise.race([generatePromise, timeoutPromise]);
           break; // Success
         } catch (err) {
           console.warn(`[AITemplateService] Attempt ${i + 1} for ${sectionName} failed: ${err.message}`);
-          if (i === retries - 1) throw err;
-          // Wait before retrying (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+          if (i === retries - 1) {
+            console.error(`[AITemplateService] All ${retries} attempts failed for ${sectionName}. Last error: ${err.message}`);
+            throw new AppError("The AI service is currently experiencing high demand. Please try again later.", 503);
+          }
+          // Exponential backoff (2s, 4s, 8s, 16s, 32s)
+          await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
         }
       }
       
