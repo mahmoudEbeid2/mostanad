@@ -125,6 +125,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     // Parse JSON and build HTML
     let elements = [];
     try {
+      console.log("[AITemplateService] AI JSON Output:", cleanJson.trim());
       elements = JSON.parse(cleanJson.trim());
     } catch (parseErr) {
       console.error("[AITemplateService] Failed to parse AI JSON:", cleanJson);
@@ -134,8 +135,14 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     let htmlBuilder = `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n`;
     
     for (const el of elements) {
-      const widthStyle = el.width_px ? `width: ${el.width_px}px;` : '';
-      htmlBuilder += `  <div style="position: absolute; top: ${el.top_px}px; left: ${el.left_px}px; ${widthStyle} font-size: ${el.font_size_px}px; color: ${el.color_hex}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">{{${el.variable_name}}}</div>\n`;
+      const top = el.top_px !== undefined ? el.top_px : (el.top !== undefined ? el.top : 0);
+      const left = el.left_px !== undefined ? el.left_px : (el.left !== undefined ? el.left : 0);
+      const fontSize = el.font_size_px !== undefined ? el.font_size_px : (el.font_size !== undefined ? el.font_size : 12);
+      const color = el.color_hex || el.color || '#000000';
+      const width = el.width_px !== undefined ? el.width_px : el.width;
+      const widthStyle = width ? `width: ${width}px;` : '';
+      
+      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">{{${el.variable_name || el.variable}}}</div>\n`;
     }
     
     htmlBuilder += `</div>`;
