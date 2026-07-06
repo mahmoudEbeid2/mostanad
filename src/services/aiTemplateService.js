@@ -52,9 +52,9 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       throw new AppError(`File processing failed at Gemini API. State: ${file.state}. Make sure the .ai file was saved with 'Create PDF Compatible File' checked.`, 500);
     }
 
-    console.log(`[AITemplateService] Requesting HTML generation from gemini-2.5-flash...`);
+    console.log(`[AITemplateService] Requesting HTML generation from gemini-3.5-flash...`);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       generationConfig: {
         maxOutputTokens: 8192,
         temperature: 0.0,
@@ -108,7 +108,20 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       promptText
     ];
 
-    const response = await model.generateContent(contents);
+    let response;
+    let retries = 5;
+    for (let i = 0; i < retries; i++) {
+      try {
+        response = await model.generateContent(contents);
+        break; // Success
+      } catch (err) {
+        console.warn(`[AITemplateService] Attempt ${i + 1} failed: ${err.message}`);
+        if (i === retries - 1) throw err;
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+      }
+    }
+    
     let resultText = response.response.text();
 
     // Clean up markdown if any
