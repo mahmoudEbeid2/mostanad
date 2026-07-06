@@ -84,7 +84,6 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
           "left_px": 170,
           "font_size_px": 12,
           "color_hex": "#000000",
-          "background_color_hex": "#ffffff", // VERY IMPORTANT: Guess the background color behind the text so we can hide the text underneath
           "font_weight": "normal",
           "text_align": "left",
           "width_px": 200 // optional
@@ -96,9 +95,8 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
       3. IGNORE SPECIFICATIONS: In testing/analysis tables, DO NOT extract the 'Specifications', 'Limits', or 'Description' columns. Those are static! ONLY extract the 'RESULTS' column values (e.g., 'Conforms', '99%').
       4. PERFECT POSITIONING: Estimate the exact 'top' and 'left' pixel coordinates on the 1000x1414 canvas.
-      5. BACKGROUND: Always provide 'background_color_hex'. This acts as an opaque eraser over the original text on the background image. Usually '#ffffff'.
-      6. ORIGINAL TEXT: Output the exact original text you see on the document in the 'original_text' field. Do NOT use brackets or variables.
-      7. OUTPUT ONLY JSON. No explanations, no markdown blocks.
+      5. ORIGINAL TEXT: Output the exact original text you see on the document in the 'original_text' field. Do NOT use brackets or variables.
+      6. OUTPUT ONLY JSON. No explanations, no markdown blocks.
     `;
 
     const contents = [
@@ -142,13 +140,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       const left = el.left_px !== undefined ? el.left_px : (el.left !== undefined ? el.left : 0);
       const fontSize = el.font_size_px !== undefined ? el.font_size_px : (el.font_size !== undefined ? el.font_size : 12);
       const color = el.color_hex || el.color || '#000000';
-      const bgColor = el.background_color_hex || el.background_color || '#ffffff';
       const width = el.width_px !== undefined ? el.width_px : el.width;
       const widthStyle = width ? `width: ${width}px;` : '';
       
       const textToDisplay = el.original_text || el.text || el.value || "Text";
       
-      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; background-color: ${bgColor}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap; padding: 0 2px;">${textToDisplay}</div>\n`;
+      htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap;">${textToDisplay}</div>\n`;
     }
     
     htmlBuilder += `</div>`;
