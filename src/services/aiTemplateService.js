@@ -52,9 +52,9 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       throw new AppError(`File processing failed at Gemini API. State: ${file.state}. Make sure the .ai file was saved with 'Create PDF Compatible File' checked.`, 500);
     }
 
-    console.log(`[AITemplateService] Requesting HTML generation from gemini-1.5-pro...`);
+    console.log(`[AITemplateService] Requesting HTML generation from gemini-2.5-flash...`);
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-pro",
+      model: "gemini-2.5-flash",
       generationConfig: {
         maxOutputTokens: 8192,
         temperature: 0.0,
