@@ -5,9 +5,11 @@ import {
   getTemplateById,
   updateTemplate,
   deleteTemplate,
+  generateTemplateViaAI
 } from "../controllers/templateController.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { restrictToPermission } from "../middleware/authMiddleware.js";
+import { uploadCertificate } from "../middleware/uploadMiddleware.js";
 import {
   createTemplateSchema,
   updateTemplateSchema,
@@ -25,6 +27,13 @@ router.post(
   createTemplate
 );
 router.get("/companies/:companyId/templates", restrictToPermission("read_templates"), getAllTemplates);
+
+router.post(
+  "/companies/:companyId/templates/generate-ai",
+  restrictToPermission("create_templates"),
+  uploadCertificate, // reusing the same upload middleware which accepts images/pdfs
+  generateTemplateViaAI
+);
 
 // Scoped under templates
 router

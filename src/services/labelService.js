@@ -30,12 +30,7 @@ async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
         msg.includes("demand") ||
         msg.includes("quota");
 
-      if (isQuotaOrDemand && modelName === "gemini-2.5-flash") {
-        console.warn(`[LabelService][${label}] Quota on gemini-2.5-flash — falling back to gemini-2.0-flash...`);
-        modelName = "gemini-2.0-flash";
-        retries--;
-        await new Promise((r) => setTimeout(r, 1000));
-      } else if (isQuotaOrDemand && retries > 1) {
+      if (isQuotaOrDemand) {
         console.warn(`[LabelService][${label}] Quota hit — retrying in ${delay}ms...`);
         retries--;
         await new Promise((r) => setTimeout(r, delay));

@@ -193,12 +193,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
           errMsg.includes("demand") ||
           errMsg.includes("quota");
 
-        if (isQuotaOrDemand && currentModelName === "gemini-2.5-flash") {
-          console.warn("[CatalogService] High demand/quota error detected on gemini-2.5-flash. Falling back to gemini-2.0-flash...");
-          currentModelName = "gemini-2.0-flash";
-          retries--;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } else if (isQuotaOrDemand) {
+        if (isQuotaOrDemand) {
           console.warn(`[CatalogService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
           retries--;
           if (retries === 0) throw error;
