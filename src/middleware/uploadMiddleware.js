@@ -58,3 +58,29 @@ export const uploadLogo = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit for logos
   },
 });
+
+const designFileFilter = (req, file, cb) => {
+  const allowedMimeTypes = [
+    "application/pdf",
+    "application/illustrator",
+    "application/postscript",
+    "application/x-adobe-illustrator",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp"
+  ];
+  if (allowedMimeTypes.includes(file.mimetype) || file.originalname.toLowerCase().endsWith(".ai")) {
+    cb(null, true);
+  } else {
+    cb(new AppError("Only design files (PDF, AI, PNG, JPEG, WebP) are allowed!", 400), false);
+  }
+};
+
+export const uploadDesign = multer({
+  storage: storage, // using disk storage for background processing is better but we'll adapt templateController
+  fileFilter: designFileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for big design files
+  },
+});

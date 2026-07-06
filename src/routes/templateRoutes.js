@@ -9,7 +9,7 @@ import {
 } from "../controllers/templateController.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { restrictToPermission } from "../middleware/authMiddleware.js";
-import { uploadCertificate } from "../middleware/uploadMiddleware.js";
+import { uploadDesign } from "../middleware/uploadMiddleware.js";
 import {
   createTemplateSchema,
   updateTemplateSchema,
@@ -31,7 +31,7 @@ router.get("/companies/:companyId/templates", restrictToPermission("read_templat
 router.post(
   "/companies/:companyId/templates/generate-ai",
   restrictToPermission("create_templates"),
-  uploadCertificate, // reusing the same upload middleware which accepts images/pdfs
+  uploadDesign.single("file"),
   generateTemplateViaAI
 );
 
