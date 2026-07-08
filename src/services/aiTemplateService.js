@@ -101,7 +101,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
         sectionPrompt
       ];
 
-      let response;
+      let finalParsedJson = null;
       let retries = 5;
       for (let i = 0; i < retries; i++) {
         try {
@@ -120,37 +120,33 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
             setTimeout(() => reject(new Error('Request timed out after 60 seconds')), 60000)
           );
 
-          response = await Promise.race([generatePromise, timeoutPromise]);
+          let response = await Promise.race([generatePromise, timeoutPromise]);
+          let resultText = response.response.text();
+          let cleanJson = resultText.trim();
+          if (cleanJson.startsWith("```json")) {
+            cleanJson = cleanJson.substring(7);
+          } else if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.substring(3);
+          }
+          if (cleanJson.endsWith("```")) {
+            cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+          }
+
+          console.log(`[AITemplateService] AI JSON Output for ${sectionName}:`, cleanJson.trim());
+          finalParsedJson = JSON.parse(cleanJson.trim());
           break; // Success
         } catch (err) {
           console.warn(`[AITemplateService] Attempt ${i + 1} for ${sectionName} failed: ${err.message}`);
           if (i === retries - 1) {
             console.error(`[AITemplateService] All ${retries} attempts failed for ${sectionName}. Last error: ${err.message}`);
-            throw new AppError("The AI service is currently experiencing high demand. Please try again later.", 503);
+            throw new AppError("The AI service is currently experiencing high demand or returning invalid data. Please try again later.", 503);
           }
           // Exponential backoff (2s, 4s, 8s, 16s, 32s)
           await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
         }
       }
 
-      let resultText = response.response.text();
-      let cleanJson = resultText.trim();
-      if (cleanJson.startsWith("```json")) {
-        cleanJson = cleanJson.substring(7);
-      } else if (cleanJson.startsWith("```")) {
-        cleanJson = cleanJson.substring(3);
-      }
-      if (cleanJson.endsWith("```")) {
-        cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-      }
-
-      try {
-        console.log(`[AITemplateService] AI JSON Output for ${sectionName}:`, cleanJson.trim());
-        return JSON.parse(cleanJson.trim());
-      } catch (parseErr) {
-        console.error(`[AITemplateService] Failed to parse AI JSON for ${sectionName}:`, cleanJson);
-        throw new AppError("AI failed to return valid JSON format.", 500);
-      }
+      return finalParsedJson;
     };
 
     const topPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located strictly in the top 500 units of the page (where ymin is between 0 and 500). DO NOT extract anything below 500. DO NOT duplicate any data.";
