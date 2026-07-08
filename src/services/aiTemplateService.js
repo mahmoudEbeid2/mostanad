@@ -11,7 +11,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
 
   // Mock handling
   if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-     return `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; border: 1px solid #ccc; padding: 50px;">
+    return `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; border: 1px solid #ccc; padding: 50px;">
         <h1 style="text-align: center; color: #333;">Certificate of Analysis</h1>
         <div style="position: absolute; top: 200px; left: 100px;">Product: {{product_name}}</div>
         <div style="position: absolute; top: 250px; left: 100px;">Batch: {{batch_number}}</div>
@@ -27,7 +27,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
   try {
     const isAiFile = fileName.toLowerCase().endsWith('.ai');
     const uploadMimeType = isAiFile ? 'application/pdf' : mimeType;
-    
+
     let uploadPath = filePath;
     if (isAiFile) {
       tempPdfPath = `${filePath}.pdf`;
@@ -106,7 +106,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       for (let i = 0; i < retries; i++) {
         try {
           console.log(`[AITemplateService] Requesting HTML generation for ${sectionName} from gemini-3.5-flash (Attempt ${i + 1})...`);
-          const currentModel = genAI.getGenerativeModel({ 
+          const currentModel = genAI.getGenerativeModel({
             model: "gemini-3.5-flash",
             generationConfig: {
               maxOutputTokens: 8192,
@@ -114,12 +114,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
               responseMimeType: "application/json",
             }
           });
-          
+
           const generatePromise = currentModel.generateContent(contents);
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Request timed out after 60 seconds')), 60000)
           );
-          
+
           response = await Promise.race([generatePromise, timeoutPromise]);
           break; // Success
         } catch (err) {
@@ -132,7 +132,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
           await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
         }
       }
-      
+
       let resultText = response.response.text();
       let cleanJson = resultText.trim();
       if (cleanJson.startsWith("```json")) {
@@ -153,21 +153,36 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       }
     };
 
-    const topPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located in the TOP HALF of the page (where ymin is between 0 and 500). DO NOT extract anything from the bottom half.";
-    const bottomPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located in the BOTTOM HALF of the page (where ymin is between 500 and 1000). DO NOT extract anything from the top half.";
+    const topPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located strictly in the top 500 units of the page (where ymin is between 0 and 500). DO NOT extract anything below 500. DO NOT duplicate any data.";
+    const bottomPrompt = promptText + "\n\nCRITICAL INSTRUCTION: ONLY extract text located strictly in the bottom 500 units of the page (where ymin is STRICTLY GREATER THAN 500). DO NOT extract anything above 500. DO NOT duplicate any data.";
 
     console.log("[AITemplateService] Starting two-part extraction...");
     const topElements = await extractSection(topPrompt, "Top Half");
     const bottomElements = await extractSection(bottomPrompt, "Bottom Half");
 
-    const elements = [...topElements, ...bottomElements];
+    const allElements = [...topElements, ...bottomElements];
+    
+    // Deduplicate elements to prevent repeating text on top of each other
+    const elements = [];
+    for (const el of allElements) {
+      const isDuplicate = elements.some(existing => {
+         const existingText = existing.original_text || existing.text || existing.value || "";
+         const currentText = el.original_text || el.text || el.value || "";
+         const existingY = existing.box_2d ? existing.box_2d[0] : (existing.top_px || 0);
+         const currentY = el.box_2d ? el.box_2d[0] : (el.top_px || 0);
+         return existingText === currentText && Math.abs(existingY - currentY) < 20;
+      });
+      if (!isDuplicate) {
+        elements.push(el);
+      }
+    }
 
     let htmlBuilder = `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n`;
-    
+
     for (const el of elements) {
       let top = 0;
       let left = 0;
-      
+
       if (el.box_2d && Array.isArray(el.box_2d) && el.box_2d.length === 4) {
         // box_2d is [ymin, xmin, ymax, xmax] mapped to 0-1000
         const ymin = el.box_2d[0];
@@ -183,26 +198,26 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       const color = el.color_hex || el.color || '#000000';
       const width = el.width_px !== undefined ? el.width_px : el.width;
       const widthStyle = width ? `width: ${width}px;` : '';
-      
+
       const textToDisplay = el.original_text || el.text || el.value || "Text";
-      
+
       htmlBuilder += `  <div style="position: absolute; top: ${top}px; left: ${left}px; ${widthStyle} font-size: ${fontSize}px; color: ${color}; background-color: #ffffff; font-weight: ${el.font_weight || 'normal'}; text-align: ${el.text_align || 'left'}; white-space: nowrap; padding: 0 2px;">${textToDisplay}</div>\n`;
     }
-    
+
     htmlBuilder += `</div>`;
-    
+
     return htmlBuilder;
   } catch (error) {
     console.error("[AITemplateService] Error:", error);
     throw error;
   } finally {
     if (tempPdfPath && fs.existsSync(tempPdfPath)) {
-      try { fs.unlinkSync(tempPdfPath); } catch (e) {}
+      try { fs.unlinkSync(tempPdfPath); } catch (e) { }
     }
     if (uploadResult && uploadResult.file) {
       try {
         await fileManager.deleteFile(uploadResult.file.name);
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 };
