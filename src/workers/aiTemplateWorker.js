@@ -85,7 +85,6 @@ const worker = new Worker(
       const bgFileName = `bg_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
       const bgFilePath = path.join(uploadsDesignsDir, bgFileName);
       
-      const execAsync = promisify(exec);
       try {
         console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
         // We use Ghostscript/ImageMagick to convert the first page to PNG
