@@ -258,7 +258,7 @@ The generated HTML should produce a visual result that is at least 98% identical
     let retries = 5;
     for (let i = 0; i < retries; i++) {
       try {
-        const modelName = i < 2 ? "gemini-3.5-flash" : "gemini-2.5-flash";
+        const modelName = i === 0 ? "gemini-2.5-pro" : "gemini-3.5-flash";
         console.log(`[AITemplateService] Requesting JSON output from ${modelName} (Attempt ${i + 1})...`);
         const currentModel = genAI.getGenerativeModel({
           model: modelName,
