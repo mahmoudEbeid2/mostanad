@@ -58,19 +58,26 @@ const worker = new Worker(
       let svgFilePath = tempFilePath;
       let cleanupFiles = [tempFilePath];
 
+      const { execSync } = await import("child_process");
+
       if (!fileName.toLowerCase().endsWith('.svg')) {
           svgFilePath = `${tempFilePath}.svg`;
           cleanupFiles.push(svgFilePath);
           console.log(`[AI Template Worker] Converting ${fileName} to SVG using Inkscape...`);
-          const { execSync } = await import("child_process");
           execSync(`inkscape --export-type=svg --export-text-to-path=false --export-filename="${svgFilePath}" "${tempFilePath}"`);
       }
 
+      // Convert SVG to PNG for AI OCR to avoid 1M token limit crash from large SVGs
+      let pngFilePath = `${tempFilePath}.png`;
+      cleanupFiles.push(pngFilePath);
+      console.log(`[AI Template Worker] Creating PNG preview for AI OCR...`);
+      execSync(`inkscape --export-type=png --export-filename="${pngFilePath}" --export-dpi=150 "${svgFilePath}"`);
+
       // 2. Process AI JSON Extraction
       let jsonArrayString = await generateHtmlFromDesign(
-        svgFilePath,
-        "design.svg",
-        "image/svg+xml"
+        pngFilePath,
+        "design.png",
+        "image/png"
       );
 
       let extractedValues = [];
