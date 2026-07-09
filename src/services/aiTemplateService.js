@@ -107,7 +107,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     let retries = 5;
     for (let i = 0; i < retries; i++) {
       try {
-        const modelName = i < 2 ? "gemini-3.5-flash" : "gemini-1.5-pro";
+        const modelName = i < 2 ? "gemini-3.5-flash" : "gemini-1.5-flash";
         console.log(`[AITemplateService] Requesting JSON array from ${modelName} (Attempt ${i + 1})...`);
         const currentModel = genAI.getGenerativeModel({
           model: modelName,
