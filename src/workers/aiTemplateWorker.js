@@ -62,32 +62,7 @@ const worker = new Worker(
         serviceMimeType
       );
 
-      // 3. Convert design to background image
-      console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
-      const isSvg = serviceFileName.toLowerCase().endsWith('.svg');
-      const bgExt = isSvg ? 'svg' : 'png';
-      const bgFileName = `bg_${Date.now()}_${Math.random().toString(36).substring(7)}.${bgExt}`;
-      const bgFilePath = path.join(process.cwd(), "uploads", "designs", bgFileName);
 
-      if (isSvg) {
-        // Just copy the SVG directly to act as the background image
-        fs.copyFileSync(tempFilePath, bgFilePath);
-      } else {
-        const { exec } = await import('child_process');
-        const { promisify } = await import('util');
-        const execAsync = promisify(exec);
-        await execAsync(`magick -density 300 -background white "${tempFilePath}" "${bgFilePath}"`);
-      }
-      
-      console.log(`[AI Template Worker] Successfully generated background image: ${BACKEND_WS_URL}/uploads/designs/${bgFileName}`);
-
-      // Inject background into HTML
-      const publicBaseUrl = process.env.PUBLIC_API_URL || "http://localhost:3000";
-      const backgroundUrl = `${publicBaseUrl}/uploads/designs/${bgFileName}`;
-      generatedHtml = generatedHtml.replace(
-        '<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">',
-        `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: 100% 100%; background-repeat: no-repeat; z-index: -1;"></div>`
-      );
 
 
       // Extract dynamic fields to populate requiredFields
