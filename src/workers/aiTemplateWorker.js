@@ -102,6 +102,23 @@ const worker = new Worker(
         }
       }
 
+      // Strip XML declaration to prevent rendering issues
+      generatedHtml = generatedHtml.replace(/<\\?xml.*?\\?>/gi, '');
+      
+      const finalHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { margin: 0; padding: 0; display: flex; justify-content: center; background: #fff; }
+  svg { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+${generatedHtml.trim()}
+</body>
+</html>`;
+
       // 3. Create the template in database
       const newTemplate = await prisma.template.create({
         data: {
@@ -111,7 +128,7 @@ const worker = new Worker(
           brandId: brandId || null,
           isGlobal: false,
           fields: extractedFields,
-          htmlContent: generatedHtml,
+          htmlContent: finalHtml,
           isActive: true
         }
       });
@@ -121,7 +138,7 @@ const worker = new Worker(
         where: { id: taskId },
         data: {
           status: "completed",
-          result: { templateId: newTemplate.id, html: generatedHtml },
+          result: { templateId: newTemplate.id, html: finalHtml },
         },
       });
 
