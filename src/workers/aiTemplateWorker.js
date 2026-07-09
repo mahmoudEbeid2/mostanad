@@ -21,7 +21,7 @@ const connection = getRedisConfig();
 const worker = new Worker(
   "aiTemplateQueue",
   async (job) => {
-    const { companyId, brandId, templateName, filePath, fileName, mimeType } = job.data;
+    const { companyId, brandId, templateName, fileBufferBase64, fileName, mimeType } = job.data;
     const taskId = job.opts.jobId;
 
     console.log(`[AI Template Worker] Starting job ${job.id} (Task ${taskId})`);
@@ -41,17 +41,22 @@ const worker = new Worker(
       status: "processing",
     });
 
+    let tempFilePath = null;
     let serviceFileName = fileName;
     let serviceMimeType = mimeType;
 
     try {
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`Uploaded design file not found at ${filePath}`);
+      if (!fileBufferBase64) {
+        throw new Error(`Uploaded design file buffer not found in job data`);
       }
+
+      const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}_${fileName}`;
+      tempFilePath = path.join(process.cwd(), tempFileName);
+      fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
       // 2. Process HTML generation
       let generatedHtml = await generateHtmlFromDesign(
-        filePath,
+        tempFilePath,
         serviceFileName,
         serviceMimeType
       );
@@ -120,13 +125,13 @@ const worker = new Worker(
         error: error.message,
       });
     } finally {
-      // 6. Delete the temp file from the shared volume
-      if (filePath && fs.existsSync(filePath)) {
+      // 6. Delete the temp file
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         try {
-          fs.unlinkSync(filePath);
-          console.log(`[AI Template Worker] Cleaned up file ${filePath}`);
+          fs.unlinkSync(tempFilePath);
+          console.log(`[AI Template Worker] Cleaned up file ${tempFilePath}`);
         } catch (err) {
-          console.error(`[AI Template Worker] Failed to delete file ${filePath}:`, err.message);
+          console.error(`[AI Template Worker] Failed to delete file ${tempFilePath}:`, err.message);
         }
       }
     }
