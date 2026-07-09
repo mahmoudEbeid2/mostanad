@@ -84,6 +84,8 @@ const worker = new Worker(
       try {
         aiResult = JSON.parse(jsonResponseString);
       } catch (e) {
+        console.error("[AI Template Worker] JSON.parse error:", e.message);
+        console.error("[AI Template Worker] Raw Response was:", jsonResponseString ? jsonResponseString.substring(0, 500) + "..." : String(jsonResponseString));
         throw new Error("AI failed to return a valid JSON object with html and css.");
       }
 

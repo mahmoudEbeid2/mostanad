@@ -263,7 +263,7 @@ The generated HTML should produce a visual result that is at least 98% identical
         const currentModel = genAI.getGenerativeModel({
           model: modelName,
           generationConfig: {
-            maxOutputTokens: 8192,
+            maxOutputTokens: 65536,
             temperature: 0.0,
             responseMimeType: "application/json",
             responseSchema: {
@@ -297,7 +297,7 @@ The generated HTML should produce a visual result that is at least 98% identical
       cleanJson = cleanJson.substring(0, cleanJson.length - 3);
     }
 
-    console.log(`[AITemplateService] Successfully generated JSON array.`);
+    console.log(`[AITemplateService] Successfully generated JSON object.`);
     return cleanJson.trim();
   } catch (error) {
     console.error("[AITemplateService] Error:", error);
