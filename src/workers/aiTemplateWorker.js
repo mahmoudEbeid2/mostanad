@@ -51,26 +51,41 @@ const worker = new Worker(
         throw new Error(`Uploaded design file buffer not found in job data`);
       }
 
+      if (!serviceFileName.toLowerCase().endsWith('.svg')) {
+        throw new Error("Hybrid SVG Injection mode ONLY supports .svg files. Please export your design as SVG in Illustrator and upload it.");
+      }
+
       const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}_${fileName}`;
       tempFilePath = path.join(process.cwd(), tempFileName);
       fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
-      // 2. Process HTML generation
-      let generatedHtml = await generateHtmlFromDesign(
+      // 2. Extract dynamic fields using AI
+      let jsonArrayString = await generateHtmlFromDesign(
         tempFilePath,
         serviceFileName,
         serviceMimeType
       );
 
+      let extractedValues = [];
+      try {
+        extractedValues = JSON.parse(jsonArrayString);
+      } catch (e) {
+        throw new Error("AI failed to return a valid JSON array for dynamic fields.");
+      }
 
-
-
-      // Extract dynamic fields to populate requiredFields
+      let generatedHtml = fs.readFileSync(tempFilePath, 'utf-8');
       const extractedFields = {};
-      const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-      let match;
-      while ((match = regex.exec(generatedHtml)) !== null) {
-        extractedFields[match[1]] = "string";
+      
+      for (const field of extractedValues) {
+        const varName = field.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+        // Escape special regex characters in the extracted text
+        const escapedField = field.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+        const regex = new RegExp(escapedField, 'g');
+        
+        if (regex.test(generatedHtml)) {
+           generatedHtml = generatedHtml.replace(regex, `{{${varName}}}`);
+           extractedFields[varName] = "string";
+        }
       }
 
       // 3. Create the template in database
