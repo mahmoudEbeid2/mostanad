@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
