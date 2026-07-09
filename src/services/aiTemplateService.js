@@ -83,11 +83,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
 
       RULES:
       1. IGNORE ALL STATIC TEXT. If a text is a label for a field (e.g., 'Product:'), do NOT include it. Only include the value next to it.
-      2. IGNORE LOGOS & ADDRESSES: Do not include the company name, address block, or fixed footer text.
-      3. IGNORE SPECIFICATIONS: In testing/analysis tables, DO NOT extract the 'Specifications', 'Limits', or 'Description' columns. Those are static! ONLY extract the 'RESULTS' column values (e.g., 'Conforms', '99%').
-      4. PERFECT POSITIONING: Provide the exact 2D bounding box [ymin, xmin, ymax, xmax] for each text. The coordinates MUST be normalized integers between 0 and 1000 (where 0,0 is top-left and 1000,1000 is bottom-right of the image).
-      5. ORIGINAL TEXT: Output the exact original text you see on the document in the 'original_text' field. Do NOT use brackets or variables.
-      6. OUTPUT ONLY JSON. No explanations, no markdown blocks.
+      2. IGNORE LOGOS, ADDRESSES & BANK DETAILS: Do NOT extract company names, buyer/seller addresses, contact info, or bank account details. These are usually static elements in invoices.
+      3. ONLY EXTRACT TRANSACTION DATA: We only care about products, quantities, prices, totals, test results, etc.
+      4. IGNORE SPECIFICATIONS: In testing tables, DO NOT extract the 'Specifications', 'Limits', or 'Description' columns. ONLY extract the 'RESULTS' column values.
+      5. PERFECT POSITIONING: Provide the exact 2D bounding box [ymin, xmin, ymax, xmax] for each text. The coordinates MUST be normalized integers between 0 and 1000.
+      6. ORIGINAL TEXT: Output the exact original text. Do NOT use brackets or variables.
+      7. OUTPUT ONLY JSON. No explanations. No markdown blocks.
     `;
 
     const extractSection = async (sectionPrompt, sectionName) => {
@@ -166,7 +167,8 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
          const currentText = el.original_text || el.text || el.value || "";
          const existingY = existing.box_2d ? existing.box_2d[0] : (existing.top_px || 0);
          const currentY = el.box_2d ? el.box_2d[0] : (el.top_px || 0);
-         return existingText === currentText && Math.abs(existingY - currentY) < 20;
+         // Increase overlap threshold to 45px to aggressively remove duplicates
+         return existingText === currentText && Math.abs(existingY - currentY) < 45;
       });
       if (!isDuplicate) {
         elements.push(el);

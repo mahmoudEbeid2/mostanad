@@ -68,12 +68,13 @@ const designFileFilter = (req, file, cb) => {
     "image/png",
     "image/jpeg",
     "image/jpg",
-    "image/webp"
+    "image/webp",
+    "image/svg+xml"
   ];
-  if (allowedMimeTypes.includes(file.mimetype) || file.originalname.toLowerCase().endsWith(".ai")) {
+  if (allowedMimeTypes.includes(file.mimetype) || file.originalname.toLowerCase().endsWith(".ai") || file.originalname.toLowerCase().endsWith(".svg")) {
     cb(null, true);
   } else {
-    cb(new AppError("Only design files (PDF, AI, PNG, JPEG, WebP) are allowed!", 400), false);
+    cb(new AppError("Only design files (PDF, AI, SVG, PNG, JPEG, WebP) are allowed!", 400), false);
   }
 };
 

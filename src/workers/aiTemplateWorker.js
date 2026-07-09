@@ -55,11 +55,25 @@ const worker = new Worker(
       tempFilePath = path.join(process.cwd(), tempFileName);
       fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
+      const execAsync = promisify(exec);
+      let serviceFileName = fileName;
+      let serviceMimeType = mimeType;
+      
+      if (fileName.toLowerCase().endsWith('.svg')) {
+        console.log(`[AI Template Worker] Converting SVG to PNG for Gemini processing...`);
+        const newPngPath = tempFilePath + ".png";
+        await execAsync(`convert -density 300 -background white "${tempFilePath}" "${newPngPath}"`);
+        fs.unlinkSync(tempFilePath);
+        tempFilePath = newPngPath;
+        serviceFileName = fileName.replace(/\.svg$/i, ".png");
+        serviceMimeType = "image/png";
+      }
+
       // 2. Process HTML generation
       let generatedHtml = await generateHtmlFromDesign(
         tempFilePath,
-        fileName,
-        mimeType
+        serviceFileName,
+        serviceMimeType
       );
 
       // 2.5 Convert to Background Image using ImageMagick
@@ -75,7 +89,8 @@ const worker = new Worker(
       try {
         console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
         // We use Ghostscript/ImageMagick to convert the first page to PNG
-        await execAsync(`convert -density 150 "${tempFilePath}[0]" -background white -alpha remove -alpha off "${bgFilePath}"`);
+        const frameSelector = serviceFileName.toLowerCase().endsWith('.png') ? "" : "[0]";
+        await execAsync(`convert -density 150 "${tempFilePath}${frameSelector}" -background white -alpha remove -alpha off "${bgFilePath}"`);
         
         const baseUrl = process.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
         const backgroundUrl = `${baseUrl}/uploads/designs/${bgFileName}`;
