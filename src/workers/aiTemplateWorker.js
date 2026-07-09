@@ -1,7 +1,4 @@
 import fs from "fs";
-import path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -24,7 +21,7 @@ const connection = getRedisConfig();
 const worker = new Worker(
   "aiTemplateQueue",
   async (job) => {
-    const { companyId, brandId, templateName, fileBufferBase64, fileName, mimeType } = job.data;
+    const { companyId, brandId, templateName, filePath, fileName, mimeType } = job.data;
     const taskId = job.opts.jobId;
 
     console.log(`[AI Template Worker] Starting job ${job.id} (Task ${taskId})`);
@@ -44,65 +41,20 @@ const worker = new Worker(
       status: "processing",
     });
 
-    let tempFilePath = null;
+    let serviceFileName = fileName;
+    let serviceMimeType = mimeType;
+
     try {
-      if (!fileBufferBase64) {
-        throw new Error(`Uploaded design file buffer is missing`);
-      }
-
-      // Write the buffer to a temp file within this worker container
-      const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}_${fileName}`;
-      tempFilePath = path.join(process.cwd(), tempFileName);
-      fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
-
-      const execAsync = promisify(exec);
-      let serviceFileName = fileName;
-      let serviceMimeType = mimeType;
-      
-      if (fileName.toLowerCase().endsWith('.svg')) {
-        console.log(`[AI Template Worker] Converting SVG to PNG for Gemini processing...`);
-        const newPngPath = tempFilePath + ".png";
-        await execAsync(`magick -density 300 -background white "${tempFilePath}" "${newPngPath}"`);
-        fs.unlinkSync(tempFilePath);
-        tempFilePath = newPngPath;
-        serviceFileName = fileName.replace(/\.svg$/i, ".png");
-        serviceMimeType = "image/png";
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`Uploaded design file not found at ${filePath}`);
       }
 
       // 2. Process HTML generation
       let generatedHtml = await generateHtmlFromDesign(
-        tempFilePath,
+        filePath,
         serviceFileName,
         serviceMimeType
       );
-
-      // 2.5 Convert to Background Image using ImageMagick
-      const uploadsDesignsDir = path.join(process.cwd(), "uploads", "designs");
-      if (!fs.existsSync(uploadsDesignsDir)) {
-        fs.mkdirSync(uploadsDesignsDir, { recursive: true });
-      }
-
-      const bgFileName = `bg_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-      const bgFilePath = path.join(uploadsDesignsDir, bgFileName);
-      
-      try {
-        console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
-        // We use Ghostscript/ImageMagick to convert the first page to PNG
-        const frameSelector = serviceFileName.toLowerCase().endsWith('.png') ? "" : "[0]";
-        await execAsync(`magick -density 150 "${tempFilePath}${frameSelector}" -background white -alpha remove -alpha off "${bgFilePath}"`);
-        
-        const baseUrl = process.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
-        const backgroundUrl = `${baseUrl}/uploads/designs/${bgFileName}`;
-        console.log(`[AI Template Worker] Successfully generated background image: ${backgroundUrl}`);
-        
-        // Inject background into the HTML
-        // Find the <div class="certificate-wrapper"...> and insert the background
-        const bgLayer = `\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: 100% 100%; background-repeat: no-repeat; z-index: -1;"></div>\n`;
-        generatedHtml = generatedHtml.replace(/(<div[^>]*class=["']certificate-wrapper["'][^>]*>)/i, `$1${bgLayer}`);
-      } catch (convErr) {
-        console.error(`[AI Template Worker] Warning: Failed to convert design to background image:`, convErr.message);
-        // We do not fail the whole task if background conversion fails, we just log it.
-      }
 
       // Extract dynamic fields to populate requiredFields
       const extractedFields = {};
@@ -168,13 +120,13 @@ const worker = new Worker(
         error: error.message,
       });
     } finally {
-      // 6. Delete the temp file
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
+      // 6. Delete the temp file from the shared volume
+      if (filePath && fs.existsSync(filePath)) {
         try {
-          fs.unlinkSync(tempFilePath);
-          console.log(`[AI Template Worker] Cleaned up file ${tempFilePath}`);
+          fs.unlinkSync(filePath);
+          console.log(`[AI Template Worker] Cleaned up file ${filePath}`);
         } catch (err) {
-          console.error(`[AI Template Worker] Failed to delete file ${tempFilePath}:`, err.message);
+          console.error(`[AI Template Worker] Failed to delete file ${filePath}:`, err.message);
         }
       }
     }
