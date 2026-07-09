@@ -3,7 +3,7 @@ import path from "path";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
-import { generateHtmlFromDesign } from "../services/aiTemplateService.js";
+// import removed
 import io from "socket.io-client";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -73,46 +73,13 @@ const worker = new Worker(
       console.log(`[AI Template Worker] Creating PNG preview for AI OCR...`);
       execSync(`inkscape --export-type=png --export-filename="${pngFilePath}" --export-dpi=150 "${svgFilePath}"`);
 
-      // 2. Process AI HTML/CSS Generation
-      let jsonResponseString = await generateHtmlFromDesign(
-        pngFilePath,
-        "design.png",
-        "image/png"
-      );
+      // 2. Run the Multi-Stage AI Pipeline
+      const { default: aiTemplatePipeline } = await import('../services/ai/pipeline.js');
+      const pipelineResult = await aiTemplatePipeline.runPipeline(pngFilePath, svgFilePath);
+      
+      const finalHtml = pipelineResult.finalHtml;
+      const extractedFields = pipelineResult.extractedFields;
 
-      let aiResult;
-      try {
-        aiResult = JSON.parse(jsonResponseString);
-      } catch (e) {
-        console.error("[AI Template Worker] JSON.parse error:", e.message);
-        console.error("[AI Template Worker] Raw Response was:", jsonResponseString ? jsonResponseString.substring(0, 500) + "..." : String(jsonResponseString));
-        throw new Error("AI failed to return a valid JSON object with html and css.");
-      }
-
-      let rawHtml = aiResult.html || "";
-      let rawCss = aiResult.css || "";
-
-      // Extract dynamic fields to populate requiredFields
-      const extractedFields = {};
-      const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-      let match;
-      while ((match = regex.exec(rawHtml)) !== null) {
-        extractedFields[match[1]] = "string";
-      }
-
-      const finalHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  body { margin: 0; padding: 0; display: flex; justify-content: center; background: #fff; }
-  ${rawCss}
-</style>
-</head>
-<body>
-${rawHtml.trim()}
-</body>
-</html>`;
 
       // 3. Create the template in database
       const newTemplate = await prisma.template.create({
