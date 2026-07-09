@@ -82,7 +82,8 @@ const worker = new Worker(
       console.log(`[AI Template Worker] Successfully generated background image: ${BACKEND_WS_URL}/uploads/designs/${bgFileName}`);
 
       // Inject background into HTML
-      const backgroundUrl = `${BACKEND_WS_URL}/uploads/designs/${bgFileName}`;
+      const publicBaseUrl = process.env.PUBLIC_API_URL || "http://localhost:3000";
+      const backgroundUrl = `${publicBaseUrl}/uploads/designs/${bgFileName}`;
       generatedHtml = generatedHtml.replace(
         '<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">',
         `<div class="certificate-wrapper" style="position: relative; width: 1000px; height: 1414px; overflow: hidden; box-sizing: border-box;">\n<div style="position: absolute; top: 0; left: 0; width: 1000px; height: 1414px; background-image: url('${backgroundUrl}'); background-size: 100% 100%; background-repeat: no-repeat; z-index: -1;"></div>`
