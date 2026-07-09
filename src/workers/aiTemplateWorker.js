@@ -62,7 +62,7 @@ const worker = new Worker(
       if (fileName.toLowerCase().endsWith('.svg')) {
         console.log(`[AI Template Worker] Converting SVG to PNG for Gemini processing...`);
         const newPngPath = tempFilePath + ".png";
-        await execAsync(`convert -density 300 -background white "${tempFilePath}" "${newPngPath}"`);
+        await execAsync(`magick -density 300 -background white "${tempFilePath}" "${newPngPath}"`);
         fs.unlinkSync(tempFilePath);
         tempFilePath = newPngPath;
         serviceFileName = fileName.replace(/\.svg$/i, ".png");
@@ -89,7 +89,7 @@ const worker = new Worker(
         console.log(`[AI Template Worker] Converting ${tempFilePath} to background image...`);
         // We use Ghostscript/ImageMagick to convert the first page to PNG
         const frameSelector = serviceFileName.toLowerCase().endsWith('.png') ? "" : "[0]";
-        await execAsync(`convert -density 150 "${tempFilePath}${frameSelector}" -background white -alpha remove -alpha off "${bgFilePath}"`);
+        await execAsync(`magick -density 150 "${tempFilePath}${frameSelector}" -background white -alpha remove -alpha off "${bgFilePath}"`);
         
         const baseUrl = process.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
         const backgroundUrl = `${baseUrl}/uploads/designs/${bgFileName}`;
