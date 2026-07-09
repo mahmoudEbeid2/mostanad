@@ -102,6 +102,17 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
           generationConfig: {
             maxOutputTokens: 8192,
             temperature: 0.0,
+            responseMimeType: "application/json",
+            responseSchema: {
+               type: "object",
+               properties: {
+                  html: {
+                     type: "string",
+                     description: "The complete, raw, native HTML code containing the entire reconstructed document layout, tables, and Base64 images. Do NOT include markdown formatting or explanations."
+                  }
+               },
+               required: ["html"]
+            }
           }
         });
 
@@ -115,7 +126,15 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
 
     let resultText = response.response.text();
-    let cleanHtml = resultText.trim();
+    let parsedResult;
+    try {
+      parsedResult = JSON.parse(resultText);
+    } catch (e) {
+      console.warn("[AITemplateService] Failed to parse JSON, falling back to raw text.");
+      parsedResult = { html: resultText };
+    }
+
+    let cleanHtml = parsedResult.html.trim();
     if (cleanHtml.startsWith("\`\`\`html")) {
       cleanHtml = cleanHtml.substring(7);
     } else if (cleanHtml.startsWith("\`\`\`")) {
