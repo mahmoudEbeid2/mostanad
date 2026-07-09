@@ -61,28 +61,17 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
 
     const promptText = `
-      You are an expert OCR Layout Extraction Engine specialized in scanned certificates and forms.
-      Your ONLY task is to detect the dynamic text values that should later be editable.
-      
-      Extract ONLY editable values.
-      Examples:
-      "DOXYPHARMA"
-      "09/2028"
-      "TURKEY"
-      "1 KG"
-      "Conforms"
-
-      Never extract static headers, labels, table borders, logos, or specifications.
-      
-      Return ONLY a JSON array of strings representing the exact original text.
-      Example Output:
-      [
-        "DOXYPHARMA",
-        "09/2028",
-        "TURKEY"
-      ]
-
-      No markdown. No explanation. Only valid JSON.
+      You are an expert front-end developer and designer. 
+      Analyze the attached document (invoice, certificate, or form) design. 
+      I need you to convert this entire design into a clean, precise, and responsive HTML snippet using inline CSS.
+      Requirements:
+      - Fully reconstruct the design natively using HTML elements (tables, divs, flexbox, borders, colors, paddings).
+      - Recreate ALL text, labels, headers, and values EXACTLY as they appear in the original document.
+      - DO NOT use any Handlebars variables (like {{name}}). Output the exact original text you see.
+      - DO NOT assume there is a background image. You must recreate tables with visible borders, colored headers, and proper padding.
+      - Any logos or images present in the document MUST be extracted and embedded directly as Base64 strings using <img src="data:image/png;base64,...">. Do not use external image URLs.
+      - The output should ONLY contain valid HTML code. Do NOT output markdown code blocks (\`\`\`html). Output the raw HTML directly.
+      - Do NOT wrap it in <html><body> tags, just return the main wrapper <div>.
     `;
 
     let contents = [];
@@ -107,13 +96,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     let retries = 5;
     for (let i = 0; i < retries; i++) {
       try {
-        console.log(`[AITemplateService] Requesting JSON variables array from gemini-3.5-flash (Attempt ${i + 1})...`);
+        console.log(`[AITemplateService] Requesting HTML generation from gemini-3.5-flash (Attempt ${i + 1})...`);
         const currentModel = genAI.getGenerativeModel({
           model: "gemini-3.5-flash",
           generationConfig: {
             maxOutputTokens: 8192,
             temperature: 0.0,
-            responseMimeType: "application/json",
           }
         });
 
@@ -127,18 +115,18 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
 
     let resultText = response.response.text();
-    let cleanJson = resultText.trim();
-    if (cleanJson.startsWith("\`\`\`json")) {
-      cleanJson = cleanJson.substring(7);
-    } else if (cleanJson.startsWith("\`\`\`")) {
-      cleanJson = cleanJson.substring(3);
+    let cleanHtml = resultText.trim();
+    if (cleanHtml.startsWith("\`\`\`html")) {
+      cleanHtml = cleanHtml.substring(7);
+    } else if (cleanHtml.startsWith("\`\`\`")) {
+      cleanHtml = cleanHtml.substring(3);
     }
-    if (cleanJson.endsWith("\`\`\`")) {
-      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+    if (cleanHtml.endsWith("\`\`\`")) {
+      cleanHtml = cleanHtml.substring(0, cleanHtml.length - 3);
     }
 
-    console.log(`[AITemplateService] Successfully generated JSON array:`, cleanJson.trim());
-    return cleanJson.trim();
+    console.log(`[AITemplateService] Successfully generated HTML.`);
+    return cleanHtml.trim();
   } catch (error) {
     console.error("[AITemplateService] Error:", error);
     throw error;
