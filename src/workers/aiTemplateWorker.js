@@ -55,22 +55,44 @@ const worker = new Worker(
       tempFilePath = path.join(process.cwd(), tempFileName);
       fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
-      // 2. Process HTML generation
-      let generatedHtml = await generateHtmlFromDesign(
-        tempFilePath,
-        serviceFileName,
-        serviceMimeType
+      let svgFilePath = tempFilePath;
+      let cleanupFiles = [tempFilePath];
+
+      if (!fileName.toLowerCase().endsWith('.svg')) {
+          svgFilePath = `${tempFilePath}.svg`;
+          cleanupFiles.push(svgFilePath);
+          console.log(`[AI Template Worker] Converting ${fileName} to SVG using Inkscape...`);
+          const { execSync } = await import("child_process");
+          execSync(`inkscape --export-type=svg --export-text-to-path=false --export-filename="${svgFilePath}" "${tempFilePath}"`);
+      }
+
+      // 2. Process AI JSON Extraction
+      let jsonArrayString = await generateHtmlFromDesign(
+        svgFilePath,
+        "design.svg",
+        "image/svg+xml"
       );
 
+      let extractedValues = [];
+      try {
+        extractedValues = JSON.parse(jsonArrayString);
+      } catch (e) {
+        throw new Error("AI failed to return a valid JSON array for dynamic fields.");
+      }
 
-
-
-      // Extract dynamic fields to populate requiredFields
+      let generatedHtml = fs.readFileSync(svgFilePath, 'utf-8');
       const extractedFields = {};
-      const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-      let match;
-      while ((match = regex.exec(generatedHtml)) !== null) {
-        extractedFields[match[1]] = "string";
+
+      for (const field of extractedValues) {
+        if (!field || field.trim() === "") continue;
+        const varName = field.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+        const escapedField = field.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+        const regex = new RegExp(escapedField, 'g');
+        
+        if (regex.test(generatedHtml)) {
+           generatedHtml = generatedHtml.replace(regex, `{{${varName}}}`);
+           extractedFields[varName] = "string";
+        }
       }
 
       // 3. Create the template in database
@@ -129,14 +151,22 @@ const worker = new Worker(
         error: error.message,
       });
     } finally {
-      // 6. Delete the temp file
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
+      // 6. Delete the temp files
+      if (typeof cleanupFiles !== 'undefined' && Array.isArray(cleanupFiles)) {
+        for (const file of cleanupFiles) {
+          if (file && fs.existsSync(file)) {
+            try {
+              fs.unlinkSync(file);
+              console.log(`[AI Template Worker] Cleaned up file ${file}`);
+            } catch (err) {
+              console.error(`[AI Template Worker] Failed to delete file ${file}:`, err.message);
+            }
+          }
+        }
+      } else if (tempFilePath && fs.existsSync(tempFilePath)) {
         try {
           fs.unlinkSync(tempFilePath);
-          console.log(`[AI Template Worker] Cleaned up file ${tempFilePath}`);
-        } catch (err) {
-          console.error(`[AI Template Worker] Failed to delete file ${tempFilePath}:`, err.message);
-        }
+        } catch (e) {}
       }
     }
   },
