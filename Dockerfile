@@ -4,7 +4,7 @@ FROM node:25-alpine
 WORKDIR /app
 
 # Copy package files and install dependencies
-RUN apk add --no-cache ghostscript imagemagick librsvg inkscape
+RUN apk add --no-cache ghostscript imagemagick librsvg inkscape fontconfig ttf-dejavu
 
 COPY package*.json ./
 RUN npm ci
