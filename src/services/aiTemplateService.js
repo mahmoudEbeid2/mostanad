@@ -60,9 +60,6 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       }
     }
 
-    console.log(`[AITemplateService] Requesting HTML generation from gemini-3.5-flash...`);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
-
     const promptText = `
       You are an expert front-end developer and designer. 
       Analyze the attached document (invoice, certificate, or form) design. 
@@ -97,8 +94,25 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
       ];
     }
 
-    const response = await model.generateContent(contents);
-    let resultText = response.response.text();
+    let response;
+    let resultText = "";
+    const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash"];
+    
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[AITemplateService] Requesting HTML generation from ${modelName}...`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        response = await model.generateContent(contents);
+        resultText = response.response.text();
+        break; // Success
+      } catch (err) {
+        console.error(`[AITemplateService] ${modelName} failed:`, err.message);
+        if (modelName === modelsToTry[modelsToTry.length - 1]) {
+          throw err; // Rethrow if it's the last model
+        }
+        console.log(`[AITemplateService] Falling back to next model...`);
+      }
+    }
 
     // Clean up markdown
     let cleanHtml = resultText.trim();
