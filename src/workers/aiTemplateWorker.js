@@ -73,49 +73,42 @@ const worker = new Worker(
       console.log(`[AI Template Worker] Creating PNG preview for AI OCR...`);
       execSync(`inkscape --export-type=png --export-filename="${pngFilePath}" --export-dpi=150 "${svgFilePath}"`);
 
-      // 2. Process AI JSON Extraction
-      let jsonArrayString = await generateHtmlFromDesign(
+      // 2. Process AI HTML/CSS Generation
+      let jsonResponseString = await generateHtmlFromDesign(
         pngFilePath,
         "design.png",
         "image/png"
       );
 
-      let extractedValues = [];
+      let aiResult;
       try {
-        extractedValues = JSON.parse(jsonArrayString);
+        aiResult = JSON.parse(jsonResponseString);
       } catch (e) {
-        throw new Error("AI failed to return a valid JSON array for dynamic fields.");
+        throw new Error("AI failed to return a valid JSON object with html and css.");
       }
 
-      let generatedHtml = fs.readFileSync(svgFilePath, 'utf-8');
+      let rawHtml = aiResult.html || "";
+      let rawCss = aiResult.css || "";
+
+      // Extract dynamic fields to populate requiredFields
       const extractedFields = {};
-
-      for (const field of extractedValues) {
-        if (!field || field.trim() === "") continue;
-        const varName = field.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
-        const escapedField = field.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-        const regex = new RegExp(escapedField, 'g');
-        
-        if (regex.test(generatedHtml)) {
-           generatedHtml = generatedHtml.replace(regex, `{{${varName}}}`);
-           extractedFields[varName] = "string";
-        }
+      const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
+      let match;
+      while ((match = regex.exec(rawHtml)) !== null) {
+        extractedFields[match[1]] = "string";
       }
 
-      // Strip XML declaration to prevent rendering issues
-      generatedHtml = generatedHtml.replace(/<\\?xml.*?\\?>/gi, '');
-      
       const finalHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <style>
   body { margin: 0; padding: 0; display: flex; justify-content: center; background: #fff; }
-  svg { max-width: 100%; height: auto; }
+  ${rawCss}
 </style>
 </head>
 <body>
-${generatedHtml.trim()}
+${rawHtml.trim()}
 </body>
 </html>`;
 

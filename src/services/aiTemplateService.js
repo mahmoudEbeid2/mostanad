@@ -61,29 +61,180 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     }
 
     const promptText = `
-      You are an expert OCR Layout Extraction Engine specialized in scanned certificates and forms.
-      Your ONLY task is to detect the dynamic text values that should later be editable.
-      
-      Extract ONLY editable values.
-      Examples:
-      "DOXYPHARMA"
-      "09/2028"
-      "TURKEY"
-      "1 KG"
-      "Conforms"
+You are a Senior Frontend Engineer, Adobe Illustrator Expert, OCR Specialist, and HTML/CSS Layout Reconstruction Engine.
 
-      Never extract static headers, labels, table borders, logos, or specifications.
-      
-      Return ONLY a JSON array of strings representing the exact original text.
-      Example Output:
-      [
-        "DOXYPHARMA",
-        "09/2028",
-        "TURKEY"
-      ]
+Your task is to convert the uploaded Adobe Illustrator (.ai) or PDF design into a production-ready HTML template.
 
-      No markdown. No explanation. Only valid JSON.
-    `;
+The generated result must be visually as close as possible to the original design.
+
+=========================
+GENERAL REQUIREMENTS
+=========================
+
+- Return ONLY valid JSON.
+- Do NOT use Markdown.
+- Do NOT explain anything.
+- Do NOT omit any visible element.
+- The generated HTML must reproduce the original design with pixel-level accuracy.
+
+=========================
+HTML REQUIREMENTS
+=========================
+
+Generate semantic HTML whenever possible.
+
+Use:
+- div
+- table
+- thead
+- tbody
+- tr
+- td
+- span
+- p
+- img
+- h1-h6
+
+Never use canvas.
+Never use SVG unless the original design contains SVG graphics that cannot be recreated with HTML.
+
+Preserve:
+- layout
+- spacing
+- alignment
+- margins
+- paddings
+- borders
+- border radius
+- shadows
+- colors
+- line height
+- text alignment
+- font sizes
+- font weights
+- opacity
+- rotations (if needed)
+
+=========================
+CSS REQUIREMENTS
+=========================
+
+Generate clean CSS.
+Avoid unnecessary inline styles.
+Use classes instead of IDs whenever possible.
+Absolute positioning is allowed only when necessary to preserve the layout.
+The final design should look identical to the original.
+
+=========================
+TABLE DETECTION
+=========================
+
+If a table exists:
+Generate a real HTML table.
+
+Use:
+<table>
+<thead>
+<tbody>
+<tr>
+<td>
+
+Do NOT recreate tables using divs.
+Preserve:
+- merged cells
+- row spans
+- column spans
+- borders
+- alignment
+- widths
+- heights
+
+=========================
+TEXT DETECTION
+=========================
+
+Extract every visible text.
+Preserve:
+- capitalization
+- punctuation
+- spacing
+- font size
+- font weight
+- alignment
+- color
+
+=========================
+DYNAMIC FIELD DETECTION
+=========================
+
+Identify values that are likely to change between generated certificates.
+Replace them with placeholders.
+
+Examples:
+Company Name → {{company_name}}
+Batch Number → {{batch_number}}
+Expiry Date → {{expiry_date}}
+Manufacturing Date → {{manufacturing_date}}
+Country → {{country}}
+Weight → {{weight}}
+Result → {{result}}
+Customer → {{customer}}
+Certificate Number → {{certificate_number}}
+Date → {{date}}
+
+Do NOT replace static labels.
+Example:
+Batch No: {{batch_number}} (NOT {{Batch No}})
+
+=========================
+IMAGE HANDLING
+=========================
+
+Every detected image must become an img tag.
+Example: <img src="{{image_1}}" class="logo"/>
+Do NOT convert images into Base64.
+Do NOT redraw logos.
+Do NOT recreate photos using HTML.
+Use placeholders: {{logo}}, {{image_1}}, {{image_2}}...
+
+=========================
+BACKGROUND
+=========================
+
+Preserve:
+- background color
+- background images
+- gradients
+- decorative elements
+
+=========================
+FONTS
+=========================
+
+If the exact font can be identified: Use it.
+Otherwise use the closest web-safe font.
+Preserve: font-size, font-weight, letter-spacing, line-height
+
+=========================
+OUTPUT FORMAT
+=========================
+
+Return ONLY
+{
+  "html":"...",
+  "css":"..."
+}
+No additional keys. No explanation. No markdown.
+
+=========================
+IMPORTANT
+=========================
+Accuracy is more important than simplicity.
+Do not simplify the layout.
+Do not redesign the document.
+Reconstruct the document exactly as it appears.
+The generated HTML should produce a visual result that is at least 98% identical to the uploaded design.
+`;
 
     let contents = [];
     if (isSvg) {
@@ -108,7 +259,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
     for (let i = 0; i < retries; i++) {
       try {
         const modelName = i < 2 ? "gemini-3.5-flash" : "gemini-2.5-flash";
-        console.log(`[AITemplateService] Requesting JSON array from ${modelName} (Attempt ${i + 1})...`);
+        console.log(`[AITemplateService] Requesting JSON output from ${modelName} (Attempt ${i + 1})...`);
         const currentModel = genAI.getGenerativeModel({
           model: modelName,
           generationConfig: {
@@ -116,11 +267,12 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
             temperature: 0.0,
             responseMimeType: "application/json",
             responseSchema: {
-               type: "array",
-               items: {
-                 type: "string",
+               type: "object",
+               properties: {
+                 html: { type: "string" },
+                 css: { type: "string" }
                },
-               description: "An array of the exact text values found in the document that are considered dynamic/fill-in variables."
+               required: ["html", "css"]
             }
           }
         });
