@@ -148,8 +148,8 @@ class AITemplatePipeline {
     for (let i = 0; i < MAX_RETRIES; i++) {
       console.log(`[AITemplatePipeline] Stage 7/8: Visual Critic Loop (Iteration ${i + 1})...`);
       
-      const draftHtmlDoc = \`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:0;background:${layoutAnalysis?.background_color || '#fff'};display:flex;justify-content:center;}${draft.css}</style></head><body>${draft.html}</body></html>\`;
-      const draftPngPath = pngFilePath.replace('.png', \`_draft_${i}.png\`);
+      const draftHtmlDoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:0;background:${layoutAnalysis?.background_color || '#fff'};display:flex;justify-content:center;}${draft.css}</style></head><body>${draft.html}</body></html>`;
+      const draftPngPath = pngFilePath.replace('.png', `_draft_${i}.png`);
       
       await puppeteerService.renderHtmlToPng(draftHtmlDoc, draftPngPath);
       const draftImagePart = fileToGenerativePart(draftPngPath, "image/png");
@@ -194,7 +194,7 @@ class AITemplatePipeline {
       }
     }
 
-    const finalHtmlDoc = \`<!DOCTYPE html>
+    const finalHtmlDoc = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -206,7 +206,7 @@ class AITemplatePipeline {
 <body>
 ${draft.html}
 </body>
-</html>\`;
+</html>`;
 
     return {
       finalHtml: finalHtmlDoc,
