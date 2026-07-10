@@ -11,6 +11,27 @@ export const getDashboardStatsData = async () => {
   const totalUsers = await prisma.user.count();
   const totalPlans = await prisma.plan.count();
 
+  // Growth calculations
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  const calculateGrowth = async (modelDelegate) => {
+    const currentPeriodCount = await modelDelegate.count({
+      where: { createdAt: { gte: thirtyDaysAgo } }
+    });
+    const previousPeriodCount = await modelDelegate.count({
+      where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } }
+    });
+
+    if (previousPeriodCount === 0) return currentPeriodCount > 0 ? 100 : 0;
+    return Math.round(((currentPeriodCount - previousPeriodCount) / previousPeriodCount) * 100);
+  };
+
+  const usersGrowth = await calculateGrowth(prisma.user);
+  const companiesGrowth = await calculateGrowth(prisma.company);
+  const productsGrowth = await calculateGrowth(prisma.product);
+
   // 2. Active subscriptions and revenue calculation
   const activeSubscriptionsList = await prisma.subscription.findMany({
     where: { status: "active" },
@@ -22,6 +43,25 @@ export const getDashboardStatsData = async () => {
   }, 0);
 
   const activeSubscriptionsCount = activeSubscriptionsList.length;
+
+  const currentRevenueSubs = await prisma.subscription.findMany({
+    where: { createdAt: { gte: thirtyDaysAgo }, status: "active" },
+    include: { plan: true }
+  });
+  const prevRevenueSubs = await prisma.subscription.findMany({
+    where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo }, status: "active" },
+    include: { plan: true }
+  });
+  
+  const currentRev = currentRevenueSubs.reduce((sum, sub) => sum + Number(sub.plan.price || 0), 0);
+  const prevRev = prevRevenueSubs.reduce((sum, sub) => sum + Number(sub.plan.price || 0), 0);
+  
+  let revenueGrowth = 0;
+  if (prevRev === 0) {
+    revenueGrowth = currentRev > 0 ? 100 : 0;
+  } else {
+    revenueGrowth = Math.round(((currentRev - prevRev) / prevRev) * 100);
+  }
 
   // 3. Background tasks metrics
   const totalTasks = await prisma.backgroundTask.count();
@@ -93,6 +133,12 @@ export const getDashboardStatsData = async () => {
       plans: totalPlans,
       activeSubscriptions: activeSubscriptionsCount,
       totalMonthlyRevenue: totalRevenue,
+      growth: {
+        users: usersGrowth,
+        companies: companiesGrowth,
+        products: productsGrowth,
+        revenue: revenueGrowth,
+      }
     },
     tasks: {
       total: totalTasks,

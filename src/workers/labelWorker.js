@@ -48,8 +48,17 @@ const worker = new Worker(
       // 2. Read file as buffer
       const fileBuffer = fs.readFileSync(filePath);
 
-      // 3. Process label verification
-      const result = await verifyProductLabel(fileBuffer, fileName, mimeType, country);
+      // 3. Process label verification with progress reporting
+      const result = await verifyProductLabel(fileBuffer, fileName, mimeType, country, (progress, message) => {
+        socket.emit("job_status_update", {
+          jobId: taskId,
+          companyId,
+          type: "label_verification",
+          status: "processing",
+          progress,
+          message
+        });
+      });
 
       // 4. Update DB task status to completed
       await prisma.backgroundTask.update({

@@ -8,65 +8,57 @@ import { GoogleAIFileManager } from "@google/generative-ai/server";
 /**
  * Helper to call Gemini model with retry and fallback
  */
-async function callGemini(genAI, modelName, fileData, promptText) {
-  let resultText = "";
-  let success = false;
+async function callGemini(genAI, modelName, fileData, prompt) {
   let retries = 4;
   let delay = 3000;
-  let currentModelName = modelName;
+  let currentModelName = "gemini-2.5-flash";
 
-  while (retries > 0 && !success) {
+  while (retries > 0) {
     try {
       console.log(`[CertificateService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
-      const activeModel = genAI.getGenerativeModel({ model: currentModelName });
-      
-      const contents = [];
-      if (fileData) {
-        contents.push({
+      const model = genAI.getGenerativeModel({ model: currentModelName });
+      const response = await model.generateContent([
+        {
           fileData: {
             mimeType: fileData.mimeType,
             fileUri: fileData.uri,
           },
-        });
+        },
+        prompt,
+      ]);
+      const resultText = response.response.text();
+      // Clean up Gemini Markdown formatting if returned
+      let cleanJson = resultText.trim();
+      if (cleanJson.startsWith("```json")) {
+        cleanJson = cleanJson.substring(7);
       }
-      contents.push(promptText);
-
-      const response = await activeModel.generateContent(contents);
-      resultText = response.response.text();
-      success = true;
+      if (cleanJson.endsWith("```")) {
+        cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+      }
+      return cleanJson.trim();
     } catch (error) {
-      console.warn(`[CertificateService] Error during generateContent: ${error.message}`);
-      const errMsg = error.message || "";
-      const isQuotaOrDemand = 
-        errMsg.includes("503") || 
-        errMsg.includes("Service Unavailable") || 
-        errMsg.includes("429") || 
-        errMsg.includes("Too Many Requests") ||
-        errMsg.includes("demand") ||
-        errMsg.includes("quota");
+      const msg = error.message || "";
+      const isQuotaOrDemand =
+        msg.includes("503") ||
+        msg.includes("Service Unavailable") ||
+        msg.includes("429") ||
+        msg.includes("Too Many Requests") ||
+        msg.includes("demand") ||
+        msg.includes("quota");
 
       if (isQuotaOrDemand) {
         console.warn(`[CertificateService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
         retries--;
         if (retries === 0) throw error;
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 1.5;
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.floor(delay * 1.5);
       } else {
         console.error("[CertificateService] Non-quota error, throwing immediately.");
         throw error;
       }
     }
   }
-
-  // Clean up Gemini Markdown formatting if returned
-  let cleanJson = resultText.trim();
-  if (cleanJson.startsWith("```json")) {
-    cleanJson = cleanJson.substring(7);
-  }
-  if (cleanJson.endsWith("```")) {
-    cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-  }
-  return cleanJson.trim();
+  throw new AppError("Failed to fetch from Gemini API after multiple retries.", 500);
 }
 
 /**

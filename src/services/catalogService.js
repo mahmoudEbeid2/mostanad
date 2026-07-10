@@ -8,7 +8,14 @@ import { GoogleAIFileManager } from "@google/generative-ai/server";
 /**
  * Process uploaded PDF catalog using Gemini File API and store categories/products.
  */
-export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catalog.pdf", brandId = null) => {
+export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catalog.pdf", brandId = null, onProgress = null) => {
+  const reportProgress = (progress, message) => {
+    if (onProgress && typeof onProgress === 'function') {
+      onProgress(progress, message);
+    }
+  };
+
+  reportProgress(5, "Initializing AI");
   if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
@@ -27,6 +34,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     if (!brandExists) {
       throw new AppError("Selected brand not found or does not belong to this company!", 400);
     }
+    reportProgress(90, "Finalizing categories");
   }
 
   // 1. Write buffer to a temp file in the workspace
@@ -35,6 +43,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   
   console.log(`[CatalogService] Writing temp file to ${tempFilePath}...`);
   fs.writeFileSync(tempFilePath, fileBuffer);
+  reportProgress(15, "Uploading catalog");
 
   let fileManager = null;
   let genAI = null;
@@ -71,6 +80,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
     // 3. Poll for the file to be processed (state ACTIVE)
     console.log("[CatalogService] Polling file state...");
+    reportProgress(30, "Analyzing catalog pages");
     let file = await fileManager.getFile(uploadResult.file.name);
     let attempts = 0;
     while (file.state === "PROCESSING" && attempts < 12) {
@@ -87,6 +97,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
     // 4. Invoke Gemini 2.5 Flash model
     console.log("[CatalogService] Invoking Gemini model...");
+    reportProgress(50, "Extracting products");
 
     const prompt = `
       You are an expert data extractor specializing in animal feed catalogs and veterinary product labels.
@@ -195,10 +206,11 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
         if (isQuotaOrDemand) {
           console.warn(`[CatalogService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
+          reportProgress(50, `Quota limits hit, retrying in ${delay / 1000}s`);
           retries--;
           if (retries === 0) throw error;
           await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= 1.5;
+          delay = Math.floor(delay * 1.5);
         } else {
           console.error("[CatalogService] Non-quota error, throwing immediately.");
           throw error;
@@ -217,8 +229,10 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     cleanJson = cleanJson.trim();
 
     extractedProducts = JSON.parse(cleanJson);
+    reportProgress(80, "Saving to database");
   } catch (error) {
     console.warn(`[CatalogService] Falling back to mock catalog products due to Gemini API failure/mock mode: ${error.message}`);
+    reportProgress(80, "Using mock data (Quota Exceeded)");
     extractedProducts = [
       {
         name: "H-VIRAL",

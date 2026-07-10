@@ -80,6 +80,7 @@ const worker = new Worker(
       const finalHtml = pipelineResult.finalHtml;
       const extractedFields = pipelineResult.extractedFields;
 
+<<<<<<< Updated upstream
 
       // 3. Create the template in database
       const newTemplate = await prisma.template.create({
@@ -96,22 +97,36 @@ const worker = new Worker(
       });
 
       // 4. Update DB task status to completed
+=======
+      // Extract dynamic fields to populate requiredFields
+      const extractedFields = {};
+      const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
+      let match;
+      while ((match = regex.exec(generatedHtml)) !== null) {
+        extractedFields[match[1]] = "string";
+      }
+      // 3. Update DB task status to completed
+>>>>>>> Stashed changes
       await prisma.backgroundTask.update({
         where: { id: taskId },
         data: {
           status: "completed",
+<<<<<<< Updated upstream
           result: { templateId: newTemplate.id, html: finalHtml },
+=======
+          result: { htmlContent: generatedHtml, fields: extractedFields },
+>>>>>>> Stashed changes
         },
       });
 
-      // 5. Broadcast success
+      // 4. Broadcast success
       socket.emit("job_status_update", {
         jobId: taskId,
         companyId,
         brandId,
         type: "ai_template_generation",
         status: "completed",
-        result: { templateId: newTemplate.id },
+        result: { htmlContent: generatedHtml, fields: extractedFields },
       });
 
       console.log(`[AI Template Worker] Successfully completed task ${taskId}`);

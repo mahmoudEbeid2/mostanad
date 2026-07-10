@@ -50,7 +50,23 @@ const worker = new Worker(
       const fileBuffer = fs.readFileSync(filePath);
 
       // 3. Process Catalog
-      const result = await processCatalogPDF(companyId, fileBuffer, fileName, brandId);
+      const result = await processCatalogPDF(
+        companyId, 
+        fileBuffer, 
+        fileName, 
+        brandId,
+        (progress, message) => {
+          socket.emit("job_status_update", {
+            jobId: taskId,
+            companyId,
+            brandId,
+            type: "catalog_upload",
+            status: "processing",
+            progress,
+            message,
+          });
+        }
+      );
 
       // 4. Update DB task status to completed
       await prisma.backgroundTask.update({

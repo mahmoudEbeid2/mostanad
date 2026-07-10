@@ -13,7 +13,10 @@ export const generateCertificates = catchAsync(async (req, res, next) => {
   }
 
   const { companyId } = req.params;
-  const brandId = req.body.brandId || null;
+  let brandId = req.body.brandId || null;
+  if (brandId === "" || brandId === "null" || brandId === "undefined") {
+    brandId = null;
+  }
   const transactionType = req.body.transactionType;
 
   // 1. Verify company exists

@@ -37,6 +37,11 @@ router.post(
 
 // Scoped under templates
 router
+  .route("/templates")
+  .get(restrictToPermission("read_templates"), getAllTemplates)
+  .post(restrictToPermission("create_templates"), validate(createTemplateSchema), createTemplate);
+
+router
   .route("/templates/:id")
   .get(restrictToPermission("read_templates"), validate(getTemplateByIdSchema), getTemplateById)
   .patch(restrictToPermission("update_templates"), validate(updateTemplateSchema), updateTemplate)

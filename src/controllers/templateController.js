@@ -17,7 +17,8 @@ const aiTemplateQueue = new Queue("aiTemplateQueue", { connection: getRedisConfi
 
 // 1. CREATE TEMPLATE
 export const createTemplate = catchAsync(async (req, res, next) => {
-  const template = await createTemplateService(req.params.companyId, req.body);
+  const companyId = req.params.companyId || req.body.companyId;
+  const template = await createTemplateService(companyId, req.body);
   res.status(201).json({ status: "success", data: { template } });
 });
 

@@ -94,10 +94,12 @@ export const createTemplate = async (companyId, data) => {
  * Get all templates scoped to a company with query filtering
  */
 export const getAllTemplates = async (companyId, queryString) => {
-  // Verify company exists
-  const companyExists = await prisma.company.findUnique({ where: { id: companyId } });
-  if (!companyExists) {
-    throw new AppError("Target company not found!", 404);
+  // Verify company exists if companyId is provided
+  if (companyId) {
+    const companyExists = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!companyExists) {
+      throw new AppError("Target company not found!", 404);
+    }
   }
 
   const features = new PrismaFeatures(prisma.template, queryString)
@@ -107,7 +109,9 @@ export const getAllTemplates = async (companyId, queryString) => {
     .paginate();
 
   // Enforce company scoping and include brand details
-  features.queryOptions.where.companyId = companyId;
+  if (companyId) {
+    features.queryOptions.where = { ...features.queryOptions.where, companyId };
+  }
   features.queryOptions.include = { brand: true };
 
   const result = await features.exec();

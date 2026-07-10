@@ -6,7 +6,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 
 // ─────────────────────────────────────────────────────────────
-// Helper: call Gemini with retry + model fallback
+// Helper: call Gemini with retry
 // ─────────────────────────────────────────────────────────────
 async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
   let retries = 4;
@@ -31,7 +31,7 @@ async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
         msg.includes("quota");
 
       if (isQuotaOrDemand) {
-        console.warn(`[LabelService][${label}] Quota hit — retrying in ${delay}ms...`);
+        console.warn(`[LabelService][${label}] Quota/demand hit on ${modelName} — retrying in ${delay}ms...`);
         retries--;
         await new Promise((r) => setTimeout(r, delay));
         delay = Math.floor(delay * 1.5);
@@ -67,10 +67,18 @@ function parseGeminiJson(raw) {
 //        • OR use AI's own knowledge (if not found)
 //        • + regulatory requirements for the given country
 // ─────────────────────────────────────────────────────────────
-export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country) => {
+export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country, onProgress) => {
   if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
+
+  const reportProgress = (progress, message) => {
+    if (onProgress && typeof onProgress === 'function') {
+      onProgress(progress, message);
+    }
+  };
+
+  reportProgress(5, "Initializing AI");
 
   // Write buffer to temp file
   const ext = path.extname(fileName) || (mimeType === "application/pdf" ? ".pdf" : ".png");
@@ -101,6 +109,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       // UPLOAD to Gemini File API
       // ════════════════════════════════════════════════════════
       console.log(`[LabelService] Uploading to Gemini File API (${mimeType})...`);
+      reportProgress(15, "Uploading label");
       uploadResult = await fileManager.uploadFile(tempFilePath, {
         mimeType,
         displayName: fileName,
@@ -132,10 +141,11 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       // STEP 1 — AI: Extract product identity (name + ingredients)
       // ════════════════════════════════════════════════════════
       console.log("[LabelService] STEP 1: Extracting product identity...");
+      reportProgress(30, "Extracting ingredients");
 
       const step1Prompt = `
-  You are an expert pharmaceutical and veterinary regulatory specialist.
-  Analyze this label/leaflet and extract ONLY the product identity fields.
+  You are a highly experienced Veterinary Medicines Scientist and Quality Control Expert.
+  Carefully analyze this label/leaflet and extract ONLY the product identity fields accurately.
 
   Return ONLY a valid JSON object — no markdown, no explanation:
   {
@@ -174,6 +184,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     //   Priority 2: any product sharing an active ingredient name
     // ════════════════════════════════════════════════════════
     console.log("[LabelService] STEP 2: Searching DB globally...");
+    reportProgress(50, "Searching database");
 
     let dbProduct = null;
     let isExactMatch = false;
@@ -222,6 +233,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     // STEP 3 — AI: Deep compliance check
     // ════════════════════════════════════════════════════════
     console.log("[LabelService] STEP 3: Deep compliance check...");
+    reportProgress(70, "Checking compliance");
 
     // Build DB context section for the prompt
     let dbContext = "";
@@ -263,7 +275,8 @@ Specifications (DB):               ${JSON.stringify(dbProduct.specifications || 
 
 IMPORTANT instructions for alternative product reference:
 - Do NOT flag the product name difference as an error (the label has a different brand name, which is expected for alternative products).
-- Use this alternative product's active ingredients, concentrations, dosage, species, withdrawal, etc., as a scientific/technical reference to verify if the label's active ingredients and specifications are scientifically reasonable or if they have major/suspicious differences.`;
+- CRITICAL RULE: DO NOT critique, complain about, or output errors stating that the alternative product is a "bad match", "not a true alternative", or "has different extra ingredients". The database logic provided this to you intentionally. 
+- Simply use whatever ingredients match as a baseline reference for dosages/concentrations, and evaluate the label on its own merits using your global references.`;
       }
     } else {
       dbContext = `
@@ -275,9 +288,18 @@ This product is not in our system. Use your expert pharmaceutical/veterinary kno
     }
 
     const step3Prompt = `
-You are an expert pharmaceutical and veterinary regulatory affairs specialist.
+You are a massive, elite Drug Authority Commission consisting of hundreds of world-class scientists across all disciplines:
+1. Senior Veterinary Medical Doctors (DVM) and Toxicologists.
+2. PhD-level Pharmaceutical Chemists and Formulation Experts.
+3. Uncompromising Quality Assurance & Control Inspectors (QA/QC).
+4. Chief Regulatory and Compliance Experts from the "${country}" Drug Authority.
 
-Analyze the uploaded product label/leaflet carefully.
+You have a ZERO-TOLERANCE policy for errors. You analyze every single letter, number, unit, and scientific claim.
+PRIMARY REFERENCE: You MUST prioritize the provided database context (if any) as the absolute source of truth for exact matches.
+SECONDARY REFERENCE (LOCAL LAWS): You MUST enforce the specific regulatory laws and guidelines of the "${country}" Drug Authority. Local country laws OVERRIDE global standards.
+TERTIARY REFERENCE: For any missing scientific info or technical validation, rely on global reference standards (e.g., FDA, EMA, Codex Alimentarius, VICH guidelines, Pharmacopoeias).
+
+Analyze the uploaded product label/leaflet with extreme scrutiny.
 ${dbContext}
 
 === REGULATORY COMPLIANCE CHECK FOR: "${country}" ===
@@ -286,24 +308,29 @@ Perform a thorough check covering these areas:
 
 1. LABEL vs DATABASE DISCREPANCIES (ONLY if a matching product or alternative product is found in the database):
    - Compare the label content against the database product details provided.
-   - If the database product is an exact match by name, flag any spelling, concentration, dosage, species, or storage mismatch as errors.
-   - If the database product is an ALTERNATIVE product (different name, same active ingredients), do NOT flag the name difference as an error. Compare the concentrations, dosages, and active ingredients to ensure consistency or scientific correctness.
+   - If the database product is an exact match by name, be HYPER-CRITICAL. Flag even a single incorrect letter, wrong decimal point, incorrect measurement unit (e.g., mg vs g), slight variations in dosage, missing target species, or storage mismatch as a critical error.
+   - If the database product is an ALTERNATIVE product (different name): Compare matching ingredients and dosages to ensure scientific correctness. DO NOT flag missing ingredients in the label that exist in the alternative product, and DO NOT complain that the alternative product is a poor match. Your sole job is to verify the uploaded label, NOT to review the database's matching logic.
 
 2. TECHNICAL ACCURACY (CRITICAL: If the product is NOT found in the database at all, you must evaluate the product entirely based on your own expert pharmaceutical and veterinary knowledge):
-   - Assess if the active ingredients, their concentrations, and combinations are scientifically valid and standard.
-   - Check if units are appropriate and consistent (e.g., g/kg, mg/ml).
-   - Verify if dosage and administration instructions are clinically sound for the target species.
-   - Flag any impossible, dangerous, or highly suspicious values/formulations.
+   - Assess if the active ingredients, their concentrations, and chemical combinations are scientifically valid, stable, and standard.
+   - PHYSICAL FORM vs UNITS: Analyze the physical form (Liquid vs. Powder/Solid). Check if the units strictly match the physical form (e.g., Liquids MUST use mg/ml, % w/v, or IU/ml. Powders MUST use mg/g, g/kg, % w/w, or IU/g). Flag any contradiction as a critical error.
+   - MATH & LOGIC: Check for impossible mathematical concentrations (e.g., total ingredients exceeding 100% or 1000g/kg).
+   - Verify if dosage and administration instructions are clinically sound, safe, and effective for the specific target species.
+   - Flag any impossible, dangerous, or highly suspicious values, formulations, or scientific claims.
 
 3. REGULATORY REQUIREMENTS for "${country}" (CRITICAL: You MUST check this in ALL cases, whether the product is in the database or not):
    - Verify compliance against "${country}" drug authority guidelines.
+   - STORAGE CONDITIONS: Verify that storage instructions are explicitly written and scientifically appropriate for the physical form and active ingredients (e.g., temperature limits, protection from light/moisture).
    - Check for mandatory warning statements and safety sections.
    - Verify language requirements (e.g., bilingual Arabic/English for Saudi Arabia SFDA, Egypt EDA/NODCAR, UAE MoHAP).
    - Ensure presence of mandatory fields: batch number, manufacturing date, expiry date, storage conditions/temperature, manufacturer/producer details, and drug registration/license number.
    - Flag any missing mandatory information or format violations according to the regulations of "${country}".
 
 For EACH issue found, provide:
-- category: one of "db_mismatch", "technical_error", or "regulatory"
+- category: MUST be exactly one of:
+    - "db_mismatch": ONLY for discrepancies between the label and the provided exact database match.
+    - "technical_error": For scientific errors, physical form/unit contradictions, mathematical impossibilities, or dosage issues.
+    - "regulatory": For missing mandatory fields (e.g., missing manufacturing/expiry date, batch number), missing safety warnings, or language/format violations.
 - issue: clear description of the problem
 - location: where on the label (e.g. "Active ingredients section", "Front panel") or null
 - solution: specific and actionable fix
@@ -352,6 +379,9 @@ Return ONLY a valid JSON object — no markdown, no explanation:
     try {
       if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
         throw new Error("Mock mode is enabled via environment variables.");
+      }
+      if (!uploadResult || !uploadResult.file) {
+        throw new Error("Upload failed previously, no file to analyze.");
       }
       const step3Raw = await callGeminiWithRetry(genAI, [{ fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } }, step3Prompt], "Step3-Compliance");
       complianceResult = parseGeminiJson(step3Raw);
@@ -402,6 +432,7 @@ Return ONLY a valid JSON object — no markdown, no explanation:
     // ════════════════════════════════════════════════════════
     // Build final response — strip sensitive fields
     // ════════════════════════════════════════════════════════
+    reportProgress(90, "Generating report");
     let safeDbProduct = null;
     if (dbProduct) {
       // eslint-disable-next-line no-unused-vars
