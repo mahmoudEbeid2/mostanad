@@ -13,6 +13,7 @@ import authRoutes from "./authRoutes.js";
 import backgroundTaskRoutes from "./backgroundTaskRoutes.js";
 import brandRoutes from "./brandRoutes.js";
 import dashboardRoutes from "./dashboardRoutes.js";
+import edaRequirementRoutes from "./edaRequirementRoutes.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -21,6 +22,8 @@ const router = express.Router();
 router.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Mount routes
+router.use("/auth", authRoutes);
+router.use("/dashboard", protect, dashboardRoutes);
 router.use("/users", protect, userRoutes);
 router.use("/companies", companyRoutes); // internal protect applied in companyRoutes.js after login
 router.use("/plans", protect, planRoutes);
@@ -29,14 +32,9 @@ router.use("/subscriptions", protect, subscriptionRoutes);
 router.use("/categories", protect, categoryRoutes);
 router.use("/background-tasks", protect, backgroundTaskRoutes);
 router.use("/brands", brandRoutes);
-router.use("/dashboard", protect, dashboardRoutes);
+router.use("/eda-requirements", protect, edaRequirementRoutes);
 router.use("/", protect, productRoutes);
 router.use("/", protect, templateRoutes);
 router.use("/", protect, certificateRoutes);
-router.use("/", authRoutes);
 
 export default router;
-
-
-
-

@@ -251,3 +251,20 @@ model BackgroundTask {
   @@map("background_tasks")
 }
 
+// ==========================================
+// 8. EDA Requirements (Egyptian Drug Authority)
+// ==========================================
+
+model EdaRequirement {
+  id              String   @id @default(uuid())
+  extractedText   String?  @db.Text
+  extractedData   Json?    // AI-structured array of sections
+  
+  country         String   @default("Egypt")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("eda_requirements")
+}
+

@@ -58,6 +58,12 @@ const permissions = [
 
   // Dashboard
   { name: "Read Dashboard", slug: "read_dashboard", module: "dashboard" },
+
+  // EDA Requirements
+  { name: "Create EDA Requirements", slug: "create_eda_requirements", module: "eda_requirements" },
+  { name: "Read EDA Requirements", slug: "read_eda_requirements", module: "eda_requirements" },
+  { name: "Update EDA Requirements", slug: "update_eda_requirements", module: "eda_requirements" },
+  { name: "Delete EDA Requirements", slug: "delete_eda_requirements", module: "eda_requirements" },
 ];
 
 async function main() {
@@ -109,9 +115,14 @@ async function main() {
 
   // 4. Create default Admin User
   console.log("Seeding default Admin user...");
-  const adminUsername = "admin";
-  const adminEmail = "admin@mostanad.com";
-  const hashedPassword = await bcrypt.hash("admin123", 10);
+  const adminUsername = process.env.ADMIN_USERNAME || "admin";
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@mostanad.com";
+  
+  const rawPassword = process.env.ADMIN_PASSWORD;
+  if (!rawPassword) {
+    console.warn("⚠️ WARNING: ADMIN_PASSWORD environment variable is not set. Using default insecure password 'admin123'. PLEASE SET IT IN .env");
+  }
+  const hashedPassword = await bcrypt.hash(rawPassword || "admin123", 10);
 
   const adminUser = await prisma.user.upsert({
     where: { username: adminUsername },

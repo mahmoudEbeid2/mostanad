@@ -30,6 +30,13 @@ services:
       - ./src:/app/src
       - ./uploads:/app/uploads
 
+  eda-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
   email-worker:
     environment:
       - NODE_ENV=development

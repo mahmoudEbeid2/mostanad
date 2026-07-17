@@ -235,6 +235,31 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     console.log("[LabelService] STEP 3: Deep compliance check...");
     reportProgress(70, "Checking compliance");
 
+    // Fetch EDA Requirements from DB for this country
+    console.log(`[LabelService] Fetching EDA requirements for ${country}...`);
+    const edaReqs = await prisma.edaRequirement.findMany({
+      where: { country },
+      orderBy: { createdAt: "desc" },
+    });
+
+    let regulatoryContext = "";
+    if (edaReqs.length > 0) {
+      console.log(`[LabelService] Found ${edaReqs.length} EDA requirements in DB.`);
+      regulatoryContext += `\n=== CRITICAL LOCAL REGULATORY REQUIREMENTS (${country}) ===\n`;
+      regulatoryContext += `The following rules are EXACT requirements provided by the regulatory authority for ${country}. YOU MUST STRICTLY ENFORCE THESE RULES. Any violation of these specific rules MUST be flagged as a 'regulatory' error.\n`;
+      
+      edaReqs.forEach((req, i) => {
+        regulatoryContext += `\nDocument/Guideline ${i + 1}:\n`;
+        if (req.extractedData && Array.isArray(req.extractedData)) {
+          req.extractedData.forEach(section => {
+            regulatoryContext += `\n[${section.section.toUpperCase()}]\n${section.content}\n`;
+          });
+        }
+      });
+    } else {
+      console.log(`[LabelService] No EDA requirements found in DB for ${country}. Falling back to AI's general knowledge.`);
+    }
+
     // Build DB context section for the prompt
     let dbContext = "";
     if (foundInDb) {
@@ -248,8 +273,9 @@ Category:                ${dbProduct.category?.name || "N/A"}
 Active Ingredients (DB): ${JSON.stringify(dbProduct.activeIngredients || [], null, 2)}
 Dosage (DB):             ${dbProduct.dosage || "N/A"}
 Physical Form (DB):      ${dbProduct.physicalForm || "N/A"}
+Route of Admin (DB):     ${dbProduct.routeOfAdmin || "N/A"}
+Target Species (DB):     ${dbProduct.targetSpecies || "N/A"}
 Appearance (DB):         ${dbProduct.appearance || "N/A"}
-Target Species (DB):     ${JSON.stringify(dbProduct.targetSpecies || [])}
 Storage (DB):            ${dbProduct.storage || "N/A"}
 Withdrawal Period (DB):  ${dbProduct.withdrawalPeriod || "N/A"}
 Packaging (DB):          ${dbProduct.packaging || "N/A"}
@@ -301,6 +327,7 @@ TERTIARY REFERENCE: For any missing scientific info or technical validation, rel
 
 Analyze the uploaded product label/leaflet with extreme scrutiny.
 ${dbContext}
+${regulatoryContext}
 
 === REGULATORY COMPLIANCE CHECK FOR: "${country}" ===
 
