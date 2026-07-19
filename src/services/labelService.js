@@ -259,6 +259,9 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
             // Handle new Strict Rules schema
             else if (rule.ruleDescription) {
               regulatoryContext += `- [${rule.severity || 'RULE'}] [Target: ${rule.targetProductType || 'All'}] [Type: ${rule.ruleType || 'General'}]: ${rule.ruleDescription}\n`;
+              if (rule.example) {
+                regulatoryContext += `  (Example: ${rule.example})\n`;
+              }
             }
           });
         }

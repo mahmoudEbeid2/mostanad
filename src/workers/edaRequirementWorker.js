@@ -63,7 +63,8 @@ const worker = new Worker(
             targetProductType: { type: "string", description: "The specific product type this rule applies to (e.g., 'All Products', 'Feed Material', 'Compound Feed', 'Premix'). If it applies to everything, write 'All Products'." },
             ruleType: { type: "string", enum: ["Mandatory Field", "Prohibited Claim", "Formatting Rule", "Storage Condition", "General Rule"], description: "The category of the rule." },
             ruleDescription: { type: "string", description: "The exact, clear, and actionable rule that must be enforced on the label." },
-            severity: { type: "string", enum: ["CRITICAL", "WARNING"], description: "CRITICAL if violating this causes rejection. WARNING if it's a recommendation." }
+            severity: { type: "string", enum: ["CRITICAL", "WARNING"], description: "CRITICAL if violating this causes rejection. WARNING if it's a recommendation." },
+            example: { type: "string", description: "An example provided in the text that demonstrates this rule or a valid label sample (optional)." }
           },
           required: ["targetProductType", "ruleType", "ruleDescription", "severity"]
         }
