@@ -251,8 +251,15 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       edaReqs.forEach((req, i) => {
         regulatoryContext += `\nDocument/Guideline ${i + 1}:\n`;
         if (req.extractedData && Array.isArray(req.extractedData)) {
-          req.extractedData.forEach(section => {
-            regulatoryContext += `\n[${section.section.toUpperCase()}]\n${section.content}\n`;
+          req.extractedData.forEach(rule => {
+            // Handle legacy schema
+            if (rule.section && rule.content) {
+              regulatoryContext += `\n[${rule.section.toUpperCase()}]\n${rule.content}\n`;
+            } 
+            // Handle new Strict Rules schema
+            else if (rule.ruleDescription) {
+              regulatoryContext += `- [${rule.severity || 'RULE'}] [Target: ${rule.targetProductType || 'All'}] [Type: ${rule.ruleType || 'General'}]: ${rule.ruleDescription}\n`;
+            }
           });
         }
       });

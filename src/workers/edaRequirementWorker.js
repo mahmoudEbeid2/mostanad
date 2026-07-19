@@ -49,21 +49,23 @@ const worker = new Worker(
             mimeType: mimeType
           }
         },
-        { text: "Please carefully read the attached regulatory document. Structure and categorize all the rules, conditions, and requirements into logical sections. Do not leave out any important conditions. Ensure the text is clean and professional." }
+        { text: "Please carefully read the attached regulatory document. Your goal is to extract a comprehensive list of strict validation rules that a compliance officer would use to check a product label. Extract mandatory fields, prohibited terms, formatting requirements, and storage conditions. If a rule only applies to a specific product type (like 'Feed Additive'), specify it. Do not leave out any critical label requirements." }
       ];
 
-      const systemInstruction = `You are a highly capable regulatory affairs assistant analyzing Egyptian Drug Authority (EDA) documents or other regulatory requirements.`;
+      const systemInstruction = `You are a highly capable regulatory affairs assistant. Your job is to read regulatory documents (e.g., from the EDA or SFDA) and extract STRICT validation rules for checking product labels. Do not extract paragraphs of text. Extract granular, atomic rules that a computer system can use to validate a product label.`;
       
       const schema = {
         type: "array",
-        description: "An array of structured requirement sections.",
+        description: "An array of strict label validation rules extracted from the document.",
         items: {
           type: "object",
           properties: {
-            section: { type: "string", description: "The title of the section or category (e.g., General Conditions, Required Documents, Formatting Rules)." },
-            content: { type: "string", description: "The detailed extracted rules or text belonging to this section." }
+            targetProductType: { type: "string", description: "The specific product type this rule applies to (e.g., 'All Products', 'Feed Material', 'Compound Feed', 'Premix'). If it applies to everything, write 'All Products'." },
+            ruleType: { type: "string", enum: ["Mandatory Field", "Prohibited Claim", "Formatting Rule", "Storage Condition", "General Rule"], description: "The category of the rule." },
+            ruleDescription: { type: "string", description: "The exact, clear, and actionable rule that must be enforced on the label." },
+            severity: { type: "string", enum: ["CRITICAL", "WARNING"], description: "CRITICAL if violating this causes rejection. WARNING if it's a recommendation." }
           },
-          required: ["section", "content"]
+          required: ["targetProductType", "ruleType", "ruleDescription", "severity"]
         }
       };
 
