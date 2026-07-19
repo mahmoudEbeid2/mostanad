@@ -268,6 +268,23 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       });
     } else {
       console.log(`[LabelService] No EDA requirements found in DB for ${country}. Falling back to AI's general knowledge.`);
+      regulatoryContext += `
+=== GENERAL REGULATORY REQUIREMENTS (${country}) ===
+We do not have a custom rule database for ${country} in our system. You MUST rely on your comprehensive general knowledge of ${country}'s regulatory guidelines and international standards (like VICH, FDA, EMA). 
+You MUST operate as a strict rule-based engine and enforce the following MINIMUM BASELINE REQUIREMENTS. Treat these as mandatory rules:
+
+- [CRITICAL] [Mandatory Field]: The label MUST clearly state the Product Name.
+- [CRITICAL] [Mandatory Field]: The label MUST state Active Ingredients and precise concentrations with correct scientific units.
+- [CRITICAL] [Mandatory Field]: The label MUST include Net Weight or Volume.
+- [CRITICAL] [Mandatory Field]: The label MUST contain a Batch/Lot Number.
+- [CRITICAL] [Mandatory Field]: The label MUST include Production and Expiry dates.
+- [CRITICAL] [Mandatory Field]: The label MUST clearly define the Target Species and specific Dosage/Administration directions.
+- [CRITICAL] [Mandatory Field]: The label MUST explicitly state Storage Conditions, including a specific temperature limit (e.g., "Store below 30°C"). Vague terms like "Store in a cool place" are unacceptable.
+- [CRITICAL] [Mandatory Field]: The label MUST display Manufacturer and/or Importer details clearly.
+- [CRITICAL] [Prohibited Claim]: The label MUST NOT contain misleading, unproven, or purely marketing-based medical claims (e.g., "Cures everything").
+
+If the label violates any of these strict baseline rules, you MUST flag it as a regulatory error.
+`;
     }
 
     // Build DB context section for the prompt
