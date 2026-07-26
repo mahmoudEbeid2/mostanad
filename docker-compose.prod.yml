@@ -50,6 +50,7 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik_webgateway"
       - "traefik.http.routers.mostanad-api.rule=Host(`api.dossira.tech`)"
       - "traefik.http.routers.mostanad-api.entrypoints=websecure"
       - "traefik.http.routers.mostanad-api.tls.certresolver=myresolver"
