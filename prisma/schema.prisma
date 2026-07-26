@@ -72,7 +72,6 @@ model Company {
   email     String?  @unique
   phone     String?
   address   String?
-  logoUrl   String?  @map("logo_url")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -190,7 +189,6 @@ model TemplateImage {
 model Brand {
   id        String   @id @default(uuid())
   name      String
-  logoUrl   String?  @map("logo_url")
   companyId String   @map("company_id")
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   isActive  Boolean  @default(true) @map("is_active")

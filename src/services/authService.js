@@ -107,7 +107,6 @@ export const loginCompany = async (usernameOrEmail, password) => {
     email: company.email,
     phone: company.phone,
     address: company.address,
-    logoUrl: company.logoUrl,
   };
 
   return {

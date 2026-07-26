@@ -6,7 +6,7 @@ import { PrismaFeatures } from "../utils/PrismaFeatures.js";
  * Create a new brand
  */
 export const createBrand = async (data) => {
-  const { name, companyId, logoUrl } = data;
+  const { name, companyId } = data;
 
   // Verify company exists
   const company = await prisma.company.findUnique({ where: { id: companyId } });
@@ -19,7 +19,6 @@ export const createBrand = async (data) => {
     data: {
       name,
       companyId,
-      logoUrl,
     },
   });
 
@@ -69,12 +68,12 @@ export const updateBrand = async (id, data) => {
     throw new AppError("Brand not found!", 404);
   }
 
-  const { name, companyId, logoUrl, isActive } = data;
+  const { name, companyId, isActive } = data;
   const updateData = {};
 
-  if (name) updateData.name = name;
+  if (name !== undefined) updateData.name = name;
   
-  if (companyId) {
+  if (companyId !== undefined) {
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) {
       throw new AppError("Target company not found!", 404);
@@ -82,7 +81,6 @@ export const updateBrand = async (id, data) => {
     updateData.companyId = companyId;
   }
 
-  if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
   if (isActive !== undefined) updateData.isActive = isActive;
 
   const updatedBrand = await prisma.brand.update({

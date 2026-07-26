@@ -11,7 +11,7 @@ const excludePassword = (company) => excludeFields(company, ["password"]);
  * Create a new company
  */
 export const createCompany = async (data) => {
-  const { name, username, password, email, phone, address, logoUrl } = data;
+  const { name, username, password, email, phone, address } = data;
 
   // Check unique username
   const usernameExists = await prisma.company.findUnique({ where: { username } });
@@ -26,7 +26,7 @@ export const createCompany = async (data) => {
   const hashedPassword = await bcrypt.hash(password, 12);
 
   const company = await prisma.company.create({
-    data: { name, username, password: hashedPassword, email, phone, address, logoUrl },
+    data: { name, username, password: hashedPassword, email, phone, address },
   });
 
   return excludePassword(company);
@@ -87,7 +87,6 @@ export const updateCompany = async (id, data) => {
 
   if (phone !== undefined) updateData.phone = phone;
   if (address !== undefined) updateData.address = address;
-  if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
   if (isActive !== undefined) updateData.isActive = isActive;
 
   if (password) {

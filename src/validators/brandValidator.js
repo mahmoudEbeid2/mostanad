@@ -11,7 +11,7 @@ export const createBrandSchema = {
       .string({ required_error: "Company ID is required" })
       .uuid("Invalid company ID format"),
 
-    logoUrl: z.string().optional().nullable(),
+    // logoUrl removed
   }),
 };
 
@@ -22,7 +22,7 @@ export const updateBrandSchema = {
   body: z.object({
     name: z.string().min(2).max(100).optional(),
     companyId: z.string().uuid("Invalid company ID format").optional(),
-    logoUrl: z.string().optional().nullable(),
+    // logoUrl removed
     isActive: z.boolean().optional(),
   }),
 };

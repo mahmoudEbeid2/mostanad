@@ -11,9 +11,7 @@ import {
 
 // 1. CREATE BRAND
 export const createBrand = catchAsync(async (req, res, next) => {
-  if (req.file) {
-    req.body.logoUrl = saveLogo(req.file.buffer, "brands", req.file.originalname);
-  }
+    // Logo removed
   const brand = await createBrandService(req.body);
   res.status(201).json({
     status: "success",
@@ -42,13 +40,7 @@ export const getBrandById = catchAsync(async (req, res, next) => {
 
 // 4. UPDATE BRAND
 export const updateBrand = catchAsync(async (req, res, next) => {
-  if (req.file) {
-    const existing = await prisma.brand.findUnique({ where: { id: req.params.id } });
-    if (existing && existing.logoUrl) {
-      deleteLogo(existing.logoUrl);
-    }
-    req.body.logoUrl = saveLogo(req.file.buffer, "brands", req.file.originalname);
-  }
+    // Logo removed
   const brand = await updateBrandService(req.params.id, req.body);
   res.status(200).json({
     status: "success",
@@ -58,10 +50,7 @@ export const updateBrand = catchAsync(async (req, res, next) => {
 
 // 5. DELETE BRAND
 export const deleteBrand = catchAsync(async (req, res, next) => {
-  const existing = await prisma.brand.findUnique({ where: { id: req.params.id } });
-  if (existing && existing.logoUrl) {
-    deleteLogo(existing.logoUrl);
-  }
+    // Logo removed
   await deleteBrandService(req.params.id);
   res.status(204).json({
     status: "success",
