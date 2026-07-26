@@ -9,8 +9,8 @@ echo "🔄 Generating Prisma Client..."
 npx prisma generate
 
 if [ "$NODE_ENV" = "production" ]; then
-  echo "🔄 Syncing database schema (migrate deploy)..."
-  npx prisma migrate deploy
+  echo "🔄 Syncing database schema (db push)..."
+  npx prisma db push --accept-data-loss
 
   echo "🌱 Seeding initial data..."
   npx prisma db seed
