@@ -152,16 +152,35 @@ export const updateUser = async (id, updateData) => {
 };
 
 /**
- * Delete a user (Hard Delete)
+ * Delete a user
  */
 export const deleteUser = async (id) => {
-  const existingUser = await prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id } });
 
-  if (!existingUser) {
-    throw new AppError("User not found!", 404);
+  if (!user) {
+    throw new AppError("No user found with that ID", 404);
   }
 
   await prisma.user.delete({ where: { id } });
-
   return null;
+};
+
+/**
+ * Reset User Password
+ */
+export const resetUserPassword = async (id) => {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) {
+    throw new AppError("No user found with that ID", 404);
+  }
+
+  const newPassword = crypto.randomBytes(8).toString("hex");
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+  await prisma.user.update({
+    where: { id },
+    data: { password: hashedPassword },
+  });
+
+  return newPassword;
 };

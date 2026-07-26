@@ -5,6 +5,7 @@ import {
   getUserById,
   updateUser,
   deleteUser,
+  resetPassword,
 } from "../controllers/userController.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { restrictToPermission } from "../middleware/authMiddleware.js";
@@ -27,5 +28,9 @@ router
   .get(restrictToPermission("read_users"), validate(getUserByIdSchema), getUserById)
   .patch(restrictToPermission("update_users"), validate(updateUserSchema), updateUser)
   .delete(restrictToPermission("delete_users"), validate(deleteUserSchema), deleteUser);
+
+router
+  .route("/:id/reset-password")
+  .patch(restrictToPermission("update_users"), resetPassword);
 
 export default router;

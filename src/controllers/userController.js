@@ -5,6 +5,7 @@ import {
   getUserById as getUserByIdService,
   updateUser as updateUserService,
   deleteUser as deleteUserService,
+  resetUserPassword as resetUserPasswordService,
 } from "../services/userService.js";
 
 // 1. CREATE USER
@@ -63,5 +64,18 @@ export const deleteUser = catchAsync(async (req, res, next) => {
   res.status(204).json({
     status: "success",
     data: null,
+  });
+});
+
+// 6. RESET PASSWORD
+export const resetPassword = catchAsync(async (req, res, next) => {
+  const newPassword = await resetUserPasswordService(req.params.id);
+
+  res.status(200).json({
+    status: "success",
+    message: "Password reset successfully",
+    data: {
+      generatedPassword: newPassword,
+    },
   });
 });
