@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
@@ -106,4 +107,24 @@ export const deleteCompany = async (id) => {
 
   await prisma.company.delete({ where: { id } });
   return null;
+};
+
+/**
+ * Reset Company Password
+ */
+export const resetCompanyPassword = async (id) => {
+  const company = await prisma.company.findUnique({ where: { id } });
+  if (!company) {
+    throw new AppError("No company found with that ID", 404);
+  }
+
+  const newPassword = crypto.randomBytes(8).toString("hex");
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+  await prisma.company.update({
+    where: { id },
+    data: { password: hashedPassword },
+  });
+
+  return newPassword;
 };

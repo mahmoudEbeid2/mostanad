@@ -5,6 +5,7 @@ import {
   getCompanyById,
   updateCompany,
   deleteCompany,
+  resetPassword,
 } from "../controllers/companyController.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { restrictToPermission } from "../middleware/authMiddleware.js";
@@ -48,6 +49,10 @@ router
     updateCompany
   )
   .delete(restrictToPermission("delete_companies"), validate(deleteCompanySchema), deleteCompany);
+
+router
+  .route("/:id/reset-password")
+  .patch(restrictToPermission("update_companies"), resetPassword);
 
 export default router;
 

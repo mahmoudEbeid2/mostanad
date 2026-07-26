@@ -7,6 +7,7 @@ import {
   getCompanyById as getCompanyByIdService,
   updateCompany as updateCompanyService,
   deleteCompany as deleteCompanyService,
+  resetCompanyPassword as resetCompanyPasswordService,
 } from "../services/companyService.js";
 
 // 1. CREATE COMPANY
@@ -51,4 +52,16 @@ export const deleteCompany = catchAsync(async (req, res, next) => {
   }
   await deleteCompanyService(req.params.id);
   res.status(204).json({ status: "success", data: null });
+});
+
+// 6. RESET PASSWORD
+export const resetPassword = catchAsync(async (req, res, next) => {
+  const newPassword = await resetCompanyPasswordService(req.params.id);
+  res.status(200).json({
+    status: "success",
+    message: "Password reset successfully",
+    data: {
+      generatedPassword: newPassword,
+    },
+  });
 });
