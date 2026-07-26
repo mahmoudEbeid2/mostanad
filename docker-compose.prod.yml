@@ -50,6 +50,8 @@ services:
     networks:
       - traefik_webgateway
       - internal
+    volumes:
+      - app-uploads:/app/uploads
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_webgateway"
@@ -78,6 +80,8 @@ services:
     command: node src/workers/catalogWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   label-worker:
     container_name: label-worker
@@ -99,6 +103,8 @@ services:
     command: node src/workers/labelWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   certificate-worker:
     container_name: certificate-worker
@@ -120,6 +126,8 @@ services:
     command: node src/workers/certificateWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   eda-worker:
     container_name: eda-worker
@@ -141,6 +149,8 @@ services:
     command: node src/workers/edaRequirementWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   ai-template-worker:
     container_name: ai-template-worker
@@ -163,6 +173,8 @@ services:
     command: node src/workers/aiTemplateWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   email-worker:
     container_name: email-worker
@@ -184,6 +196,8 @@ services:
     command: node src/workers/emailWorker.js
     networks:
       - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   postgres:
     image: postgres:18
@@ -214,6 +228,7 @@ services:
 volumes:
   mostanad_postgres_data:
   traefik-certificates:
+  app-uploads:
 
 networks:
   traefik_webgateway:
