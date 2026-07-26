@@ -61,7 +61,8 @@ export const createUser = async (userData) => {
     data: { name, email, username, password: hashedPassword, phone },
   });
 
-  // Queue welcome email task in the background
+  // Queue welcome email task in the background (TEMPORARILY DISABLED)
+  /*
   addEmailJob({
     type: "welcome",
     to: email,
@@ -69,8 +70,12 @@ export const createUser = async (userData) => {
   }).catch((err) => {
     console.error(`[UserService] Failed to queue welcome email for ${email}:`, err.message);
   });
+  */
 
-  return excludePassword(newUser);
+  const safeUser = excludePassword(newUser);
+  safeUser.generatedPassword = password;
+  
+  return safeUser;
 };
 
 /**
