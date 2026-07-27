@@ -10,8 +10,9 @@ const app = express();
 // Enable CORS for all routes
 app.use(cors());
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// Middleware to parse JSON bodies with increased payload limit for base64 files
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Serve static uploaded files
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
