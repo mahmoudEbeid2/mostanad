@@ -14,11 +14,11 @@ export const createTemplateSchema = {
     htmlContent: z
       .string({ required_error: "HTML content is required" })
       .min(1, "HTML content cannot be empty"),
-    brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
+    brandId: z.union([z.string().uuid("Invalid brand ID format"), z.literal("")]).optional().nullable().transform(e => e === "" ? null : e),
     isActive: z.boolean().optional(),
     fields: z.any().optional().nullable(),
     isGlobal: z.boolean().optional(),
-    productId: z.string().uuid("Invalid product ID format").optional().nullable(),
+    productId: z.union([z.string().uuid("Invalid product ID format"), z.literal("")]).optional().nullable().transform(e => e === "" ? null : e),
   }),
 };
 
@@ -30,11 +30,11 @@ export const updateTemplateSchema = {
     name: z.string().min(2).optional(),
     type: z.string().min(2).optional(),
     htmlContent: z.string().min(1).optional(),
-    brandId: z.string().uuid("Invalid brand ID format").optional().nullable(),
+    brandId: z.union([z.string().uuid("Invalid brand ID format"), z.literal("")]).optional().nullable().transform(e => e === "" ? null : e),
     isActive: z.boolean().optional(),
     fields: z.any().optional().nullable(),
     isGlobal: z.boolean().optional(),
-    productId: z.string().uuid("Invalid product ID format").optional().nullable(),
+    productId: z.union([z.string().uuid("Invalid product ID format"), z.literal("")]).optional().nullable().transform(e => e === "" ? null : e),
   }),
 };
 
