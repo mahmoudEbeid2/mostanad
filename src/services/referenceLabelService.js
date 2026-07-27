@@ -8,10 +8,9 @@ export const getAll = async (queryString) => {
     .sort()
     .paginate();
 
-  const labels = await features.query;
-  const total = await prisma.referenceLabel.count({ where: features.query.where });
+  const result = await features.exec();
 
-  return { labels, total };
+  return { labels: result.data, total: result.meta.total };
 };
 
 export const getById = async (id) => {
