@@ -1,4 +1,4 @@
-import { prisma } from "../config/db.js";
+import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import PrismaFeatures from "../utils/PrismaFeatures.js";
 
