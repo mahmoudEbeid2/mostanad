@@ -27,10 +27,7 @@ export const createTemplate = async (companyId, data) => {
   const finalIsGlobal = isGlobal !== undefined ? isGlobal : true;
 
   // 3. Verify product details if template is product-scoped
-  if (!finalIsGlobal) {
-    if (!productId) {
-      throw new AppError("Product ID is required for a product-scoped template.", 400);
-    }
+  if (!finalIsGlobal && productId) {
     const productExists = await prisma.product.findFirst({
       where: { id: productId, companyId },
     });
@@ -166,10 +163,7 @@ export const updateTemplate = async (id, data) => {
   const finalBrandId = brandId !== undefined ? brandId : existingTemplate.brandId;
 
   // Validate product if template is product-scoped
-  if (!finalIsGlobal) {
-    if (!finalProductId) {
-      throw new AppError("Product ID is required for a product-scoped template.", 400);
-    }
+  if (!finalIsGlobal && finalProductId) {
     const productExists = await prisma.product.findFirst({
       where: { id: finalProductId, companyId },
     });
