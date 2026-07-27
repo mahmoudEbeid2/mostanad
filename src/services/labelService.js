@@ -67,7 +67,7 @@ function parseGeminiJson(raw) {
 //        • OR use AI's own knowledge (if not found)
 //        • + regulatory requirements for the given country
 // ─────────────────────────────────────────────────────────────
-export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country, onProgress) => {
+export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country, companyId, onProgress) => {
   if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
@@ -235,12 +235,31 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     console.log("[LabelService] STEP 3: Deep compliance check...");
     reportProgress(70, "Checking compliance");
 
-    // Fetch EDA Requirements from DB for this country
+    // Fetch EDA Requirements from DB (Company specific first, then Global fallback)
     console.log(`[LabelService] Fetching EDA requirements for ${country}...`);
-    const edaReqs = await prisma.edaRequirement.findMany({
-      where: { country },
-      orderBy: { createdAt: "desc" },
-    });
+    let edaReqs = [];
+    
+    // 1. Try fetching company specific requirements
+    if (companyId) {
+      edaReqs = await prisma.edaRequirement.findMany({
+        where: { country, companyId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (edaReqs.length > 0) {
+        console.log(`[LabelService] Found ${edaReqs.length} COMPANY SPECIFIC EDA requirements.`);
+      }
+    }
+
+    // 2. Fallback to Global requirements if no company specific ones found
+    if (edaReqs.length === 0) {
+      edaReqs = await prisma.edaRequirement.findMany({
+        where: { country, companyId: null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (edaReqs.length > 0) {
+        console.log(`[LabelService] Found ${edaReqs.length} GLOBAL EDA requirements.`);
+      }
+    }
 
     let regulatoryContext = "";
     if (edaReqs.length > 0) {

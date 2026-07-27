@@ -21,7 +21,7 @@ const connection = getRedisConfig();
 const worker = new Worker(
   "edaRequirementQueue",
   async (job) => {
-    const { country, fileBufferBase64, fileName, mimeType } = job.data;
+    const { country, fileBufferBase64, fileName, mimeType, companyId } = job.data;
     const taskId = job.opts.jobId;
 
     console.log(`[EDA Requirement Worker] Starting job ${job.id} (Task ${taskId})`);
@@ -99,6 +99,7 @@ const worker = new Worker(
       const requirement = await prisma.edaRequirement.create({
         data: {
           country,
+          companyId,
           extractedText: "Text extracted natively by Gemini",
           extractedData,
         }

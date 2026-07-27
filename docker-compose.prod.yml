@@ -55,7 +55,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_webgateway"
-      - "traefik.http.routers.mostanad-api.rule=Host(`api.dossira.tech`)"
+      - "traefik.http.routers.mostanad-api.rule=Host(`backend.dossira.tech`)"
       - "traefik.http.routers.mostanad-api.entrypoints=websecure"
       - "traefik.http.routers.mostanad-api.tls.certresolver=myresolver"
       - "traefik.http.services.mostanad-api.loadbalancer.server.port=3000"

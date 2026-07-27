@@ -75,6 +75,8 @@ export const processAndCreate = async (file, body) => {
 };
 
 export const getAll = async (queryString) => {
+  // Extract companyId if it exists in query string to filter explicitly
+  // PrismaFeatures handles standard equality filters automatically if we pass it in query
   const features = new PrismaFeatures(prisma.edaRequirement, queryString)
     .filter()
     .sort()

@@ -13,13 +13,17 @@ export const uploadRequirement = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload a PDF or DOCX file.", 400));
   }
   
-  const { country = "Egypt" } = req.body;
+  const { country = "Egypt", companyId } = req.body;
+  
+  // If companyId is not provided in body, use the authenticated company's ID
+  const finalCompanyId = companyId || (req.user && req.user.id);
 
   // 1. Create a BackgroundTask record
   const task = await prisma.backgroundTask.create({
     data: {
       type: "eda_requirement_extraction",
       status: "pending",
+      companyId: finalCompanyId,
     },
   });
 
@@ -31,6 +35,7 @@ export const uploadRequirement = catchAsync(async (req, res, next) => {
       fileBufferBase64: req.file.buffer.toString("base64"),
       fileName: req.file.originalname,
       mimeType: req.file.mimetype,
+      companyId: finalCompanyId,
     },
     { jobId: task.id }
   );

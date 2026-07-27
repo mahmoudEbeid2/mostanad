@@ -49,7 +49,7 @@ const worker = new Worker(
       const fileBuffer = fs.readFileSync(filePath);
 
       // 3. Process label verification with progress reporting
-      const result = await verifyProductLabel(fileBuffer, fileName, mimeType, country, (progress, message) => {
+      const result = await verifyProductLabel(fileBuffer, fileName, mimeType, country, companyId, (progress, message) => {
         socket.emit("job_status_update", {
           jobId: taskId,
           companyId,
