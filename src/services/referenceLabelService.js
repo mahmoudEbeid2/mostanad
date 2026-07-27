@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
-import PrismaFeatures from "../utils/PrismaFeatures.js";
+import { PrismaFeatures } from "../utils/PrismaFeatures.js";
 
 export const getAll = async (queryString) => {
   const features = new PrismaFeatures(prisma.referenceLabel, queryString)
