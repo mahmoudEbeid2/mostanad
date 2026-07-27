@@ -23,9 +23,9 @@ socket.on("connect", () => {
 const referenceLabelWorker = new Worker(
   "referenceLabelQueue",
   async (job) => {
-    const { fileName, mimeType, fileBufferBase64, taskId, companyId } = job.data;
+    const { fileName, mimeType, fileBufferBase64, taskId, companyId, brandId } = job.data;
     
-    console.log(`[ReferenceLabelWorker] Processing reference label task ${taskId} for company ${companyId || 'GLOBAL'}`);
+    console.log(`[ReferenceLabelWorker] Processing reference label task ${taskId} for company ${companyId || 'GLOBAL'} and brand ${brandId || 'GLOBAL'}`);
     
     socket.emit("job_status_update", {
       jobId: taskId,
@@ -96,6 +96,7 @@ const referenceLabelWorker = new Worker(
         data: {
           name: fileName,
           companyId: companyId || null,
+          brandId: brandId || null,
           extractedData: extractedData
         }
       });

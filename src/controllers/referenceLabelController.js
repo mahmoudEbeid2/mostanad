@@ -12,7 +12,7 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload at least one file.", 400));
   }
   
-  const { companyId } = req.body;
+  const { companyId, brandId } = req.body;
   
   // If companyId is explicitly passed (even empty string for global), use it.
   // Otherwise, if the logged-in user is a company, use their ID.
@@ -22,6 +22,8 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   } else if (req.user && req.user.type === "company") {
     finalCompanyId = req.user.id;
   }
+  
+  const finalBrandId = brandId || null;
 
   const tasks = [];
 
@@ -32,6 +34,7 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
         type: "reference_label_extraction",
         status: "pending",
         companyId: finalCompanyId,
+        brandId: finalBrandId,
       },
     });
 
@@ -44,6 +47,7 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
         fileBufferBase64: file.buffer.toString("base64"),
         taskId: task.id,
         companyId: finalCompanyId,
+        brandId: finalBrandId,
       },
       {
         jobId: task.id, 

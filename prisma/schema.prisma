@@ -197,8 +197,9 @@ model Brand {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  products  Product[]
-  templates Template[]
+  products        Product[]
+  templates       Template[]
+  referenceLabels ReferenceLabel[]
 
   @@map("brands")
 }
@@ -280,9 +281,11 @@ model ReferenceLabel {
   name            String
   extractedData   Json?    // AI-structured insights (phrasing, layout, ingredients format)
   
-  // Optional Company ID (Null = Global Reference)
+  // Optional Company & Brand ID (Null = Global Reference)
   companyId       String?  @map("company_id")
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  brandId         String?  @map("brand_id")
+  brand           Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
