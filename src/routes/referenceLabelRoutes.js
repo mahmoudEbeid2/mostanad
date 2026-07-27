@@ -1,6 +1,6 @@
 import express from "express";
 import * as referenceLabelController from "../controllers/referenceLabelController.js";
-import { protect, restrictTo } from "../middleware/authMiddleware.js";
+import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import multer from "multer";
 
 // Configure multer for memory storage
@@ -27,7 +27,7 @@ router
   .route("/:id")
   .get(referenceLabelController.getReferenceLabel)
   .delete(
-    restrictTo("admin", "company"),
+    restrictToPermission("delete_eda_requirements"),
     referenceLabelController.deleteReferenceLabel
   );
 
