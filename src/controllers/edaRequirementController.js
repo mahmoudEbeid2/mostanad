@@ -15,8 +15,14 @@ export const uploadRequirement = catchAsync(async (req, res, next) => {
   
   const { country = "Egypt", companyId } = req.body;
   
-  // If companyId is not provided in body, use the authenticated company's ID
-  const finalCompanyId = companyId || (req.user && req.user.id);
+  // If companyId is explicitly passed (even empty string for global), use it.
+  // Otherwise, if the logged-in user is a company, use their ID.
+  let finalCompanyId = null;
+  if (companyId) {
+    finalCompanyId = companyId;
+  } else if (req.user && req.user.type === "company") {
+    finalCompanyId = req.user.id;
+  }
 
   // 1. Create a BackgroundTask record
   const task = await prisma.backgroundTask.create({
