@@ -94,6 +94,25 @@ services:
         condition: service_started
     command: node src/workers/edaRequirementWorker.js
 
+  reference-label-worker:
+    container_name: reference-label-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/referenceLabelWorker.js
+
   ai-template-worker:
     container_name: ai-template-worker
     build: .

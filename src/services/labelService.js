@@ -306,6 +306,37 @@ If the label violates any of these strict baseline rules, you MUST flag it as a 
 `;
     }
 
+    // Fetch Reference Labels (AI Benchmarks)
+    let referenceLabels = [];
+    
+    if (companyId) {
+      referenceLabels = await prisma.referenceLabel.findMany({
+        where: { companyId },
+        orderBy: { createdAt: "desc" },
+        take: 5 // limit to avoid token bloat
+      });
+    }
+    
+    // Also fetch global references (companyId: null)
+    const globalRefs = await prisma.referenceLabel.findMany({
+      where: { companyId: null },
+      orderBy: { createdAt: "desc" },
+      take: 5
+    });
+    
+    referenceLabels = [...referenceLabels, ...globalRefs];
+
+    let benchmarkContext = "";
+    if (referenceLabels.length > 0) {
+      console.log(`[LabelService] Found ${referenceLabels.length} reference labels.`);
+      benchmarkContext += `\n=== APPROVED BENCHMARKS (STYLE GUIDE) ===\n`;
+      benchmarkContext += `The following are previously approved labels. DO NOT flag formatting, warnings, phrasing, or structures that match these examples as errors. Use them as the absolute standard for acceptable formatting:\n`;
+      referenceLabels.forEach((ref, i) => {
+        benchmarkContext += `\nBenchmark ${i + 1} (${ref.name}):\n`;
+        benchmarkContext += JSON.stringify(ref.extractedData, null, 2) + "\n";
+      });
+    }
+
     // Build DB context section for the prompt
     let dbContext = "";
     if (foundInDb) {

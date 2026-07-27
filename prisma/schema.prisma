@@ -83,6 +83,7 @@ model Company {
   templates     Template[]
   brands        Brand[]
   edaRequirements EdaRequirement[]
+  referenceLabels ReferenceLabel[]
 
   @@map("companies")
 }
@@ -268,5 +269,24 @@ model EdaRequirement {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("eda_requirements")
+}
+
+// ==========================================
+// 9. Reference Labels (AI Style Guides)
+// ==========================================
+
+model ReferenceLabel {
+  id              String   @id @default(uuid())
+  name            String
+  extractedData   Json?    // AI-structured insights (phrasing, layout, ingredients format)
+  
+  // Optional Company ID (Null = Global Reference)
+  companyId       String?  @map("company_id")
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("reference_labels")
 }
 
