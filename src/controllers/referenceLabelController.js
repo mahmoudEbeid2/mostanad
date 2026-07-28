@@ -6,6 +6,41 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 
 const referenceLabelQueue = new Queue("referenceLabelQueue", { connection: getRedisConfig() });
+const labelGeneratorQueue = new Queue("labelGeneratorQueue", { connection: getRedisConfig() });
+
+export const generateLabelAi = catchAsync(async (req, res, next) => {
+  const { formulationText, country, language } = req.body;
+
+  if (!formulationText || !country || !language) {
+    return next(new AppError("Please provide formulationText, country, and language", 400));
+  }
+
+  // Create BackgroundTask
+  const task = await prisma.backgroundTask.create({
+    data: {
+      type: "label_generation",
+      status: "pending",
+    },
+  });
+
+  // Add to Queue
+  await labelGeneratorQueue.add(
+    "generateLabel",
+    {
+      taskId: task.id,
+      formulationText,
+      country,
+      language
+    },
+    { removeOnComplete: true, removeOnFail: true }
+  );
+
+  res.status(202).json({
+    status: "success",
+    message: "Label generation task queued successfully",
+    data: { taskId: task.id },
+  });
+});
 
 export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   if (!req.files || req.files.length === 0) {

@@ -222,6 +222,27 @@ services:
     volumes:
       - app-uploads:/app/uploads
 
+  label-generator-worker:
+    container_name: label-generator-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/labelGeneratorWorker.js
+    networks:
+      - internal
+
   postgres:
     image: postgres:18
     container_name: mostanad-db

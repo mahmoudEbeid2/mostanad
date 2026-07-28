@@ -24,6 +24,10 @@ router
   );
 
 router
+  .route("/generate-text-ai")
+  .post(referenceLabelController.generateLabelAi);
+
+router
   .route("/:id")
   .get(referenceLabelController.getReferenceLabel)
   .delete(
