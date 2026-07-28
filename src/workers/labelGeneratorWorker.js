@@ -102,23 +102,47 @@ export const labelGeneratorWorker = new Worker(
       }
 
       const generationPrompt = `
-      You are an elite regulatory affairs specialist and pharmaceutical label generator.
+      You are an elite regulatory affairs specialist and pharmaceutical label designer.
       Your task is to generate a highly professional, compliant label text for a product based on its formulation.
       
       Target Country / Regulatory Body: ${country}
-      Target Language: ${language}
+      Target Language: ${language} (However, pharmaceutical labels MUST be bilingual, providing both English and the Target Language side-by-side).
       
       ${contextDocs}
       
       Input Formulation & Details:
       ${formulationText}
       
-      Requirements:
-      1. Use the Target Language (${language}) for the output text.
-      2. Adhere to the formatting and regulatory style expected by ${country}'s authorities (e.g., FDA, EDA, etc.).
-      3. Organize the text cleanly using Markdown (Headers, bullet points, bold text).
-      4. Ensure all necessary sections for a pharmaceutical/veterinary label are present (e.g., Active Ingredients, Indications, Dosage, Contraindications, Warnings, Storage, etc.).
-      5. Do NOT include generic conversational text like "Here is the label". Just return the Markdown label text directly.
+      CRITICAL FORMATTING REQUIREMENTS:
+      You MUST output the result in a highly structured, beautiful Markdown format. Do NOT write conversational text.
+      Follow this exact structure:
+
+      # [Product Name in English] / [Product Name in Target Language]
+      **Type:** [e.g. Dietary Supplement] | **Target:** [e.g. Poultry, Adults]
+
+      ## Ingredients / المكونات
+      Create a strict Markdown table for all ingredients (Active and Inactive). 
+      | Ingredient (English) | Ingredient (${language}) | Amount / Concentration |
+      | :--- | :--- | :--- |
+      | Vitamin C | فيتامين سي | 1000 mg |
+      
+      ## Indications & Aim of Use / دواعي الاستعمال
+      **EN:** [English text]
+      **AR/Target:** [Target language text]
+
+      ## Dosage & Administration / الجرعة وطريقة الاستخدام
+      **EN:** [English text]
+      **AR/Target:** [Target language text]
+
+      ## Warnings & Precautions / التحذيرات والاحتياطات
+      **EN:** [English text]
+      **AR/Target:** [Target language text]
+
+      ## Storage Conditions / ظروف التخزين
+      **EN:** [English text]
+      **AR/Target:** [Target language text]
+
+      Ensure the tables are properly formatted in Markdown so they render beautifully. Use bold headers. Make it look like a real, ready-to-print pharmaceutical label.
       `;
 
       const genResult = await model.generateContent(generationPrompt);
