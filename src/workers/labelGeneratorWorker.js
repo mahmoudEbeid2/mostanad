@@ -114,52 +114,46 @@ export const labelGeneratorWorker = new Worker(
       ${formulationText}
       
       CRITICAL FORMATTING REQUIREMENTS:
-      You MUST output the result in a highly structured, beautiful Markdown format. Do NOT write conversational text.
-      Follow this exact structure:
+      You MUST output the result as a strict, valid JSON object. Do NOT write any conversational text or markdown code blocks around the JSON.
+      The JSON object must follow this exact schema:
 
-      # [Product Name in English] / [Product Name in Target Language]
-      **Type:** [e.g. Dietary Supplement] | **Target:** [e.g. Poultry, Adults]
-
-      ## Ingredients / المكونات
-      Create a strict Markdown table for all ingredients (Active and Inactive). 
-      | Ingredient (English) | Ingredient (${language}) | Amount / Concentration |
-      | :--- | :--- | :--- |
-      | Vitamin C | فيتامين سي | 1000 mg |
-      
-      ## Indications & Aim of Use / دواعي الاستعمال
-      **EN:** [English text]
-      **AR/Target:** [Target language text]
-
-      ## Dosage & Administration / الجرعة وطريقة الاستخدام
-      **EN:** [English text]
-      **AR/Target:** [Target language text]
-
-      ## Warnings & Precautions / التحذيرات والاحتياطات
-      **EN:** [English text]
-      **AR/Target:** [Target language text]
-
-      ## Storage Conditions / ظروف التخزين
-      **EN:** [English text]
-      **AR/Target:** [Target language text]
-
-      Ensure the tables are properly formatted in Markdown so they render beautifully. Use bold headers. Make it look like a real, ready-to-print pharmaceutical label.
+      {
+        "productName": { "en": "Name in English", "target": "Name in Target Language" },
+        "type": "e.g. Dietary Supplement",
+        "targetSpecies": "e.g. Poultry, Adults",
+        "ingredients": [
+          { "en": "Ingredient in English", "target": "Ingredient in Target Language", "amount": "e.g. 1000 mg" }
+        ],
+        "aimOfUse": { "en": "Indications in English", "target": "Indications in Target Language" },
+        "directionOfUse": { "en": "Dosage instructions in English", "target": "Dosage instructions in Target Language" },
+        "storage": { "en": "Storage conditions in English", "target": "Storage conditions in Target Language" }
+      }
       `;
 
-      const genResult = await model.generateContent(generationPrompt);
-      const generatedText = genResult.response.text();
+      const genResult = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      });
+      let generatedJson = {};
+      try {
+        generatedJson = JSON.parse(genResult.response.text());
+      } catch (err) {
+        console.error("Failed to parse JSON from AI", err);
+        throw new Error("AI returned invalid data format.");
+      }
 
       // Step 4: Save Result
       await prisma.backgroundTask.update({
         where: { id: taskId },
         data: { 
           status: "completed",
-          result: {
-             generatedText: generatedText
-          }
+          result: generatedJson
         }
       });
       
-      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result: { generatedText }, message: "Label text generated successfully!" });
+      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result: generatedJson, message: "Label generated successfully!" });
       console.log(`[Label Generator] Task ${taskId} completed successfully.`);
 
     } catch (error) {
