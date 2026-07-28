@@ -5,6 +5,7 @@ import {
   getProductById,
   updateProduct,
   deleteProduct,
+  extractProductAi,
 } from "../controllers/productController.js";
 import { verifyLabel } from "../controllers/labelController.js";
 import { uploadCatalog } from "../controllers/catalogController.js";
@@ -29,6 +30,12 @@ router.post(
   createProduct
 );
 router.get("/products", restrictToPermission("read_products"), getAllProducts);
+
+router.post(
+  "/products/extract-ai",
+  restrictToPermission("create_products"),
+  extractProductAi
+);
 
 // PDF Catalog product extraction route
 router.post(

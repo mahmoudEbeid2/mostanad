@@ -37,3 +37,60 @@ export const deleteProduct = catchAsync(async (req, res, next) => {
   await deleteProductService(req.params.id);
   res.status(204).json({ status: "success", data: null });
 });
+
+import { Queue } from "bullmq";
+import { getRedisConfig } from "../lib/redis.js";
+import { prisma } from "../lib/prisma.js";
+
+const productAiQueue = new Queue("productAiQueue", { connection: getRedisConfig() });
+
+// 6. EXTRACT PRODUCT VIA AI
+export const extractProductAi = catchAsync(async (req, res, next) => {
+  const { rawText, companyId, brandId, categoryId } = req.body;
+  
+  if (!rawText) {
+    return next(new AppError("Please provide the raw text to extract from.", 400));
+  }
+
+  let finalCompanyId = null;
+  if (companyId !== undefined) {
+    finalCompanyId = companyId || null;
+  } else if (req.user && req.user.type === "company") {
+    finalCompanyId = req.user.id;
+  }
+
+  // 1. Create a BackgroundTask record
+  const task = await prisma.backgroundTask.create({
+    data: {
+      type: "product_ai_extraction",
+      status: "pending",
+      companyId: finalCompanyId,
+      brandId: brandId || null,
+    },
+  });
+
+  // 2. Add to Queue
+  await productAiQueue.add(
+    "processProductAi",
+    {
+      rawText,
+      companyId: finalCompanyId,
+      brandId: brandId || null,
+      categoryId: categoryId || null,
+      taskId: task.id,
+    },
+    {
+      jobId: task.id,
+      removeOnComplete: true,
+      removeOnFail: 100,
+    }
+  );
+
+  res.status(202).json({
+    status: "success",
+    message: "Product AI extraction queued.",
+    data: {
+      taskId: task.id,
+    },
+  });
+});

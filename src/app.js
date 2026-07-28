@@ -1,4 +1,6 @@
 import express from "express";
+import "./workers/referenceLabelWorker.js";
+import "./workers/productAiWorker.js";
 import cors from "cors";
 import path from "path";
 import routes from "./routes/index.js";
