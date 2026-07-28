@@ -32,7 +32,7 @@ export const labelGeneratorWorker = new Worker(
         where: { id: taskId },
         data: { status: "processing" }
       });
-      socket.emit("job_status_update", { taskId, status: "processing", progress: 10, message: "Extracting active ingredients..." });
+      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 10, message: "Extracting active ingredients..." });
 
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
@@ -53,15 +53,15 @@ export const labelGeneratorWorker = new Worker(
         const extractText = extractResult.response.text();
         activeIngredientsList = extractText.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
         console.log(`[Label Generator] Task ${taskId}: Found ingredients:`, activeIngredientsList);
-        socket.emit("job_status_update", { taskId, status: "processing", progress: 30, message: `Found ingredients: ${activeIngredientsList.join(", ")}` });
+        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: `Found ingredients: ${activeIngredientsList.join(", ")}` });
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: Extraction failed.`, err);
-        socket.emit("job_status_update", { taskId, status: "processing", progress: 30, message: `Extraction failed, proceeding with generic search.` });
+        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: `Extraction failed, proceeding with generic search.` });
       }
 
       // Step 2: Search Reference Labels
       console.log(`[Label Generator] Task ${taskId}: Searching reference labels...`);
-      socket.emit("job_status_update", { taskId, status: "processing", progress: 50, message: "Searching database for similar approved labels..." });
+      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 50, message: "Searching database for similar approved labels..." });
       let referenceLabels = [];
       try {
         const allRefs = await prisma.referenceLabel.findMany({
@@ -90,7 +90,7 @@ export const labelGeneratorWorker = new Worker(
 
       // Step 3: Final Generation
       console.log(`[Label Generator] Task ${taskId}: Generating final label text...`);
-      socket.emit("job_status_update", { taskId, status: "processing", progress: 70, message: "Writing AI Label text in target language..." });
+      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 70, message: "Writing AI Label text in target language..." });
       
       let contextDocs = "";
       if (referenceLabels.length > 0) {
@@ -135,7 +135,7 @@ export const labelGeneratorWorker = new Worker(
         }
       });
       
-      socket.emit("job_status_update", { taskId, status: "completed", progress: 100, message: "Label text generated successfully!" });
+      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result: { generatedText }, message: "Label text generated successfully!" });
       console.log(`[Label Generator] Task ${taskId} completed successfully.`);
 
     } catch (error) {
@@ -147,7 +147,7 @@ export const labelGeneratorWorker = new Worker(
           error: error.message || "Unknown error occurred"
         }
       });
-      socket.emit("job_status_update", { taskId, status: "failed", progress: 0, message: error.message });
+      socket.emit("job_status_update", { jobId: taskId, status: "failed", progress: 0, error: error.message, message: error.message });
       throw error;
     }
   },
