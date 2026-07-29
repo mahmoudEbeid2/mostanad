@@ -24,6 +24,10 @@ router
   );
 
 router
+  .route("/manual")
+  .post(referenceLabelController.createReferenceLabelManual);
+
+router
   .route("/generate-text-ai")
   .post(referenceLabelController.generateLabelAi);
 
