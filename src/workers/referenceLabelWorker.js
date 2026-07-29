@@ -3,9 +3,6 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import fs from "fs";
-import path from "path";
-import os from "os";
 
 const redisConfig = getRedisConfig();
 const backendWsUrl = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -23,7 +20,17 @@ socket.on("connect", () => {
 const referenceLabelWorker = new Worker(
   "referenceLabelQueue",
   async (job) => {
-    const { fileName, mimeType, fileBufferBase64, taskId, companyId, brandId } = job.data;
+    const {
+      fileName,
+      mimeType,
+      fileBufferBase64,
+      taskId,
+      companyId,
+      brandId,
+      country,
+      categoryId,
+      manualCategoryName,
+    } = job.data;
     
     console.log(`[ReferenceLabelWorker] Processing reference label task ${taskId} for company ${companyId || 'GLOBAL'} and brand ${brandId || 'GLOBAL'}`);
     
@@ -59,16 +66,19 @@ const referenceLabelWorker = new Worker(
 
       const prompt = `
         You are a regulatory compliance AI assistant analyzing a previously approved product label.
-        Your goal is to extract the **Formatting Rules, Style Guide, and Phrasing** used in this approved label, so that future labels can be evaluated against these standards.
+        Your goal is to extract the full text and convert the approved label into reusable regulatory/style guidance for future labels.
+        Accepted country provided by the user: ${country || "Unknown"}.
+        Product category context: ${manualCategoryName || "Use the selected stored category if provided by the system."}
         
-        Analyze the provided label and extract the following:
-        1. "ingredients_format": How are the active ingredients listed? (e.g., tabular, inline, units used, order)
-        2. "storage_format": Exactly how are the storage conditions phrased? (e.g., "Store in a cool dry place below 30C")
-        3. "dosage_format": How is the dosage/directions of use structured? (e.g., by animal species, table format)
-        4. "warnings_and_omissions": Are there specific warnings included? Or notable omissions that are apparently allowed?
-        5. "layout_structure": Where are the key elements positioned relatively?
+        Return a raw JSON object with these exact top-level keys:
+        1. "full_text": the complete readable label text in natural order. Preserve headings and important wording.
+        2. "accepted_country": the country this reference is accepted in.
+        3. "category_hint": the product category if visible or inferable, otherwise null.
+        4. "sections": object containing arrays/strings for "ingredients", "composition", "indications", "dosage", "warnings", "storage", "withdrawal_period", "manufacturer", "registration", "claims", "other".
+        5. "style_guide": object describing ingredients_format, storage_format, dosage_format, warnings_format, language_tone, and layout_structure.
+        6. "regulatory_notes": array of notable compliance patterns, required-looking statements, allowed omissions, or country-specific phrasing.
 
-        Return ONLY a raw JSON object with these exactly named keys. Do not include markdown formatting like \`\`\`json.
+        Return ONLY a raw JSON object. Do not include markdown formatting like \`\`\`json.
       `;
 
       const result = await model.generateContent([prompt, ...parts]);
@@ -83,12 +93,15 @@ const referenceLabelWorker = new Worker(
       });
 
       let extractedData = {};
+      let fullText = null;
       try {
         const cleanJsonStr = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
         extractedData = JSON.parse(cleanJsonStr);
+        fullText = typeof extractedData.full_text === "string" ? extractedData.full_text : null;
       } catch (err) {
         console.warn("[ReferenceLabelWorker] Failed to parse JSON, saving raw text instead.", err);
         extractedData = { rawResponse: responseText };
+        fullText = responseText;
       }
 
       // Save to database
@@ -97,6 +110,11 @@ const referenceLabelWorker = new Worker(
           name: fileName,
           companyId: companyId || null,
           brandId: brandId || null,
+          categoryId: categoryId || null,
+          manualCategoryName: manualCategoryName || extractedData.category_hint || null,
+          country: country || extractedData.accepted_country || null,
+          sourceType: "upload",
+          fullText,
           extractedData: extractedData
         }
       });
