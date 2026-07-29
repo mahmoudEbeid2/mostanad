@@ -110,6 +110,7 @@ model Category {
   id        String    @id @default(uuid())
   name      String    @unique
   products  Product[]
+  referenceLabels ReferenceLabel[]
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
@@ -279,13 +280,19 @@ model EdaRequirement {
 model ReferenceLabel {
   id              String   @id @default(uuid())
   name            String
+  fullText        String?  @map("full_text") @db.Text
   extractedData   Json?    // AI-structured insights (phrasing, layout, ingredients format)
+  country         String?
+  sourceType      String   @default("upload") @map("source_type") // "upload" | "manual"
+  manualCategoryName String? @map("manual_category_name")
   
   // Optional Company & Brand ID (Null = Global Reference)
   companyId       String?  @map("company_id")
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
   brandId         String?  @map("brand_id")
   brand           Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  categoryId      String?  @map("category_id")
+  category        Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
