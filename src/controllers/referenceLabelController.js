@@ -47,18 +47,23 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload at least one file.", 400));
   }
   
-  const { companyId, brandId } = req.body;
+  const { companyId, brandId, country, categoryId, manualCategoryName } = req.body;
+
+  if (!country?.trim()) {
+    return next(new AppError("Please provide the country where this reference is accepted.", 400));
+  }
   
   // If companyId is explicitly passed (even empty string for global), use it.
   // Otherwise, if the logged-in user is a company, use their ID.
   let finalCompanyId = null;
   if (companyId !== undefined) {
     finalCompanyId = companyId || null;
-  } else if (req.user && req.user.type === "company") {
-    finalCompanyId = req.user.id;
+  } else if (req.company) {
+    finalCompanyId = req.company.id;
   }
   
   const finalBrandId = brandId || null;
+  const finalCategoryId = categoryId || null;
 
   const tasks = [];
 
@@ -83,6 +88,9 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
         taskId: task.id,
         companyId: finalCompanyId,
         brandId: finalBrandId,
+        country: country.trim(),
+        categoryId: finalCategoryId,
+        manualCategoryName: manualCategoryName?.trim() || null,
       },
       {
         jobId: task.id, 
@@ -102,6 +110,23 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     message: "Reference labels uploaded and queued for AI extraction.",
     data: {
       tasks,
+    },
+  });
+});
+
+export const createReferenceLabelManual = catchAsync(async (req, res, next) => {
+  const body = { ...req.body };
+
+  if (req.company) {
+    body.companyId = req.company.id;
+  }
+
+  const referenceLabel = await referenceLabelService.createManual(body);
+
+  res.status(201).json({
+    status: "success",
+    data: {
+      referenceLabel,
     },
   });
 });
