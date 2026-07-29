@@ -32,6 +32,10 @@ router
   .post(referenceLabelController.generateLabelAi);
 
 router
+  .route("/retry/:taskId")
+  .post(referenceLabelController.retryReferenceLabelTask);
+
+router
   .route("/:id")
   .get(referenceLabelController.getReferenceLabel)
   .delete(

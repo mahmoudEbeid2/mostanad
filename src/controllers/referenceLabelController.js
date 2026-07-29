@@ -135,6 +135,32 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   });
 });
 
+export const retryReferenceLabelTask = catchAsync(async (req, res, next) => {
+  const { taskId } = req.params;
+  
+  const job = await referenceLabelQueue.getJob(taskId);
+  if (!job) {
+    return next(new AppError("Background job not found or has expired from cache.", 404));
+  }
+
+  const state = await job.getState();
+  if (state !== 'failed') {
+    return next(new AppError(`Job is currently ${state}, cannot retry.`, 400));
+  }
+
+  await job.retry();
+  
+  await prisma.backgroundTask.update({
+    where: { id: taskId },
+    data: { status: 'pending', error: null }
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Task queued for retry."
+  });
+});
+
 export const createReferenceLabelManual = catchAsync(async (req, res, next) => {
   const body = { ...req.body };
 
