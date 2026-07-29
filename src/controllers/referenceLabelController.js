@@ -108,6 +108,11 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
         jobId: task.id, 
         removeOnComplete: true,
         removeOnFail: 100,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 15000 // 15 seconds initial delay
+        }
       }
     );
 

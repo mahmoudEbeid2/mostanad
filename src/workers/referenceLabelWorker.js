@@ -140,21 +140,30 @@ const referenceLabelWorker = new Worker(
       return { success: true, referenceLabelId: referenceLabel.id };
 
     } catch (error) {
-      console.error(`[ReferenceLabelWorker] Error processing task ${taskId}:`, error);
+      console.error(`[ReferenceLabelWorker] Job ${job.id} failed:`, error);
+      
+      const isRetrying = job.attemptsMade < job.opts.attempts - 1;
+      const isRateLimit = error.message?.includes("429");
 
-      await prisma.backgroundTask.update({
-        where: { id: taskId },
-        data: {
-          status: "failed",
-          error: error.message
-        }
-      });
+      if (!isRetrying) {
+        await prisma.backgroundTask.update({
+          where: { id: taskId },
+          data: {
+            status: "failed",
+            error: error.message || "Unknown error",
+          },
+        });
+      }
 
       socket.emit("job_status_update", {
         jobId: taskId,
         companyId,
-        status: "failed",
-        error: error.message
+        status: isRetrying ? "processing" : "failed",
+        progress: 0,
+        message: isRetrying 
+          ? (isRateLimit ? "AI rate limit reached. Waiting to retry..." : "Error occurred. Retrying shortly...") 
+          : "Task failed.",
+        error: isRetrying ? null : error.message || "Failed to process label",
       });
 
       throw error;
