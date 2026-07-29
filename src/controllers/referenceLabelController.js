@@ -66,8 +66,20 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   const finalCategoryId = categoryId || null;
 
   const tasks = [];
+  let skippedCount = 0;
 
   for (const file of req.files) {
+    // Check if reference label with same name exists
+    const existingLabel = await prisma.referenceLabel.findFirst({
+      where: { name: file.originalname }
+    });
+
+    if (existingLabel) {
+      console.log(`[ReferenceLabelController] Skipping ${file.originalname}, already exists.`);
+      skippedCount++;
+      continue;
+    }
+
     // 1. Create a BackgroundTask record
     const task = await prisma.backgroundTask.create({
       data: {
@@ -105,9 +117,18 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     });
   }
 
+  if (tasks.length === 0) {
+    return next(new AppError(`All ${skippedCount} uploaded files already exist in the system.`, 400));
+  }
+
+  let message = `${tasks.length} reference(s) queued for AI analysis.`;
+  if (skippedCount > 0) {
+    message += ` Skipped ${skippedCount} duplicate(s).`;
+  }
+
   res.status(202).json({
     status: "success",
-    message: "Reference labels uploaded and queued for AI extraction.",
+    message,
     data: {
       tasks,
     },
