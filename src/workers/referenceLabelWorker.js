@@ -68,12 +68,12 @@ const referenceLabelWorker = new Worker(
         You are a regulatory compliance AI assistant analyzing a previously approved product label.
         Your goal is to extract the full text and convert the approved label into reusable regulatory/style guidance for future labels.
         Accepted country provided by the user: ${country || "Unknown"}.
-        Product category context: ${manualCategoryName || "Use the selected stored category if provided by the system."}
+        Product category context: ${manualCategoryName || "None provided. You MUST analyze the active ingredients and composition to accurately infer and classify the product category (e.g., Antibiotic, Vitamin Supplement, Anti-inflammatory, Feed Additive, etc.)."}
         
         Return a raw JSON object with these exact top-level keys:
         1. "full_text": the complete readable label text in natural order. Preserve headings and important wording.
         2. "accepted_country": the country this reference is accepted in.
-        3. "category_hint": the product category if visible or inferable, otherwise null.
+        3. "category_hint": the product category based on context or inferred from ingredients. MUST NOT be null if you can infer it.
         4. "sections": object containing arrays/strings for "ingredients", "composition", "indications", "dosage", "warnings", "storage", "withdrawal_period", "manufacturer", "registration", "claims", "other".
         5. "style_guide": object describing ingredients_format, storage_format, dosage_format, warnings_format, language_tone, and layout_structure.
         6. "regulatory_notes": array of notable compliance patterns, required-looking statements, allowed omissions, or country-specific phrasing.
