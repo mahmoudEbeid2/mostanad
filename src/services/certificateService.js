@@ -11,7 +11,7 @@ import { GoogleAIFileManager } from "@google/generative-ai/server";
 async function callGemini(genAI, modelName, fileData, prompt) {
   let retries = 4;
   let delay = 3000;
-  let currentModelName = "gemini-1.5-flash";
+  let currentModelName = "gemini-2.0-flash";
 
   while (retries > 0) {
     try {
@@ -189,7 +189,7 @@ export const generateCertificatesAndPopulateTemplates = async (
         Do not include any chat, markdown formatting, or HTML tags outside the JSON object.
       `;
 
-      const stage1Json = await callGemini(genAI, "gemini-1.5-flash", uploadResult.file, stage1Prompt);
+      const stage1Json = await callGemini(genAI, "gemini-2.0-flash", uploadResult.file, stage1Prompt);
       const stage1Data = JSON.parse(stage1Json);
       extractedProducts = stage1Data.products || [];
     } catch (err) {
@@ -326,7 +326,7 @@ export const generateCertificatesAndPopulateTemplates = async (
         Do not include any chat, markdown code blocks, or extra text.
       `;
 
-      const stage2Json = await callGemini(genAI, "gemini-1.5-flash", uploadResult.file, stage2Prompt);
+      const stage2Json = await callGemini(genAI, "gemini-2.0-flash", uploadResult.file, stage2Prompt);
       const stage2Data = JSON.parse(stage2Json);
       populatedTemplates = stage2Data.populatedTemplates || [];
     } catch (err) {

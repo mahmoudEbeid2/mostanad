@@ -28,7 +28,7 @@ class AITemplatePipeline {
     
     console.log("[AITemplatePipeline] Stage 2: Layout Analysis...");
     const layoutAnalysis = await geminiClient.generateJson({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       contents: [imagePart, layoutPrompt],
       schema: {
         type: "object",
@@ -51,7 +51,7 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 3: OCR Extraction...");
     const ocrAnalysis = await geminiClient.generateJson({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       contents: [imagePart, ocrPrompt],
       schema: {
         type: "object",
@@ -75,7 +75,7 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 4: Table Detection...");
     const tableAnalysis = await geminiClient.generateJson({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       contents: [imagePart, tablePrompt],
       schema: {
         type: "object",
@@ -87,7 +87,7 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 5: Dynamic Placeholder Detection...");
     const placeholderAnalysis = await geminiClient.generateJson({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       contents: [JSON.stringify(ocrAnalysis?.text_blocks || []), placeholderPrompt],
       schema: {
         type: "object",
@@ -122,7 +122,7 @@ class AITemplatePipeline {
     `;
 
     let draft = await geminiClient.generateJson({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash",
       contents: [imagePart, generationContext, generationPrompt],
       schema: {
         type: "object",
@@ -155,7 +155,7 @@ class AITemplatePipeline {
       const draftImagePart = fileToGenerativePart(draftPngPath, "image/png");
 
       const criticAnalysis = await geminiClient.generateJson({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         contents: [
            "ORIGINAL DESIGN:", imagePart, 
            "CURRENT RENDER:", draftImagePart, 

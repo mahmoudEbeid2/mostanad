@@ -80,7 +80,7 @@ const worker = new Worker(
       let extractedData;
       try {
         extractedData = await geminiClient.generateJson({
-          model: "gemini-1.5-flash",
+          model: "gemini-2.0-flash",
           contents: parts,
           systemInstruction,
           schema

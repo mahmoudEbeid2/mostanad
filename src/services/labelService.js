@@ -11,7 +11,7 @@ import { GoogleAIFileManager } from "@google/generative-ai/server";
 async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
   let retries = 4;
   let delay = 3000;
-  let modelName = "gemini-1.5-flash";
+  let modelName = "gemini-2.0-flash";
 
   while (retries > 0) {
     try {
