@@ -49,25 +49,32 @@ const worker = new Worker(
             mimeType: mimeType
           }
         },
-        { text: "Please carefully read the attached regulatory document. Your goal is to extract a comprehensive list of strict validation rules that a compliance officer would use to check a product label. Extract mandatory fields, prohibited terms, formatting requirements, and storage conditions. If a rule only applies to a specific product type (like 'Feed Additive'), specify it. Do not leave out any critical label requirements." }
+        { text: "Please carefully read the attached regulatory document. Your goal is twofold: 1) Extract the complete, unabridged text of the document exactly as it is written. 2) Extract a comprehensive list of strict validation rules that a compliance officer would use to check a product label." }
       ];
 
-      const systemInstruction = `You are a highly capable regulatory affairs assistant. Your job is to read regulatory documents (e.g., from the EDA or SFDA) and extract STRICT validation rules for checking product labels. Do not extract paragraphs of text. Extract granular, atomic rules that a computer system can use to validate a product label.`;
+      const systemInstruction = `You are a highly capable regulatory affairs assistant. Your job is to read regulatory documents (e.g., from the EDA or SFDA). First, extract the FULL, UNABRIDGED text of the document. Then, extract STRICT validation rules for checking product labels.`;
       
       const schema = {
-        type: "array",
-        description: "An array of strict label validation rules extracted from the document.",
-        items: {
-          type: "object",
-          properties: {
-            targetProductType: { type: "string", description: "The specific product type this rule applies to (e.g., 'All Products', 'Feed Material', 'Compound Feed', 'Premix'). If it applies to everything, write 'All Products'." },
-            ruleType: { type: "string", enum: ["Mandatory Field", "Prohibited Claim", "Formatting Rule", "Storage Condition", "General Rule"], description: "The category of the rule." },
-            ruleDescription: { type: "string", description: "The exact, clear, and actionable rule that must be enforced on the label." },
-            severity: { type: "string", enum: ["CRITICAL", "WARNING"], description: "CRITICAL if violating this causes rejection. WARNING if it's a recommendation." },
-            example: { type: "string", description: "An example provided in the text that demonstrates this rule or a valid label sample (optional)." }
-          },
-          required: ["targetProductType", "ruleType", "ruleDescription", "severity"]
-        }
+        type: "object",
+        properties: {
+          fullText: { type: "string", description: "The complete, unabridged text of the original document, preserving sections and formatting as much as possible." },
+          rules: {
+            type: "array",
+            description: "An array of strict label validation rules extracted from the document.",
+            items: {
+              type: "object",
+              properties: {
+                targetProductType: { type: "string", description: "The specific product type this rule applies to" },
+                ruleType: { type: "string", enum: ["Mandatory Field", "Prohibited Claim", "Formatting Rule", "Storage Condition", "General Rule"] },
+                ruleDescription: { type: "string", description: "The exact, clear, and actionable rule." },
+                severity: { type: "string", enum: ["CRITICAL", "WARNING"] },
+                example: { type: "string" }
+              },
+              required: ["targetProductType", "ruleType", "ruleDescription", "severity"]
+            }
+          }
+        },
+        required: ["fullText", "rules"]
       };
 
       socket.emit("job_status_update", {
@@ -100,8 +107,8 @@ const worker = new Worker(
         data: {
           country,
           companyId,
-          extractedText: "Text extracted natively by Gemini",
-          extractedData,
+          extractedText: extractedData.fullText || "Full text extraction failed.",
+          extractedData: extractedData.rules || [],
         }
       });
 
