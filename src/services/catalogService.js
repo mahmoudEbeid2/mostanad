@@ -175,7 +175,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     let success = false;
     let retries = 4;
     let delay = 3000;
-    let currentModelName = "gemini-2.5-flash";
+    let currentModelName = "gemini-1.5-flash";
 
     while (retries > 0 && !success) {
       try {
