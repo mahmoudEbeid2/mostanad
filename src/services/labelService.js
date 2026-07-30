@@ -372,7 +372,12 @@ If the label violates any of these strict baseline rules, you MUST flag it as a 
       benchmarkContext += `The following are previously approved labels. DO NOT flag formatting, warnings, phrasing, or structures that match these examples as errors. Use them as the absolute standard for acceptable formatting:\n`;
       referenceLabels.forEach((ref, i) => {
         benchmarkContext += `\nBenchmark ${i + 1} (${ref.name}):\n`;
-        benchmarkContext += JSON.stringify(ref.extractedData, null, 2) + "\n";
+        if (ref.extractedData) {
+          benchmarkContext += "Structured Data: " + JSON.stringify(ref.extractedData, null, 2) + "\n";
+        }
+        if (ref.fullText) {
+          benchmarkContext += "Full Text: " + ref.fullText.substring(0, 2000) + "\n";
+        }
       });
     }
 
