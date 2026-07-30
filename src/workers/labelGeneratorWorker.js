@@ -110,6 +110,10 @@ export const labelGeneratorWorker = new Worker(
           console.log(`[Label Generator] Falling back to generic global references.`);
           referenceLabels = allRefs.slice(0, 2);
         }
+      } catch (err) {
+        console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
+      }
+
       // Step 2.5: Search EDA Requirements
       let edaRequirementsText = "";
       try {
