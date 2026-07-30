@@ -133,8 +133,13 @@ const referenceLabelWorker = new Worker(
         companyId,
         status: "completed",
         progress: 100,
-        message: "Reference label extracted and saved successfully."
+        message: "Label extraction complete!",
+        result: { referenceLabelId: referenceLabel.id }
       });
+
+      // Add a 6-second delay to avoid hitting Gemini 15 RPM Free Tier Rate Limits
+      // Since BullMQ processes sequentially (concurrency=1), this spaces out API calls.
+      await new Promise(resolve => setTimeout(resolve, 6000));
 
       console.log(`[ReferenceLabelWorker] Successfully processed task ${taskId}`);
       return { success: true, referenceLabelId: referenceLabel.id };
