@@ -62,7 +62,7 @@ const referenceLabelWorker = new Worker(
         message: "Analyzing reference label with AI..."
       });
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
         You are a regulatory compliance AI assistant analyzing a previously approved product label.

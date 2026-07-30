@@ -34,7 +34,7 @@ export const labelGeneratorWorker = new Worker(
       });
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 10, message: "Extracting active ingredients..." });
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       // Step 1: Extract Active Ingredients
       console.log(`[Label Generator] Task ${taskId}: Extracting active ingredients...`);

@@ -52,7 +52,7 @@ export const processAndCreate = async (file, body) => {
   let extractedData;
   try {
     extractedData = await geminiClient.generateJson({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [prompt],
       systemInstruction,
       schema
