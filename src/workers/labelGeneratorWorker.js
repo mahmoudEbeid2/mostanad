@@ -14,6 +14,26 @@ socket.on("connect", () => {
   console.log(`[Label Generator Worker] Connected to socket server: ${BACKEND_WS_URL}`);
 });
 
+async function callGeminiWithRetry(model, requestParams, retries = 5, delay = 5000) {
+  while (retries > 0) {
+    try {
+      return await model.generateContent(requestParams);
+    } catch (error) {
+      const msg = error.message || "";
+      const isQuotaOrDemand = msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("429") || msg.includes("quota");
+      if (isQuotaOrDemand) {
+        console.warn(`[Label Generator] Gemini API busy (503/429). Retrying in ${delay}ms... (retries left: ${retries - 1})`);
+        retries--;
+        await new Promise(r => setTimeout(r, delay));
+        delay = Math.floor(delay * 1.5);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Gemini API failed after all retries due to high demand.");
+}
+
 const connection = getRedisConfig();
 
 /**
@@ -49,7 +69,7 @@ export const labelGeneratorWorker = new Worker(
 
       let activeIngredientsList = [];
       try {
-        const extractResult = await model.generateContent(extractPrompt);
+        const extractResult = await callGeminiWithRetry(model, extractPrompt);
         const extractText = extractResult.response.text();
         activeIngredientsList = extractText.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
         console.log(`[Label Generator] Task ${taskId}: Found ingredients:`, activeIngredientsList);
@@ -193,7 +213,7 @@ export const labelGeneratorWorker = new Worker(
       }
       `;
 
-      const genResult = await model.generateContent({
+      const genResult = await callGeminiWithRetry(model, {
         contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
         generationConfig: {
           responseMimeType: "application/json"
