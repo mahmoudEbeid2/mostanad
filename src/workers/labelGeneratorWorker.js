@@ -110,25 +110,44 @@ export const labelGeneratorWorker = new Worker(
           console.log(`[Label Generator] Falling back to generic global references.`);
           referenceLabels = allRefs.slice(0, 2);
         }
+      // Step 2.5: Search EDA Requirements
+      let edaRequirementsText = "";
+      try {
+        const edaReqs = await prisma.edaRequirement.findMany({
+          where: { country: { equals: country, mode: 'insensitive' } },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        });
+        if (edaReqs.length > 0 && edaReqs[0].extractedText) {
+          edaRequirementsText = edaReqs[0].extractedText;
+          console.log(`[Label Generator] Found EDA Requirements for ${country}`);
+        }
       } catch (err) {
-        console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
+        console.error(`[Label Generator] Task ${taskId}: EDA search error`, err);
       }
+
 
       // Step 3: Final Generation
       console.log(`[Label Generator] Task ${taskId}: Generating final label text...`);
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 70, message: "Writing AI Label text in target language..." });
       
       let contextDocs = "";
+      if (edaRequirementsText) {
+        contextDocs += `\n\n=== STRICT REGULATORY AUTHORITY REQUIREMENTS (${country}) ===\n`;
+        contextDocs += `${edaRequirementsText}\n\n`;
+      }
       if (referenceLabels.length > 0) {
-        contextDocs = "Here are some examples of APPROVED reference labels and their extracted rules from our database to guide your formatting and compliance:\n\n";
-        referenceLabels.slice(0, 5).forEach((ref, index) => {
+        contextDocs += "=== APPROVED REFERENCE LABELS (FOR MISSING DATA & FORMATTING) ===\n";
+        contextDocs += "Use these references to accurately determine the 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' if they are not explicitly provided in the input formulation.\n\n";
+        referenceLabels.slice(0, 3).forEach((ref, index) => {
           contextDocs += `--- Reference Label ${index + 1}: ${ref.name} ---\n`;
-          contextDocs += `${JSON.stringify(ref.extractedData, null, 2)}\n\n`;
+          if (ref.extractedData) contextDocs += `Structured Data: ${JSON.stringify(ref.extractedData, null, 2)}\n`;
+          if (ref.fullText) contextDocs += `Full Text: ${ref.fullText.substring(0, 1500)}...\n\n`;
         });
       }
 
       const generationPrompt = `
-      You are an elite regulatory affairs specialist and pharmaceutical label designer.
+      You are an elite regulatory affairs specialist, veterinary expert, and pharmaceutical label designer.
       Your task is to generate a highly professional, compliant label text for a product based on its formulation.
       
       Target Country / Regulatory Body: ${country}
@@ -137,8 +156,11 @@ export const labelGeneratorWorker = new Worker(
       
       ${contextDocs}
       
-      Input Formulation & Details:
+      Input Formulation & Details (MAY BE INCOMPLETE):
       ${formulationText}
+      
+      EXPERT INSTRUCTION:
+      If the Input Formulation is brief (e.g. it only provides the active ingredient like "Ammonium Chloride 1000 gm" and packaging), you MUST act as the veterinary expert. Use the provided APPROVED REFERENCE LABELS to intelligently infer the standard 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse' (dosage per species), and 'storage' for this specific ingredient. DO NOT leave them empty.
       
       CRITICAL FORMATTING REQUIREMENTS ("شغل فاخر"):
       You MUST output the result as a strict, valid JSON object. Do NOT write any conversational text or markdown code blocks around the JSON.
