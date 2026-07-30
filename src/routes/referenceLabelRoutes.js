@@ -19,7 +19,7 @@ router
   .route("/")
   .get(referenceLabelController.getAllReferenceLabels)
   .post(
-    upload.array("files", 10), // Accept up to 10 files
+    upload.array("files", 1), // Restrict to 1 file per upload
     referenceLabelController.uploadReferenceLabels
   );
 
