@@ -70,47 +70,6 @@ const worker = new Worker(
       socket.emit("job_status_update", {
         jobId: taskId,
         status: "processing",
-        progress: 60,
-        message: "Analyzing and extracting strict rules..."
-      });
-
-      const parts2 = [
-        { text: `Here is the full text of a regulatory document. Please extract a comprehensive list of strict validation rules that a compliance officer would use to check a product label.\n\nDocument Text:\n${fullText}` }
-      ];
-
-      const systemInstruction = `You are a highly capable regulatory affairs assistant. Extract STRICT validation rules for checking product labels from the provided text.`;
-      
-      const schema = {
-        type: "array",
-        description: "An array of strict label validation rules extracted from the document.",
-        items: {
-          type: "object",
-          properties: {
-            targetProductType: { type: "string", description: "The specific product type this rule applies to" },
-            ruleType: { type: "string", enum: ["Mandatory Field", "Prohibited Claim", "Formatting Rule", "Storage Condition", "General Rule"] },
-            ruleDescription: { type: "string", description: "The exact, clear, and actionable rule." },
-            severity: { type: "string", enum: ["CRITICAL", "WARNING"] },
-            example: { type: "string" }
-          },
-          required: ["targetProductType", "ruleType", "ruleDescription", "severity"]
-        }
-      };
-
-      let extractedRules = [];
-      try {
-        extractedRules = await geminiClient.generateJson({
-          model: "gemini-2.5-flash",
-          contents: parts2,
-          systemInstruction,
-          schema
-        });
-      } catch (error) {
-        console.warn("[EDA Requirement Worker] Failed to extract JSON rules. Saving full text only.", error.message);
-      }
-
-      socket.emit("job_status_update", {
-        jobId: taskId,
-        status: "processing",
         progress: 90,
         message: "AI processing complete. Saving to database..."
       });
@@ -120,7 +79,7 @@ const worker = new Worker(
           country,
           companyId,
           extractedText: fullText || "Full text extraction failed.",
-          extractedData: extractedRules || [],
+          extractedData: [], // Default empty as requested by user
         }
       });
 
