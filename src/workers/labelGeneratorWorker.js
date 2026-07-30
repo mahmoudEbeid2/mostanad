@@ -59,30 +59,56 @@ export const labelGeneratorWorker = new Worker(
         socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: `Extraction failed, proceeding with generic search.` });
       }
 
-      // Step 2: Search Reference Labels
+      // Step 2: Search Reference Labels (Smart Fallback Logic)
       console.log(`[Label Generator] Task ${taskId}: Searching reference labels...`);
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 50, message: "Searching database for similar approved labels..." });
       let referenceLabels = [];
       try {
         const allRefs = await prisma.referenceLabel.findMany({
-          take: 100,
           orderBy: { createdAt: 'desc' }
         });
 
-        referenceLabels = allRefs.filter(ref => {
-          if (!ref.extractedData) return false;
-          const dataStr = JSON.stringify(ref.extractedData).toLowerCase();
+        const targetCountry = (country || "").toLowerCase();
+        
+        let priority1 = []; // Same country + same ingredient
+        let priority2 = []; // Same country
+        let priority3 = []; // Same ingredient globally
+        
+        allRefs.forEach(ref => {
+          if (!ref.extractedData && !ref.fullText) return;
+          const dataStr = JSON.stringify(ref.extractedData || {}).toLowerCase() + " " + (ref.fullText || "").toLowerCase();
+          const refCountry = (ref.country || "").toLowerCase();
           
-          if (dataStr.includes(country.toLowerCase())) return true;
-          
+          let hasIngredient = false;
           for (const ing of activeIngredientsList) {
-            if (dataStr.includes(ing)) return true;
+            if (dataStr.includes(ing)) {
+              hasIngredient = true;
+              break;
+            }
           }
-          return false;
+          
+          if (refCountry === targetCountry && hasIngredient) {
+            priority1.push(ref);
+          } else if (refCountry === targetCountry) {
+            priority2.push(ref);
+          } else if (hasIngredient) {
+            priority3.push(ref);
+          }
         });
 
-        if (referenceLabels.length === 0 && allRefs.length > 0) {
-          referenceLabels = allRefs.slice(0, 5);
+        // Resolve Fallback
+        if (priority1.length > 0) {
+          console.log(`[Label Generator] Found ${priority1.length} references (Priority 1: Same country + ingredient)`);
+          referenceLabels = priority1.slice(0, 3);
+        } else if (priority2.length > 0) {
+          console.log(`[Label Generator] Found ${priority2.length} references (Priority 2: Same country)`);
+          referenceLabels = priority2.slice(0, 3);
+        } else if (priority3.length > 0) {
+          console.log(`[Label Generator] Found ${priority3.length} references (Priority 3: Same ingredient globally)`);
+          referenceLabels = priority3.slice(0, 3);
+        } else if (allRefs.length > 0) {
+          console.log(`[Label Generator] Falling back to generic global references.`);
+          referenceLabels = allRefs.slice(0, 2);
         }
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
@@ -106,27 +132,38 @@ export const labelGeneratorWorker = new Worker(
       Your task is to generate a highly professional, compliant label text for a product based on its formulation.
       
       Target Country / Regulatory Body: ${country}
-      Target Language: ${language} (However, pharmaceutical labels MUST be bilingual, providing both English and the Target Language side-by-side).
+      Target Language: ${language} 
+      CRITICAL REQUIREMENT: Pharmaceutical labels MUST be bilingual. Every single text field MUST provide both English ("en") and the Target Language ("target") side-by-side.
       
       ${contextDocs}
       
       Input Formulation & Details:
       ${formulationText}
       
-      CRITICAL FORMATTING REQUIREMENTS:
+      CRITICAL FORMATTING REQUIREMENTS ("شغل فاخر"):
       You MUST output the result as a strict, valid JSON object. Do NOT write any conversational text or markdown code blocks around the JSON.
-      The JSON object must follow this exact schema:
+      The JSON object MUST follow this exact premium schema. Translate accurately into the target language. Use robust, scientific terminology:
 
       {
         "productName": { "en": "Name in English", "target": "Name in Target Language" },
-        "type": "e.g. Dietary Supplement",
-        "targetSpecies": "e.g. Poultry, Adults",
+        "feedClassification": { "en": "e.g. Feed Additive (Non-Medicated)", "target": "e.g. إضافة علفية غير دوائية" },
         "ingredients": [
-          { "en": "Ingredient in English", "target": "Ingredient in Target Language", "amount": "e.g. 1000 mg" }
+          { "en": "Ingredient in English", "target": "Ingredient in Target Language", "amount": "e.g. 1000 gm" }
         ],
         "aimOfUse": { "en": "Indications in English", "target": "Indications in Target Language" },
+        "targetAnimalSpecies": { "en": "e.g. Cow - Buffalo - Sheep", "target": "الأبقار - الجاموس - الأغنام" },
         "directionOfUse": { "en": "Dosage instructions in English", "target": "Dosage instructions in Target Language" },
-        "storage": { "en": "Storage conditions in English", "target": "Storage conditions in Target Language" }
+        "storage": { "en": "Storage conditions in English", "target": "Storage conditions in Target Language" },
+        "netWeight": { "en": "e.g. 25 kg", "target": "e.g. 25 كجم" },
+        "mandatoryFields": {
+          "forAnimalFeedPlant": true,
+          "manufacturer": true,
+          "importer": true,
+          "countryOfProduction": true,
+          "batchNo": true,
+          "productionDate": true,
+          "expiryDate": true
+        }
       }
       `;
 

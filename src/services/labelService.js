@@ -269,7 +269,13 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       
       edaReqs.forEach((req, i) => {
         regulatoryContext += `\nDocument/Guideline ${i + 1}:\n`;
-        if (req.extractedData && Array.isArray(req.extractedData)) {
+        
+        if (req.extractedText) {
+          regulatoryContext += `--- FULL TEXT OF REQUIREMENTS ---\n${req.extractedText}\n--- END FULL TEXT ---\n`;
+        }
+        
+        if (req.extractedData && Array.isArray(req.extractedData) && req.extractedData.length > 0) {
+          regulatoryContext += `\n--- STRICT VALIDATION RULES ---\n`;
           req.extractedData.forEach(rule => {
             // Handle legacy schema
             if (rule.section && rule.content) {
@@ -306,25 +312,58 @@ If the label violates any of these strict baseline rules, you MUST flag it as a 
 `;
     }
 
-    // Fetch Reference Labels (AI Benchmarks)
+    // Fetch Reference Labels (Smart Fallback Logic)
     let referenceLabels = [];
-    
-    if (companyId) {
-      referenceLabels = await prisma.referenceLabel.findMany({
-        where: { companyId },
-        orderBy: { createdAt: "desc" },
-        take: 5 // limit to avoid token bloat
+    try {
+      const allRefs = await prisma.referenceLabel.findMany({
+        orderBy: { createdAt: 'desc' }
       });
+
+      const targetCountry = (country || "").toLowerCase();
+      const ingredientNames = extractedIngredients.map(i => (i.name || "").toLowerCase()).filter(s => s);
+      
+      let priority1 = []; // Same country + same ingredient
+      let priority2 = []; // Same country
+      let priority3 = []; // Same ingredient globally
+      
+      allRefs.forEach(ref => {
+        if (!ref.extractedData && !ref.fullText) return;
+        const dataStr = JSON.stringify(ref.extractedData || {}).toLowerCase() + " " + (ref.fullText || "").toLowerCase();
+        const refCountry = (ref.country || "").toLowerCase();
+        
+        let hasIngredient = false;
+        for (const ing of ingredientNames) {
+          if (dataStr.includes(ing)) {
+            hasIngredient = true;
+            break;
+          }
+        }
+        
+        if (refCountry === targetCountry && hasIngredient) {
+          priority1.push(ref);
+        } else if (refCountry === targetCountry) {
+          priority2.push(ref);
+        } else if (hasIngredient) {
+          priority3.push(ref);
+        }
+      });
+
+      if (priority1.length > 0) {
+        console.log(`[LabelService] Found ${priority1.length} references (Priority 1: Same country + ingredient)`);
+        referenceLabels = priority1.slice(0, 3);
+      } else if (priority2.length > 0) {
+        console.log(`[LabelService] Found ${priority2.length} references (Priority 2: Same country)`);
+        referenceLabels = priority2.slice(0, 3);
+      } else if (priority3.length > 0) {
+        console.log(`[LabelService] Found ${priority3.length} references (Priority 3: Same ingredient globally)`);
+        referenceLabels = priority3.slice(0, 3);
+      } else if (allRefs.length > 0) {
+        console.log(`[LabelService] Falling back to generic global references.`);
+        referenceLabels = allRefs.slice(0, 2);
+      }
+    } catch (err) {
+      console.error(`[LabelService] Error fetching reference labels:`, err);
     }
-    
-    // Also fetch global references (companyId: null)
-    const globalRefs = await prisma.referenceLabel.findMany({
-      where: { companyId: null },
-      orderBy: { createdAt: "desc" },
-      take: 5
-    });
-    
-    referenceLabels = [...referenceLabels, ...globalRefs];
 
     let benchmarkContext = "";
     if (referenceLabels.length > 0) {
