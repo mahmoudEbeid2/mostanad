@@ -42,7 +42,7 @@ const connection = getRedisConfig();
 export const labelGeneratorWorker = new Worker(
   "labelGeneratorQueue",
   async (job) => {
-    const { taskId, formulationText, country, language } = job.data;
+    const { taskId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
     
     console.log(`[Label Generator] Started task: ${taskId} for Country: ${country}, Language: ${language}`);
 
@@ -139,7 +139,7 @@ export const labelGeneratorWorker = new Worker(
         console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
       }
 
-      // Step 2.5: Search EDA Requirements
+      // Step 2.5: Search EDA Requirements (stored in DB first, then fall back to a live web search)
       let edaRequirementsText = "";
       try {
         const edaReqs = await prisma.edaRequirement.findMany({
@@ -149,10 +149,72 @@ export const labelGeneratorWorker = new Worker(
         });
         if (edaReqs.length > 0 && edaReqs[0].extractedText) {
           edaRequirementsText = edaReqs[0].extractedText;
-          console.log(`[Label Generator] Found EDA Requirements for ${country}`);
+          console.log(`[Label Generator] Found stored EDA Requirements for ${country}`);
         }
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: EDA search error`, err);
+      }
+
+      // Step 2.6: Nothing on file for this country — search the web once via Gemini grounding
+      // and cache the result so future generations for this country reuse it instead of re-searching.
+      if (!edaRequirementsText) {
+        console.log(`[Label Generator] Task ${taskId}: No stored requirements for ${country}. Searching the web...`);
+        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 55, message: `Searching the web for ${country}'s official feed labeling requirements...` });
+
+        try {
+          const searchModel = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            tools: [{ google_search: {} }]
+          });
+
+          const searchPrompt = `
+          Use Google Search to find the CURRENT, OFFICIAL animal feed / veterinary product labeling requirements published by the official food & drug or agriculture regulatory authority of "${country}" (e.g. their food/drug authority, ministry of agriculture, or veterinary directorate).
+
+          I need: mandatory label fields/sections, required bilingual/language rules, controlled vocabulary for product classification and target species naming, prohibited claim types (e.g. therapeutic/medical claims on non-medicated feed), and any mandatory closing declarations.
+
+          Respond with ONLY a raw JSON object (no markdown):
+          {
+            "found": true or false,
+            "sourceSummary": "short description of which official source(s) you used, or empty string if found=false",
+            "requirementsText": "a structured plain-text summary of the actual requirements, in English, ready to be used as a compliance reference. Empty string if found=false."
+          }
+
+          Set "found": false and leave the text fields empty if you cannot locate genuine official regulatory content for this specific country — do NOT fabricate or guess generic requirements.
+          Return ONLY the raw JSON object, no markdown code fences, no commentary before or after it.
+          `;
+
+          // Note: grounding tools (google_search) are not reliably combinable with forced
+          // JSON response mode on all Gemini versions, so we ask for raw JSON in the prompt
+          // and parse defensively instead (same pattern as referenceLabelWorker.js).
+          const searchResult = await callGeminiWithRetry(searchModel, {
+            contents: [{ role: "user", parts: [{ text: searchPrompt }] }]
+          });
+
+          const rawSearchText = searchResult.response.text();
+          const cleanSearchJsonStr = rawSearchText.replace(/```json/g, "").replace(/```/g, "").trim();
+          const searchJson = JSON.parse(cleanSearchJsonStr);
+          if (searchJson.found && searchJson.requirementsText?.trim()) {
+            edaRequirementsText = searchJson.requirementsText.trim();
+            console.log(`[Label Generator] Task ${taskId}: Found requirements via web search for ${country}.`);
+
+            // Cache it so we never need to search for this country again.
+            await prisma.edaRequirement.create({
+              data: {
+                country,
+                extractedText: edaRequirementsText,
+                extractedData: {
+                  source: "ai_web_search",
+                  sourceSummary: searchJson.sourceSummary || null,
+                  searchedAt: new Date().toISOString()
+                }
+              }
+            });
+          } else {
+            console.log(`[Label Generator] Task ${taskId}: Web search found no reliable official requirements for ${country}.`);
+          }
+        } catch (err) {
+          console.error(`[Label Generator] Task ${taskId}: Web search for EDA requirements failed.`, err);
+        }
       }
 
 
@@ -176,6 +238,15 @@ export const labelGeneratorWorker = new Worker(
             contextDocs += `Full Text: ${ref.fullText.substring(0, 1000)}...\n\n`;
           }
         });
+      }
+
+      let confirmedFactsBlock = "";
+      if (aimOfUseHint || targetSpeciesHint || directionOfUseHint) {
+        confirmedFactsBlock = `
+      === USER-CONFIRMED FACTS (ABSOLUTE GROUND TRUTH — HIGHEST PRIORITY) ===
+      The user is the manufacturer/expert for this exact product and has confirmed the following facts directly. These OVERRIDE any reference label, EDA requirement, or your own general knowledge. Do NOT contradict, water down, or add unrelated species/claims/dosages on top of them — just translate, clean the wording, and slot them into the correct schema fields.
+      ${aimOfUseHint ? `- Confirmed Aim of Use / Indication: ${aimOfUseHint}\n` : ""}${targetSpeciesHint ? `- Confirmed Target Animal Species: ${targetSpeciesHint}\n` : ""}${directionOfUseHint ? `- Confirmed Direction of Use / Dosage: ${directionOfUseHint}\n` : ""}
+      `;
       }
 
       let sourcingInstruction;
@@ -213,8 +284,25 @@ export const labelGeneratorWorker = new Worker(
 
       Input Formulation & Details (MAY BE INCOMPLETE). Anything explicitly stated here always wins over any reference or general knowledge:
       ${formulationText}
-
+      ${confirmedFactsBlock}
       ${sourcingInstruction}
+
+      REGULATORY CONSTRAINT — NO MEDICAL/THERAPEUTIC CLAIMS in 'aimOfUse' (per Saudi Food & Drug Authority feed labeling rules, applies regardless of country):
+      Feed product labels (non-medicated) MUST NOT claim to treat, cure, or medically manage disease. This applies even if the confirmed facts above or a reference use such wording — rephrase into compliant language while KEEPING the same underlying meaning/target condition, do not drop the information.
+      - FORBIDDEN verbs/phrasing (reject these even if present in input): "treats", "cures", "يعالج", claims like treating diarrhea, cough, parasites, infections, digestive diseases, or "boosts/raises the immune system" (يرفع من الجهاز المناعي).
+      - FORBIDDEN vague filler: "for animal comfort", "for maximum feed benefit" or similarly meaningless phrasing.
+      - ACCEPTED style instead: supportive/nutritional framing such as "a source of vitamins and minerals", "a source of vitamin C", "supports/improves immune function", "supports/improves digestion", "improves fertility", "feed for fattening [species]", "urinary acidifier to help prevent urinary calculi (urolithiasis)" — i.e. preventive/supportive framing is fine, therapeutic/curative framing is not.
+
+      ANALYSIS SECTION RULES:
+      Include an "analysis" section stating the nutrient/active-substance breakdown on a "per 1 kg" or "per 1 liter" basis (pick whichever matches the product's net weight/volume unit). This section is ENGLISH ONLY (do not translate it) per official feed-labeling rules.
+      - For a feed material or compound feed (multi-nutrient product): include the standard applicable panel — Energy, Moisture, Protein, Fiber, Fat, Starch, and any relevant vitamins/minerals — using ONLY the items relevant to this product's actual composition (do not invent nutrients unrelated to the formulation).
+      - For a feed additive or premix (single/few active substances): list the active substance(s) and their concentration/percentage as given in the Input Formulation, not a full nutrient panel.
+      - If a value is not derivable from the Input Formulation or references, use "x" as a placeholder for the numeric part (matching official template convention), do not fabricate a specific number.
+
+      USAGE DECLARATION RULES:
+      Pick exactly ONE bilingual phrase for 'usageDeclaration' from these official options, choosing the one that matches the product:
+      - Default: en: "For Animal Consumption" / target equivalent, PLUS a second line en: "For Animal Feed Plant" / target equivalent (both together, as two lines) — use this for most products.
+      - If the product is a BULK compound feed clearly tied to one or more specific livestock project types (from the Input Formulation/target species), use instead ONE of: "For Animal Consumption - used in cattle projects", "For Animal Consumption - used in poultry projects", or "For Animal Consumption - used in cattle and poultry projects" (translated equivalent) — pick whichever matches the confirmed target species.
 
       CRITICAL FORMATTING REQUIREMENTS ("شغل فاخر"):
       You MUST output the result as a strict, valid JSON object. Do NOT write any conversational text or markdown code blocks around the JSON.
@@ -226,11 +314,20 @@ export const labelGeneratorWorker = new Worker(
         "ingredients": [
           { "en": "Ingredient in English", "target": "Ingredient in Target Language", "amount": "e.g. 1000 gm" }
         ],
+        "analysis": {
+          "basis": "e.g. per 1 kg",
+          "items": [
+            { "name": "e.g. Protein", "value": "e.g. x %" }
+          ]
+        },
         "aimOfUse": { "en": "Indications in English", "target": "Indications in Target Language" },
         "targetAnimalSpecies": { "en": "e.g. Cow - Buffalo - Sheep", "target": "الأبقار - الجاموس - الأغنام" },
         "directionOfUse": { "en": "Dosage instructions in English", "target": "Dosage instructions in Target Language" },
         "storage": { "en": "Storage conditions in English", "target": "Storage conditions in Target Language" },
         "netWeight": { "en": "e.g. 25 kg", "target": "e.g. 25 كجم" },
+        "usageDeclaration": [
+          { "en": "e.g. For Animal Consumption", "target": "e.g. للاستهلاك الحيواني" }
+        ],
         "mandatoryFields": {
           "forAnimalFeedPlant": true,
           "manufacturer": true,
@@ -255,6 +352,48 @@ export const labelGeneratorWorker = new Worker(
       } catch (err) {
         console.error("Failed to parse JSON from AI", err);
         throw new Error("AI returned invalid data format.");
+      }
+
+      // Step 3.5: Compliance Check against the stored regulatory authority requirements
+      // Only runs when we actually have authority requirements on file for this country —
+      // otherwise there is nothing authoritative to check against.
+      if (edaRequirementsText) {
+        console.log(`[Label Generator] Task ${taskId}: Validating against ${country} authority requirements...`);
+        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 90, message: `Validating against ${country} regulatory requirements...` });
+
+        const complianceCheckPrompt = `
+        You are a regulatory compliance auditor for animal feed/veterinary product labels.
+        Below is a DRAFT label (as JSON) and the OFFICIAL REGULATORY AUTHORITY REQUIREMENTS for ${country} that this label must comply with.
+
+        === OFFICIAL REGULATORY AUTHORITY REQUIREMENTS (${country}) ===
+        ${edaRequirementsText}
+
+        === DRAFT LABEL JSON ===
+        ${JSON.stringify(generatedJson, null, 2)}
+
+        TASK:
+        Check the draft against the official requirements above for compliance issues, e.g.:
+        - Missing or wrongly-worded mandatory fields/sections required by the authority.
+        - Terminology, classification, or category wording that doesn't match the authority's controlled vocabulary (e.g. product/feed classification, target species naming).
+        - Any claim, phrasing, or field that the authority's requirements explicitly disallow.
+        - Formatting/structure the authority mandates (e.g. bilingual vs a section that must stay in one language only) that the draft violates.
+
+        If the draft already complies, return it UNCHANGED. If it has issues, fix ONLY what's needed to become compliant — do not rewrite content that isn't a compliance problem, and do not remove or invent facts beyond what compliance requires.
+
+        Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields). Do not add extra keys, do not wrap in markdown.
+        `;
+
+        try {
+          const complianceResult = await callGeminiWithRetry(model, {
+            contents: [{ role: "user", parts: [{ text: complianceCheckPrompt }] }],
+            generationConfig: { responseMimeType: "application/json" }
+          });
+          const correctedJson = JSON.parse(complianceResult.response.text());
+          generatedJson = correctedJson;
+          console.log(`[Label Generator] Task ${taskId}: Compliance check complete.`);
+        } catch (err) {
+          console.error(`[Label Generator] Task ${taskId}: Compliance check failed, keeping original draft.`, err);
+        }
       }
 
       // Step 4: Save Result

@@ -9,10 +9,13 @@ const referenceLabelQueue = new Queue("referenceLabelQueue", { connection: getRe
 const labelGeneratorQueue = new Queue("labelGeneratorQueue", { connection: getRedisConfig() });
 
 export const generateLabelAi = catchAsync(async (req, res, next) => {
-  const { formulationText, country, language } = req.body;
+  const { formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = req.body;
 
   if (!formulationText || !country || !language) {
     return next(new AppError("Please provide formulationText, country, and language", 400));
+  }
+  if (!aimOfUseHint?.trim()) {
+    return next(new AppError("Please provide the confirmed Aim of Use — the AI will not guess it.", 400));
   }
 
   // Create BackgroundTask
@@ -30,7 +33,12 @@ export const generateLabelAi = catchAsync(async (req, res, next) => {
       taskId: task.id,
       formulationText,
       country,
-      language
+      language,
+      // Optional expert-confirmed facts. When provided by the user, these
+      // override AI guesswork/references entirely for these specific fields.
+      aimOfUseHint: aimOfUseHint?.trim() || null,
+      targetSpeciesHint: targetSpeciesHint?.trim() || null,
+      directionOfUseHint: directionOfUseHint?.trim() || null,
     },
     { removeOnComplete: true, removeOnFail: true }
   );
