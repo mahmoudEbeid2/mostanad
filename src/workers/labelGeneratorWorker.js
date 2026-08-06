@@ -83,22 +83,23 @@ export const labelGeneratorWorker = new Worker(
       console.log(`[Label Generator] Task ${taskId}: Searching reference labels...`);
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 50, message: "Searching database for similar approved labels..." });
       let referenceLabels = [];
+      let matchTier = "none"; // "ingredient_match" | "country_match" | "generic" | "none"
       try {
         const allRefs = await prisma.referenceLabel.findMany({
           orderBy: { createdAt: 'desc' }
         });
 
         const targetCountry = (country || "").toLowerCase();
-        
+
         let priority1 = []; // Same country + same ingredient
         let priority2 = []; // Same country
         let priority3 = []; // Same ingredient globally
-        
+
         allRefs.forEach(ref => {
           if (!ref.extractedData && !ref.fullText) return;
           const dataStr = JSON.stringify(ref.extractedData || {}).toLowerCase() + " " + (ref.fullText || "").toLowerCase();
           const refCountry = (ref.country || "").toLowerCase();
-          
+
           let hasIngredient = false;
           for (const ing of activeIngredientsList) {
             if (dataStr.includes(ing)) {
@@ -106,7 +107,7 @@ export const labelGeneratorWorker = new Worker(
               break;
             }
           }
-          
+
           if (refCountry === targetCountry && hasIngredient) {
             priority1.push(ref);
           } else if (refCountry === targetCountry) {
@@ -119,16 +120,20 @@ export const labelGeneratorWorker = new Worker(
         // Resolve Fallback
         if (priority1.length > 0) {
           console.log(`[Label Generator] Found ${priority1.length} references (Priority 1: Same country + ingredient)`);
-          referenceLabels = priority1.slice(0, 3);
-        } else if (priority2.length > 0) {
-          console.log(`[Label Generator] Found ${priority2.length} references (Priority 2: Same country)`);
-          referenceLabels = priority2.slice(0, 3);
+          referenceLabels = priority1.slice(0, 1); // Only need 1 ground truth to save tokens
+          matchTier = "ingredient_match";
         } else if (priority3.length > 0) {
           console.log(`[Label Generator] Found ${priority3.length} references (Priority 3: Same ingredient globally)`);
-          referenceLabels = priority3.slice(0, 3);
+          referenceLabels = priority3.slice(0, 1); // Only need 1 ground truth
+          matchTier = "ingredient_match";
+        } else if (priority2.length > 0) {
+          console.log(`[Label Generator] Found ${priority2.length} references (Priority 2: Same country)`);
+          referenceLabels = priority2.slice(0, 1); // Only need 1 for formatting
+          matchTier = "country_match";
         } else if (allRefs.length > 0) {
           console.log(`[Label Generator] Falling back to generic global references.`);
-          referenceLabels = allRefs.slice(0, 2);
+          referenceLabels = allRefs.slice(0, 1);
+          matchTier = "generic";
         }
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
@@ -161,31 +166,56 @@ export const labelGeneratorWorker = new Worker(
         contextDocs += `${edaRequirementsText}\n\n`;
       }
       if (referenceLabels.length > 0) {
-        contextDocs += "=== APPROVED REFERENCE LABELS (FOR MISSING DATA & FORMATTING) ===\n";
-        contextDocs += "Use these references to accurately determine the 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' if they are not explicitly provided in the input formulation.\n\n";
-        referenceLabels.slice(0, 3).forEach((ref, index) => {
+        contextDocs += "=== APPROVED REFERENCE LABELS ===\n";
+        referenceLabels.forEach((ref, index) => {
           contextDocs += `--- Reference Label ${index + 1}: ${ref.name} ---\n`;
-          if (ref.extractedData) contextDocs += `Structured Data: ${JSON.stringify(ref.extractedData, null, 2)}\n`;
-          if (ref.fullText) contextDocs += `Full Text: ${ref.fullText.substring(0, 1500)}...\n\n`;
+          if (ref.extractedData) {
+            contextDocs += `Structured Data: ${JSON.stringify(ref.extractedData, null, 2)}\n`;
+          } else if (ref.fullText) {
+            // Only send fullText if structured data is missing to save tokens
+            contextDocs += `Full Text: ${ref.fullText.substring(0, 1000)}...\n\n`;
+          }
         });
+      }
+
+      let sourcingInstruction;
+      if (matchTier === "ingredient_match") {
+        sourcingInstruction = `
+      SOURCE OF TRUTH — STRICT GROUNDED MODE (An exact reference for this active ingredient is provided):
+      You MUST strictly copy the factual data from the Reference Label for 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage'.
+      - DO NOT invent, hallucinate, or add any target animal species that are not in the reference (e.g., do NOT add Poultry if the reference only says Cows/Sheep).
+      - DO NOT add extra indications or uses (e.g., do NOT add respiratory support if the reference only mentions urinary).
+      - PRESERVE the exact dosage numbers and percentages from the reference.
+      - Your job is merely to format, translate, and structure the reference data to match the requested premium JSON schema.
+      `;
+      } else if (matchTier === "country_match" || matchTier === "generic") {
+        sourcingInstruction = `
+      SOURCE OF TRUTH — NO DIRECT INGREDIENT MATCH (the references above are NOT for this same active ingredient; they only show formatting/tone/structure conventions):
+      Do NOT copy factual content (species, dosages, indications) from these references — they are for a different active ingredient. Use them ONLY as a style/format/phrasing guide.
+      For 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage', rely on standard, well-established veterinary/regulatory knowledge for THIS specific active ingredient. Be conservative: only list target species and claims that are well-established for this ingredient, do not pad the list with unrelated species (e.g. do not add poultry to a ruminant-only product) or unrelated claims.
+      `;
+      } else {
+        sourcingInstruction = `
+      SOURCE OF TRUTH — NO REFERENCES AVAILABLE:
+      No approved reference labels exist yet for this ingredient. Rely on standard, well-established veterinary/regulatory knowledge for THIS specific active ingredient. Be conservative: only list target species and claims that are well-established for this ingredient, do not invent unrelated species or claims.
+      `;
       }
 
       const generationPrompt = `
       You are an elite regulatory affairs specialist, veterinary expert, and pharmaceutical label designer.
       Your task is to generate a highly professional, compliant label text for a product based on its formulation.
-      
+
       Target Country / Regulatory Body: ${country}
-      Target Language: ${language} 
+      Target Language: ${language}
       CRITICAL REQUIREMENT: Pharmaceutical labels MUST be bilingual. Every single text field MUST provide both English ("en") and the Target Language ("target") side-by-side.
-      
+
       ${contextDocs}
-      
-      Input Formulation & Details (MAY BE INCOMPLETE):
+
+      Input Formulation & Details (MAY BE INCOMPLETE). Anything explicitly stated here always wins over any reference or general knowledge:
       ${formulationText}
-      
-      EXPERT INSTRUCTION:
-      If the Input Formulation is brief (e.g. it only provides the active ingredient like "Ammonium Chloride 1000 gm" and packaging), you MUST act as the veterinary expert. Use the provided APPROVED REFERENCE LABELS to intelligently infer the standard 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse' (dosage per species), and 'storage' for this specific ingredient. DO NOT leave them empty.
-      
+
+      ${sourcingInstruction}
+
       CRITICAL FORMATTING REQUIREMENTS ("شغل فاخر"):
       You MUST output the result as a strict, valid JSON object. Do NOT write any conversational text or markdown code blocks around the JSON.
       The JSON object MUST follow this exact premium schema. Translate accurately into the target language. Use robust, scientific terminology:
