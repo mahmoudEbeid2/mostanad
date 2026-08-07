@@ -97,14 +97,22 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
 
   let uploadResult = null;
 
+  // Mock mode is an explicit, intentional dev/test toggle — never triggered by a real failure.
+  const isMockMode = process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY;
+
   try {
     let identity = null;
 
-    try {
-      if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-        throw new Error("Mock mode is enabled via environment variables.");
-      }
-
+    if (isMockMode) {
+      console.warn(`[LabelService] MOCK MODE active (MOCK_GEMINI=${process.env.MOCK_GEMINI}, hasApiKey=${!!process.env.GEMINI_API_KEY}) — returning placeholder data, not a real analysis.`);
+      identity = {
+        name: "H-VIRAL",
+        activeIngredients: [
+          { name: "Olive Leaves", concentration: "10%" },
+          { name: "Sorbitol", concentration: "5%" }
+        ]
+      };
+    } else {
       // ════════════════════════════════════════════════════════
       // UPLOAD to Gemini File API
       // ════════════════════════════════════════════════════════
@@ -156,17 +164,11 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
   }
       `.trim();
 
+      // NOTE: if this genuinely fails (rate limit, network, bad response), we let it
+      // throw and fail the whole task — we never substitute fake data for a real product,
+      // since that would silently hand the user a fabricated compliance report.
       const step1Raw = await callGeminiWithRetry(genAI, [fileRef, step1Prompt], "Step1-Identity");
       identity = parseGeminiJson(step1Raw);
-    } catch (err) {
-      console.warn(`[LabelService] Step 1 Gemini extraction failed: ${err.message}. Falling back to mock product identity...`);
-      identity = {
-        name: "H-VIRAL",
-        activeIngredients: [
-          { name: "Olive Leaves", concentration: "10%" },
-          { name: "Sorbitol", concentration: "5%" }
-        ]
-      };
     }
 
     const extractedName = (identity.name || "").trim();
@@ -524,17 +526,8 @@ Return ONLY a valid JSON object — no markdown, no explanation:
     `.trim();
 
     let complianceResult;
-    try {
-      if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-        throw new Error("Mock mode is enabled via environment variables.");
-      }
-      if (!uploadResult || !uploadResult.file) {
-        throw new Error("Upload failed previously, no file to analyze.");
-      }
-      const step3Raw = await callGeminiWithRetry(genAI, [{ fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } }, step3Prompt], "Step3-Compliance");
-      complianceResult = parseGeminiJson(step3Raw);
-    } catch (err) {
-      console.warn(`[LabelService] Step 3 Gemini compliance check failed: ${err.message}. Falling back to mock compliance check...`);
+    if (isMockMode) {
+      console.warn(`[LabelService] MOCK MODE active — returning placeholder compliance report, not a real analysis.`);
       complianceResult = {
         extractedDetails: {
           name: extractedName || "H-VIRAL",
@@ -575,6 +568,15 @@ Return ONLY a valid JSON object — no markdown, no explanation:
           ]
         }
       };
+    } else {
+      if (!uploadResult || !uploadResult.file) {
+        throw new AppError("Upload to Gemini failed earlier, no file available to analyze.", 500);
+      }
+      // NOTE: no fake-data fallback here on purpose — if this call genuinely fails, the
+      // task fails and the user is told verification didn't happen, rather than being
+      // handed a fabricated "Non-Compliant" report about a product that isn't theirs.
+      const step3Raw = await callGeminiWithRetry(genAI, [{ fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } }, step3Prompt], "Step3-Compliance");
+      complianceResult = parseGeminiJson(step3Raw);
     }
 
     // ════════════════════════════════════════════════════════

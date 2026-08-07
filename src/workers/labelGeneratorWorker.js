@@ -263,12 +263,12 @@ export const labelGeneratorWorker = new Worker(
         sourcingInstruction = `
       SOURCE OF TRUTH — NO DIRECT INGREDIENT MATCH (the references above are NOT for this same active ingredient; they only show formatting/tone/structure conventions):
       Do NOT copy factual content (species, dosages, indications) from these references — they are for a different active ingredient. Use them ONLY as a style/format/phrasing guide.
-      For 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage', rely on standard, well-established veterinary/regulatory knowledge for THIS specific active ingredient. Be conservative: only list target species and claims that are well-established for this ingredient, do not pad the list with unrelated species (e.g. do not add poultry to a ruminant-only product) or unrelated claims.
+      For 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' where no confirmed hint was given above, actively determine your single best, complete answer using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague, generic, or partial. Be scientifically accurate rather than padding with unrelated species this ingredient isn't actually used for (e.g. do not add poultry to a product whose established use is ruminants-only) — but DO include every species this ingredient IS established for, even if that's a long list. Add "targetAnimalSpecies" (and any other field you inferred this way) to "estimatedFields".
       `;
       } else {
         sourcingInstruction = `
       SOURCE OF TRUTH — NO REFERENCES AVAILABLE:
-      No approved reference labels exist yet for this ingredient. Rely on standard, well-established veterinary/regulatory knowledge for THIS specific active ingredient. Be conservative: only list target species and claims that are well-established for this ingredient, do not invent unrelated species or claims.
+      No approved reference labels exist yet for this ingredient. Where no confirmed hint was given above, actively determine your single best, complete answer for 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague or partial. Be scientifically accurate: include every species this ingredient IS established for, but don't pad with species/claims it genuinely isn't used for. Add "targetAnimalSpecies" (and any other field you inferred this way) to "estimatedFields".
       `;
       }
 
@@ -293,11 +293,17 @@ export const labelGeneratorWorker = new Worker(
       - FORBIDDEN vague filler: "for animal comfort", "for maximum feed benefit" or similarly meaningless phrasing.
       - ACCEPTED style instead: supportive/nutritional framing such as "a source of vitamins and minerals", "a source of vitamin C", "supports/improves immune function", "supports/improves digestion", "improves fertility", "feed for fattening [species]", "urinary acidifier to help prevent urinary calculi (urolithiasis)" — i.e. preventive/supportive framing is fine, therapeutic/curative framing is not.
 
+      INGREDIENTS AMOUNT RULE (do not leave this blank, ever):
+      Every item in "ingredients" MUST have a non-empty "amount" that mirrors the quantity/unit stated in the Input Formulation VERBATIM (e.g. Input says "Ammonium Chloride 1000 gm" → amount is "1000 gm"). Never invent a percentage conversion here and never leave it blank — if truly no quantity was stated for an ingredient, write "q.s." rather than leaving it empty.
+
       ANALYSIS SECTION RULES:
       Include an "analysis" section stating the nutrient/active-substance breakdown on a "per 1 kg" or "per 1 liter" basis (pick whichever matches the product's net weight/volume unit). This section is ENGLISH ONLY (do not translate it) per official feed-labeling rules.
       - For a feed material or compound feed (multi-nutrient product): include the standard applicable panel — Energy, Moisture, Protein, Fiber, Fat, Starch, and any relevant vitamins/minerals — using ONLY the items relevant to this product's actual composition (do not invent nutrients unrelated to the formulation).
-      - For a feed additive or premix (single/few active substances): list the active substance(s) and their concentration/percentage as given in the Input Formulation, not a full nutrient panel.
-      - If a value is not derivable from the Input Formulation or references, use "x" as a placeholder for the numeric part (matching official template convention), do not fabricate a specific number.
+      - For a feed additive or premix (single/few active substances): the active substance value here MUST be numerically CONSISTENT with the "amount" you wrote in "ingredients" for that same substance (same underlying fact, e.g. both say "1000 gm" — or if the Input Formulation's stated quantity already IS the per-kg content and no separate carrier/filler is mentioned, that means it's ~100% of the base, so analysis may state "1000 gm" or "100%" but must not invent an unrelated percentage like "4%" out of nowhere).
+      - If a numeric value is not directly derivable from the Input Formulation, confirmed facts, or a matched reference, do NOT leave a bare "x" placeholder — instead give your single best scientifically-grounded ESTIMATE for that specific active ingredient/product type, based on standard veterinary/feed-industry norms (e.g. a typical Energy/Moisture value for that class of feed material). Every field must end up with a real, usable number. Add the field's name to "estimatedFields" (see schema below) whenever you did this, so the user knows to double-check it.
+
+      NUMERIC ESTIMATION RULE (applies to directionOfUse dosage numbers and any other numeric value not covered by a more specific rule above):
+      Never output a literal "x" as a stand-in number. If a confirmed hint, matched reference, or the Input Formulation gives you the real number, use it exactly. Otherwise, provide your best scientifically-grounded estimate using standard veterinary/feed-industry dosing norms for that specific active ingredient and species — reason from known pharmacology/typical inclusion rates, not a random guess — and add that field's name to "estimatedFields".
 
       USAGE DECLARATION RULES:
       Pick exactly ONE bilingual phrase for 'usageDeclaration' from these official options, choosing the one that matches the product:
@@ -317,7 +323,7 @@ export const labelGeneratorWorker = new Worker(
         "analysis": {
           "basis": "e.g. per 1 kg",
           "items": [
-            { "name": "e.g. Protein", "value": "e.g. x %" }
+            { "name": "e.g. Protein", "value": "e.g. 12 %" }
           ]
         },
         "aimOfUse": { "en": "Indications in English", "target": "Indications in Target Language" },
@@ -336,8 +342,11 @@ export const labelGeneratorWorker = new Worker(
           "batchNo": true,
           "productionDate": true,
           "expiryDate": true
-        }
+        },
+        "estimatedFields": ["e.g. directionOfUse", "e.g. analysis"]
       }
+
+      "estimatedFields" MUST list the top-level field names (from the schema above) whose content is your own scientific estimate rather than something confirmed by the user, the input formulation, or a matched reference. Leave it an empty array [] if every field came from confirmed facts/input/reference.
       `;
 
       const genResult = await callGeminiWithRetry(model, {
@@ -380,7 +389,7 @@ export const labelGeneratorWorker = new Worker(
 
         If the draft already complies, return it UNCHANGED. If it has issues, fix ONLY what's needed to become compliant — do not rewrite content that isn't a compliance problem, and do not remove or invent facts beyond what compliance requires.
 
-        Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields). Do not add extra keys, do not wrap in markdown.
+        Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields, estimatedFields). Do not add extra keys, do not wrap in markdown.
         `;
 
         try {
@@ -394,6 +403,56 @@ export const labelGeneratorWorker = new Worker(
         } catch (err) {
           console.error(`[Label Generator] Task ${taskId}: Compliance check failed, keeping original draft.`, err);
         }
+      }
+
+      // Step 3.6: Content Accuracy Self-Review — always runs (independent of country/authority
+      // requirements), re-checking the draft against the facts we actually gave the model:
+      // the user's confirmed hints, the grounding reference (if any), and internal consistency.
+      console.log(`[Label Generator] Task ${taskId}: Running content accuracy self-review...`);
+      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 95, message: "Double-checking accuracy against the source facts..." });
+
+      const groundingRecap = matchTier === "ingredient_match"
+        ? `A reference label for this exact active ingredient was used for grounding:\n${referenceLabels.slice(0, 3).map(r => `--- ${r.name} ---\n${r.extractedData ? JSON.stringify(r.extractedData) : (r.fullText || "").substring(0, 800)}`).join("\n")}`
+        : "No exact-ingredient reference was available; the draft relied on the confirmed hints below plus conservative general knowledge.";
+
+      const selfReviewPrompt = `
+      You are a strict fact-checking editor reviewing an AI-generated animal feed/veterinary label before it ships to the customer.
+
+      === ORIGINAL INPUT FORMULATION ===
+      ${formulationText}
+
+      === USER-CONFIRMED FACTS (must be reflected exactly, not contradicted) ===
+      ${aimOfUseHint ? `Aim of Use: ${aimOfUseHint}\n` : ""}${targetSpeciesHint ? `Target Animal Species: ${targetSpeciesHint}\n` : ""}${directionOfUseHint ? `Direction of Use: ${directionOfUseHint}\n` : ""}${(!aimOfUseHint && !targetSpeciesHint && !directionOfUseHint) ? "(none provided)" : ""}
+
+      === GROUNDING CONTEXT ===
+      ${groundingRecap}
+
+      === DRAFT LABEL JSON TO REVIEW ===
+      ${JSON.stringify(generatedJson, null, 2)}
+
+      CHECK FOR THESE SPECIFIC ISSUES ONLY — fix any you find, do not rewrite anything else:
+      1. "ingredients[].amount" must never be empty and must match the quantity/unit stated in the Input Formulation.
+      2. "analysis" values for the same substance must be numerically consistent with "ingredients[].amount" — no unexplained/invented numbers.
+      3. If a confirmed fact was provided above (Aim of Use, Target Species, or Direction of Use), the corresponding field in the draft MUST match it faithfully (translated only) — flag and fix any contradiction or drift.
+      4. If grounding context above lists a reference, the draft's species/dosage/indication must not contain anything absent from that reference (no added species, no added claims).
+      5. No therapeutic/medical claims ("treats", "cures", "يعالج", disease-treatment wording) anywhere in aimOfUse.
+      6. Every "en"/"target" pair must actually be translations of each other, not different content.
+      7. No field may contain a bare "x" placeholder — any such field must be filled with a real, scientifically-grounded estimated number, and its field name added to "estimatedFields" if it isn't already there.
+
+      If the draft already satisfies all 7 checks, return it completely UNCHANGED. Otherwise return the corrected JSON with ONLY the necessary fixes applied.
+
+      Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields, estimatedFields). Do not add extra keys, do not wrap in markdown.
+      `;
+
+      try {
+        const selfReviewResult = await callGeminiWithRetry(model, {
+          contents: [{ role: "user", parts: [{ text: selfReviewPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        });
+        generatedJson = JSON.parse(selfReviewResult.response.text());
+        console.log(`[Label Generator] Task ${taskId}: Self-review complete.`);
+      } catch (err) {
+        console.error(`[Label Generator] Task ${taskId}: Self-review failed, keeping prior draft.`, err);
       }
 
       // Step 4: Save Result
