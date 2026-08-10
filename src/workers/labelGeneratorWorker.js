@@ -79,11 +79,65 @@ export const labelGeneratorWorker = new Worker(
         socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: `Extraction failed, proceeding with generic search.` });
       }
 
-      // Step 2: Search Reference Labels (Smart Fallback Logic)
+      // Step 2: Search Reference Labels — Active-Ingredient-First Matching
+      //
+      // The ACTIVE INGREDIENT(S) are the primary/only matching key for deciding which
+      // reference to trust — never product name, brand, category, or wording similarity.
+      // Every reference is scored by how well its active ingredients overlap with this
+      // product's; an exact combination match outranks a partial overlap, which outranks
+      // a country-only or generic (style-guide-only) fallback.
       console.log(`[Label Generator] Task ${taskId}: Searching reference labels...`);
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 50, message: "Searching database for similar approved labels..." });
+
+      const normalizeIngredientName = (s) =>
+        (s || "").toString().toLowerCase().trim().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+      const productIngredientsNorm = [...new Set(activeIngredientsList.map(normalizeIngredientName).filter(Boolean))];
+
+      // Prefer the structured "active_ingredients" field (populated by referenceLabelWorker for
+      // newer references). Falls back to the older free-text ingredients/composition sections
+      // for references processed before that field existed.
+      const getReferenceIngredients = (ref) => {
+        const structured = ref.extractedData?.active_ingredients;
+        if (Array.isArray(structured) && structured.length > 0) {
+          const names = structured
+            .map((i) => normalizeIngredientName(typeof i === "string" ? i : i?.name))
+            .filter(Boolean);
+          if (names.length > 0) return { names, structured: true };
+        }
+        const sections = ref.extractedData?.sections || {};
+        const raw = []
+          .concat(Array.isArray(sections.ingredients) ? sections.ingredients : (sections.ingredients ? [sections.ingredients] : []))
+          .concat(Array.isArray(sections.composition) ? sections.composition : (sections.composition ? [sections.composition] : []));
+        return { names: raw.map(normalizeIngredientName).filter(Boolean), structured: false };
+      };
+
+      const getReferenceTargetSpecies = (ref) => {
+        const structured = ref.extractedData?.target_animal_species;
+        if (Array.isArray(structured)) return structured.map((s) => (s || "").toString().trim()).filter(Boolean);
+        return [];
+      };
+
+      // Score: 3 = exact active-ingredient combination match (structured data only),
+      //        2 = shares at least one active ingredient, 0 = no overlap.
+      const scoreIngredientMatch = (ref) => {
+        if (productIngredientsNorm.length === 0) return { score: 0, overlap: 0 };
+        const { names: refNames, structured } = getReferenceIngredients(ref);
+        if (refNames.length === 0) return { score: 0, overlap: 0 };
+
+        const overlap = productIngredientsNorm.filter((pi) =>
+          refNames.some((ri) => ri === pi || ri.includes(pi) || pi.includes(ri))
+        ).length;
+        if (overlap === 0) return { score: 0, overlap: 0 };
+
+        const isExactCombo = structured && refNames.length === productIngredientsNorm.length && overlap === productIngredientsNorm.length;
+        return { score: isExactCombo ? 3 : 2, overlap };
+      };
+
       let referenceLabels = [];
       let matchTier = "none"; // "ingredient_match" | "country_match" | "generic" | "none"
+      let matchedIngredientRefs = []; // the reference(s) that matched on active ingredient(s) — ground truth for target animals
+
       try {
         const allRefs = await prisma.referenceLabel.findMany({
           orderBy: { createdAt: 'desc' }
@@ -91,53 +145,72 @@ export const labelGeneratorWorker = new Worker(
 
         const targetCountry = (country || "").toLowerCase();
 
-        let priority1 = []; // Same country + same ingredient
-        let priority2 = []; // Same country
-        let priority3 = []; // Same ingredient globally
+        const scored = allRefs
+          .filter((ref) => ref.extractedData || ref.fullText)
+          .map((ref) => ({ ref, ...scoreIngredientMatch(ref) }));
 
-        allRefs.forEach(ref => {
-          if (!ref.extractedData && !ref.fullText) return;
-          const dataStr = JSON.stringify(ref.extractedData || {}).toLowerCase() + " " + (ref.fullText || "").toLowerCase();
-          const refCountry = (ref.country || "").toLowerCase();
+        const ingredientMatches = scored.filter((s) => s.score > 0);
 
-          let hasIngredient = false;
-          for (const ing of activeIngredientsList) {
-            if (dataStr.includes(ing)) {
-              hasIngredient = true;
-              break;
-            }
-          }
+        if (ingredientMatches.length > 0) {
+          const bestScore = Math.max(...ingredientMatches.map((s) => s.score));
+          const bestTier = ingredientMatches.filter((s) => s.score === bestScore);
 
-          if (refCountry === targetCountry && hasIngredient) {
-            priority1.push(ref);
-          } else if (refCountry === targetCountry) {
-            priority2.push(ref);
-          } else if (hasIngredient) {
-            priority3.push(ref);
-          }
-        });
+          // Within the best (strongest) tier, order by same-country first (helps regulatory/
+          // style fit), then by overlap size, then recency — but EVERY reference in the best
+          // tier still counts as ingredient-matched ground truth (needed to reconcile multiple
+          // matching references instead of randomly picking one).
+          bestTier.sort((a, b) => {
+            const aCountry = (a.ref.country || "").toLowerCase() === targetCountry ? 1 : 0;
+            const bCountry = (b.ref.country || "").toLowerCase() === targetCountry ? 1 : 0;
+            if (bCountry !== aCountry) return bCountry - aCountry;
+            if (b.overlap !== a.overlap) return b.overlap - a.overlap;
+            return new Date(b.ref.createdAt) - new Date(a.ref.createdAt);
+          });
 
-        // Resolve Fallback
-        if (priority1.length > 0) {
-          console.log(`[Label Generator] Found ${priority1.length} references (Priority 1: Same country + ingredient)`);
-          referenceLabels = priority1.slice(0, 1); // Only need 1 ground truth to save tokens
+          matchedIngredientRefs = bestTier.slice(0, 3).map((s) => s.ref);
+          referenceLabels = matchedIngredientRefs;
           matchTier = "ingredient_match";
-        } else if (priority3.length > 0) {
-          console.log(`[Label Generator] Found ${priority3.length} references (Priority 3: Same ingredient globally)`);
-          referenceLabels = priority3.slice(0, 1); // Only need 1 ground truth
-          matchTier = "ingredient_match";
-        } else if (priority2.length > 0) {
-          console.log(`[Label Generator] Found ${priority2.length} references (Priority 2: Same country)`);
-          referenceLabels = priority2.slice(0, 1); // Only need 1 for formatting
-          matchTier = "country_match";
-        } else if (allRefs.length > 0) {
-          console.log(`[Label Generator] Falling back to generic global references.`);
-          referenceLabels = allRefs.slice(0, 1);
-          matchTier = "generic";
+          console.log(`[Label Generator] Found ${matchedIngredientRefs.length} reference(s) matching active ingredient(s) (score ${bestScore}/3): ${matchedIngredientRefs.map(r => r.name).join(", ")}`);
+        } else {
+          const sameCountry = scored.filter((s) => (s.ref.country || "").toLowerCase() === targetCountry);
+          if (sameCountry.length > 0) {
+            console.log(`[Label Generator] No active-ingredient match. Found ${sameCountry.length} same-country reference(s) — style guide only.`);
+            referenceLabels = [sameCountry[0].ref];
+            matchTier = "country_match";
+          } else if (allRefs.length > 0) {
+            console.log(`[Label Generator] Falling back to generic global references.`);
+            referenceLabels = [allRefs[0]];
+            matchTier = "generic";
+          }
         }
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: DB search error`, err);
       }
+
+      // Deterministic Target Animal reconciliation, computed in code (not left to the AI to
+      // self-report) so "source: reference" in the response is always trustworthy. Unions the
+      // target species across every reference in the best-matching tier — if they agree this is
+      // just that one set; if they differ, every species backed by a matching reference is kept
+      // rather than silently dropping one (see TEST 6 in the target-animals spec).
+      let deterministicTargetAnimals = [];
+      if (matchTier === "ingredient_match") {
+        const speciesSets = matchedIngredientRefs
+          .map((ref) => getReferenceTargetSpecies(ref))
+          .filter((sp) => sp.length > 0);
+        if (speciesSets.length > 0) {
+          const seen = new Map();
+          speciesSets.flat().forEach((sp) => {
+            const key = sp.toLowerCase().trim();
+            if (!seen.has(key)) seen.set(key, sp.trim());
+          });
+          deterministicTargetAnimals = [...seen.values()];
+        }
+      }
+
+      const targetSpeciesConfirmedByUser = !!(targetSpeciesHint && targetSpeciesHint.trim());
+      const targetAnimalsSource = targetSpeciesConfirmedByUser
+        ? "confirmed"
+        : (matchTier === "ingredient_match" ? "reference" : "inferred");
 
       // Step 2.5: Search EDA Requirements (stored in DB first, then fall back to a live web search)
       let edaRequirementsText = "";
@@ -252,9 +325,8 @@ export const labelGeneratorWorker = new Worker(
       let sourcingInstruction;
       if (matchTier === "ingredient_match") {
         sourcingInstruction = `
-      SOURCE OF TRUTH — STRICT GROUNDED MODE (An exact reference for this active ingredient is provided):
-      You MUST strictly copy the factual data from the Reference Label for 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage'.
-      - DO NOT invent, hallucinate, or add any target animal species that are not in the reference (e.g., do NOT add Poultry if the reference only says Cows/Sheep).
+      SOURCE OF TRUTH — STRICT GROUNDED MODE (reference(s) matching this exact active ingredient are provided):
+      You MUST strictly copy the factual data from the Reference Label(s) for 'aimOfUse', 'directionOfUse', and 'storage' (Target Animal Species is governed by its own dedicated rule below — follow that one for it, not this paragraph).
       - DO NOT add extra indications or uses (e.g., do NOT add respiratory support if the reference only mentions urinary).
       - PRESERVE the exact dosage numbers and percentages from the reference.
       - Your job is merely to format, translate, and structure the reference data to match the requested premium JSON schema.
@@ -262,13 +334,44 @@ export const labelGeneratorWorker = new Worker(
       } else if (matchTier === "country_match" || matchTier === "generic") {
         sourcingInstruction = `
       SOURCE OF TRUTH — NO DIRECT INGREDIENT MATCH (the references above are NOT for this same active ingredient; they only show formatting/tone/structure conventions):
-      Do NOT copy factual content (species, dosages, indications) from these references — they are for a different active ingredient. Use them ONLY as a style/format/phrasing guide.
-      For 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' where no confirmed hint was given above, actively determine your single best, complete answer using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague, generic, or partial. Be scientifically accurate rather than padding with unrelated species this ingredient isn't actually used for (e.g. do not add poultry to a product whose established use is ruminants-only) — but DO include every species this ingredient IS established for, even if that's a long list. Add "targetAnimalSpecies" (and any other field you inferred this way) to "estimatedFields".
+      Do NOT copy factual content (dosages, indications) from these references — they are for a different active ingredient. Use them ONLY as a style/format/phrasing guide.
+      For 'aimOfUse' and 'directionOfUse' and 'storage' where no confirmed hint was given above, actively determine your single best, complete answer using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague, generic, or partial. Add any such field to "estimatedFields".
       `;
       } else {
         sourcingInstruction = `
       SOURCE OF TRUTH — NO REFERENCES AVAILABLE:
-      No approved reference labels exist yet for this ingredient. Where no confirmed hint was given above, actively determine your single best, complete answer for 'aimOfUse', 'targetAnimalSpecies', 'directionOfUse', and 'storage' using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague or partial. Be scientifically accurate: include every species this ingredient IS established for, but don't pad with species/claims it genuinely isn't used for. Add "targetAnimalSpecies" (and any other field you inferred this way) to "estimatedFields".
+      No approved reference labels exist yet for this ingredient. Where no confirmed hint was given above, actively determine your single best, complete answer for 'aimOfUse', 'directionOfUse', and 'storage' using standard, well-established veterinary/feed-industry knowledge for THIS specific active ingredient — do not leave it vague or partial. Add any such field to "estimatedFields".
+      `;
+      }
+
+      // ── TARGET ANIMAL SPECIES — dedicated decision flow ───────────────────────────────────
+      // The active ingredient(s) are the ONLY signal used to pick a reference's target animals.
+      // Product name, brand, category, indication wording, or "this looks similar" reasoning
+      // must NEVER be used to borrow target animals from an unrelated reference.
+      let targetAnimalsInstruction;
+      if (targetSpeciesConfirmedByUser) {
+        targetAnimalsInstruction = `
+      TARGET ANIMAL SPECIES — USER-CONFIRMED (highest priority, do not override):
+      The user has directly confirmed the target species: "${targetSpeciesHint}". Use exactly this (translated) for 'targetAnimalSpecies'. Do not add species from any reference or your own knowledge on top of this. Do NOT add "targetAnimalSpecies" to "estimatedFields".
+      `;
+      } else if (matchTier === "ingredient_match" && deterministicTargetAnimals.length > 0) {
+        targetAnimalsInstruction = `
+      TARGET ANIMAL SPECIES — REFERENCE MATCH (matched strictly by shared active ingredient(s), NOT by product name):
+      Reference(s) sharing this product's exact active ingredient(s): ${matchedIngredientRefs.map(r => r.name).join(", ")}.
+      Their combined confirmed target animal species are: ${deterministicTargetAnimals.join(", ")}.
+      You MUST use exactly this set of species (translated) for 'targetAnimalSpecies' — do not add, drop, or substitute any species, and do not add a species just because it seems plausible or related. This came from a matching reference, so do NOT add "targetAnimalSpecies" to "estimatedFields".
+      `;
+      } else if (matchTier === "ingredient_match") {
+        targetAnimalsInstruction = `
+      TARGET ANIMAL SPECIES — REFERENCE MATCH (matched strictly by shared active ingredient(s), NOT by product name):
+      Reference(s) sharing this product's exact active ingredient(s): ${matchedIngredientRefs.map(r => r.name).join(", ")}.
+      Read ONLY these reference(s)' full text/structured data above and extract the target animal species explicitly stated there for 'targetAnimalSpecies'. Do NOT invent species not stated in these specific references, and do NOT pull species from any other reference in this prompt (any other reference here does not share the active ingredient, even if its product name or category looks similar). Do NOT add "targetAnimalSpecies" to "estimatedFields".
+      `;
+      } else {
+        targetAnimalsInstruction = `
+      TARGET ANIMAL SPECIES — NO MATCHING REFERENCE (fallback: AI inference):
+      No uploaded reference shares this product's active ingredient(s) — matching is by active ingredient ONLY, and any reference shown above (if any) is for a DIFFERENT active ingredient, so it must NOT be used as a source for target species no matter how similar its product name, category, or indication looks.
+      You MUST still provide a complete, non-empty 'targetAnimalSpecies' — infer your single best, scientifically-grounded answer using everything available: the active ingredient(s), formulation, dosage, indication, administration route, and any species information elsewhere in the input. Be accurate: include every species this ingredient is established for, but do not pad with unrelated species. Add "targetAnimalSpecies" to "estimatedFields" since this is an inference, not a confirmed fact.
       `;
       }
 
@@ -286,6 +389,7 @@ export const labelGeneratorWorker = new Worker(
       ${formulationText}
       ${confirmedFactsBlock}
       ${sourcingInstruction}
+      ${targetAnimalsInstruction}
 
       REGULATORY CONSTRAINT — NO MEDICAL/THERAPEUTIC CLAIMS in 'aimOfUse' (per Saudi Food & Drug Authority feed labeling rules, applies regardless of country):
       Feed product labels (non-medicated) MUST NOT claim to treat, cure, or medically manage disease. This applies even if the confirmed facts above or a reference use such wording — rephrase into compliant language while KEEPING the same underlying meaning/target condition, do not drop the information.
@@ -412,8 +516,16 @@ export const labelGeneratorWorker = new Worker(
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 95, message: "Double-checking accuracy against the source facts..." });
 
       const groundingRecap = matchTier === "ingredient_match"
-        ? `A reference label for this exact active ingredient was used for grounding:\n${referenceLabels.slice(0, 3).map(r => `--- ${r.name} ---\n${r.extractedData ? JSON.stringify(r.extractedData) : (r.fullText || "").substring(0, 800)}`).join("\n")}`
+        ? `Reference label(s) matching this exact active ingredient were used for grounding:\n${referenceLabels.slice(0, 3).map(r => `--- ${r.name} ---\n${r.extractedData ? JSON.stringify(r.extractedData) : (r.fullText || "").substring(0, 800)}`).join("\n")}`
         : "No exact-ingredient reference was available; the draft relied on the confirmed hints below plus conservative general knowledge.";
+
+      const targetAnimalsCheckLine = targetSpeciesConfirmedByUser
+        ? `8. "targetAnimalSpecies" must faithfully match the user-confirmed target species above ("${targetSpeciesHint}") — translated only, nothing added or dropped.`
+        : (matchTier === "ingredient_match" && deterministicTargetAnimals.length > 0
+          ? `8. "targetAnimalSpecies" must contain exactly this species set (translated), nothing more and nothing less: ${deterministicTargetAnimals.join(", ")}. This came from a matching reference — if the draft added, dropped, or substituted any species, fix it and make sure "targetAnimalSpecies" is NOT in "estimatedFields".`
+          : (matchTier === "ingredient_match"
+            ? `8. "targetAnimalSpecies" must only contain species explicitly supported by the grounding reference(s) above — remove any species not stated there, and do not add "targetAnimalSpecies" to "estimatedFields".`
+            : `8. "targetAnimalSpecies" must not be empty and must not contain a species pulled from an unrelated reference (no reference matched this product's active ingredient) — it should be the AI's own scientifically-grounded inference, and "targetAnimalSpecies" MUST be listed in "estimatedFields".`));
 
       const selfReviewPrompt = `
       You are a strict fact-checking editor reviewing an AI-generated animal feed/veterinary label before it ships to the customer.
@@ -438,8 +550,9 @@ export const labelGeneratorWorker = new Worker(
       5. No therapeutic/medical claims ("treats", "cures", "يعالج", disease-treatment wording) anywhere in aimOfUse.
       6. Every "en"/"target" pair must actually be translations of each other, not different content.
       7. No field may contain a bare "x" placeholder — any such field must be filled with a real, scientifically-grounded estimated number, and its field name added to "estimatedFields" if it isn't already there.
+      ${targetAnimalsCheckLine}
 
-      If the draft already satisfies all 7 checks, return it completely UNCHANGED. Otherwise return the corrected JSON with ONLY the necessary fixes applied.
+      If the draft already satisfies all 8 checks, return it completely UNCHANGED. Otherwise return the corrected JSON with ONLY the necessary fixes applied.
 
       Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields, estimatedFields). Do not add extra keys, do not wrap in markdown.
       `;
@@ -454,6 +567,15 @@ export const labelGeneratorWorker = new Worker(
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: Self-review failed, keeping prior draft.`, err);
       }
+
+      // Attach deterministic Target Animals provenance — computed here in code from the actual
+      // matching logic above, not self-reported by the AI, so the frontend can reliably tell
+      // apart reference-derived vs AI-inferred vs user-confirmed target animals without any
+      // risk of the model fabricating a "source: reference" claim.
+      generatedJson.targetAnimalsSource = targetAnimalsSource; // "confirmed" | "reference" | "inferred"
+      generatedJson.matchedReferenceLabels = matchTier === "ingredient_match"
+        ? matchedIngredientRefs.map((r) => ({ id: r.id, name: r.name }))
+        : [];
 
       // Step 4: Save Result
       await prisma.backgroundTask.update({

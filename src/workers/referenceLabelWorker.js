@@ -77,6 +77,8 @@ const referenceLabelWorker = new Worker(
         4. "sections": object containing arrays/strings for "ingredients", "composition", "indications", "dosage", "warnings", "storage", "withdrawal_period", "manufacturer", "registration", "claims", "other".
         5. "style_guide": object describing ingredients_format, storage_format, dosage_format, warnings_format, language_tone, and layout_structure.
         6. "regulatory_notes": array of notable compliance patterns, required-looking statements, allowed omissions, or country-specific phrasing.
+        7. "active_ingredients": array of objects { "name": "canonical/generic ingredient name only, no brand or filler wording", "concentration": "value with unit, or null if not stated" }. Include ONLY the pharmacologically/nutritionally ACTIVE substances (exclude excipients, carriers, solvents, flavors). This is the primary key future products will be matched against, so keep names clean and generic (e.g. "Amoxicillin Trihydrate", not "our proprietary Amoxi-Complex blend").
+        8. "target_animal_species": array of plain species/species-group names this exact product is labeled/indicated for (e.g. ["Cattle", "Sheep", "Poultry"]). Split combined phrases into individual entries. Empty array if the document does not state target species.
 
         Return ONLY a raw JSON object. Do not include markdown formatting like \`\`\`json.
       `;
