@@ -108,7 +108,7 @@ export const restrictToPermission = (permissionSlug) => {
     // 2. If authenticated as a company tenant:
     if (req.company) {
       // Company tenants are allowed to perform operations on company-level modules only
-      const companyAllowedModules = ["products", "categories", "templates", "certificates"];
+      const companyAllowedModules = ["products", "categories", "templates", "certificates", "labels"];
       const moduleName = permissionSlug.split("_")[1];
 
       if (companyAllowedModules.includes(moduleName)) {

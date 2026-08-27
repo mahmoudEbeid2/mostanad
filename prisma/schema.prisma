@@ -42,7 +42,7 @@ model Permission {
   id        String           @id @default(uuid())
   name      String
   slug      String           @unique
-  module    String           // e.g. "companies", "plans", "settings"
+  module    String // e.g. "companies", "plans", "settings"
   roles     RolePermission[]
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
@@ -77,13 +77,14 @@ model Company {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Scoped Relations
-  products      Product[]
-  images        CompanyImage[]
-  subscriptions Subscription[]
-  templates     Template[]
-  brands        Brand[]
+  products        Product[]
+  images          CompanyImage[]
+  subscriptions   Subscription[]
+  templates       Template[]
+  brands          Brand[]
   edaRequirements EdaRequirement[]
   referenceLabels ReferenceLabel[]
+  generatedLabels GeneratedLabel[]
 
   @@map("companies")
 }
@@ -92,7 +93,7 @@ model CompanyImage {
   id        String   @id @default(uuid())
   companyId String   @map("company_id")
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name      String   // e.g. "header_logo", "official_stamp", "signature_admin"
+  name      String // e.g. "header_logo", "official_stamp", "signature_admin"
   imageUrl  String   @map("image_url") @db.Text // Can store URLs or inline Base64 data strings
   imageType String?  @map("image_type") // e.g. "stamp", "logo", "signature", "footer"
   createdAt DateTime @default(now()) @map("created_at")
@@ -101,53 +102,62 @@ model CompanyImage {
   @@map("company_images")
 }
 
-
 // ==========================================
 // 3. Product Catalog
 // ==========================================
 
 model Category {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  products  Product[]
+  id              String           @id @default(uuid())
+  name            String           @unique
+  products        Product[]
   referenceLabels ReferenceLabel[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
   @@map("categories")
 }
 
 model Product {
-  id                 String               @id @default(uuid())
+  id                 String   @id @default(uuid())
   name               String
-  productCode        String?              @map("product_code")
-  description        String?              @db.Text
-  indications        String?              @db.Text
-  targetSpecies      String[]             @map("target_species") // Postgres native array type
-  physicalForm       String?              @map("physical_form")
+  productCode        String?  @map("product_code")
+  description        String?  @db.Text
+  indications        String?  @db.Text
+  targetSpecies      String[] @map("target_species") // Postgres native array type
+  physicalForm       String?  @map("physical_form")
   appearance         String?
-  activeIngredients  Json?                @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
-  dosage             String?              @db.Text
-  mixingInstructions String?              @map("mixing_instructions") @db.Text
-  withdrawalPeriod   String?              @map("withdrawal_period")
-  contraindications  String?              @db.Text
-  userSafety         String[]             @map("user_safety") // Postgres native array type
-  storage            String?              @db.Text
-  packaging          String?              // e.g. "25KG Bag", "1L Bottle"
-  registrationNumber String?              @map("registration_number")
+  activeIngredients  Json?    @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
+  dosage             String?  @db.Text
+  mixingInstructions String?  @map("mixing_instructions") @db.Text
+  withdrawalPeriod   String?  @map("withdrawal_period")
+  contraindications  String?  @db.Text
+  userSafety         String[] @map("user_safety") // Postgres native array type
+  storage            String?  @db.Text
+  packaging          String? // e.g. "25KG Bag", "1L Bottle"
+  registrationNumber String?  @map("registration_number")
   origin             String?
   producer           String?
-  specifications     Json?                // stores { "type": "string", "values": { "pH": "...", "Assay": "..." } }
-  
+  specifications     Json? // stores { "type": "string", "values": { "pH": "...", "Assay": "..." } }
+
+  // Label-engine fields (MOSTANAD_ARCHITECTURE.md §5.10) — nullable, backfilled by nothing,
+  // populated going forward via the product form / label generation flow.
+  routeOfAdmin       String? @map("route_of_admin")
+  dosageForm         String? @map("dosage_form")
+  strength           String?
+  productType        String? @map("product_type")
+  prescriptionStatus String? @map("prescription_status") // POM | OTC | VFD
+
   // Relations
-  categoryId         String?              @map("category_id")
-  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brandId            String?              @map("brand_id")
-  brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  companyId          String               @map("company_id")
-  company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
+  categoryId String?   @map("category_id")
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandId    String?   @map("brand_id")
+  brand      Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  companyId  String    @map("company_id")
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  generatedLabels GeneratedLabel[]
 
   @@map("products")
 }
@@ -157,22 +167,22 @@ model Product {
 // ==========================================
 
 model Template {
-  id           String          @id @default(uuid())
-  name         String
-  type         String
-  brandId      String?         @map("brand_id")
-  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  htmlContent  String          @map("html_content") @db.Text
-  fields       Json?
-  isGlobal     Boolean         @default(true) @map("is_global")
-  productId    String?         @map("product_id")
-  companyId    String?         @map("company_id") // Null means system-wide default template
-  company      Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  isActive     Boolean         @default(true) @map("is_active")
-  createdAt    DateTime        @default(now()) @map("created_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String
+  type        String
+  brandId     String?  @map("brand_id")
+  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  htmlContent String   @map("html_content") @db.Text
+  fields      Json?
+  isGlobal    Boolean  @default(true) @map("is_global")
+  productId   String?  @map("product_id")
+  companyId   String?  @map("company_id") // Null means system-wide default template
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  images       TemplateImage[]
+  images TemplateImage[]
 
   @@map("templates")
 }
@@ -181,7 +191,7 @@ model TemplateImage {
   id         String   @id @default(uuid())
   templateId String   @map("template_id")
   template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  name       String   // e.g. "background", "stamp_placeholder"
+  name       String // e.g. "background", "stamp_placeholder"
   imageUrl   String   @map("image_url") @db.Text
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -214,8 +224,8 @@ model Plan {
   name          String         @unique
   description   String?        @db.Text
   price         Decimal        @db.Decimal(10, 2)
-  interval      String         // e.g., "month", "year"
-  features      String[]       // Postgres native array type
+  interval      String // e.g., "month", "year"
+  features      String[] // Postgres native array type
   isActive      Boolean        @default(true) @map("is_active")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
@@ -232,7 +242,7 @@ model Subscription {
   plan      Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
   startDate DateTime @default(now()) @map("start_date")
   endDate   DateTime @map("end_date")
-  status    String   // e.g. "active", "expired", "cancelled"
+  status    String // e.g. "active", "expired", "cancelled"
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -240,15 +250,15 @@ model Subscription {
 }
 
 model BackgroundTask {
-  id          String   @id @default(uuid())
-  type        String   // "catalog_upload" | "label_verification" | "certificate_generation"
-  status      String   // "pending" | "processing" | "completed" | "failed"
-  result      Json?    // Final JSON results output
-  error       String?  // Error message if failed
-  companyId   String?  @map("company_id")
-  brandId     String?  @map("brand_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  type      String // "catalog_upload" | "label_verification" | "certificate_generation"
+  status    String // "pending" | "processing" | "completed" | "failed"
+  result    Json? // Final JSON results output
+  error     String? // Error message if failed
+  companyId String?  @map("company_id")
+  brandId   String?  @map("brand_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("background_tasks")
 }
@@ -258,17 +268,17 @@ model BackgroundTask {
 // ==========================================
 
 model EdaRequirement {
-  id              String   @id @default(uuid())
-  extractedText   String?  @db.Text
-  extractedData   Json?    // AI-structured array of sections
-  
-  country         String   @default("Egypt")
-  
-  companyId       String?  @map("company_id")
-  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id            String  @id @default(uuid())
+  extractedText String? @db.Text
+  extractedData Json? // AI-structured array of sections
+
+  country String @default("Egypt")
+
+  companyId String?  @map("company_id")
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("eda_requirements")
 }
@@ -278,25 +288,142 @@ model EdaRequirement {
 // ==========================================
 
 model ReferenceLabel {
-  id              String   @id @default(uuid())
-  name            String
-  fullText        String?  @map("full_text") @db.Text
-  extractedData   Json?    // AI-structured insights (phrasing, layout, ingredients format)
-  country         String?
-  sourceType      String   @default("upload") @map("source_type") // "upload" | "manual"
+  id                 String  @id @default(uuid())
+  name               String
+  fullText           String? @map("full_text") @db.Text
+  extractedData      Json? // AI-structured insights (phrasing, layout, ingredients format)
+  country            String?
+  sourceType         String  @default("upload") @map("source_type") // "upload" | "manual"
   manualCategoryName String? @map("manual_category_name")
-  
+
   // Optional Company & Brand ID (Null = Global Reference)
-  companyId       String?  @map("company_id")
-  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  brandId         String?  @map("brand_id")
-  brand           Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  categoryId      String?  @map("category_id")
-  category        Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  companyId  String?   @map("company_id")
+  company    Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  brandId    String?   @map("brand_id")
+  brand      Brand?    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  categoryId String?   @map("category_id")
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("reference_labels")
 }
 
+// ==========================================
+// 10. Label Engine — Persistence Foundation (Phase 1, MOSTANAD_ARCHITECTURE.md §5.1-5.4)
+// ==========================================
+
+model GeneratedLabel {
+  id String @id @default(uuid())
+
+  companyId       String   @map("company_id")
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId       String?  @map("product_id")
+  product         Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdByUserId String?  @map("created_by_user_id")
+
+  inputPayload   Json  @map("input_payload") // frozen snapshot of what the caller submitted
+  productProfile Json? @map("product_profile") // reserved for Phase 4's ProductProfile — null until then
+
+  labelData       Json   @map("label_data") // the current label content
+  labelProvenance Json   @map("label_provenance") // path -> { tier, source, citation, modelId, promptHash, at } (§14.4)
+  schemaVersion   String @map("schema_version") // e.g. "vet-label@1.0.0" until Phase 2's labelSchema lands
+
+  country  String
+  language String
+  status   String @default("draft") // draft|validated|failed_validation|approved|revoked|archived
+
+  referenceLabelIds String[] @map("reference_label_ids")
+  regulatoryDocIds  String[] @map("regulatory_doc_ids")
+  matchTier         String?  @map("match_tier")
+  generationMeta    Json?    @map("generation_meta")
+
+  riskScore             Int     @default(0) @map("risk_score")
+  autonomyTier          String  @default("mandatory") @map("autonomy_tier")
+  shadowRunId           String? @map("shadow_run_id")
+  promotedToReferenceId String? @map("promoted_to_reference_id")
+
+  currentVersion Int @default(1) @map("current_version")
+
+  versions     LabelVersion[]
+  validations  ValidationReport[]
+  chatMessages LabelChatMessage[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId, createdAt])
+  @@index([productId])
+  @@map("generated_labels")
+}
+
+model LabelVersion {
+  id      String         @id @default(uuid())
+  labelId String         @map("label_id")
+  label   GeneratedLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  versionNumber Int  @map("version_number")
+  labelData     Json @map("label_data") // full frozen snapshot
+
+  changeSource         String  @map("change_source") // ai_generation|ai_chat_edit|manual_edit|restore
+  changedByUserId      String? @map("changed_by_user_id")
+  changeSummary        String? @map("change_summary") @db.Text
+  diff                 Json? // [{ path, op, before, after }]
+  restoredFrom         Int?    @map("restored_from")
+  overrideAcknowledged Boolean @default(false) @map("override_acknowledged")
+
+  validationReportId String?  @map("validation_report_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@unique([labelId, versionNumber])
+  @@map("label_versions")
+}
+
+model ValidationReport {
+  id            String         @id @default(uuid())
+  labelId       String         @map("label_id")
+  label         GeneratedLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  versionNumber Int            @map("version_number")
+
+  passed       Boolean
+  errorCount   Int     @default(0) @map("error_count")
+  warningCount Int     @default(0) @map("warning_count")
+
+  verdicts          Json // FieldVerdict[] — populated starting Phase 2
+  auditorVerdicts   Json?  @map("auditor_verdicts")
+  disagreementCount Int    @default(0) @map("disagreement_count")
+  selfConsistency   Json?  @map("self_consistency")
+  coveragePercent   Float? @map("coverage_percent")
+
+  engineVersion String   @map("engine_version")
+  rulesetIds    String[] @map("ruleset_ids")
+  aiAssisted    Boolean  @default(false) @map("ai_assisted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([labelId, versionNumber])
+  @@map("validation_reports")
+}
+
+model LabelChatMessage {
+  id      String         @id @default(uuid())
+  labelId String         @map("label_id")
+  label   GeneratedLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  role          String // user | assistant | system | tool
+  content       String  @db.Text
+  intent        String? // edit | question | explain_validation
+  toolCalls     Json?   @map("tool_calls")
+  proposedPatch Json?   @map("proposed_patch")
+  appliedPatch  Json?   @map("applied_patch")
+  resultVersion Int?    @map("result_version")
+  conflicts     Json?
+  userId        String? @map("user_id")
+  tokenUsage    Json?   @map("token_usage")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([labelId, createdAt])
+  @@map("label_chat_messages")
+}

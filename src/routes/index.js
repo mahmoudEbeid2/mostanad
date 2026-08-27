@@ -15,6 +15,7 @@ import brandRoutes from "./brandRoutes.js";
 import dashboardRoutes from "./dashboardRoutes.js";
 import edaRequirementRoutes from "./edaRequirementRoutes.js";
 import referenceLabelRoutes from "./referenceLabelRoutes.js";
+import generatedLabelRoutes from "./generatedLabelRoutes.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -35,6 +36,7 @@ router.use("/background-tasks", protect, backgroundTaskRoutes);
 router.use("/brands", brandRoutes);
 router.use("/eda-requirements", protect, edaRequirementRoutes);
 router.use("/reference-labels", protect, referenceLabelRoutes);
+router.use("/labels", generatedLabelRoutes); // internal protect applied in generatedLabelRoutes.js
 router.use("/", protect, productRoutes);
 router.use("/", protect, templateRoutes);
 router.use("/", protect, certificateRoutes);

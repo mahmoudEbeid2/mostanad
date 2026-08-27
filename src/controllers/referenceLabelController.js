@@ -18,11 +18,21 @@ export const generateLabelAi = catchAsync(async (req, res, next) => {
     return next(new AppError("Please provide the confirmed Aim of Use — the AI will not guess it.", 400));
   }
 
+  // GeneratedLabel.companyId is required (a label always belongs to a tenant — §5.1).
+  // A company caller always generates under its own id. A system user (no req.company)
+  // must say which company this label is for, the same explicit-companyId pattern
+  // uploadReferenceLabels/createReferenceLabelManual already use.
+  const companyId = req.company ? req.company.id : req.body.companyId;
+  if (!companyId) {
+    return next(new AppError("Please provide companyId — label generation must be scoped to a company.", 400));
+  }
+
   // Create BackgroundTask
   const task = await prisma.backgroundTask.create({
     data: {
       type: "label_generation",
       status: "pending",
+      companyId,
     },
   });
 
@@ -33,8 +43,13 @@ export const generateLabelAi = catchAsync(async (req, res, next) => {
       taskId: task.id,
       // Tenant scope for the reference-label lookup this job performs — a company
       // caller must only ever see its own + global references, never another
-      // tenant's (see labelGeneratorWorker.js's referenceLabel.findMany).
-      companyId: req.company ? req.company.id : null,
+      // tenant's (see labelGeneratorWorker.js's referenceLabel.findMany). Also the
+      // owning tenant for the persisted GeneratedLabel row (Phase 1, §5.1).
+      companyId,
+      // Whoever's token this request carries — a company's own id when called as a
+      // tenant, or the real internal user id when called as a system user. Recorded
+      // on GeneratedLabel.createdByUserId (§5.1) for audit/attribution.
+      createdByUserId: req.user ? req.user.id : null,
       formulationText,
       country,
       language,

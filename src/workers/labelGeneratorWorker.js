@@ -4,6 +4,55 @@ import { prisma } from "../lib/prisma.js";
 import { GoogleGenAI } from "@google/genai";
 import io from "socket.io-client";
 import { MODELS } from "../services/ai/modelRegistry.js";
+import * as versionService from "../services/label/versioning/versionService.js";
+
+// Best-effort per-field provenance (Invariant #3 / §14.4). This is a Phase 1 stopgap:
+// it tags each top-level field with the tier/source this worker's own control flow
+// already knows (matchTier, targetAnimalsSource, user hints, estimatedFields) — it is
+// NOT the full Tier 1-6 product-resolution ladder from §8.2, which needs Phase 4's
+// productProfile (reading the Product row) to exist. Tier 1 ("confirmed" via Product
+// row) never appears here for that reason; re-derive this once Phase 4 lands.
+function buildFieldProvenance({ generatedJson, matchTier, targetAnimalsSource, matchedIngredientRefs, aimOfUseHint, targetSpeciesHint, directionOfUseHint, modelId }) {
+  const at = new Date().toISOString();
+  const estimated = new Set(generatedJson.estimatedFields || []);
+  const referenceSourceRef = { kind: "reference_label", ids: matchedIngredientRefs.map((r) => r.id) };
+  const provenance = {};
+
+  const set = (path, tier, source, sourceRef = null) => {
+    provenance[path] = { tier, provenance: source, sourceRef, modelId, at };
+  };
+
+  set(
+    "targetAnimalSpecies",
+    targetAnimalsSource === "confirmed" ? 2 : targetAnimalsSource === "reference" ? 4 : 6,
+    targetAnimalsSource,
+    targetAnimalsSource === "reference" ? referenceSourceRef
+      : targetAnimalsSource === "confirmed" ? { kind: "user_hint", field: "targetSpeciesHint" }
+      : null
+  );
+
+  const setReferenceOrEstimated = (path, hint) => {
+    if (hint && hint.trim()) {
+      set(path, 2, "confirmed", { kind: "user_hint", field: `${path}Hint` });
+    } else if (matchTier === "ingredient_match") {
+      set(path, 4, "reference", referenceSourceRef);
+    } else {
+      set(path, estimated.has(path) ? 5 : 6, "inferred");
+    }
+  };
+  setReferenceOrEstimated("aimOfUse", aimOfUseHint);
+  setReferenceOrEstimated("directionOfUse", directionOfUseHint);
+  setReferenceOrEstimated("storage", null);
+
+  // Everything else the worker produces comes from parsing formulationText (free text
+  // input) plus general model knowledge for structure/wording — Tier 3 ("extracted"),
+  // downgraded to Tier 5 ("inferred") when the model itself flagged it as estimated.
+  ["productName", "feedClassification", "ingredients", "analysis", "netWeight", "usageDeclaration"].forEach((path) => {
+    set(path, estimated.has(path) ? 5 : 3, estimated.has(path) ? "inferred" : "extracted");
+  });
+
+  return provenance;
+}
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -51,7 +100,7 @@ const connection = getRedisConfig();
 export const labelGeneratorWorker = new Worker(
   "labelGeneratorQueue",
   async (job) => {
-    const { taskId, companyId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
+    const { taskId, companyId, createdByUserId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
 
     console.log(`[Label Generator] Started task: ${taskId} for Country: ${country}, Language: ${language}`);
 
@@ -583,17 +632,53 @@ export const labelGeneratorWorker = new Worker(
         ? matchedIngredientRefs.map((r) => ({ id: r.id, name: r.name }))
         : [];
 
-      // Step 4: Save Result
+      // Step 4: Persist — GeneratedLabel + LabelVersion v1 + per-field provenance (Phase 1, §5.1/§14.4)
+      const labelProvenance = buildFieldProvenance({
+        generatedJson,
+        matchTier,
+        targetAnimalsSource,
+        matchedIngredientRefs,
+        aimOfUseHint,
+        targetSpeciesHint,
+        directionOfUseHint,
+        modelId: MODELS.LABEL_GENERATE.id,
+      });
+
+      const label = await versionService.createInitial({
+        companyId,
+        createdByUserId,
+        inputPayload: { formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint },
+        labelData: generatedJson,
+        labelProvenance,
+        // Matches the literal §6.3/§5.1 will assert once Phase 2's labelSchema.js exists, so
+        // this never has to be migrated forward. The JSON this worker actually produces does
+        // NOT yet conform to that schema (no LocalizedText, no withdrawalPeriod, etc.) — that's
+        // expected: Phase 2's schemaValidator is exactly what will report that gap as real FAILs
+        // on these labels until Phase 4 rewrites generation to satisfy it, not silently coerced.
+        schemaVersion: "vet-label@2.0.0",
+        country,
+        language,
+        referenceLabelIds: matchTier === "ingredient_match" ? matchedIngredientRefs.map((r) => r.id) : [],
+        matchTier,
+        generationMeta: {
+          modelId: MODELS.LABEL_GENERATE.id,
+          temperature: MODELS.LABEL_GENERATE.temperature,
+          thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget,
+        },
+      });
+
+      const result = { taskId, labelId: label.id, label: generatedJson };
+
       await prisma.backgroundTask.update({
         where: { id: taskId },
-        data: { 
+        data: {
           status: "completed",
-          result: generatedJson
+          result,
         }
       });
-      
-      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result: generatedJson, message: "Label generated successfully!" });
-      console.log(`[Label Generator] Task ${taskId} completed successfully.`);
+
+      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result, message: "Label generated successfully!" });
+      console.log(`[Label Generator] Task ${taskId} completed successfully. Label ID: ${label.id}`);
 
     } catch (error) {
       console.error(`[Label Generator] Job failed:`, error);
