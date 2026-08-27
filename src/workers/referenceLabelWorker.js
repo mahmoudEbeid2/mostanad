@@ -2,7 +2,8 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+import { MODELS } from "../services/ai/modelRegistry.js";
 
 const redisConfig = getRedisConfig();
 const backendWsUrl = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -11,7 +12,7 @@ const socket = io(backendWsUrl);
 if (!process.env.GEMINI_API_KEY) {
   console.warn("⚠️ GEMINI_API_KEY is not set. ReferenceLabelWorker might fail.");
 }
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 socket.on("connect", () => {
   console.log(`[ReferenceLabelWorker] Connected to WS at ${backendWsUrl} (Socket ID: ${socket.id})`);
@@ -62,8 +63,6 @@ const referenceLabelWorker = new Worker(
         message: "Analyzing reference label with AI..."
       });
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const prompt = `
         You are a regulatory compliance AI assistant analyzing a previously approved product label.
         Your goal is to extract the full text and convert the approved label into reusable regulatory/style guidance for future labels.
@@ -83,8 +82,12 @@ const referenceLabelWorker = new Worker(
         Return ONLY a raw JSON object. Do not include markdown formatting like \`\`\`json.
       `;
 
-      const result = await model.generateContent([prompt, ...parts]);
-      const responseText = result.response.text();
+      const result = await ai.models.generateContent({
+        model: MODELS.INGEST.id,
+        contents: [prompt, ...parts],
+        config: { temperature: MODELS.INGEST.temperature, thinkingConfig: { thinkingBudget: MODELS.INGEST.thinkingBudget } },
+      });
+      const responseText = result.text;
       
       socket.emit("job_status_update", {
         jobId: taskId,

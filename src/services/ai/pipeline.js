@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import geminiClient from './geminiClient.js';
+import { MODELS } from './modelRegistry.js';
 import puppeteerService from '../render/puppeteerService.js';
 import { 
   layoutPrompt, 
@@ -28,7 +29,8 @@ class AITemplatePipeline {
     
     console.log("[AITemplatePipeline] Stage 2: Layout Analysis...");
     const layoutAnalysis = await geminiClient.generateJson({
-      model: "gemini-2.5-flash",
+      model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
       contents: [imagePart, layoutPrompt],
       schema: {
         type: "object",
@@ -51,7 +53,8 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 3: OCR Extraction...");
     const ocrAnalysis = await geminiClient.generateJson({
-      model: "gemini-2.5-flash",
+      model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
       contents: [imagePart, ocrPrompt],
       schema: {
         type: "object",
@@ -75,7 +78,8 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 4: Table Detection...");
     const tableAnalysis = await geminiClient.generateJson({
-      model: "gemini-2.5-flash",
+      model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
       contents: [imagePart, tablePrompt],
       schema: {
         type: "object",
@@ -87,7 +91,8 @@ class AITemplatePipeline {
 
     console.log("[AITemplatePipeline] Stage 5: Dynamic Placeholder Detection...");
     const placeholderAnalysis = await geminiClient.generateJson({
-      model: "gemini-2.5-flash",
+      model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
       contents: [JSON.stringify(ocrAnalysis?.text_blocks || []), placeholderPrompt],
       schema: {
         type: "object",
@@ -122,7 +127,8 @@ class AITemplatePipeline {
     `;
 
     let draft = await geminiClient.generateJson({
-      model: "gemini-2.5-flash",
+      model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
       contents: [imagePart, generationContext, generationPrompt],
       schema: {
         type: "object",
@@ -155,7 +161,8 @@ class AITemplatePipeline {
       const draftImagePart = fileToGenerativePart(draftPngPath, "image/png");
 
       const criticAnalysis = await geminiClient.generateJson({
-        model: "gemini-2.5-flash",
+        model: MODELS.TEMPLATE_RECONSTRUCT.id,
+      thinkingBudget: MODELS.TEMPLATE_RECONSTRUCT.thinkingBudget,
         contents: [
            "ORIGINAL DESIGN:", imagePart, 
            "CURRENT RENDER:", draftImagePart, 

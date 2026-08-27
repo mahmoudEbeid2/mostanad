@@ -3,6 +3,7 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import io from "socket.io-client";
 import geminiClient from "../services/ai/geminiClient.js";
+import { MODELS } from "../services/ai/modelRegistry.js";
 
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -58,11 +59,13 @@ const worker = new Worker(
         message: "Extracting raw text from document..."
       });
 
-      const model = geminiClient.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       let fullText = "";
       try {
-        const textResult = await model.generateContent(parts1);
-        fullText = textResult.response.text();
+        fullText = await geminiClient.generateText({
+          model: MODELS.EXTRACT.id,
+          contents: parts1,
+          config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
+        });
       } catch (err) {
         throw new Error("Failed to extract full text: " + err.message);
       }

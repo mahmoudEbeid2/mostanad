@@ -31,6 +31,10 @@ export const generateLabelAi = catchAsync(async (req, res, next) => {
     "generateLabel",
     {
       taskId: task.id,
+      // Tenant scope for the reference-label lookup this job performs — a company
+      // caller must only ever see its own + global references, never another
+      // tenant's (see labelGeneratorWorker.js's referenceLabel.findMany).
+      companyId: req.company ? req.company.id : null,
       formulationText,
       country,
       language,

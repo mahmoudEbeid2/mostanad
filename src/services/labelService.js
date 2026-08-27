@@ -2,24 +2,27 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAIFileManager } from "@google/generative-ai/server";
+import geminiClient from "./ai/geminiClient.js";
+import { MODELS } from "./ai/modelRegistry.js";
 
 // ─────────────────────────────────────────────────────────────
 // Helper: call Gemini with retry
 // ─────────────────────────────────────────────────────────────
-async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
+async function callGeminiWithRetry(parts, label = "Gemini") {
   let retries = 4;
   let delay = 3000;
-  let modelName = "gemini-2.5-flash";
+  const modelSpec = MODELS.EXTRACT;
 
   while (retries > 0) {
     try {
-      console.log(`[LabelService][${label}] Calling ${modelName}... (retries left: ${retries})`);
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const response = await model.generateContent(parts);
+      console.log(`[LabelService][${label}] Calling ${modelSpec.id}... (retries left: ${retries})`);
+      const response = await geminiClient.ai.models.generateContent({
+        model: modelSpec.id,
+        contents: parts,
+        config: { temperature: modelSpec.temperature, thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget } },
+      });
       console.log(`[LabelService][${label}] Response received.`);
-      return response.response.text();
+      return response.text;
     } catch (error) {
       const msg = error.message || "";
       const isQuotaOrDemand =
@@ -31,7 +34,7 @@ async function callGeminiWithRetry(genAI, parts, label = "Gemini") {
         msg.includes("quota");
 
       if (isQuotaOrDemand) {
-        console.warn(`[LabelService][${label}] Quota/demand hit on ${modelName} — retrying in ${delay}ms...`);
+        console.warn(`[LabelService][${label}] Quota/demand hit on ${modelSpec.id} — retrying in ${delay}ms...`);
         retries--;
         await new Promise((r) => setTimeout(r, delay));
         delay = Math.floor(delay * 1.5);
@@ -88,13 +91,6 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
   console.log(`[LabelService] Writing temp file: ${tempFilePath}`);
   fs.writeFileSync(tempFilePath, fileBuffer);
 
-  let fileManager = null;
-  let genAI = null;
-  if (process.env.GEMINI_API_KEY) {
-    fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  }
-
   let uploadResult = null;
 
   // Mock mode is an explicit, intentional dev/test toggle — never triggered by a real failure.
@@ -118,19 +114,19 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       // ════════════════════════════════════════════════════════
       console.log(`[LabelService] Uploading to Gemini File API (${mimeType})...`);
       reportProgress(15, "Uploading label");
-      uploadResult = await fileManager.uploadFile(tempFilePath, {
+      uploadResult = await geminiClient.uploadFile(tempFilePath, {
         mimeType,
         displayName: fileName,
       });
-      console.log(`[LabelService] Uploaded: ${uploadResult.file.name}`);
+      console.log(`[LabelService] Uploaded: ${uploadResult.name}`);
 
       // Poll until ACTIVE
-      let file = await fileManager.getFile(uploadResult.file.name);
+      let file = await geminiClient.getFile(uploadResult.name);
       let attempts = 0;
       while (file.state === "PROCESSING" && attempts < 12) {
         console.log(`[LabelService] File processing... attempt ${attempts + 1}/12`);
         await new Promise((r) => setTimeout(r, 5000));
-        file = await fileManager.getFile(uploadResult.file.name);
+        file = await geminiClient.getFile(uploadResult.name);
         attempts++;
       }
       if (file.state !== "ACTIVE") {
@@ -140,8 +136,8 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
 
       const fileRef = {
         fileData: {
-          mimeType: uploadResult.file.mimeType,
-          fileUri: uploadResult.file.uri,
+          mimeType: uploadResult.mimeType,
+          fileUri: uploadResult.uri,
         },
       };
 
@@ -167,7 +163,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
       // NOTE: if this genuinely fails (rate limit, network, bad response), we let it
       // throw and fail the whole task — we never substitute fake data for a real product,
       // since that would silently hand the user a fabricated compliance report.
-      const step1Raw = await callGeminiWithRetry(genAI, [fileRef, step1Prompt], "Step1-Identity");
+      const step1Raw = await callGeminiWithRetry([fileRef, step1Prompt], "Step1-Identity");
       identity = parseGeminiJson(step1Raw);
     }
 
@@ -396,7 +392,6 @@ Category:                ${dbProduct.category?.name || "N/A"}
 Active Ingredients (DB): ${JSON.stringify(dbProduct.activeIngredients || [], null, 2)}
 Dosage (DB):             ${dbProduct.dosage || "N/A"}
 Physical Form (DB):      ${dbProduct.physicalForm || "N/A"}
-Route of Admin (DB):     ${dbProduct.routeOfAdmin || "N/A"}
 Target Species (DB):     ${dbProduct.targetSpecies || "N/A"}
 Appearance (DB):         ${dbProduct.appearance || "N/A"}
 Storage (DB):            ${dbProduct.storage || "N/A"}
@@ -569,13 +564,13 @@ Return ONLY a valid JSON object — no markdown, no explanation:
         }
       };
     } else {
-      if (!uploadResult || !uploadResult.file) {
+      if (!uploadResult || !uploadResult.name) {
         throw new AppError("Upload to Gemini failed earlier, no file available to analyze.", 500);
       }
       // NOTE: no fake-data fallback here on purpose — if this call genuinely fails, the
       // task fails and the user is told verification didn't happen, rather than being
       // handed a fabricated "Non-Compliant" report about a product that isn't theirs.
-      const step3Raw = await callGeminiWithRetry(genAI, [{ fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } }, step3Prompt], "Step3-Compliance");
+      const step3Raw = await callGeminiWithRetry([{ fileData: { mimeType: uploadResult.mimeType, fileUri: uploadResult.uri } }, step3Prompt], "Step3-Compliance");
       complianceResult = parseGeminiJson(step3Raw);
     }
 
@@ -615,8 +610,8 @@ Return ONLY a valid JSON object — no markdown, no explanation:
       try { fs.unlinkSync(tempFilePath); } catch (_) {}
     }
     // Cleanup Gemini File API storage
-    if (uploadResult?.file) {
-      try { await fileManager.deleteFile(uploadResult.file.name); } catch (_) {}
+    if (uploadResult?.name) {
+      try { await geminiClient.deleteFile(uploadResult.name); } catch (_) {}
     }
   }
 };

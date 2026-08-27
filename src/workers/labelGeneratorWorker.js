@@ -1,11 +1,12 @@
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import io from "socket.io-client";
+import { MODELS } from "../services/ai/modelRegistry.js";
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -14,10 +15,18 @@ socket.on("connect", () => {
   console.log(`[Label Generator Worker] Connected to socket server: ${BACKEND_WS_URL}`);
 });
 
-async function callGeminiWithRetry(model, requestParams, retries = 5, delay = 5000) {
+// modelSpec: an entry from modelRegistry.js ({ id, thinkingBudget, temperature }).
+// requestParams: { contents, config? } — config is merged with the model's own
+// temperature/thinkingConfig so callers can still add e.g. responseMimeType or tools.
+async function callGeminiWithRetry(modelSpec, requestParams, retries = 5, delay = 5000) {
+  const config = {
+    temperature: modelSpec.temperature,
+    thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget },
+    ...(requestParams.config || {}),
+  };
   while (retries > 0) {
     try {
-      return await model.generateContent(requestParams);
+      return await ai.models.generateContent({ model: modelSpec.id, contents: requestParams.contents, config });
     } catch (error) {
       const msg = error.message || "";
       const isQuotaOrDemand = msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("429") || msg.includes("quota");
@@ -42,8 +51,8 @@ const connection = getRedisConfig();
 export const labelGeneratorWorker = new Worker(
   "labelGeneratorQueue",
   async (job) => {
-    const { taskId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
-    
+    const { taskId, companyId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
+
     console.log(`[Label Generator] Started task: ${taskId} for Country: ${country}, Language: ${language}`);
 
     try {
@@ -53,8 +62,6 @@ export const labelGeneratorWorker = new Worker(
         data: { status: "processing" }
       });
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 10, message: "Extracting active ingredients..." });
-
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       // Step 1: Extract Active Ingredients
       console.log(`[Label Generator] Task ${taskId}: Extracting active ingredients...`);
@@ -69,8 +76,8 @@ export const labelGeneratorWorker = new Worker(
 
       let activeIngredientsList = [];
       try {
-        const extractResult = await callGeminiWithRetry(model, extractPrompt);
-        const extractText = extractResult.response.text();
+        const extractResult = await callGeminiWithRetry(MODELS.EXTRACT, { contents: extractPrompt });
+        const extractText = extractResult.text;
         activeIngredientsList = extractText.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
         console.log(`[Label Generator] Task ${taskId}: Found ingredients:`, activeIngredientsList);
         socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: `Found ingredients: ${activeIngredientsList.join(", ")}` });
@@ -139,8 +146,13 @@ export const labelGeneratorWorker = new Worker(
       let matchedIngredientRefs = []; // the reference(s) that matched on active ingredient(s) — ground truth for target animals
 
       try {
+        // Tenant-scoped: a company's job must only ever see its own references plus
+        // global ones (companyId: null) — never another tenant's. Also caps the load
+        // instead of pulling the entire table into worker memory on every job.
         const allRefs = await prisma.referenceLabel.findMany({
-          orderBy: { createdAt: 'desc' }
+          where: { OR: [{ companyId }, { companyId: null }] },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
         });
 
         const targetCountry = (country || "").toLowerCase();
@@ -235,11 +247,6 @@ export const labelGeneratorWorker = new Worker(
         socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 55, message: `Searching the web for ${country}'s official feed labeling requirements...` });
 
         try {
-          const searchModel = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
-            tools: [{ google_search: {} }]
-          });
-
           const searchPrompt = `
           Use Google Search to find the CURRENT, OFFICIAL animal feed / veterinary product labeling requirements published by the official food & drug or agriculture regulatory authority of "${country}" (e.g. their food/drug authority, ministry of agriculture, or veterinary directorate).
 
@@ -256,14 +263,15 @@ export const labelGeneratorWorker = new Worker(
           Return ONLY the raw JSON object, no markdown code fences, no commentary before or after it.
           `;
 
-          // Note: grounding tools (google_search) are not reliably combinable with forced
+          // Note: grounding tools (googleSearch) are not reliably combinable with forced
           // JSON response mode on all Gemini versions, so we ask for raw JSON in the prompt
           // and parse defensively instead (same pattern as referenceLabelWorker.js).
-          const searchResult = await callGeminiWithRetry(searchModel, {
-            contents: [{ role: "user", parts: [{ text: searchPrompt }] }]
+          const searchResult = await callGeminiWithRetry(MODELS.WEB_SEARCH, {
+            contents: [{ role: "user", parts: [{ text: searchPrompt }] }],
+            config: { tools: [{ googleSearch: {} }] },
           });
 
-          const rawSearchText = searchResult.response.text();
+          const rawSearchText = searchResult.text;
           const cleanSearchJsonStr = rawSearchText.replace(/```json/g, "").replace(/```/g, "").trim();
           const searchJson = JSON.parse(cleanSearchJsonStr);
           if (searchJson.found && searchJson.requirementsText?.trim()) {
@@ -453,15 +461,13 @@ export const labelGeneratorWorker = new Worker(
       "estimatedFields" MUST list the top-level field names (from the schema above) whose content is your own scientific estimate rather than something confirmed by the user, the input formulation, or a matched reference. Leave it an empty array [] if every field came from confirmed facts/input/reference.
       `;
 
-      const genResult = await callGeminiWithRetry(model, {
+      const genResult = await callGeminiWithRetry(MODELS.LABEL_GENERATE, {
         contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
+        config: { responseMimeType: "application/json" },
       });
       let generatedJson = {};
       try {
-        generatedJson = JSON.parse(genResult.response.text());
+        generatedJson = JSON.parse(genResult.text);
       } catch (err) {
         console.error("Failed to parse JSON from AI", err);
         throw new Error("AI returned invalid data format.");
@@ -497,11 +503,11 @@ export const labelGeneratorWorker = new Worker(
         `;
 
         try {
-          const complianceResult = await callGeminiWithRetry(model, {
+          const complianceResult = await callGeminiWithRetry(MODELS.LABEL_REVIEW, {
             contents: [{ role: "user", parts: [{ text: complianceCheckPrompt }] }],
-            generationConfig: { responseMimeType: "application/json" }
+            config: { responseMimeType: "application/json" },
           });
-          const correctedJson = JSON.parse(complianceResult.response.text());
+          const correctedJson = JSON.parse(complianceResult.text);
           generatedJson = correctedJson;
           console.log(`[Label Generator] Task ${taskId}: Compliance check complete.`);
         } catch (err) {
@@ -558,11 +564,11 @@ export const labelGeneratorWorker = new Worker(
       `;
 
       try {
-        const selfReviewResult = await callGeminiWithRetry(model, {
+        const selfReviewResult = await callGeminiWithRetry(MODELS.LABEL_REVIEW, {
           contents: [{ role: "user", parts: [{ text: selfReviewPrompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
+          config: { responseMimeType: "application/json" },
         });
-        generatedJson = JSON.parse(selfReviewResult.response.text());
+        generatedJson = JSON.parse(selfReviewResult.text);
         console.log(`[Label Generator] Task ${taskId}: Self-review complete.`);
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: Self-review failed, keeping prior draft.`, err);

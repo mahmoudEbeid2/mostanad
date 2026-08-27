@@ -2,7 +2,8 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+import { MODELS } from "../services/ai/modelRegistry.js";
 
 const redisConfig = getRedisConfig();
 const backendWsUrl = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -11,7 +12,7 @@ const socket = io(backendWsUrl);
 if (!process.env.GEMINI_API_KEY) {
   console.warn("⚠️ GEMINI_API_KEY is not set. ProductAiWorker might fail.");
 }
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 socket.on("connect", () => {
   console.log(`[ProductAiWorker] Connected to WS at ${backendWsUrl} (Socket ID: ${socket.id})`);
@@ -33,8 +34,6 @@ const productAiWorker = new Worker(
     });
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const prompt = `
         You are a regulatory compliance assistant. Extract the product details from the following raw text into a strict JSON format matching exactly this Prisma schema:
         
@@ -77,8 +76,12 @@ const productAiWorker = new Worker(
         message: "Generating structured data with AI..."
       });
 
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
+      const result = await ai.models.generateContent({
+        model: MODELS.EXTRACT.id,
+        contents: prompt,
+        config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
+      });
+      const responseText = result.text;
       
       socket.emit("job_status_update", {
         jobId: taskId,
