@@ -65,9 +65,10 @@ const permissions = [
   { name: "Update EDA Requirements", slug: "update_eda_requirements", module: "eda_requirements" },
   { name: "Delete EDA Requirements", slug: "delete_eda_requirements", module: "eda_requirements" },
 
-  // Generated Labels (Label Engine, Phase 1 — read-only so far; create/update/
-  // delete/approve permissions are added as their endpoints land in later phases)
+  // Generated Labels (Label Engine). create_labels/delete_labels/approve_labels
+  // are added as their endpoints land in later phases.
   { name: "Read Labels", slug: "read_labels", module: "labels" },
+  { name: "Update Labels", slug: "update_labels", module: "labels" }, // Phase 2: POST /labels/:id/validate mutates state
 ];
 
 async function main() {

@@ -108,6 +108,110 @@ Not fixed (out of scope), still open.
 **Deferred:** nothing from Phase 1's explicit scope. `LabelApproval` (§5.5) is
 Phase 7, not built here.
 
-**Next phase should start with:** Phase 2 — `labelSchema.js`/`geminiSchema.js`/
-`fieldCatalog.js`, the deterministic validation engine (layers 1-4), engine
-unification (`labelExtractor`), deleting Steps 3.5/3.6 from `labelGeneratorWorker`.
+## Phase 2 — Schema + deterministic validation + engine unification ✅
+
+**Built:**
+- `src/services/label/schema/labelSchema.js` — the real §6.3 Zod schema
+  (`LocalizedText` primitive per §6.2, not `{en,target}`). Single source of truth.
+- `src/services/label/schema/geminiSchema.js` — derives Gemini's structured-output
+  schema from `labelSchema` via Zod 4's native `z.toJSONSchema()`, passed as
+  `responseJsonSchema` (an alternative to the older `responseSchema` field that
+  accepts raw JSON Schema directly — no Gemini-specific re-encoding needed).
+  **NOT yet live-verified against the Gemini API** — quota still exhausted (see
+  Phase 0's note). Structurally valid JSON Schema, confirmed by inspection; a
+  live call is the real test, pending quota reset.
+- `src/services/label/schema/fieldCatalog.js` — conditional applicability (§6.4):
+  `withdrawalPeriod`/`routeOfAdministration`/`pharmaceuticalForm`/`strength`/
+  `sideEffects`/`feedClassification`/`analysis`/`shelfLifeAfterOpening`, each with
+  an `appliesWhen` predicate. `isFoodProducingSpecies`/`isMultiDose` are heuristic
+  lists — explicitly documented as a fallback superseded by Phase 3's real
+  RegulatoryRule conditional rules once compiled per country.
+- `src/services/label/validation/{schemaValidator,ruleValidator,coherenceValidator,
+  validationEngine}.js` — layers 1-4 (§10.1), pure functions, no AI. `ruleValidator`
+  runs the full §7.3 constraint DSL (`required_field`, `forbidden_content`,
+  `format`, `value_constraint`, `language_set`, `conditional`; `semantic` is
+  routed to Phase 5's aiValidator, not silently dropped; an unrecognized `kind`
+  throws, per §7.3's own rule) against a plain `rules` array — works standalone
+  before Phase 3's `RegulatoryRule` table exists (empty array → one
+  `NO_AUTHORITATIVE_REQUIREMENTS`/`UNVERIFIABLE` verdict per §7.1 case 4, not
+  silence) and after (real DB rows, unchanged interface).
+- `src/services/label/extraction/labelExtractor.js` — replaces
+  `labelService.verifyProductLabel`'s Steps 1-2. **Extraction only** — one AI
+  call producing a labelSchema-shaped partial JSON, no compliance judgement.
+  `labelService.js` is now a ~25-line orchestrator: extract → `validationEngine.
+  validate()` → return `{ product, validation }`. Engine unification (§4.2)
+  achieved: an uploaded label and a generated label are judged by the identical
+  `validationEngine`.
+- Deleted Steps 3.5/3.6 from `labelGeneratorWorker.js` (G3 — a second AI
+  generation pass that called itself "validation," no pass/fail ever produced,
+  both wrapped in swallowing catches).
+- `POST /labels/:id/validate` (mutates: creates a `ValidationReport`, sets
+  `label.status` to `validated`/`failed_validation` — `update_labels` permission,
+  newly seeded), `GET /labels/:id/validation` (`read_labels`).
+- `tests/label.determinism.test.js` (T10) — proves layers 1-4 are pure: identical
+  input+rules → byte-identical verdicts; changing input changes verdicts (not a
+  constant function); a fixture `forbidden_content` rule fires/doesn't fire
+  correctly. No server, no DB, no Gemini call.
+
+**Breaking API change (see API-CHANGES.md):** `POST /products/verify-label`'s
+result shape changed from an AI-judged `validation.results[]`
+(`category/issue/location/solution`) to a deterministic `validation.verdicts[]`
+(`FieldVerdict[]`, §10.2) plus `validation.passed/errorCount/warningCount/
+engineVersion`. `tests/label.test.js` updated to match. This is a deliberate,
+in-scope consequence of Phase 2's explicit instruction ("route labelExtractor
+through validationEngine") and of Invariant #1 (the old Step 3 was an AI
+generating a "compliant: true/false" verdict from free-form prompting — the
+exact anti-pattern G3 already condemned on the generation side).
+
+**Decisions not in the doc:**
+- Did NOT rewrite `labelGeneratorWorker`'s generation prompt/output shape to
+  literally conform to `labelSchema` in this phase — that's Phase 4's
+  "`labelGenerator` مقيّد" (schema-constrained generation). Running the current
+  ad-hoc-shaped generator output through `validationEngine` today would just be
+  schema-layer noise (field names don't match: `ingredients` vs
+  `activeIngredients`, no `productType`, etc.). Noted directly in a code comment
+  where Steps 3.5/3.6 used to be.
+- `labelExtractor`'s extracted text is wrapped as single-language `LocalizedText`
+  (`{translations:{en:text}, primary:"en"}`) regardless of the label's actual
+  printed language — one AI call's budget in Phase 2, no language detection.
+  Flagged in the file's own header comment.
+- Coherence layer's 4 checks (§10.1) are genuinely implemented but are honestly
+  heuristic where the doc is vague: analysis-vs-amounts uses a loose
+  substring+numeric-equality match; species-list coherence checks for duplicates
+  (a concrete, useful check) rather than attempting a full list↔free-text
+  cross-language match.
+- `POST /labels/:id/validate` requires the NEW `update_labels` permission
+  (seeded), not `read_labels` — validating mutates state (report row + label
+  status), so it doesn't belong on the read-only permission.
+
+**Verified:**
+- `node -e` smoke tests: `validationEngine.validate()` on a valid feed_additive
+  label (correctly PASSes/FAILs per applicability) and a veterinary_drug label
+  with a food-producing species (correctly requires `withdrawalPeriod`,
+  `sideEffects`, etc.) — both by direct inspection of verdicts.
+- `tests/label.determinism.test.js`: 7/7 assertions pass.
+- `MOCK_GEMINI=true` end-to-end run of the new `labelService.verifyProductLabel`
+  (no quota spent): extraction → mapping → validation → real DB match against a
+  leftover test product — full pipeline confirmed working, verdicts shown for
+  every top-level field, `_regulatory` correctly `UNVERIFIABLE` since no
+  `RegulatoryRule`s exist yet.
+- `POST /labels/:id/validate` + `GET /labels/:id/validation` tested live over
+  HTTP against a deliberately incomplete label: 201/200, `passed:false`,
+  `errorCount:20`, `label.status` updated to `failed_validation`, cross-tenant
+  request correctly 404s.
+- `node tests/runAll.js`: 12/17 (added `label.determinism.test.js`). Same 5
+  pre-existing failures as Phase 0/1's baseline (`brand`, `certificates`,
+  `label`, `queue`, `templates`) — `label.test.js`'s failure is still the
+  pre-existing broken hand-rolled PDF fixture (`test_label_mock.pdf` has no real
+  page tree — Gemini's File API rejects it with "The document has no pages,"
+  same error the untouched `certificateService.js` hits on its own synthetic
+  fixture). Not fixed — pre-existing, out of Phase 2's scope, tracked here.
+
+**Deferred:** "Run the golden set; report the delta" (Phase 2's own last line) —
+the golden set doesn't exist yet. Building it next (Phase 0.5, done out of the
+architecture doc's numeric order per the user's explicit instruction to build it
+"anyway" despite missing real data). Will run it against Phase 2's validation
+engine once the harness exists and report the baseline there.
+
+**Next phase should start with:** Phase 0.5 (golden set harness + 2 synthetic
+fixtures), then Phase 3 (regulatory ingestion).

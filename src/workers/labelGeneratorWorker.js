@@ -522,106 +522,15 @@ export const labelGeneratorWorker = new Worker(
         throw new Error("AI returned invalid data format.");
       }
 
-      // Step 3.5: Compliance Check against the stored regulatory authority requirements
-      // Only runs when we actually have authority requirements on file for this country —
-      // otherwise there is nothing authoritative to check against.
-      if (edaRequirementsText) {
-        console.log(`[Label Generator] Task ${taskId}: Validating against ${country} authority requirements...`);
-        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 90, message: `Validating against ${country} regulatory requirements...` });
-
-        const complianceCheckPrompt = `
-        You are a regulatory compliance auditor for animal feed/veterinary product labels.
-        Below is a DRAFT label (as JSON) and the OFFICIAL REGULATORY AUTHORITY REQUIREMENTS for ${country} that this label must comply with.
-
-        === OFFICIAL REGULATORY AUTHORITY REQUIREMENTS (${country}) ===
-        ${edaRequirementsText}
-
-        === DRAFT LABEL JSON ===
-        ${JSON.stringify(generatedJson, null, 2)}
-
-        TASK:
-        Check the draft against the official requirements above for compliance issues, e.g.:
-        - Missing or wrongly-worded mandatory fields/sections required by the authority.
-        - Terminology, classification, or category wording that doesn't match the authority's controlled vocabulary (e.g. product/feed classification, target species naming).
-        - Any claim, phrasing, or field that the authority's requirements explicitly disallow.
-        - Formatting/structure the authority mandates (e.g. bilingual vs a section that must stay in one language only) that the draft violates.
-
-        If the draft already complies, return it UNCHANGED. If it has issues, fix ONLY what's needed to become compliant — do not rewrite content that isn't a compliance problem, and do not remove or invent facts beyond what compliance requires.
-
-        Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields, estimatedFields). Do not add extra keys, do not wrap in markdown.
-        `;
-
-        try {
-          const complianceResult = await callGeminiWithRetry(MODELS.LABEL_REVIEW, {
-            contents: [{ role: "user", parts: [{ text: complianceCheckPrompt }] }],
-            config: { responseMimeType: "application/json" },
-          });
-          const correctedJson = JSON.parse(complianceResult.text);
-          generatedJson = correctedJson;
-          console.log(`[Label Generator] Task ${taskId}: Compliance check complete.`);
-        } catch (err) {
-          console.error(`[Label Generator] Task ${taskId}: Compliance check failed, keeping original draft.`, err);
-        }
-      }
-
-      // Step 3.6: Content Accuracy Self-Review — always runs (independent of country/authority
-      // requirements), re-checking the draft against the facts we actually gave the model:
-      // the user's confirmed hints, the grounding reference (if any), and internal consistency.
-      console.log(`[Label Generator] Task ${taskId}: Running content accuracy self-review...`);
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 95, message: "Double-checking accuracy against the source facts..." });
-
-      const groundingRecap = matchTier === "ingredient_match"
-        ? `Reference label(s) matching this exact active ingredient were used for grounding:\n${referenceLabels.slice(0, 3).map(r => `--- ${r.name} ---\n${r.extractedData ? JSON.stringify(r.extractedData) : (r.fullText || "").substring(0, 800)}`).join("\n")}`
-        : "No exact-ingredient reference was available; the draft relied on the confirmed hints below plus conservative general knowledge.";
-
-      const targetAnimalsCheckLine = targetSpeciesConfirmedByUser
-        ? `8. "targetAnimalSpecies" must faithfully match the user-confirmed target species above ("${targetSpeciesHint}") — translated only, nothing added or dropped.`
-        : (matchTier === "ingredient_match" && deterministicTargetAnimals.length > 0
-          ? `8. "targetAnimalSpecies" must contain exactly this species set (translated), nothing more and nothing less: ${deterministicTargetAnimals.join(", ")}. This came from a matching reference — if the draft added, dropped, or substituted any species, fix it and make sure "targetAnimalSpecies" is NOT in "estimatedFields".`
-          : (matchTier === "ingredient_match"
-            ? `8. "targetAnimalSpecies" must only contain species explicitly supported by the grounding reference(s) above — remove any species not stated there, and do not add "targetAnimalSpecies" to "estimatedFields".`
-            : `8. "targetAnimalSpecies" must not be empty and must not contain a species pulled from an unrelated reference (no reference matched this product's active ingredient) — it should be the AI's own scientifically-grounded inference, and "targetAnimalSpecies" MUST be listed in "estimatedFields".`));
-
-      const selfReviewPrompt = `
-      You are a strict fact-checking editor reviewing an AI-generated animal feed/veterinary label before it ships to the customer.
-
-      === ORIGINAL INPUT FORMULATION ===
-      ${formulationText}
-
-      === USER-CONFIRMED FACTS (must be reflected exactly, not contradicted) ===
-      ${aimOfUseHint ? `Aim of Use: ${aimOfUseHint}\n` : ""}${targetSpeciesHint ? `Target Animal Species: ${targetSpeciesHint}\n` : ""}${directionOfUseHint ? `Direction of Use: ${directionOfUseHint}\n` : ""}${(!aimOfUseHint && !targetSpeciesHint && !directionOfUseHint) ? "(none provided)" : ""}
-
-      === GROUNDING CONTEXT ===
-      ${groundingRecap}
-
-      === DRAFT LABEL JSON TO REVIEW ===
-      ${JSON.stringify(generatedJson, null, 2)}
-
-      CHECK FOR THESE SPECIFIC ISSUES ONLY — fix any you find, do not rewrite anything else:
-      1. "ingredients[].amount" must never be empty and must match the quantity/unit stated in the Input Formulation.
-      2. "analysis" values for the same substance must be numerically consistent with "ingredients[].amount" — no unexplained/invented numbers.
-      3. If a confirmed fact was provided above (Aim of Use, Target Species, or Direction of Use), the corresponding field in the draft MUST match it faithfully (translated only) — flag and fix any contradiction or drift.
-      4. If grounding context above lists a reference, the draft's species/dosage/indication must not contain anything absent from that reference (no added species, no added claims).
-      5. No therapeutic/medical claims ("treats", "cures", "يعالج", disease-treatment wording) anywhere in aimOfUse.
-      6. Every "en"/"target" pair must actually be translations of each other, not different content.
-      7. No field may contain a bare "x" placeholder — any such field must be filled with a real, scientifically-grounded estimated number, and its field name added to "estimatedFields" if it isn't already there.
-      ${targetAnimalsCheckLine}
-
-      If the draft already satisfies all 8 checks, return it completely UNCHANGED. Otherwise return the corrected JSON with ONLY the necessary fixes applied.
-
-      Return ONLY a raw JSON object with the exact same schema as the DRAFT LABEL JSON above (same keys: productName, feedClassification, ingredients, analysis, aimOfUse, targetAnimalSpecies, directionOfUse, storage, netWeight, usageDeclaration, mandatoryFields, estimatedFields). Do not add extra keys, do not wrap in markdown.
-      `;
-
-      try {
-        const selfReviewResult = await callGeminiWithRetry(MODELS.LABEL_REVIEW, {
-          contents: [{ role: "user", parts: [{ text: selfReviewPrompt }] }],
-          config: { responseMimeType: "application/json" },
-        });
-        generatedJson = JSON.parse(selfReviewResult.text);
-        console.log(`[Label Generator] Task ${taskId}: Self-review complete.`);
-      } catch (err) {
-        console.error(`[Label Generator] Task ${taskId}: Self-review failed, keeping prior draft.`, err);
-      }
+      // Steps 3.5/3.6 (compliance re-check + "self-review" second-generation passes) were
+      // removed in Phase 2 (G3): a model re-generating its own output and calling that
+      // "validation" is Invariant #1's exact violation (validation writing content, no
+      // pass/fail ever produced or stored, both wrapped in swallowing try/catch). Real
+      // validation is POST /labels/:id/validate -> validationEngine (deterministic,
+      // §4.2). This worker's generation prompt still produces the pre-Phase-4 ad-hoc
+      // shape (productName/ingredients/etc., not labelSchema's), so running it through
+      // validationEngine today would just be schema-layer noise — that conversion is
+      // Phase 4's "labelGenerator مقيّد" (schema-constrained generation), not this one.
 
       // Attach deterministic Target Animals provenance — computed here in code from the actual
       // matching logic above, not self-reported by the AI, so the frontend can reliably tell

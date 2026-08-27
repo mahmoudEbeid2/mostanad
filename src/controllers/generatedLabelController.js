@@ -38,3 +38,19 @@ export const getLabelVersions = catchAsync(async (req, res) => {
     data: { versions },
   });
 });
+
+export const postValidate = catchAsync(async (req, res) => {
+  const report = await generatedLabelService.runValidation(req.params.id, { companyId: scopeFor(req) });
+  res.status(201).json({
+    status: "success",
+    data: { report },
+  });
+});
+
+export const getValidation = catchAsync(async (req, res) => {
+  const report = await generatedLabelService.getLatestValidation(req.params.id, { companyId: scopeFor(req) });
+  res.status(200).json({
+    status: "success",
+    data: { report },
+  });
+});

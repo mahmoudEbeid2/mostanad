@@ -145,23 +145,27 @@ async function run() {
     assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
     d3 = { status: "success", data: task?.result };
   }
-  assert("Has extractedDetails", !!d3?.data?.product?.extractedDetails?.name, JSON.stringify(d3?.data?.product));
+  // Phase 2: labelService now routes through labelExtractor (extraction only) +
+  // validationEngine (deterministic FieldVerdict[]), not an AI-judged
+  // category/issue/location/solution array — see API-CHANGES.md.
+  assert("Has extractedDetails.productName", !!d3?.data?.product?.extractedDetails?.productName?.translations?.en, JSON.stringify(d3?.data?.product));
   assert("existsInDb is boolean", typeof d3?.data?.product?.existsInDb === "boolean", "Expected boolean");
-  assert("Has validation object", d3?.data?.validation?.results !== undefined, JSON.stringify(d3?.data?.validation));
-  assert("Has results array", Array.isArray(d3?.data?.validation?.results), "Not an array");
-  assert("checkedAgainstDb is boolean", typeof d3?.data?.validation?.checkedAgainstDb === "boolean", "Expected boolean");
+  assert("Has validation object", d3?.data?.validation?.verdicts !== undefined, JSON.stringify(d3?.data?.validation));
+  assert("Has verdicts array", Array.isArray(d3?.data?.validation?.verdicts), "Not an array");
+  assert("passed is boolean", typeof d3?.data?.validation?.passed === "boolean", "Expected boolean");
+  assert("engineVersion present", !!d3?.data?.validation?.engineVersion, "Missing engineVersion");
 
-  if (d3?.data?.validation?.results?.length > 0) {
-    const r = d3.data.validation.results[0];
-    assert("Result has 'issue'", !!r.issue, JSON.stringify(r));
-    assert("Result has 'solution'", !!r.solution, JSON.stringify(r));
-    assert("Result has 'category'", !!r.category, JSON.stringify(r));
+  if (d3?.data?.validation?.verdicts?.length > 0) {
+    const v = d3.data.validation.verdicts[0];
+    assert("Verdict has 'path'", !!v.path, JSON.stringify(v));
+    assert("Verdict has 'status'", !!v.status, JSON.stringify(v));
+    assert("Verdict has 'layer'", !!v.layer, JSON.stringify(v));
   }
 
-  const extractedName = d3?.data?.product?.extractedDetails?.name || "EXTRACTED_PRODUCT";
+  const extractedName = d3?.data?.product?.extractedDetails?.productName?.translations?.en || "EXTRACTED_PRODUCT";
   log(`  Extracted Name: ${extractedName}`, "green");
-  log(`  Compliant: ${d3?.data?.validation?.compliant}`, "green");
-  log(`  Issues found: ${d3?.data?.validation?.results?.length}`, "green");
+  log(`  Passed: ${d3?.data?.validation?.passed}`, "green");
+  log(`  Errors: ${d3?.data?.validation?.errorCount}, Warnings: ${d3?.data?.validation?.warningCount}`, "green");
 
   // ─────────────────────────────────────────────────────
   // TEST 4: Full verification — product IS in DB
@@ -229,16 +233,13 @@ async function run() {
   }
   assert("existsInDb is true", d4?.data?.product?.existsInDb === true, "Expected true");
   assert("isExactMatch in product is true", d4?.data?.product?.isExactMatch === true, "Expected true");
-  assert("isExactMatch in validation is true", d4?.data?.validation?.isExactMatch === true, "Expected true");
   assert("dbProduct returned", !!d4?.data?.product?.dbProduct, "dbProduct is null");
   assert("dbProduct.id matches", d4?.data?.product?.dbProduct?.id === testProductId, `Got ${d4?.data?.product?.dbProduct?.id}`);
-  assert("checkedAgainstDb is true", d4?.data?.validation?.checkedAgainstDb === true, "Expected true");
-  assert("dbProductName matches", d4?.data?.validation?.dbProductName === extractedName, `Got ${d4?.data?.validation?.dbProductName}`);
   assert("companyId NOT exposed", d4?.data?.product?.dbProduct?.companyId === undefined, "companyId should be stripped");
-  assert("Results array present", Array.isArray(d4?.data?.validation?.results), "Not an array");
+  assert("Verdicts array present", Array.isArray(d4?.data?.validation?.verdicts), "Not an array");
 
-  log(`  DB match: "${d4?.data?.validation?.dbProductName}"`, "green");
-  log(`  Issues found: ${d4?.data?.validation?.results?.length}`, "green");
+  log(`  DB match: "${d4?.data?.product?.dbProduct?.name}"`, "green");
+  log(`  Errors: ${d4?.data?.validation?.errorCount}, Warnings: ${d4?.data?.validation?.warningCount}`, "green");
 
   // ─────────────────────────────────────────────────────
   // CLEAN UP
