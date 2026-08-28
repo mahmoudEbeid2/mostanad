@@ -405,8 +405,96 @@ step) — the harness/fixture/gate are ready, only the live numbers are missing.
 priority than the core journey, no document has ever reached `approved` status
 long enough to need superseding yet in this environment.
 
-**Next phase should start with:** Phase 4 (retrieval, product ladder,
-structured generation) — this is also where the pre-existing scope note about
-counting references before building weighted retrieval/pgvector applies
-(§16's own caveat: <30 references, skip it — `reference_labels` still has 0
-rows in this environment).
+## Phase 4 — Retrieval, product ladder, structured generation (done)
+
+Scope decision, per the doc's own instruction: counted references before
+building this phase — reference_labels still has 0 rows. Per the doc's
+explicit note (under 30 references, cross out weighted ranking and pgvector —
+that solves a retrieval problem you don't have), the pgvector layer (section
+8.5) is skipped entirely, not deferred-and-forgotten — there is a code comment
+in similarity.js explaining why. The weighted-ranking formula itself (section
+8.4) is still built for real, not stubbed: it is pure math, correct regardless
+of data volume, and cheap to write once — the volume caveat is about whether
+it is worth proving against real data yet, not whether the code should exist.
+
+Built:
+- src/services/label/retrieval/productProfile.js — fixes G2. Reads the
+  Product row when productId is given (Tier 1); Product.indications now
+  feeds confirmedFacts.aimOfUse, closing a related gap. Free text
+  supplements, never overrides, a confirmed field.
+- src/services/label/retrieval/similarity.js — section 8.4's exact weighted
+  formula (ingredientMatch/strengthProximity/dosageFormMatch/speciesOverlap/
+  indicationOverlap/routeMatch/countryMatch, times qualityWeight), plus
+  tierFor computing exact_combo/ingredient/attribute/style_only/none in code
+  (Invariant 2 — the model never decides how much to trust a reference).
+- src/services/label/retrieval/referenceSelector.js — tenant-scoped query
+  (section 8.3's intent; cannot filter by isApproved/productType columns
+  since section 5.9's ReferenceLabel extension was never built — flagged
+  back in Phase 0, still true). Reads the same extractedData shape
+  referenceLabelWorker.js has always produced.
+- src/services/label/generation/groundingPolicy.js — the NEVER_GUESS_FIELDS
+  list (Invariant 5 / section 8.2's absolute exclusions) as an importable
+  constant, not just prompt prose.
+- src/services/label/knowledge/authoritativeSources.js and
+  knowledgeResolver.js — Tier 5. resolve() refuses outright (throws) if
+  asked to resolve a NEVER_GUESS_FIELDS path. Citation acceptance follows
+  section 9.5 exactly. ExternalKnowledgeCache (section 5.8) added as a
+  brand-new table — no additive-safety deviations needed. Migration
+  20260828040000_add_external_knowledge_cache.
+- src/services/label/generation/contextBuilder.js — section 9.9's four
+  blocks in section 9.7's cache-friendly order.
+- src/services/label/generation/labelGenerator.js — the schema-constrained
+  call (G6 fixed: responseJsonSchema derived from geminiSchema, no more
+  free-form JSON coerced after the fact). enforceGroundingPolicy is the
+  hard, code-level backstop for the five absolute-exclusion fields plus
+  activeIngredients[].amount — nulling (or downgrading to "q.s.") anything
+  not traceable to the Product row, a confirmed hint, or a Tier 4
+  reference, reporting every refusal into estimatedFields/generationMeta.
+  Target species reconciliation ported from the pre-Phase-4 worker — still
+  100% code-computed.
+- labelGeneratorWorker.js fully rewritten: builds a profile, selects
+  references, loads approved RegulatoryRule rows for the country, calls the
+  constrained generator, persists via versionService, and now runs
+  validationEngine.validate() immediately and persists a ValidationReport,
+  closing the loop Phase 2 deliberately deferred. Provenance rebuilt for
+  the real fields and real tiers (Tier 1 now actually appears). G9 fixed:
+  the "standard veterinary knowledge" ungrounded-guessing instruction is
+  gone — verified by grep, zero matches anywhere in src/.
+- generateLabelAi now accepts productId (optional, alongside or instead of
+  formulationText); aimOfUseHint is no longer required when the referenced
+  product already has indications set.
+
+Decisions not in the doc:
+- pgvector skipped per the doc's own volume gate.
+- referenceSelector.js cannot use isApproved/productType/structured
+  ingredient columns from section 5.9 (never built — Phase 0 deviation).
+- enforceGroundingPolicy extends the absolute-exclusion backstop to
+  activeIngredients[].amount, downgrading to "q.s." rather than null since
+  the schema requires amount to be non-empty.
+- knowledgeResolver.resolve() throwing on a NEVER_GUESS_FIELDS path is
+  belt-and-suspenders beyond what the doc specifies, added because this is
+  the single most safety-critical boundary in the whole system.
+
+Verified (mostly without spending Gemini quota):
+- tests/label.generation.grounding.test.js (22 assertions, no AI): reference
+  scoring/tiering, target-species reconciliation, and the full
+  grounding-policy backstop — including confirming that values genuinely
+  backed by the Product row or a Tier 4 reference are left untouched.
+- buildProductProfile and selectReferences tested directly against real DB
+  rows — confirmed correct Tier 1 extraction with accurate provenance, and
+  correct ingredient-tier scoring/ranking.
+- Live HTTP: submitted a productId-based generation request (no
+  formulationText, no aimOfUseHint) -> accepted (202) -> worker built the
+  profile, selected references, loaded rules, and reached the actual
+  generation call, which failed cleanly with a real 429 after real retries —
+  proves the full rewritten pipeline's wiring end to end.
+- node tests/runAll.js: 15/20 (added label.generation.grounding.test.js).
+  Same 5 pre-existing failures, no new regressions.
+
+Deferred: the actual generation call against real quota. pgvector, per the
+doc's own gate. Full multi-language extraction in labelExtractor.js
+(Phase 2's flagged simplification) — untouched, still open.
+
+Next phase should start with: Phase 5 (assurance: adversarial auditor,
+self-consistency, risk scorer, review inbox).
+

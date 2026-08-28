@@ -9,13 +9,24 @@ const referenceLabelQueue = new Queue("referenceLabelQueue", { connection: getRe
 const labelGeneratorQueue = new Queue("labelGeneratorQueue", { connection: getRedisConfig() });
 
 export const generateLabelAi = catchAsync(async (req, res, next) => {
-  const { formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = req.body;
+  const { productId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = req.body;
 
-  if (!formulationText || !country || !language) {
-    return next(new AppError("Please provide formulationText, country, and language", 400));
+  if (!country || !language) {
+    return next(new AppError("Please provide country and language", 400));
   }
-  if (!aimOfUseHint?.trim()) {
-    return next(new AppError("Please provide the confirmed Aim of Use — the AI will not guess it.", 400));
+  if (!productId && !formulationText) {
+    return next(new AppError("Please provide productId or formulationText", 400));
+  }
+
+  // aimOfUse is confirmed, not guessed (Invariant #5's spirit) — either the user
+  // states it here, or a referenced Product row already has it (checked below).
+  let productHasConfirmedAimOfUse = false;
+  if (productId) {
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { indications: true } });
+    productHasConfirmedAimOfUse = !!product?.indications?.trim();
+  }
+  if (!aimOfUseHint?.trim() && !productHasConfirmedAimOfUse) {
+    return next(new AppError("Please provide the confirmed Aim of Use — the AI will not guess it — or reference a Product that already has one.", 400));
   }
 
   // GeneratedLabel.companyId is required (a label always belongs to a tenant — §5.1).
@@ -50,6 +61,7 @@ export const generateLabelAi = catchAsync(async (req, res, next) => {
       // tenant, or the real internal user id when called as a system user. Recorded
       // on GeneratedLabel.createdByUserId (§5.1) for audit/attribution.
       createdByUserId: req.user ? req.user.id : null,
+      productId: productId || null,
       formulationText,
       country,
       language,

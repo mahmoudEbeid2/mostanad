@@ -82,3 +82,21 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   `{ constraint?, severity?, targetPath? }`. `400` if the rule is already
   approved (reject + recompile instead of editing a live rule).
 - `PATCH /regulatory-rules/:id/approve`, `PATCH /regulatory-rules/:id/reject` — **new**. `approve_regulatory`.
+
+## Phase 4
+
+- `POST /reference-labels/generate-text-ai` — **relaxed, not breaking**. Now
+  accepts an optional `productId`. `formulationText` is required only when
+  `productId` is absent (previously always required). `aimOfUseHint` is
+  required only when neither an explicit hint NOR a referenced product with
+  `indications` set is available (previously always required). Existing
+  callers that always sent `formulationText` + `aimOfUseHint` are unaffected.
+- Same endpoint's result shape (`BackgroundTask.result`) gains a `validation`
+  summary: `{ taskId, labelId, label, validation: { passed, errorCount, warningCount } }`.
+  `label` (the `labelData`) now conforms to `labelSchema` (§6.3) — `LocalizedText`
+  objects (`{translations, primary}`), not the old `{en, target}` pair, plus
+  fields the old shape never had at all (`withdrawalPeriod`, `strength`,
+  `routeOfAdministration`, `registrationNumber`, `pharmaceuticalForm`, etc.).
+  Any caller reading specific old field paths (`label.productName.en`,
+  `label.ingredients`) needs to update to the new shape
+  (`label.productName.translations.en`, `label.activeIngredients`).

@@ -513,3 +513,36 @@ model GoldenEvalRun {
   @@index([runAt])
   @@map("golden_eval_runs")
 }
+
+// ==========================================
+// 12. External Knowledge Cache — Tier 5 (Phase 4, §5.8/§8.2)
+// ==========================================
+
+model ExternalKnowledgeCache {
+  id String @id @default(uuid())
+
+  kind      String // ingredient_monograph|product_dossier|species_norm
+  lookupKey String @map("lookup_key") // e.g. "amoxicillin_trihydrate|oral_powder|poultry"
+
+  payload Json
+  summary String? @db.Text
+
+  sourceType            String   @map("source_type")
+  sourceUrls            String[] @map("source_urls")
+  sourceIsAuthoritative Boolean  @default(false) @map("source_is_authoritative")
+  citations             Json? // [{ claim, url, quotedText }]
+
+  confidence       String // high | medium | low
+  status           String  @default("unreviewed") // unreviewed | approved | rejected
+  reviewedByUserId String? @map("reviewed_by_user_id")
+
+  retrievedAt DateTime  @map("retrieved_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([kind, lookupKey])
+  @@index([kind, status])
+  @@map("external_knowledge_cache")
+}
