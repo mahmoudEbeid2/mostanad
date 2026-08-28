@@ -1,0 +1,58 @@
+post:
+  tags:
+    - Reference Labels
+  summary: Retry a failed reference-label extraction task
+  description: >-
+    No request body. Looks up the BullMQ job (not the DB row) by id — if
+    the job has already been removed from Redis (e.g. completed and
+    cleaned up), returns 404. Only a job whose BullMQ state is `failed` can
+    be retried.
+  parameters:
+    - name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: Retry queued.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+                example: "Task queued for retry."
+    '400':
+      description: The job is not in a "failed" state.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Job is currently completed, cannot retry."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: Job not found or expired from the queue's cache.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Background job not found or has expired from cache."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

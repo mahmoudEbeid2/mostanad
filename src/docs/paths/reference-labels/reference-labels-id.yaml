@@ -1,0 +1,48 @@
+get:
+  tags:
+    - Reference Labels
+  summary: Get a reference label
+  description: Not tenant-scoped — any authenticated caller can fetch any reference label by id, global or otherwise.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/ReferenceLabelId'
+  responses:
+    '200':
+      description: The reference label.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  referenceLabel:
+                    $ref: '../../components/components.yaml#/components/schemas/ReferenceLabel'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+delete:
+  tags:
+    - Reference Labels
+  summary: Delete a reference label
+  description: Requires `delete_eda_requirements`. Not tenant-scoped.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/ReferenceLabelId'
+  responses:
+    '204':
+      description: Deleted — no content.
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

@@ -10,6 +10,8 @@ info:
 servers:
   - url: http://localhost:3000/api/v1
     description: Development server
+security:
+  - BearerAuth: []
 tags:
   - name: Users
     description: Internal system user management
@@ -37,6 +39,28 @@ tags:
     description: Internal user authentication and login
   - name: Certificates
     description: Product extraction from invoices and auto-populating certificate templates
+  - name: Background Tasks
+    description: Poll long-running jobs (label generation, extraction, verification)
+  - name: Generated Labels
+    description: AI-generated veterinary/feed labels — persistence, listing, and the field-level patch protocol
+  - name: Label Versions
+    description: Append-only version history, diffing, and forward-only restore for a generated label
+  - name: Label Validation
+    description: The deterministic validation engine (schema, applicability, regulatory rule, and coherence layers)
+  - name: Label Chat
+    description: AI-assisted Q&A and editing agent for a generated label, with conflict detection
+  - name: Label Approval
+    description: The human signature workflow that promotes a label to a reusable reference
+  - name: Regulatory Documents
+    description: Ingested regulatory source documents (upload, extraction, coverage audit, approval)
+  - name: Regulatory Rules
+    description: Machine-compiled rules derived from approved regulatory documents
+  - name: Reference Labels
+    description: The style/content knowledge base used to ground label generation (AI-extracted, manual, or promoted from approvals)
+  - name: Assurance
+    description: Adversarial auditing, golden-set evaluation, and shadow-mode engine comparison
+  - name: Review Inbox
+    description: The single risk-sorted human review queue
 paths:
   /auth/login:
     post:
@@ -44,6 +68,7 @@ paths:
         - Authentication
       summary: Log in internal user
       description: Authenticate an internal user (admin/staff) using their username or email and password.
+      security: []
       requestBody:
         required: true
         content:
@@ -396,6 +421,7 @@ paths:
         - Companies
       summary: Log in company account
       description: Authenticate a company account (tenant) using their username or email and password to receive a company JWT.
+      security: []
       requestBody:
         required: true
         content:
@@ -722,7 +748,7 @@ paths:
       tags:
         - Label Verification
       summary: General PDF or image drug label compliance verification
-      description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini, search the database globally (by exact name or active ingredient overlap) for matching/alternative products, verify compliance against the target country's drug regulatory requirements, and return the combined analysis.
+      description: 'Upload an animal feed, supplement, or veterinary drug PDF/image label. The system extracts product metadata via Gemini, searches the database globally for matching/alternative products, and runs the same deterministic validation engine used by the label-generation pipeline (§4.2 engine unification) — **always with an empty ruleset** (`rulesetIds` is always `[]`; unlike `POST /labels/{id}/validate`, this endpoint is not country/rule aware yet). **Always asynchronous**: returns 202 immediately with a `jobId`; poll `GET /background-tasks/{jobId}` (`pending` → `processing` → `completed`|`failed`) for the result. This replaces the old synchronous AI-judged shape this endpoint used to return directly — see API-CHANGES.md Phase 2.'
       requestBody:
         required: true
         content:
@@ -742,8 +768,8 @@ paths:
                 - label
                 - country
       responses:
-        '200':
-          description: Label successfully verified and compliance report generated
+        '202':
+          description: Verification queued.
           content:
             application/json:
               schema:
@@ -751,72 +777,43 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: success
+                    example: accepted
                   message:
                     type: string
-                    example: Label verified successfully!
+                    example: Label verification has been accepted and is processing in the background.
                   data:
                     type: object
                     properties:
-                      product:
-                        type: object
-                        properties:
-                          extractedDetails:
-                            type: object
-                            description: Product metadata extracted from the label by Gemini AI
-                          existsInDb:
-                            type: boolean
-                            example: true
-                          isExactMatch:
-                            type: boolean
-                            example: true
-                          dbProduct:
-                            type: object
-                            nullable: true
-                            description: The matching database product if found, otherwise null
-                      validation:
-                        type: object
-                        properties:
-                          compliant:
-                            type: boolean
-                            example: false
-                          checkedAgainstDb:
-                            type: boolean
-                            example: true
-                          isExactMatch:
-                            type: boolean
-                            example: true
-                          dbProductName:
-                            type: string
-                            nullable: true
-                            example: H-Viral
-                          country:
-                            type: string
-                            example: Saudi Arabia
-                          results:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                category:
-                                  type: string
-                                  example: regulatory
-                                issue:
-                                  type: string
-                                  example: Missing bilingual Arabic/English warnings
-                                location:
-                                  type: string
-                                  nullable: true
-                                  example: Active ingredients section
-                                solution:
-                                  type: string
-                                  example: Translate all safety warning paragraphs into Arabic
+                      jobId:
+                        type: string
+                        format: uuid
+                        description: Pass this as {id} to GET /background-tasks/{id}.
         '400':
           $ref: '#/components/responses/BadRequestError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
         '500':
           $ref: '#/components/responses/ServerError'
+      x-background-task-result:
+        description: Shape of BackgroundTask.result once the polled task reports status "completed".
+        schema:
+          type: object
+          properties:
+            product:
+              type: object
+              properties:
+                extractedDetails:
+                  type: object
+                  description: Product metadata extracted from the label by Gemini AI (partial labelSchema-conformant shape, not the old flat {name, category, productCode, ...} object).
+                existsInDb:
+                  type: boolean
+                isExactMatch:
+                  type: boolean
+                dbProduct:
+                  type: object
+                  nullable: true
+            validation:
+              $ref: ../../components/components.yaml#/components/schemas/ValidationReport
   /products/{id}:
     get:
       tags:
@@ -1405,6 +1402,2228 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '404':
           $ref: '#/components/responses/NotFoundError'
+  /background-tasks/{id}:
+    get:
+      tags:
+        - Background Tasks
+      summary: Poll a background task's status/result
+      description: Every async label-engine operation in this API (label generation, reference-label extraction, regulatory-document extraction, PDF/image label verification) is fronted by a `BackgroundTask` row. Poll this endpoint until `status` is `completed` or `failed`; `result`'s shape depends on which endpoint created the task — see that endpoint's docs. No permission restriction beyond `protect` (any authenticated caller can read any task by id — there is no tenant check here).
+      parameters:
+        - $ref: '#/components/parameters/BackgroundTaskId'
+      responses:
+        '200':
+          $ref: '#/components/responses/BackgroundTaskResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Background task not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Background task not found
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels:
+    get:
+      tags:
+        - Generated Labels
+      summary: List generated labels
+      description: Paginated list of generated labels. A company-authenticated caller is always scoped to its own tenant (the `companyId` query param is ignored for it); a system user may filter by `companyId` or omit it to see every tenant. Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: productId
+          in: query
+          required: false
+          description: Filter by product UUID
+          schema:
+            type: string
+            format: uuid
+        - name: companyId
+          in: query
+          required: false
+          description: System-user callers only — filter to one tenant. Ignored for a company-authenticated caller (always scoped to its own id).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paginated label list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                    example: 20
+                  total:
+                    type: integer
+                    example: 143
+                  data:
+                    type: object
+                    properties:
+                      labels:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LabelSummary'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}:
+    get:
+      tags:
+        - Generated Labels
+      summary: Get a generated label
+      description: Returns the full label record plus convenience fields. Requires `read_labels`. Cross-tenant access returns 404, never 403 — a label belonging to a different company is indistinguishable from a nonexistent one.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: The label
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      label:
+                        $ref: '#/components/schemas/GeneratedLabel'
+                      currentVersion:
+                        type: integer
+                      latestValidation:
+                        type: object
+                        nullable: true
+                        allOf:
+                          - $ref: '#/components/schemas/ValidationReport'
+                      provenance:
+                        type: object
+                        description: Map of labelSchema field path -> { tier, source, citation, modelId, promptHash, at }.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+        - Generated Labels
+      summary: Apply a structural edit to a label (patch protocol)
+      description: Applies a set of field-level changes directly (no AI involved — for the AI-assisted equivalent see `POST /labels/{id}/chat`). Requires `update_labels`. Rejects a patch that would replace more than 60% of the label's top-level fields — use regeneration for that instead. A patch that would introduce a NEW validation failure that didn't exist before is refused as a 409 conflict rather than silently applied; there is no `overrideAcknowledged` escape hatch on this endpoint — resolve the conflict and resubmit (or use the chat endpoint, which does support overriding).
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - changes
+                - expectedVersion
+              properties:
+                changes:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/LabelPatchChange'
+                rationale:
+                  type: string
+                  nullable: true
+                expectedVersion:
+                  type: integer
+                  description: Must equal the label's current `currentVersion`, or the request is refused with 409.
+      responses:
+        '200':
+          description: Patch applied — a new version was created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: applied
+                      resultVersion:
+                        type: integer
+                      report:
+                        $ref: '#/components/schemas/ValidationReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          description: Structurally invalid patch — unknown path, unsupported op, missing `value`, or the patch touches more than 60% of top-level fields (bulk replacement). All causes are joined into one message string with "; ".
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: fail
+                  message:
+                    type: string
+                    example: Patch touches 22/30 top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead.
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/versions:
+    get:
+      tags:
+        - Label Versions
+      summary: List a label's version history
+      description: Full append-only version history, oldest first. Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      versions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LabelVersion'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/versions/{n}:
+    get:
+      tags:
+        - Label Versions
+      summary: Get one specific label version
+      description: Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+        - $ref: '#/components/parameters/VersionNumberN'
+      responses:
+        '200':
+          description: The version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        $ref: '#/components/schemas/LabelVersion'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Label not found, wrong tenant, or `n` out of range for this label.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: fail
+                  message:
+                    type: string
+                    example: Version 7 not found for this label
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/versions/{n}/restore:
+    post:
+      tags:
+        - Label Versions
+      summary: Restore a previous label version
+      description: 'Forward-only: restoring version `n` creates a brand-new version with that version''s content (`changeSource: "restore"`, `restoredFrom: n`) — it never rewrites version `n` itself. The new version is immediately (re-)validated. Requires `update_labels`.'
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+        - $ref: '#/components/parameters/VersionNumberN'
+      responses:
+        '201':
+          description: A new version was created from the restored content.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        $ref: '#/components/schemas/LabelVersion'
+                      report:
+                        $ref: '#/components/schemas/ValidationReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Label not found, wrong tenant, or the target version doesn't exist.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/versions/{a}/diff/{b}:
+    get:
+      tags:
+        - Label Versions
+      summary: Diff two label versions
+      description: Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+        - $ref: '#/components/parameters/VersionNumberA'
+        - $ref: '#/components/parameters/VersionNumberB'
+      responses:
+        '200':
+          description: Field-level diff between the two versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      diff:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/VersionDiffEntry'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Label not found, wrong tenant, or one/both versions don't exist.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: One or both versions not found for this label
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/validate:
+    post:
+      tags:
+        - Label Validation
+      summary: Run the deterministic validation engine against a label
+      description: Runs the same deterministic engine used everywhere else in the system (§4.2 engine unification) against the label's current `labelData`, persists a new `ValidationReport`, and updates `label.status` to `validated` or `failed_validation`. Uses the approved regulatory rules for the label's country (unlike `POST /products/verify-label`, which always validates with an empty ruleset). Requires `update_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '201':
+          description: Validation report created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      report:
+                        $ref: '#/components/schemas/ValidationReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/validation:
+    get:
+      tags:
+        - Label Validation
+      summary: Get the most recent validation report for a label
+      description: Requires `read_labels`. 404 if the label has never been validated — call `POST /labels/{id}/validate` first.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: The most recent validation report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      report:
+                        $ref: '#/components/schemas/ValidationReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Label not found/wrong tenant, OR the label exists but has no ValidationReport yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This label has not been validated yet — POST /labels/:id/validate first.
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/audit:
+    post:
+      tags:
+        - Assurance
+      summary: Run the adversarial auditor against a label's latest validation
+      description: A second, independent (different model family) AI review of the label's latest `ValidationReport`. Every place it disagrees with the deterministic engine is persisted as an `AuditDisagreement`. Also recomputes `riskScore`/`autonomyTier`. Requires `update_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '201':
+          description: Audit complete.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      auditorVerdicts:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditorFieldOpinion'
+                      disagreements:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            fieldPath:
+                              type: string
+                            deterministicVerdict:
+                              $ref: '#/components/schemas/FieldVerdict'
+                            auditorVerdict:
+                              $ref: '#/components/schemas/AuditorFieldOpinion'
+                            auditorReasoning:
+                              type: string
+                      riskScore:
+                        type: integer
+                        minimum: 0
+                        maximum: 100
+                      autonomyTier:
+                        type: string
+                        enum:
+                          - auto_approve
+                          - batch_review
+                          - mandatory_review
+                          - dual_review
+                        description: 'Thresholds on riskScore: ≤20 auto_approve, ≤50 batch_review, ≤75 mandatory_review, >75 dual_review.'
+        '400':
+          description: The label has never been validated — run `POST /labels/{id}/validate` first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This label has not been validated yet — POST /labels/:id/validate first.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /labels/{id}/chat:
+    post:
+      tags:
+        - Label Chat
+      summary: Send a message to the label's AI editing/Q&A agent
+      description: 'A single endpoint handles three different intents, classified by the AI itself: `question`, `explain_validation` (both answer-only, no state change), and `edit` (may create a new label version). Requires `update_labels`. See FRONTEND-GUIDE.md for the full conflict/override flow.'
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  example: Why did withdrawal period fail?
+                expectedVersion:
+                  type: integer
+                  nullable: true
+                  description: If provided and it doesn't match the label's current version, the request is refused with 409 before any AI call is made.
+                overrideAcknowledged:
+                  type: boolean
+                  default: false
+                  description: Resend the SAME message with this set to true to push an edit through past a conflict. The patch is regenerated from scratch on retry, not replayed — it is possible (rare) for the AI to propose a slightly different patch the second time.
+      responses:
+        '200':
+          description: Question answered, or an edit applied cleanly / applied via override.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    oneOf:
+                      - type: object
+                        description: question or explain_validation turn — no state change.
+                        properties:
+                          intent:
+                            type: string
+                            enum:
+                              - question
+                              - explain_validation
+                          answer:
+                            type: string
+                      - type: object
+                        description: edit turn, applied (clean, or overridden).
+                        properties:
+                          intent:
+                            type: string
+                            enum:
+                              - edit
+                          status:
+                            type: string
+                            enum:
+                              - applied
+                          resultVersion:
+                            type: integer
+                          report:
+                            $ref: '#/components/schemas/ValidationReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Stale `expectedVersion` (plain fail envelope), OR an edit whose proposed patch would introduce a new validation failure and `overrideAcknowledged` was not set (`data.status === "conflict"`, outer envelope `status` stays `"success"`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        example: fail
+                      message:
+                        type: string
+                        example: 'Version conflict: expected 3, label is now at 4. Reload before editing.'
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      data:
+                        type: object
+                        properties:
+                          intent:
+                            type: string
+                            enum:
+                              - edit
+                          status:
+                            type: string
+                            enum:
+                              - conflict
+                          proposedPatch:
+                            type: object
+                            properties:
+                              rationale:
+                                type: string
+                              changes:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/LabelPatchChange'
+                          wouldViolate:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                ruleKey:
+                                  type: string
+                                  nullable: true
+                                message:
+                                  type: string
+                                citation:
+                                  type: string
+                                  nullable: true
+                                path:
+                                  type: string
+                          options:
+                            type: array
+                            items:
+                              type: string
+                            example:
+                              - cancel
+                              - apply_and_fix:withdrawalPeriod
+                              - apply_anyway_with_override
+        '422':
+          description: The AI-proposed patch was structurally invalid (unknown path, unsupported op, missing value, or bulk-replacement threshold).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: fail
+                  message:
+                    type: string
+                    example: 'Proposed edit was rejected: unsupported op "delete"'
+        '423':
+          $ref: '#/components/responses/LockedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+    get:
+      tags:
+        - Label Chat
+      summary: Get the full chat history for a label
+      description: Ordered oldest-first. A turn writes a `role:"user"` row always (with `intent`, and for edit attempts `proposedPatch`/`conflicts` populated); `question`/`explain_validation` turns also write a `role:"assistant"` row. Edit outcomes live on the user row's `appliedPatch`/ `resultVersion`/`conflicts` — there's no separate assistant row for edits. Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: Full message history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      messages:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/approve:
+    post:
+      tags:
+        - Label Approval
+      summary: Sign off (approve) a label — the human signature on regulated output
+      description: |-
+        Approval is not a status toggle: it's a human signature recording who signed, which version, which estimated fields they signed for, which UNVERIFIABLE verdicts they acknowledged, and a frozen label snapshot. It is refused unless the current version passes every gate below, checked in this order. Requires `approve_labels`, plus `publish_global_reference` when `scope: "global"` is used (never grantable to a company- authenticated caller — rejected outright regardless of permissions).
+        **Refusal order and status codes:** 1. `scope:"global"` requested by a company caller, or by a system user
+           without `publish_global_reference` — **403**.
+        2. Label not found / wrong tenant — **404**. 3. `expectedVersion` doesn't match `label.currentVersion` — **409**. 4. `label.status` is already `"approved"` — **409** (revoke first to
+           re-approve).
+        5. No `ValidationReport` exists at all for this label — **422**. 6. **Gate 1** — the existing `ValidationReport` is stale relative to the
+           current version — **409**.
+        7. **Gate 2** — the report has any FAIL verdict (`!report.passed`) —
+           **422**, final, no override.
+        8. **Gate 3** — any `UNVERIFIABLE` verdict whose `path` is missing from
+           `acknowledgedUnverifiable` — **422**.
+        9. **Gate 4** — any `labelData.estimatedFields` entry missing from
+           `signedEstimatedFields` — **422**.
+        10. **Gate 5** — `riskScore > 50` and the approver is the label's own
+            creator — **403** (separation of duties); OR `autonomyTier ===
+            "dual_review"` with no `secondApproverUserId` supplied — **422**.
+        11. **Gate 6** — any regulatory document behind the validation's
+            `rulesetIds` is not `status:"approved"` or has `coveragePercent` <
+            95 — **422** ("weak backing documents").
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - expectedVersion
+              properties:
+                expectedVersion:
+                  type: integer
+                signedEstimatedFields:
+                  type: array
+                  items:
+                    type: string
+                  description: labelSchema field paths — must cover every entry in the label's labelData.estimatedFields.
+                  example:
+                    - strength
+                    - withdrawalPeriod
+                acknowledgedUnverifiable:
+                  type: array
+                  items:
+                    type: string
+                  description: FieldVerdict.path values — must cover every UNVERIFIABLE verdict in the latest report.
+                  example:
+                    - registrationNumber
+                scope:
+                  type: string
+                  enum:
+                    - company
+                    - global
+                  default: company
+                  description: '"global" requires publish_global_reference and is never available to a company-authenticated caller.'
+                note:
+                  type: string
+                  nullable: true
+                secondApproverUserId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Required when the label's autonomyTier is "dual_review".
+      responses:
+        '201':
+          description: Approved. The label was also promoted to a ReferenceLabel.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      approval:
+                        $ref: '#/components/schemas/LabelApproval'
+                      reference:
+                        $ref: '#/components/schemas/ReferenceLabel'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Global-scope permission denial, or a high-risk label approved by its own creator (separation of duties).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: 'High risk: cannot approve a label you created yourself.'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Stale expectedVersion, already approved, or the existing validation report is stale relative to the current version.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This version is already approved. Revoke the existing approval first if you need to re-approve.
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/approvals:
+    get:
+      tags:
+        - Label Approval
+      summary: List a label's approval history
+      description: Newest first. Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: Approval history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      approvals:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LabelApproval'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/approvals/{approvalId}/revoke:
+    post:
+      tags:
+        - Label Approval
+      summary: Revoke an approval
+      description: 'Sets the label''s status to `revoked`. If this approval had promoted a `ReferenceLabel`, that reference''s `isApproved` becomes `false` (never deleted). Every OTHER label whose `referenceLabelIds` cites the now-revoked reference gets `needsReview: true` set — those ids are returned in `affectedLabelIds` so the frontend can flag them. Requires `approve_labels`.'
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+        - $ref: '#/components/parameters/ApprovalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      approval:
+                        $ref: '#/components/schemas/LabelApproval'
+                      affectedLabelIds:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+                        description: Every other label now flagged needsReview:true because it cites the revoked reference.
+        '400':
+          description: This approval was already revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This approval was already revoked.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: No approval found with that ID (missing, or belongs to a different tenant).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: No approval found with that ID
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /labels/{id}/replay:
+    post:
+      tags:
+        - Assurance
+      summary: Re-run generation and compare against the stored label (deterministic replay)
+      description: Re-runs generation against the label's frozen `productProfile`, re-selecting references and re-fetching approved rules AS THEY STAND NOW (not a frozen snapshot of the exact rows used originally). Read-only — never creates a new version or touches the stored label. Requires `read_labels`.
+      parameters:
+        - $ref: '#/components/parameters/LabelId'
+      responses:
+        '200':
+          description: Replay result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identical:
+                    type: boolean
+                  fieldsDiffered:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VersionDiffEntry'
+                  promptHashMatches:
+                    type: boolean
+                    nullable: true
+                    description: null specifically means the original label predates Phase 9 and has no stored promptHash — not comparable, not false.
+                  referenceSetDrifted:
+                    type: boolean
+                  ruleSetDrifted:
+                    type: boolean
+                  originalGenerationMeta:
+                    type: object
+                  regeneratedGenerationMeta:
+                    type: object
+                  interpretation:
+                    type: string
+                    description: One of three fixed messages explaining what a difference (if any) means.
+                    example: Reference and rule sets are unchanged, yet output differs — this points to real model non-determinism, not stale inputs.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          description: The label predates Phase 4 and has no stored productProfile to replay from.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This label has no stored productProfile (generated before Phase 4) — replay is not possible.
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents:
+    get:
+      tags:
+        - Regulatory Documents
+      summary: List regulatory documents
+      description: Requires `read_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: authority
+          in: query
+          required: false
+          schema:
+            type: string
+            example: EDA
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending_review
+              - extracted
+              - approved
+              - rejected
+              - superseded
+      responses:
+        '200':
+          description: Document list. List items do not include the nested rules array.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      documents:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RegulatoryDocument'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Regulatory Documents
+      summary: Upload a regulatory document for extraction
+      description: Multipart upload. Queues a `BackgroundTask` (reusing the eda-requirement extraction pipeline) and returns immediately — poll `GET /background-tasks/{taskId}`; on completion `.result` is the full `RegulatoryDocument` row (so the new document's id is `.result.id`, not the initial `data.documentId`, which is always null). If the file's extracted text hashes to an existing document, the task fails with a 409-flavored message in `.error` rather than the POST itself returning an error (extraction happens in the worker, after the 202 has already been sent). Requires `create_regulatory`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF or DOCX.
+                country:
+                  type: string
+                  default: Egypt
+                title:
+                  type: string
+                authority:
+                  type: string
+                  example: EDA
+                productScope:
+                  description: Array, or a comma-separated string (split/trimmed server-side).
+                  oneOf:
+                    - type: array
+                      items:
+                        type: string
+                    - type: string
+                sourceUrl:
+                  type: string
+                documentVersion:
+                  type: string
+      responses:
+        '202':
+          description: Queued for extraction.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Document uploaded and queued for extraction
+                  data:
+                    type: object
+                    properties:
+                      taskId:
+                        type: string
+                        format: uuid
+                      documentId:
+                        type: string
+                        nullable: true
+                        example: null
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents/{id}:
+    get:
+      tags:
+        - Regulatory Documents
+      summary: Get a regulatory document, including its rules
+      description: Requires `read_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryDocumentId'
+      responses:
+        '200':
+          description: The document, with its `rules` array populated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      document:
+                        $ref: '#/components/schemas/RegulatoryDocument'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents/{id}/compile-rules:
+    post:
+      tags:
+        - Regulatory Documents
+      summary: Compile candidate rules from a document's extracted text
+      description: 'Requires `approve_regulatory`. Every accepted candidate is created as a `RegulatoryRule` with `status: "pending_review"` — nothing here is auto-approved. A candidate is rejected (not saved) when it''s missing a required field, has an unsupported `constraint.kind`, targets a path that isn''t in `labelSchema`, its citation can''t be found verbatim in the source document, or it collides with an existing rule''s `ruleKey` for this document.'
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryDocumentId'
+      responses:
+        '201':
+          description: Rules compiled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: 4 rule(s) compiled and pending review, 1 rejected.
+                  data:
+                    type: object
+                    properties:
+                      rules:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RegulatoryRule'
+                      rejected:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            candidate:
+                              type: object
+                              description: Raw AI-proposed rule, not a DB row.
+                              properties:
+                                ruleKey:
+                                  type: string
+                                ruleType:
+                                  type: string
+                                severity:
+                                  type: string
+                                targetPath:
+                                  type: string
+                                  nullable: true
+                                appliesWhen:
+                                  type: object
+                                  nullable: true
+                                constraint:
+                                  type: object
+                                description:
+                                  type: string
+                                citation:
+                                  type: string
+                                  nullable: true
+                            reason:
+                              type: string
+                              example: Citation not found verbatim in the source document.
+        '400':
+          description: The document has no extracted text yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This document has no extracted text yet.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents/{id}/audit-coverage:
+    post:
+      tags:
+        - Regulatory Documents
+      summary: Audit a document's rule coverage against its clauses
+      description: Persists `clauseTotal`/`clauseCovered`/`coveragePercent`/ `uncoveredClauses`/`coverageAuditedAt` onto the document. Rejected rules are excluded from the accepted-coverage count. Requires `approve_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryDocumentId'
+      responses:
+        '200':
+          description: Updated document with coverage figures.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      document:
+                        $ref: '#/components/schemas/RegulatoryDocument'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents/{id}/approve:
+    post:
+      tags:
+        - Regulatory Documents
+      summary: Approve a regulatory document
+      description: Gated on coverage. Requires `approve_regulatory`. **400** if the document has never been coverage-audited (`coveragePercent` is null/undefined) — run `POST /regulatory-documents/{id}/audit-coverage` first. **422** only when coverage is below 95% AND at least one clause in `uncoveredClauses` is still unresolved — if coverage is under 95% but every clause has been human-cleared via `PATCH /regulatory-documents/{id}/clauses/clear`, approval succeeds anyway.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryDocumentId'
+      responses:
+        '200':
+          description: Approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      document:
+                        $ref: '#/components/schemas/RegulatoryDocument'
+        '400':
+          description: Never coverage-audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: This document has not been coverage-audited yet — POST /regulatory-documents/:id/audit-coverage first.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          description: Coverage < 95% and unresolved clauses remain.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: 'Cannot approve: coverage is 82.0% (< 95%) with 3 clause(s) still unresolved. Clear them via review first.'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-documents/{id}/clauses/clear:
+    patch:
+      tags:
+        - Regulatory Documents
+      summary: Clear a false-positive uncovered clause
+      description: Not in the original architecture doc's literal endpoint list — added because the 95% approval gate needs a way for a human to clear a false-positive uncovered clause. Removes the matching entry (by `reference`) from `uncoveredClauses`; does not touch `clauseTotal` or `coveragePercent`. Silently a no-op if `reference` doesn't match anything. Requires `approve_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryDocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reference
+              properties:
+                reference:
+                  type: string
+      responses:
+        '200':
+          description: Updated document.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      document:
+                        $ref: '#/components/schemas/RegulatoryDocument'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-rules:
+    get:
+      tags:
+        - Regulatory Rules
+      summary: List regulatory rules
+      description: Requires `read_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: documentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: ruleType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - required_field
+              - forbidden_content
+              - format
+              - conditional
+              - value_constraint
+              - language_set
+              - semantic
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - error
+              - warning
+              - info
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending_review
+              - approved
+              - rejected
+      responses:
+        '200':
+          description: Rule list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      rules:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RegulatoryRule'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-rules/preview:
+    post:
+      tags:
+        - Regulatory Rules
+      summary: Dry-run every approved rule for a label's country against its current data
+      description: Writes nothing. Only rules with `status:"approved"` whose owning document is also `status:"approved"` and matches the label's `country` are run. Requires `read_regulatory`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - labelId
+              properties:
+                labelId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Dry-run verdicts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      verdicts:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/FieldVerdict'
+                      ruleCount:
+                        type: integer
+                        description: Count of approved rules (in approved documents, matching country) that were actually run.
+        '400':
+          description: labelId missing.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Please provide labelId
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-rules/{id}:
+    patch:
+      tags:
+        - Regulatory Rules
+      summary: Edit a pending or rejected regulatory rule
+      description: An already-`approved` rule cannot be edited — reject it and compile a replacement instead. `pending_review` and `rejected` rules can both be edited. Requires `approve_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryRuleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                constraint:
+                  type: object
+                severity:
+                  type: string
+                  enum:
+                    - error
+                    - warning
+                    - info
+                targetPath:
+                  type: string
+      responses:
+        '200':
+          description: Updated rule.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      rule:
+                        $ref: '#/components/schemas/RegulatoryRule'
+        '400':
+          description: The rule is already approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Cannot edit an already-approved rule — reject it and compile a replacement instead.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-rules/{id}/approve:
+    patch:
+      tags:
+        - Regulatory Rules
+      summary: Approve a pending regulatory rule
+      description: 'No request body. Note: there is no idempotency/conflict guard against re-approving an already-approved (or already-rejected) rule — the frontend should disable this action once `status` is no longer `pending_review` rather than relying on the API to refuse it. Requires `approve_regulatory`.'
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryRuleId'
+      responses:
+        '200':
+          description: Approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      rule:
+                        $ref: '#/components/schemas/RegulatoryRule'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /regulatory-rules/{id}/reject:
+    patch:
+      tags:
+        - Regulatory Rules
+      summary: Reject a pending regulatory rule
+      description: No request body — there is no `reason` field captured anywhere for a rejection, despite "reason" being used elsewhere in this API's approval vocabulary. No idempotency guard, same caveat as the approve endpoint. Requires `approve_regulatory`.
+      parameters:
+        - $ref: '#/components/parameters/RegulatoryRuleId'
+      responses:
+        '200':
+          description: Rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      rule:
+                        $ref: '#/components/schemas/RegulatoryRule'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /assurance/disagreements:
+    get:
+      tags:
+        - Assurance
+      summary: List auditor/engine disagreements
+      description: Requires `read_assurance`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: labelId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: resolution
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - human_agreed_engine
+              - human_agreed_auditor
+              - new_rule_created
+      responses:
+        '200':
+          description: Disagreement list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      disagreements:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditDisagreement'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /assurance/disagreements/{id}/resolve:
+    patch:
+      tags:
+        - Assurance
+      summary: Resolve an auditor/engine disagreement
+      description: Requires `read_assurance` (not a distinct write permission — same permission as the list endpoint).
+      parameters:
+        - $ref: '#/components/parameters/DisagreementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - resolution
+              properties:
+                resolution:
+                  type: string
+                  enum:
+                    - human_agreed_engine
+                    - human_agreed_auditor
+                    - new_rule_created
+                becameRuleId:
+                  type: string
+                  nullable: true
+                  description: Set when resolution is "new_rule_created".
+      responses:
+        '200':
+          description: Updated disagreement.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      disagreement:
+                        $ref: '#/components/schemas/AuditDisagreement'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /assurance/golden-runs:
+    get:
+      tags:
+        - Assurance
+      summary: List golden-set evaluation runs
+      description: Requires `read_assurance`. Ordered newest first.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Golden run list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      runs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GoldenEvalRun'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /assurance/shadow:
+    get:
+      tags:
+        - Assurance
+      summary: List shadow-mode engine comparisons
+      description: Requires `read_assurance`. Returns real `ShadowComparison` rows when any exist. When none exist (no live migration is currently being shadowed), still returns 200 with an empty `comparisons` array plus an explanatory `message` — this is an intentionally-empty, always-available surface, not an error.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Shadow comparisons (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  message:
+                    type: string
+                    nullable: true
+                    description: Present only when total is 0.
+                    example: 'No shadow runs recorded yet — see PROGRESS.md''s Phase 8 entry: this session replaced the generator in place rather than running two versions in parallel, so there''s no live migration to shadow right now.'
+                  data:
+                    type: object
+                    properties:
+                      comparisons:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ShadowComparison'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /review-inbox:
+    get:
+      tags:
+        - Review Inbox
+      summary: The single risk-sorted review queue
+      description: Every label with `status` in `validated` or `failed_validation`, sorted by `riskScore` descending. A company caller sees only its own tenant; a system user may pass `companyId`. Requires `read_assurance`. Entries are a narrow projection, not the full label — fetch `GET /labels/{id}` for the rest.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: companyId
+          in: query
+          required: false
+          description: System-user callers only.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      labels:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ReviewInboxEntry'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /reference-labels:
+    get:
+      tags:
+        - Reference Labels
+      summary: List reference labels
+      description: '**Not tenant-scoped by the endpoint itself** — any authenticated caller can list every tenant''s reference labels; `companyId` (or any other field) narrows the result only if explicitly passed as a query filter. This differs from the internal generation pipeline''s own reference lookup, which IS tenant-scoped. Any query key beyond `page`/`limit`/ `sort`/`search` is passed straight through as an exact-match filter (e.g. `?brandId=...`, `?categoryId=...`).'
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/SearchParam'
+        - name: companyId
+          in: query
+          required: false
+          description: Not enforced — an opt-in filter, not tenant scoping.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Reference label list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      referenceLabels:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ReferenceLabel'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+        - Reference Labels
+      summary: Upload a reference label file for AI extraction
+      description: 'Multipart, field `files`, max 1 file. A file whose original filename already matches an existing reference label''s `name` (checked globally, not per-tenant) is skipped as a duplicate. If every uploaded file was a duplicate, returns 400. Otherwise queues one `BackgroundTask` (`type: "reference_label_extraction"`) per non-duplicate file and returns 202; poll `GET /background-tasks/{taskId}` per task — on completion `.result` is the full created `ReferenceLabel` row.'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+                - country
+              properties:
+                files:
+                  type: array
+                  maxItems: 1
+                  items:
+                    type: string
+                    format: binary
+                country:
+                  type: string
+                  description: Country this reference is accepted in.
+                companyId:
+                  type: string
+                  nullable: true
+                  description: Explicit "" or omitted defaults to the caller's own company (company caller) or global (system caller, no value given).
+                brandId:
+                  type: string
+                  nullable: true
+                categoryId:
+                  type: string
+                  nullable: true
+                manualCategoryName:
+                  type: string
+                  nullable: true
+      responses:
+        '202':
+          description: Queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: 1 reference(s) queued for AI analysis.
+                  data:
+                    type: object
+                    properties:
+                      tasks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            taskId:
+                              type: string
+                              format: uuid
+                            fileName:
+                              type: string
+        '400':
+          description: Missing country, or every uploaded file was a duplicate.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: All 1 uploaded files already exist in the system.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /reference-labels/manual:
+    post:
+      tags:
+        - Reference Labels
+      summary: Create a reference label manually (no AI extraction)
+      description: 'Synchronous — creates the row directly, `sourceType: "manual"`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - fullText
+                - country
+              properties:
+                name:
+                  type: string
+                fullText:
+                  type: string
+                country:
+                  type: string
+                companyId:
+                  type: string
+                  nullable: true
+                  description: Overridden by the caller's own company id for a company-authenticated caller.
+                brandId:
+                  type: string
+                  nullable: true
+                categoryId:
+                  type: string
+                  nullable: true
+                manualCategoryName:
+                  type: string
+                  nullable: true
+                extractedData:
+                  type: object
+                  nullable: true
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      referenceLabel:
+                        $ref: '#/components/schemas/ReferenceLabel'
+        '400':
+          description: Missing name, fullText, or country.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Full reference text is required.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: categoryId was provided but doesn't resolve.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Selected category was not found.
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /reference-labels/generate-text-ai:
+    post:
+      tags:
+        - Reference Labels
+      summary: Generate a new label from AI (schema-constrained, reference- and rule-aware)
+      description: 'Always asynchronous: returns 202 with a `taskId` — poll `GET /background-tasks/{taskId}` (`pending` → `processing` → `completed`|`failed`). This is the main label-generation entry point for phases 1-9; the result on completion is a `labelSchema`-conformant label plus a validation summary, risk score, and autonomy tier. See FRONTEND-GUIDE.md for the full polling flow and how this feeds into the validate/chat/approve pipeline afterward.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - country
+                - language
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: If given, formulationText becomes optional and aimOfUseHint can be satisfied by the product's own indications.
+                formulationText:
+                  type: string
+                  description: Required only when productId is absent.
+                country:
+                  type: string
+                language:
+                  type: string
+                aimOfUseHint:
+                  type: string
+                  description: Required unless a referenced product already has `indications` set — the AI will never guess the aim of use.
+                targetSpeciesHint:
+                  type: string
+                directionOfUseHint:
+                  type: string
+                companyId:
+                  type: string
+                  format: uuid
+                  description: Required when called by a system user (no req.company) — generation must be scoped to a company. Not needed for a company-authenticated caller, whose own id is always used.
+            examples:
+              productReferenced:
+                summary: Referencing an existing product
+                value:
+                  productId: d1b2c3d4-e5f6-7890-abcd-ef1234567890
+                  country: Egypt
+                  language: ar
+              formulationOnly:
+                summary: No product on file
+                value:
+                  formulationText: Amoxicillin trihydrate 500mg/g oral powder for poultry
+                  country: Egypt
+                  language: ar
+                  aimOfUseHint: Treatment of bacterial infections in poultry
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAcceptedResponse'
+        '400':
+          description: Missing country/language, missing productId+formulationText, missing aimOfUseHint with no fallback, or (system user) missing companyId.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Please provide the confirmed Aim of Use — the AI will not guess it — or reference a Product that already has one.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+      x-background-task-result:
+        description: Shape of BackgroundTask.result once GET /background-tasks/{taskId} reports status "completed" for this task type.
+        schema:
+          type: object
+          properties:
+            taskId:
+              type: string
+              format: uuid
+            labelId:
+              type: string
+              format: uuid
+              description: The new, stable GeneratedLabel.id. Use this for every follow-up call (validate/chat/approve/etc) — do not keep polling the task.
+            label:
+              $ref: ../../components/components.yaml#/components/schemas/LabelData
+            validation:
+              type: object
+              properties:
+                passed:
+                  type: boolean
+                errorCount:
+                  type: integer
+                warningCount:
+                  type: integer
+            riskScore:
+              type: integer
+            autonomyTier:
+              type: string
+              enum:
+                - auto_approve
+                - batch_review
+                - mandatory_review
+                - dual_review
+  /reference-labels/retry/{taskId}:
+    post:
+      tags:
+        - Reference Labels
+      summary: Retry a failed reference-label extraction task
+      description: No request body. Looks up the BullMQ job (not the DB row) by id — if the job has already been removed from Redis (e.g. completed and cleaned up), returns 404. Only a job whose BullMQ state is `failed` can be retried.
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Retry queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Task queued for retry.
+        '400':
+          description: The job is not in a "failed" state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Job is currently completed, cannot retry.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Job not found or expired from the queue's cache.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: Background job not found or has expired from cache.
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /reference-labels/{id}:
+    get:
+      tags:
+        - Reference Labels
+      summary: Get a reference label
+      description: Not tenant-scoped — any authenticated caller can fetch any reference label by id, global or otherwise.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceLabelId'
+      responses:
+        '200':
+          description: The reference label.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      referenceLabel:
+                        $ref: '#/components/schemas/ReferenceLabel'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+        - Reference Labels
+      summary: Delete a reference label
+      description: Requires `delete_eda_requirements`. Not tenant-scoped.
+      parameters:
+        - $ref: '#/components/parameters/ReferenceLabelId'
+      responses:
+        '204':
+          description: Deleted — no content.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
 components:
   schemas:
     LoginBody:
@@ -2520,6 +4739,1125 @@ components:
                 type: object
               html:
                 type: string
+    BackgroundTask:
+      type: object
+      description: Every long-running label-engine operation (label generation, reference-label extraction, regulatory-document extraction, PDF/image label verification) runs through this same row. Poll `GET /background-tasks/{id}` until `status` is `completed` or `failed`; `result` is a different shape per `type` — see the specific endpoint's docs for what `result` looks like once `status` is `completed`.
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: label_generation
+          description: 'One of: catalog_upload, label_verification, certificate_generation, regulatory_document_extraction, reference_label_extraction, label_generation.'
+        status:
+          type: string
+          enum:
+            - pending
+            - processing
+            - completed
+            - failed
+        result:
+          type: object
+          nullable: true
+          description: Only populated once status is "completed". Shape depends on `type` — see the endpoint that created this task.
+        error:
+          type: string
+          nullable: true
+          description: Only populated once status is "failed".
+        companyId:
+          type: string
+          nullable: true
+        brandId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LabelSummary:
+      type: object
+      description: The projection returned by `GET /labels` (list view) — not the full GeneratedLabel.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        country:
+          type: string
+        language:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - validated
+            - failed_validation
+            - approved
+            - revoked
+            - archived
+        matchTier:
+          type: string
+          nullable: true
+        currentVersion:
+          type: integer
+        riskScore:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LocalizedText:
+      type: object
+      description: A bilingual text field. `translations` keys are language codes (at minimum `en`/`ar`); `primary` names which key is the canonical source-of-truth language for this value.
+      required:
+        - translations
+        - primary
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            en: For veterinary use only
+            ar: للاستخدام البيطري فقط
+        primary:
+          type: string
+          example: en
+    LabelActiveIngredient:
+      type: object
+      description: LocalizedText plus dosage fields — not a plain LocalizedText. Distinct from the plain product-catalog ActiveIngredient schema.
+      required:
+        - translations
+        - primary
+        - amount
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+        primary:
+          type: string
+          example: en
+        amount:
+          type: string
+          description: Never empty — "q.s." when a precise quantity is unavailable.
+          example: '500'
+        unit:
+          type: string
+          nullable: true
+          example: mg
+        normalizedName:
+          type: string
+          nullable: true
+          example: amoxicillin_trihydrate
+    LabelAnalysis:
+      type: object
+      nullable: true
+      properties:
+        basis:
+          type: string
+          example: per 1 kg
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+    TargetAnimalSpecies:
+      type: object
+      description: LocalizedText plus the resolved species list and how it was resolved.
+      required:
+        - translations
+        - primary
+        - list
+        - source
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+        primary:
+          type: string
+        list:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example:
+            - poultry
+            - cattle
+        source:
+          type: string
+          enum:
+            - confirmed
+            - reference
+            - inferred
+    LabelData:
+      type: object
+      description: A `labelSchema`-conformant label body (schemaVersion `vet-label@2.0.0`). Every text field is bilingual (`LocalizedText`) unless noted. This is the shape of `GeneratedLabel.labelData`, `LabelVersion.labelData`, and the `label` key returned by `POST /reference-labels/generate-text-ai`.
+      properties:
+        schemaVersion:
+          type: string
+          example: vet-label@2.0.0
+        productType:
+          type: string
+          enum:
+            - veterinary_drug
+            - feed_additive
+            - premix
+            - supplement
+            - compound_feed
+        productName:
+          $ref: '#/components/schemas/LocalizedText'
+        pharmaceuticalForm:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        strength:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        feedClassification:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        activeIngredients:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/LabelActiveIngredient'
+        excipients:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        analysis:
+          $ref: '#/components/schemas/LabelAnalysis'
+        targetAnimalSpecies:
+          $ref: '#/components/schemas/TargetAnimalSpecies'
+        aimOfUse:
+          $ref: '#/components/schemas/LocalizedText'
+        indications:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        routeOfAdministration:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        directionOfUse:
+          $ref: '#/components/schemas/LocalizedText'
+        contraindications:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        sideEffects:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        withdrawalPeriod:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+          description: Never filled from web lookup or model knowledge — confirmed source or matched reference only, otherwise empty and the field FAILs validation.
+        userSafety:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        storage:
+          $ref: '#/components/schemas/LocalizedText'
+        shelfLifeAfterOpening:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        disposal:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        netWeight:
+          $ref: '#/components/schemas/LocalizedText'
+        packaging:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        registrationNumber:
+          type: string
+          nullable: true
+        marketingAuthorisationHolder:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        manufacturer:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        importer:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        countryOfProduction:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        batchNo:
+          type: string
+          nullable: true
+        productionDate:
+          type: string
+          nullable: true
+        expiryDate:
+          type: string
+          nullable: true
+        prescriptionStatus:
+          type: string
+          enum:
+            - POM
+            - OTC
+            - VFD
+            - NA
+          default: NA
+        usageDeclaration:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        keepOutOfReachOfChildren:
+          type: boolean
+          default: true
+        estimatedFields:
+          type: array
+          items:
+            type: string
+          description: labelSchema field-path names the model marked as estimated (not confirmed from a source). Every entry here must be signed (`signedEstimatedFields`) before the label can be approved.
+          example:
+            - strength
+            - withdrawalPeriod
+    GeneratedLabel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        createdByUserId:
+          type: string
+          nullable: true
+        inputPayload:
+          type: object
+          description: Frozen snapshot of what the caller submitted to generate this label.
+        productProfile:
+          type: object
+          nullable: true
+          description: Reserved since Phase 4. Null for labels generated before Phase 4 — replay is not possible for those.
+        labelData:
+          $ref: '#/components/schemas/LabelData'
+        labelProvenance:
+          type: object
+          description: Map of labelSchema field path -> { tier, source, citation, modelId, promptHash, at }.
+        schemaVersion:
+          type: string
+        country:
+          type: string
+        language:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - validated
+            - failed_validation
+            - approved
+            - revoked
+            - archived
+        referenceLabelIds:
+          type: array
+          items:
+            type: string
+        regulatoryDocIds:
+          type: array
+          items:
+            type: string
+        matchTier:
+          type: string
+          nullable: true
+        generationMeta:
+          type: object
+          nullable: true
+          description: Includes `promptHash` for labels generated from Phase 9 onward; null/absent on older labels.
+        riskScore:
+          type: integer
+          example: 35
+        autonomyTier:
+          type: string
+          enum:
+            - auto_approve
+            - batch_review
+            - mandatory_review
+            - dual_review
+        shadowRunId:
+          type: string
+          nullable: true
+        promotedToReferenceId:
+          type: string
+          nullable: true
+        currentVersion:
+          type: integer
+        needsReview:
+          type: boolean
+          description: Set true when a reference label this label cites gets its approval revoked.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FieldVerdict:
+      type: object
+      description: One verdict from the deterministic validation engine, per labelSchema field path.
+      required:
+        - path
+        - label
+        - status
+        - presence
+        - severity
+        - layer
+      properties:
+        path:
+          type: string
+          description: Dot/bracket path into labelSchema, e.g. "activeIngredients[0].amount". A few synthetic paths exist for cross-field checks — "_regulatory", "_localized_text", "_placeholder_x".
+          example: withdrawalPeriod
+        label:
+          type: object
+          properties:
+            en:
+              type: string
+            ar:
+              type: string
+        status:
+          type: string
+          enum:
+            - PASS
+            - FAIL
+            - WARN
+            - NOT_APPLICABLE
+            - UNVERIFIABLE
+        presence:
+          type: string
+          enum:
+            - PRESENT
+            - MISSING
+            - EMPTY
+            - INVALID
+        severity:
+          type: string
+          enum:
+            - error
+            - warning
+        layer:
+          type: string
+          enum:
+            - schema
+            - applicability
+            - regulatory_rule
+            - coherence
+            - semantic
+          description: Which validation layer produced this verdict.
+        ruleKey:
+          type: string
+          nullable: true
+          example: APPLICABILITY.WITHDRAWALPERIOD.REQUIRED
+        message:
+          type: string
+          nullable: true
+        citation:
+          type: string
+          nullable: true
+          description: Only ever set for layer "regulatory_rule" — verbatim quote from the source document.
+        sourceDocumentId:
+          type: string
+          nullable: true
+          description: Only ever set for layer "regulatory_rule".
+        autoFixable:
+          type: boolean
+        suggestion:
+          type: string
+          nullable: true
+          description: Reserved — never populated by any code path as of Phase 9.
+    ValidationReport:
+      type: object
+      description: The deterministic validation engine's output (§10.2). Returned by `POST /labels/:id/validate`, `GET /labels/:id/validation`, embedded in chat/patch/restore/replay responses, and (with `rulesetIds` always `[]`) by `POST /products/verify-label`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Present when this is a persisted ValidationReport row (not the in-memory verify-label shape).
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        passed:
+          type: boolean
+        errorCount:
+          type: integer
+        warningCount:
+          type: integer
+        verdicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldVerdict'
+        coveragePercent:
+          type: number
+          nullable: true
+          description: Always null as of Phase 9 — reserved, not yet populated by any validator.
+        engineVersion:
+          type: string
+          example: label-validation-engine@1.0.0
+        rulesetIds:
+          type: array
+          items:
+            type: string
+          description: IDs of the approved RegulatoryRule rows applied. Empty for POST /products/verify-label, which always validates with no rules.
+        aiAssisted:
+          type: boolean
+          description: Always false as of Phase 9 — reserved for the semantic (AI) validation layer, not yet wired in.
+        createdAt:
+          type: string
+          format: date-time
+    LabelPatchChange:
+      type: object
+      description: One change in a PATCH /labels/:id or chat-proposed patch.
+      required:
+        - path
+        - op
+      properties:
+        path:
+          type: string
+          description: Dot/bracket path into labelSchema, e.g. "activeIngredients[0].amount". Top segment must be a real labelSchema field.
+        op:
+          type: string
+          enum:
+            - replace
+            - append
+            - remove
+            - insert
+        value:
+          description: Required for every op except "remove".
+    PatchConflict:
+      type: object
+      description: Returned with HTTP 409 when a proposed patch would introduce a NEW validation failure that didn't exist before the patch. The outer response envelope's `status` stays "success" — branch on this object's own `status` field, which is "conflict".
+      properties:
+        status:
+          type: string
+          enum:
+            - conflict
+        proposedPatch:
+          type: object
+          description: Only present on the chat conflict shape (not the direct PATCH conflict shape).
+          properties:
+            rationale:
+              type: string
+            changes:
+              type: array
+              items:
+                $ref: '#/components/schemas/LabelPatchChange'
+        wouldViolate:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleKey:
+                type: string
+                nullable: true
+              message:
+                type: string
+              citation:
+                type: string
+                nullable: true
+              path:
+                type: string
+        options:
+          type: array
+          items:
+            type: string
+          description: 'Plain strings, not objects: "cancel", one "apply_and_fix:<path>" per newly-failing path, then "apply_anyway_with_override" last.'
+          example:
+            - cancel
+            - apply_and_fix:withdrawalPeriod
+            - apply_anyway_with_override
+    VersionDiffEntry:
+      type: object
+      properties:
+        path:
+          type: string
+          example: activeIngredients[0].amount
+        op:
+          type: string
+          enum:
+            - add
+            - remove
+            - replace
+        before:
+          description: The field's value before this change, of whatever type that field is. Absent/null if the field didn't previously exist.
+        after:
+          description: The field's value after this change, of whatever type that field is. Absent/null if the field was removed.
+    LabelVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        labelData:
+          $ref: '#/components/schemas/LabelData'
+        changeSource:
+          type: string
+          enum:
+            - ai_generation
+            - ai_chat_edit
+            - manual_edit
+            - restore
+        changedByUserId:
+          type: string
+          nullable: true
+        changeSummary:
+          type: string
+          nullable: true
+        diff:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/VersionDiffEntry'
+        restoredFrom:
+          type: integer
+          nullable: true
+          description: Set when changeSource is "restore" — the version number this one was restored from.
+        overrideAcknowledged:
+          type: boolean
+          description: True if this version was created by overriding a chat conflict.
+        validationReportId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AuditorFieldOpinion:
+      type: object
+      description: The adversarial auditor's independent opinion on one field — deliberately a narrower shape than FieldVerdict.
+      properties:
+        path:
+          type: string
+        status:
+          type: string
+          enum:
+            - PASS
+            - FAIL
+            - WARN
+        reasoning:
+          type: string
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+            - system
+            - tool
+        content:
+          type: string
+        intent:
+          type: string
+          nullable: true
+          enum:
+            - edit
+            - question
+            - explain_validation
+        toolCalls:
+          type: object
+          nullable: true
+        proposedPatch:
+          type: object
+          nullable: true
+        appliedPatch:
+          type: object
+          nullable: true
+        resultVersion:
+          type: integer
+          nullable: true
+        conflicts:
+          type: object
+          nullable: true
+          description: The wouldViolate array (or a shape-error object) for a conflicted/invalid edit attempt.
+        userId:
+          type: string
+          nullable: true
+        tokenUsage:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    LabelApproval:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        approvedVersion:
+          type: integer
+        labelSnapshot:
+          $ref: '#/components/schemas/LabelData'
+        validationReportId:
+          type: string
+          format: uuid
+        approvedByUserId:
+          type: string
+          format: uuid
+        approverName:
+          type: string
+        approverRole:
+          type: string
+          nullable: true
+        approvedAt:
+          type: string
+          format: date-time
+        signedEstimatedFields:
+          type: array
+          items:
+            type: string
+        acknowledgedUnverifiable:
+          type: array
+          items:
+            type: string
+        riskScoreAtApproval:
+          type: integer
+        autonomyTier:
+          type: string
+        coveragePercentAtApproval:
+          type: number
+          nullable: true
+        rulesetSnapshot:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+          nullable: true
+        secondApproverUserId:
+          type: string
+          nullable: true
+        secondApprovedAt:
+          type: string
+          format: date-time
+          nullable: true
+        promotedReferenceId:
+          type: string
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedByUserId:
+          type: string
+          nullable: true
+        revocationReason:
+          type: string
+          nullable: true
+    ReferenceLabel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        fullText:
+          type: string
+          nullable: true
+        extractedData:
+          type: object
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        companyId:
+          type: string
+          nullable: true
+          description: Null means a global (cross-tenant) reference label.
+        sourceType:
+          type: string
+          nullable: true
+        isApproved:
+          type: boolean
+        needsReview:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RegulatoryRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        ruleKey:
+          type: string
+          example: EG.VET.TARGET_SPECIES.REQUIRED
+        ruleType:
+          type: string
+          enum:
+            - required_field
+            - forbidden_content
+            - format
+            - conditional
+            - value_constraint
+            - language_set
+            - semantic
+        severity:
+          type: string
+          enum:
+            - error
+            - warning
+            - info
+        targetPath:
+          type: string
+          nullable: true
+          description: Path in labelSchema this rule constrains.
+        appliesWhen:
+          type: object
+          nullable: true
+          description: Condition DSL payload — null means "always applies".
+        constraint:
+          type: object
+          description: The rule's constraint DSL payload (§7.3).
+        description:
+          type: string
+        citation:
+          type: string
+          nullable: true
+          description: Verbatim quote from the source document.
+        status:
+          type: string
+          enum:
+            - pending_review
+            - approved
+            - rejected
+        autoFixable:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RegulatoryDocument:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        authority:
+          type: string
+          nullable: true
+          example: EDA
+        country:
+          type: string
+          default: Egypt
+        productScope:
+          type: array
+          items:
+            type: string
+        sourceType:
+          type: string
+          nullable: true
+          enum:
+            - official_upload
+            - official_url
+            - ai_web_search
+            - manual
+        sourceUrl:
+          type: string
+          nullable: true
+        sourceIsOfficial:
+          type: boolean
+        documentVersion:
+          type: string
+          nullable: true
+        effectiveDate:
+          type: string
+          format: date-time
+          nullable: true
+        supersededById:
+          type: string
+          nullable: true
+        retrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        documentHash:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - pending_review
+            - extracted
+            - approved
+            - rejected
+            - superseded
+        reviewedByUserId:
+          type: string
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        clauseTotal:
+          type: integer
+          nullable: true
+        clauseCovered:
+          type: integer
+          nullable: true
+        coveragePercent:
+          type: number
+          nullable: true
+        uncoveredClauses:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              reference:
+                type: string
+              text:
+                type: string
+        coverageAuditedAt:
+          type: string
+          format: date-time
+          nullable: true
+        extractedText:
+          type: string
+          nullable: true
+        extractedData:
+          type: object
+          nullable: true
+        companyId:
+          type: string
+          nullable: true
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegulatoryRule'
+          description: Only included on GET /regulatory-documents/:id.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AuditDisagreement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        fieldPath:
+          type: string
+        deterministicVerdict:
+          $ref: '#/components/schemas/FieldVerdict'
+        auditorVerdict:
+          type: object
+          properties:
+            path:
+              type: string
+            status:
+              type: string
+              enum:
+                - PASS
+                - FAIL
+                - WARN
+            reasoning:
+              type: string
+        auditorReasoning:
+          type: string
+        resolution:
+          type: string
+          nullable: true
+          enum:
+            - human_agreed_engine
+            - human_agreed_auditor
+            - new_rule_created
+        becameRuleId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    GoldenEvalRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runAt:
+          type: string
+          format: date-time
+        engineVersion:
+          type: string
+        modelId:
+          type: string
+          nullable: true
+        promptHash:
+          type: string
+          nullable: true
+        fieldAccuracy:
+          type: object
+          description: Map of labelSchema field path -> { exact, partial, wrong, notApplicable, accuracyPercent }.
+        overallAccuracy:
+          type: number
+        baselineAccuracy:
+          type: number
+          nullable: true
+          description: Previous run's overallAccuracy. Null for the first run.
+        regressed:
+          type: boolean
+        blockedDeploy:
+          type: boolean
+          description: True when any field regressed more than 2% — blocks the change per CLAUDE.md invariant
+        caseCount:
+          type: integer
+        failedCaseIds:
+          type: array
+          items:
+            type: string
+    ShadowComparison:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          nullable: true
+        oldEngineResult:
+          type: object
+        newEngineResult:
+          type: object
+        fieldsDiffered:
+          type: array
+          items:
+            type: string
+        verdictDiffered:
+          type: boolean
+        latencyDeltaMs:
+          type: integer
+          nullable: true
+        costDelta:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    ReviewInboxEntry:
+      type: object
+      description: A risk-sorted projection of GeneratedLabel — not the full record. Returned by GET /review-inbox.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        country:
+          type: string
+        status:
+          type: string
+          enum:
+            - validated
+            - failed_validation
+        riskScore:
+          type: integer
+        autonomyTier:
+          type: string
+          enum:
+            - auto_approve
+            - batch_review
+            - mandatory_review
+            - dual_review
+        currentVersion:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
   responses:
     BadRequestError:
       description: Validation error or bad input
@@ -3111,6 +6449,103 @@ components:
                 properties:
                   template:
                     $ref: '#/components/schemas/Template'
+    BackgroundTaskResponse:
+      description: Current state of a background task.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                $ref: '#/components/schemas/BackgroundTask'
+    ConflictError:
+      description: Version conflict — either the caller's `expectedVersion` is stale (label moved on since it was read), the label/approval/document is already in the target state, or (label patch/chat endpoints only) applying the change would introduce a NEW validation failure. For the last case the response envelope's top-level `status` is still `"success"` — check `data.status === "conflict"` instead; see `PatchConflict`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: fail
+                  message:
+                    type: string
+                    example: 'Version conflict: expected 3, label is now at 4. Reload before editing.'
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/PatchConflict'
+                      - type: object
+                        properties:
+                          intent:
+                            type: string
+                            enum:
+                              - edit
+    ServiceUnavailableError:
+      description: The underlying AI call failed or timed out. Safe to retry the whole request.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: 'AI service temporarily unavailable — could not process this message: <details>'
+    LockedError:
+      description: The label is mid-generation and cannot accept edits yet.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: This label is still generating.
+    UnprocessableEntityError:
+      description: The request was well-formed but rejected by a business rule (a structurally invalid patch, an approval gate, a coverage/approval precondition). `message` is human-readable and, for the label patch protocol, may concatenate multiple violations with "; ".
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: fail
+              message:
+                type: string
+                example: Cannot approve a label with validation errors.
+    TaskAcceptedResponse:
+      description: The operation was queued as a BackgroundTask. Poll GET /background-tasks/{id} for the result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              message:
+                type: string
+              data:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                    format: uuid
   parameters:
     PageParam:
       name: page
@@ -3227,6 +6662,96 @@ components:
         type: string
         format: uuid
       example: f1b2c3d4-e5f6-7890-abcd-ef1234567890
+    BackgroundTaskId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the background task
+      schema:
+        type: string
+        format: uuid
+      example: 77777777-7777-4777-8777-777777777777
+    LabelId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the generated label
+      schema:
+        type: string
+        format: uuid
+      example: 11111111-1111-4111-8111-111111111111
+    VersionNumberN:
+      name: 'n'
+      in: path
+      required: true
+      description: A specific label version number
+      schema:
+        type: integer
+        minimum: 1
+      example: 2
+    VersionNumberA:
+      name: a
+      in: path
+      required: true
+      description: The "from" version number in a diff
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+    VersionNumberB:
+      name: b
+      in: path
+      required: true
+      description: The "to" version number in a diff
+      schema:
+        type: integer
+        minimum: 1
+      example: 3
+    ApprovalId:
+      name: approvalId
+      in: path
+      required: true
+      description: UUID of the label approval
+      schema:
+        type: string
+        format: uuid
+      example: 22222222-2222-4222-8222-222222222222
+    RegulatoryDocumentId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the regulatory document
+      schema:
+        type: string
+        format: uuid
+      example: 33333333-3333-4333-8333-333333333333
+    RegulatoryRuleId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the regulatory rule
+      schema:
+        type: string
+        format: uuid
+      example: 44444444-4444-4444-8444-444444444444
+    DisagreementId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the audit disagreement
+      schema:
+        type: string
+        format: uuid
+      example: 55555555-5555-4555-8555-555555555555
+    ReferenceLabelId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the reference label
+      schema:
+        type: string
+        format: uuid
+      example: 66666666-6666-4666-8666-666666666666
   securitySchemes:
     BearerAuth:
       type: http

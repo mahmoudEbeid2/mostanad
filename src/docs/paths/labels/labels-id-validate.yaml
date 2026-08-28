@@ -1,0 +1,38 @@
+post:
+  tags:
+    - Label Validation
+  summary: Run the deterministic validation engine against a label
+  description: >-
+    Runs the same deterministic engine used everywhere else in the system
+    (§4.2 engine unification) against the label's current `labelData`,
+    persists a new `ValidationReport`, and updates `label.status` to
+    `validated` or `failed_validation`. Uses the approved regulatory rules
+    for the label's country (unlike `POST /products/verify-label`, which
+    always validates with an empty ruleset). Requires `update_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '201':
+      description: Validation report created.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  report:
+                    $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+

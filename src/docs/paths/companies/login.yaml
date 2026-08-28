@@ -3,6 +3,7 @@ post:
     - Companies
   summary: Log in company account
   description: Authenticate a company account (tenant) using their username or email and password to receive a company JWT.
+  security: []
   requestBody:
     required: true
     content:

@@ -1,0 +1,34 @@
+get:
+  tags:
+    - Assurance
+  summary: List golden-set evaluation runs
+  description: Requires `read_assurance`. Ordered newest first.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+  responses:
+    '200':
+      description: Golden run list.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              total:
+                type: integer
+              data:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/GoldenEvalRun'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

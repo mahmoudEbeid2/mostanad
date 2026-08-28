@@ -1,0 +1,82 @@
+post:
+  tags:
+    - Reference Labels
+  summary: Create a reference label manually (no AI extraction)
+  description: 'Synchronous — creates the row directly, `sourceType: "manual"`.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - name
+            - fullText
+            - country
+          properties:
+            name:
+              type: string
+            fullText:
+              type: string
+            country:
+              type: string
+            companyId:
+              type: string
+              nullable: true
+              description: Overridden by the caller's own company id for a company-authenticated caller.
+            brandId:
+              type: string
+              nullable: true
+            categoryId:
+              type: string
+              nullable: true
+            manualCategoryName:
+              type: string
+              nullable: true
+            extractedData:
+              type: object
+              nullable: true
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  referenceLabel:
+                    $ref: '../../components/components.yaml#/components/schemas/ReferenceLabel'
+    '400':
+      description: Missing name, fullText, or country.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Full reference text is required."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: categoryId was provided but doesn't resolve.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Selected category was not found."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

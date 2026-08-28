@@ -1,0 +1,60 @@
+patch:
+  tags:
+    - Regulatory Rules
+  summary: Edit a pending or rejected regulatory rule
+  description: >-
+    An already-`approved` rule cannot be edited — reject it and compile a
+    replacement instead. `pending_review` and `rejected` rules can both be
+    edited. Requires `approve_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryRuleId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            constraint:
+              type: object
+            severity:
+              type: string
+              enum: [error, warning, info]
+            targetPath:
+              type: string
+  responses:
+    '200':
+      description: Updated rule.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  rule:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryRule'
+    '400':
+      description: The rule is already approved.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Cannot edit an already-approved rule — reject it and compile a replacement instead."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

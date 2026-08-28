@@ -1,0 +1,35 @@
+patch:
+  tags:
+    - Regulatory Rules
+  summary: Reject a pending regulatory rule
+  description: >-
+    No request body — there is no `reason` field captured anywhere for a
+    rejection, despite "reason" being used elsewhere in this API's approval
+    vocabulary. No idempotency guard, same caveat as the approve endpoint.
+    Requires `approve_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryRuleId'
+  responses:
+    '200':
+      description: Rejected.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  rule:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryRule'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

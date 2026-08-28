@@ -1,0 +1,131 @@
+get:
+  tags:
+    - Generated Labels
+  summary: Get a generated label
+  description: >-
+    Returns the full label record plus convenience fields. Requires
+    `read_labels`. Cross-tenant access returns 404, never 403 — a label
+    belonging to a different company is indistinguishable from a
+    nonexistent one.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '200':
+      description: The label
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  label:
+                    $ref: '../../components/components.yaml#/components/schemas/GeneratedLabel'
+                  currentVersion:
+                    type: integer
+                  latestValidation:
+                    type: object
+                    nullable: true
+                    allOf:
+                      - $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+                  provenance:
+                    type: object
+                    description: 'Map of labelSchema field path -> { tier, source, citation, modelId, promptHash, at }.'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+patch:
+  tags:
+    - Generated Labels
+  summary: Apply a structural edit to a label (patch protocol)
+  description: >-
+    Applies a set of field-level changes directly (no AI involved — for the
+    AI-assisted equivalent see `POST /labels/{id}/chat`). Requires
+    `update_labels`. Rejects a patch that would replace more than 60% of the
+    label's top-level fields — use regeneration for that instead. A patch
+    that would introduce a NEW validation failure that didn't exist before
+    is refused as a 409 conflict rather than silently applied; there is no
+    `overrideAcknowledged` escape hatch on this endpoint — resolve the
+    conflict and resubmit (or use the chat endpoint, which does support
+    overriding).
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - changes
+            - expectedVersion
+          properties:
+            changes:
+              type: array
+              minItems: 1
+              items:
+                $ref: '../../components/components.yaml#/components/schemas/LabelPatchChange'
+            rationale:
+              type: string
+              nullable: true
+            expectedVersion:
+              type: integer
+              description: Must equal the label's current `currentVersion`, or the request is refused with 409.
+  responses:
+    '200':
+      description: Patch applied — a new version was created.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "applied"
+                  resultVersion:
+                    type: integer
+                  report:
+                    $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '409':
+      $ref: '../../components/components.yaml#/components/responses/ConflictError'
+    '422':
+      description: >-
+        Structurally invalid patch — unknown path, unsupported op, missing
+        `value`, or the patch touches more than 60% of top-level fields
+        (bulk replacement). All causes are joined into one message string
+        with "; ".
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "Patch touches 22/30 top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

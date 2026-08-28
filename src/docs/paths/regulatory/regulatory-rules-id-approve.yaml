@@ -1,0 +1,36 @@
+patch:
+  tags:
+    - Regulatory Rules
+  summary: Approve a pending regulatory rule
+  description: >-
+    No request body. Note: there is no idempotency/conflict guard against
+    re-approving an already-approved (or already-rejected) rule — the
+    frontend should disable this action once `status` is no longer
+    `pending_review` rather than relying on the API to refuse it. Requires
+    `approve_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryRuleId'
+  responses:
+    '200':
+      description: Approved.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  rule:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryRule'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

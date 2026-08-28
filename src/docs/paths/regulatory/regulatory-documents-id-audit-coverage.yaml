@@ -1,0 +1,35 @@
+post:
+  tags:
+    - Regulatory Documents
+  summary: Audit a document's rule coverage against its clauses
+  description: >-
+    Persists `clauseTotal`/`clauseCovered`/`coveragePercent`/
+    `uncoveredClauses`/`coverageAuditedAt` onto the document. Rejected rules
+    are excluded from the accepted-coverage count. Requires
+    `approve_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryDocumentId'
+  responses:
+    '200':
+      description: Updated document with coverage figures.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  document:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryDocument'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

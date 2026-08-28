@@ -1,0 +1,86 @@
+post:
+  tags:
+    - Regulatory Documents
+  summary: Compile candidate rules from a document's extracted text
+  description: >-
+    Requires `approve_regulatory`. Every accepted candidate is created as a
+    `RegulatoryRule` with `status: "pending_review"` — nothing here is
+    auto-approved. A candidate is rejected (not saved) when it's missing a
+    required field, has an unsupported `constraint.kind`, targets a path
+    that isn't in `labelSchema`, its citation can't be found verbatim in the
+    source document, or it collides with an existing rule's `ruleKey` for
+    this document.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryDocumentId'
+  responses:
+    '201':
+      description: Rules compiled.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+                example: "4 rule(s) compiled and pending review, 1 rejected."
+              data:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/RegulatoryRule'
+                  rejected:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        candidate:
+                          type: object
+                          description: Raw AI-proposed rule, not a DB row.
+                          properties:
+                            ruleKey:
+                              type: string
+                            ruleType:
+                              type: string
+                            severity:
+                              type: string
+                            targetPath:
+                              type: string
+                              nullable: true
+                            appliesWhen:
+                              type: object
+                              nullable: true
+                            constraint:
+                              type: object
+                            description:
+                              type: string
+                            citation:
+                              type: string
+                              nullable: true
+                        reason:
+                          type: string
+                          example: "Citation not found verbatim in the source document."
+    '400':
+      description: The document has no extracted text yet.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This document has no extracted text yet."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

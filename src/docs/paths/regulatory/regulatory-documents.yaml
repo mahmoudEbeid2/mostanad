@@ -1,0 +1,130 @@
+get:
+  tags:
+    - Regulatory Documents
+  summary: List regulatory documents
+  description: Requires `read_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - name: country
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: authority
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "EDA"
+    - name: status
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [pending_review, extracted, approved, rejected, superseded]
+  responses:
+    '200':
+      description: Document list. List items do not include the nested rules array.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              total:
+                type: integer
+              data:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/RegulatoryDocument'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Regulatory Documents
+  summary: Upload a regulatory document for extraction
+  description: >-
+    Multipart upload. Queues a `BackgroundTask` (reusing the eda-requirement
+    extraction pipeline) and returns immediately — poll
+    `GET /background-tasks/{taskId}`; on completion `.result` is the full
+    `RegulatoryDocument` row (so the new document's id is
+    `.result.id`, not the initial `data.documentId`, which is always null).
+    If the file's extracted text hashes to an existing document, the task
+    fails with a 409-flavored message in `.error` rather than the POST
+    itself returning an error (extraction happens in the worker, after the
+    202 has already been sent). Requires `create_regulatory`.
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required:
+            - file
+          properties:
+            file:
+              type: string
+              format: binary
+              description: PDF or DOCX.
+            country:
+              type: string
+              default: "Egypt"
+            title:
+              type: string
+            authority:
+              type: string
+              example: "EDA"
+            productScope:
+              description: Array, or a comma-separated string (split/trimmed server-side).
+              oneOf:
+                - type: array
+                  items:
+                    type: string
+                - type: string
+            sourceUrl:
+              type: string
+            documentVersion:
+              type: string
+  responses:
+    '202':
+      description: Queued for extraction.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+                example: "Document uploaded and queued for extraction"
+              data:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                    format: uuid
+                  documentId:
+                    type: string
+                    nullable: true
+                    example: null
+    '400':
+      $ref: '../../components/components.yaml#/components/responses/BadRequestError'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

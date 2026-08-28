@@ -1,0 +1,48 @@
+patch:
+  tags:
+    - Regulatory Documents
+  summary: Clear a false-positive uncovered clause
+  description: >-
+    Not in the original architecture doc's literal endpoint list — added
+    because the 95% approval gate needs a way for a human to clear a
+    false-positive uncovered clause. Removes the matching entry (by
+    `reference`) from `uncoveredClauses`; does not touch `clauseTotal` or
+    `coveragePercent`. Silently a no-op if `reference` doesn't match
+    anything. Requires `approve_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryDocumentId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - reference
+          properties:
+            reference:
+              type: string
+  responses:
+    '200':
+      description: Updated document.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  document:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryDocument'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

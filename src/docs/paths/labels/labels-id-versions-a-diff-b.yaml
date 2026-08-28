@@ -1,0 +1,43 @@
+get:
+  tags:
+    - Label Versions
+  summary: Diff two label versions
+  description: Requires `read_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+    - $ref: '../../components/components.yaml#/components/parameters/VersionNumberA'
+    - $ref: '../../components/components.yaml#/components/parameters/VersionNumberB'
+  responses:
+    '200':
+      description: Field-level diff between the two versions.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  diff:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/VersionDiffEntry'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: Label not found, wrong tenant, or one/both versions don't exist.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "One or both versions not found for this label"
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

@@ -2,7 +2,18 @@ post:
   tags:
     - Label Verification
   summary: General PDF or image drug label compliance verification
-  description: Upload an animal feed, supplement, or veterinary drug PDF/image label. The system will upload it to the Gemini File API, extract the product metadata using Gemini, search the database globally (by exact name or active ingredient overlap) for matching/alternative products, verify compliance against the target country's drug regulatory requirements, and return the combined analysis.
+  description: >-
+    Upload an animal feed, supplement, or veterinary drug PDF/image label.
+    The system extracts product metadata via Gemini, searches the database
+    globally for matching/alternative products, and runs the same
+    deterministic validation engine used by the label-generation pipeline
+    (§4.2 engine unification) — **always with an empty ruleset**
+    (`rulesetIds` is always `[]`; unlike `POST /labels/{id}/validate`, this
+    endpoint is not country/rule aware yet). **Always asynchronous**: returns
+    202 immediately with a `jobId`; poll `GET /background-tasks/{jobId}`
+    (`pending` → `processing` → `completed`|`failed`) for the result. This
+    replaces the old synchronous AI-judged shape this endpoint used to
+    return directly — see API-CHANGES.md Phase 2.
   requestBody:
     required: true
     content:
@@ -22,8 +33,8 @@ post:
             - label
             - country
   responses:
-    '200':
-      description: Label successfully verified and compliance report generated
+    '202':
+      description: Verification queued.
       content:
         application/json:
           schema:
@@ -31,69 +42,40 @@ post:
             properties:
               status:
                 type: string
-                example: "success"
+                example: "accepted"
               message:
                 type: string
-                example: "Label verified successfully!"
+                example: "Label verification has been accepted and is processing in the background."
               data:
                 type: object
                 properties:
-                  product:
-                    type: object
-                    properties:
-                      extractedDetails:
-                        type: object
-                        description: Product metadata extracted from the label by Gemini AI
-                      existsInDb:
-                        type: boolean
-                        example: true
-                      isExactMatch:
-                        type: boolean
-                        example: true
-                      dbProduct:
-                        type: object
-                        nullable: true
-                        description: The matching database product if found, otherwise null
-                  validation:
-                    type: object
-                    properties:
-                      compliant:
-                        type: boolean
-                        example: false
-                      checkedAgainstDb:
-                        type: boolean
-                        example: true
-                      isExactMatch:
-                        type: boolean
-                        example: true
-                      dbProductName:
-                        type: string
-                        nullable: true
-                        example: "H-Viral"
-                      country:
-                        type: string
-                        example: "Saudi Arabia"
-                      results:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            category:
-                              type: string
-                              example: "regulatory"
-                            issue:
-                              type: string
-                              example: "Missing bilingual Arabic/English warnings"
-                            location:
-                              type: string
-                              nullable: true
-                              example: "Active ingredients section"
-                            solution:
-                              type: string
-                              example: "Translate all safety warning paragraphs into Arabic"
+                  jobId:
+                    type: string
+                    format: uuid
+                    description: Pass this as {id} to GET /background-tasks/{id}.
     '400':
       $ref: '../../components/components.yaml#/components/responses/BadRequestError'
-    '404':
-      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
     '500':
       $ref: '../../components/components.yaml#/components/responses/ServerError'
+  x-background-task-result:
+    description: Shape of BackgroundTask.result once the polled task reports status "completed".
+    schema:
+      type: object
+      properties:
+        product:
+          type: object
+          properties:
+            extractedDetails:
+              type: object
+              description: Product metadata extracted from the label by Gemini AI (partial labelSchema-conformant shape, not the old flat {name, category, productCode, ...} object).
+            existsInDb:
+              type: boolean
+            isExactMatch:
+              type: boolean
+            dbProduct:
+              type: object
+              nullable: true
+        validation:
+          $ref: '../../components/components.yaml#/components/schemas/ValidationReport'

@@ -1,0 +1,29 @@
+get:
+  tags:
+    - Regulatory Documents
+  summary: Get a regulatory document, including its rules
+  description: Requires `read_regulatory`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryDocumentId'
+  responses:
+    '200':
+      description: The document, with its `rules` array populated.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  document:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryDocument'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

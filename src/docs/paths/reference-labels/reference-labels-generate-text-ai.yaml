@@ -1,0 +1,110 @@
+post:
+  tags:
+    - Reference Labels
+  summary: Generate a new label from AI (schema-constrained, reference- and rule-aware)
+  description: >-
+    Always asynchronous: returns 202 with a `taskId` — poll
+    `GET /background-tasks/{taskId}` (`pending` → `processing` →
+    `completed`|`failed`). This is the main label-generation entry point
+    for phases 1-9; the result on completion is a `labelSchema`-conformant
+    label plus a validation summary, risk score, and autonomy tier. See
+    FRONTEND-GUIDE.md for the full polling flow and how this feeds into the
+    validate/chat/approve pipeline afterward.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - country
+            - language
+          properties:
+            productId:
+              type: string
+              format: uuid
+              nullable: true
+              description: If given, formulationText becomes optional and aimOfUseHint can be satisfied by the product's own indications.
+            formulationText:
+              type: string
+              description: Required only when productId is absent.
+            country:
+              type: string
+            language:
+              type: string
+            aimOfUseHint:
+              type: string
+              description: >-
+                Required unless a referenced product already has
+                `indications` set — the AI will never guess the aim of use.
+            targetSpeciesHint:
+              type: string
+            directionOfUseHint:
+              type: string
+            companyId:
+              type: string
+              format: uuid
+              description: >-
+                Required when called by a system user (no req.company) —
+                generation must be scoped to a company. Not needed for a
+                company-authenticated caller, whose own id is always used.
+        examples:
+          productReferenced:
+            summary: Referencing an existing product
+            value: { productId: "d1b2c3d4-e5f6-7890-abcd-ef1234567890", country: "Egypt", language: "ar" }
+          formulationOnly:
+            summary: No product on file
+            value:
+              formulationText: "Amoxicillin trihydrate 500mg/g oral powder for poultry"
+              country: "Egypt"
+              language: "ar"
+              aimOfUseHint: "Treatment of bacterial infections in poultry"
+  responses:
+    '202':
+      $ref: '../../components/components.yaml#/components/responses/TaskAcceptedResponse'
+    '400':
+      description: Missing country/language, missing productId+formulationText, missing aimOfUseHint with no fallback, or (system user) missing companyId.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Please provide the confirmed Aim of Use — the AI will not guess it — or reference a Product that already has one."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+  x-background-task-result:
+    description: >-
+      Shape of BackgroundTask.result once GET /background-tasks/{taskId}
+      reports status "completed" for this task type.
+    schema:
+      type: object
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+          description: The new, stable GeneratedLabel.id. Use this for every follow-up call (validate/chat/approve/etc) — do not keep polling the task.
+        label:
+          $ref: '../../components/components.yaml#/components/schemas/LabelData'
+        validation:
+          type: object
+          properties:
+            passed:
+              type: boolean
+            errorCount:
+              type: integer
+            warningCount:
+              type: integer
+        riskScore:
+          type: integer
+        autonomyTier:
+          type: string
+          enum: [auto_approve, batch_review, mandatory_review, dual_review]

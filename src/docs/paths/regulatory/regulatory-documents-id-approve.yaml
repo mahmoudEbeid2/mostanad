@@ -1,0 +1,63 @@
+post:
+  tags:
+    - Regulatory Documents
+  summary: Approve a regulatory document
+  description: >-
+    Gated on coverage. Requires `approve_regulatory`. **400** if the
+    document has never been coverage-audited (`coveragePercent` is
+    null/undefined) — run `POST /regulatory-documents/{id}/audit-coverage`
+    first. **422** only when coverage is below 95% AND at least one clause
+    in `uncoveredClauses` is still unresolved — if coverage is under 95% but
+    every clause has been human-cleared via
+    `PATCH /regulatory-documents/{id}/clauses/clear`, approval succeeds
+    anyway.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/RegulatoryDocumentId'
+  responses:
+    '200':
+      description: Approved.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  document:
+                    $ref: '../../components/components.yaml#/components/schemas/RegulatoryDocument'
+    '400':
+      description: Never coverage-audited.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This document has not been coverage-audited yet — POST /regulatory-documents/:id/audit-coverage first."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '422':
+      description: Coverage < 95% and unresolved clauses remain.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Cannot approve: coverage is 82.0% (< 95%) with 3 clause(s) still unresolved. Clear them via review first."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

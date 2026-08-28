@@ -1,0 +1,77 @@
+post:
+  tags:
+    - Label Approval
+  summary: Revoke an approval
+  description: >-
+    Sets the label's status to `revoked`. If this approval had promoted a
+    `ReferenceLabel`, that reference's `isApproved` becomes `false` (never
+    deleted). Every OTHER label whose `referenceLabelIds` cites the
+    now-revoked reference gets `needsReview: true` set — those ids are
+    returned in `affectedLabelIds` so the frontend can flag them. Requires
+    `approve_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+    - $ref: '../../components/components.yaml#/components/parameters/ApprovalId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - reason
+          properties:
+            reason:
+              type: string
+  responses:
+    '200':
+      description: Revoked.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  approval:
+                    $ref: '../../components/components.yaml#/components/schemas/LabelApproval'
+                  affectedLabelIds:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+                    description: Every other label now flagged needsReview:true because it cites the revoked reference.
+    '400':
+      description: This approval was already revoked.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This approval was already revoked."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      description: No approval found with that ID (missing, or belongs to a different tenant).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "No approval found with that ID"
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

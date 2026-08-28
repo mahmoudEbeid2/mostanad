@@ -1,0 +1,39 @@
+get:
+  tags:
+    - Label Validation
+  summary: Get the most recent validation report for a label
+  description: Requires `read_labels`. 404 if the label has never been validated — call `POST /labels/{id}/validate` first.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '200':
+      description: The most recent validation report.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  report:
+                    $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: Label not found/wrong tenant, OR the label exists but has no ValidationReport yet.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This label has not been validated yet — POST /labels/:id/validate first."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

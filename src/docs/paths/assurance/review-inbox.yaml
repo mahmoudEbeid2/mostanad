@@ -1,0 +1,48 @@
+get:
+  tags:
+    - Review Inbox
+  summary: The single risk-sorted review queue
+  description: >-
+    Every label with `status` in `validated` or `failed_validation`, sorted
+    by `riskScore` descending. A company caller sees only its own tenant; a
+    system user may pass `companyId`. Requires `read_assurance`. Entries are
+    a narrow projection, not the full label — fetch `GET /labels/{id}` for
+    the rest.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - name: companyId
+      in: query
+      required: false
+      description: System-user callers only.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: The queue.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              total:
+                type: integer
+              data:
+                type: object
+                properties:
+                  labels:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/ReviewInboxEntry'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

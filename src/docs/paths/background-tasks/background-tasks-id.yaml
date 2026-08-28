@@ -1,0 +1,33 @@
+get:
+  tags:
+    - Background Tasks
+  summary: Poll a background task's status/result
+  description: >-
+    Every async label-engine operation in this API (label generation,
+    reference-label extraction, regulatory-document extraction, PDF/image
+    label verification) is fronted by a `BackgroundTask` row. Poll this
+    endpoint until `status` is `completed` or `failed`; `result`'s shape
+    depends on which endpoint created the task — see that endpoint's docs.
+    No permission restriction beyond `protect` (any authenticated caller can
+    read any task by id — there is no tenant check here).
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/BackgroundTaskId'
+  responses:
+    '200':
+      $ref: '../../components/components.yaml#/components/responses/BackgroundTaskResponse'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: Background task not found.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Background task not found"
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

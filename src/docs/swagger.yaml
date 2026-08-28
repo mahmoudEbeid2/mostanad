@@ -13,6 +13,9 @@ servers:
   - url: http://localhost:3000/api/v1
     description: Development server
 
+security:
+  - BearerAuth: []
+
 tags:
   - name: Users
     description: Internal system user management
@@ -40,6 +43,28 @@ tags:
     description: Internal user authentication and login
   - name: Certificates
     description: Product extraction from invoices and auto-populating certificate templates
+  - name: Background Tasks
+    description: Poll long-running jobs (label generation, extraction, verification)
+  - name: Generated Labels
+    description: AI-generated veterinary/feed labels — persistence, listing, and the field-level patch protocol
+  - name: Label Versions
+    description: Append-only version history, diffing, and forward-only restore for a generated label
+  - name: Label Validation
+    description: The deterministic validation engine (schema, applicability, regulatory rule, and coherence layers)
+  - name: Label Chat
+    description: AI-assisted Q&A and editing agent for a generated label, with conflict detection
+  - name: Label Approval
+    description: The human signature workflow that promotes a label to a reusable reference
+  - name: Regulatory Documents
+    description: Ingested regulatory source documents (upload, extraction, coverage audit, approval)
+  - name: Regulatory Rules
+    description: Machine-compiled rules derived from approved regulatory documents
+  - name: Reference Labels
+    description: The style/content knowledge base used to ground label generation (AI-extracted, manual, or promoted from approvals)
+  - name: Assurance
+    description: Adversarial auditing, golden-set evaluation, and shadow-mode engine comparison
+  - name: Review Inbox
+    description: The single risk-sorted human review queue
 
 paths:
   /auth/login:
@@ -92,6 +117,86 @@ paths:
     $ref: './paths/certificates/certificates.yaml'
   /certificates/generate:
     $ref: './paths/certificates/certificates-token.yaml'
+  /background-tasks/{id}:
+    $ref: './paths/background-tasks/background-tasks-id.yaml'
+
+  # ---- Generated labels (Phases 1, 2, 5, 6, 7, 9) ----
+  /labels:
+    $ref: './paths/labels/labels.yaml'
+  /labels/{id}:
+    $ref: './paths/labels/labels-id.yaml'
+  /labels/{id}/versions:
+    $ref: './paths/labels/labels-id-versions.yaml'
+  /labels/{id}/versions/{n}:
+    $ref: './paths/labels/labels-id-versions-n.yaml'
+  /labels/{id}/versions/{n}/restore:
+    $ref: './paths/labels/labels-id-versions-n-restore.yaml'
+  /labels/{id}/versions/{a}/diff/{b}:
+    $ref: './paths/labels/labels-id-versions-a-diff-b.yaml'
+  /labels/{id}/validate:
+    $ref: './paths/labels/labels-id-validate.yaml'
+  /labels/{id}/validation:
+    $ref: './paths/labels/labels-id-validation.yaml'
+  /labels/{id}/audit:
+    $ref: './paths/labels/labels-id-audit.yaml'
+  /labels/{id}/chat:
+    $ref: './paths/labels/labels-id-chat.yaml'
+  /labels/{id}/approve:
+    $ref: './paths/labels/labels-id-approve.yaml'
+  /labels/{id}/approvals:
+    $ref: './paths/labels/labels-id-approvals.yaml'
+  /labels/{id}/approvals/{approvalId}/revoke:
+    $ref: './paths/labels/labels-id-approvals-approvalId-revoke.yaml'
+  /labels/{id}/replay:
+    $ref: './paths/labels/labels-id-replay.yaml'
+
+  # ---- Regulatory documents & rules (Phase 3) ----
+  /regulatory-documents:
+    $ref: './paths/regulatory/regulatory-documents.yaml'
+  /regulatory-documents/{id}:
+    $ref: './paths/regulatory/regulatory-documents-id.yaml'
+  /regulatory-documents/{id}/compile-rules:
+    $ref: './paths/regulatory/regulatory-documents-id-compile-rules.yaml'
+  /regulatory-documents/{id}/audit-coverage:
+    $ref: './paths/regulatory/regulatory-documents-id-audit-coverage.yaml'
+  /regulatory-documents/{id}/approve:
+    $ref: './paths/regulatory/regulatory-documents-id-approve.yaml'
+  /regulatory-documents/{id}/clauses/clear:
+    $ref: './paths/regulatory/regulatory-documents-id-clauses-clear.yaml'
+  /regulatory-rules:
+    $ref: './paths/regulatory/regulatory-rules.yaml'
+  /regulatory-rules/preview:
+    $ref: './paths/regulatory/regulatory-rules-preview.yaml'
+  /regulatory-rules/{id}:
+    $ref: './paths/regulatory/regulatory-rules-id.yaml'
+  /regulatory-rules/{id}/approve:
+    $ref: './paths/regulatory/regulatory-rules-id-approve.yaml'
+  /regulatory-rules/{id}/reject:
+    $ref: './paths/regulatory/regulatory-rules-id-reject.yaml'
+
+  # ---- Assurance & review inbox (Phases 5, 8) ----
+  /assurance/disagreements:
+    $ref: './paths/assurance/assurance-disagreements.yaml'
+  /assurance/disagreements/{id}/resolve:
+    $ref: './paths/assurance/assurance-disagreements-id-resolve.yaml'
+  /assurance/golden-runs:
+    $ref: './paths/assurance/assurance-golden-runs.yaml'
+  /assurance/shadow:
+    $ref: './paths/assurance/assurance-shadow.yaml'
+  /review-inbox:
+    $ref: './paths/assurance/review-inbox.yaml'
+
+  # ---- Reference labels / knowledge base (Phases 0, 1, 4) ----
+  /reference-labels:
+    $ref: './paths/reference-labels/reference-labels.yaml'
+  /reference-labels/manual:
+    $ref: './paths/reference-labels/reference-labels-manual.yaml'
+  /reference-labels/generate-text-ai:
+    $ref: './paths/reference-labels/reference-labels-generate-text-ai.yaml'
+  /reference-labels/retry/{taskId}:
+    $ref: './paths/reference-labels/reference-labels-retry-taskId.yaml'
+  /reference-labels/{id}:
+    $ref: './paths/reference-labels/reference-labels-id.yaml'
 
 components:
   $ref: './components/components.yaml#/components'

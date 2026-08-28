@@ -1,0 +1,123 @@
+post:
+  tags:
+    - Label Approval
+  summary: Sign off (approve) a label — the human signature on regulated output
+  description: >-
+    Approval is not a status toggle: it's a human signature recording who
+    signed, which version, which estimated fields they signed for, which
+    UNVERIFIABLE verdicts they acknowledged, and a frozen label snapshot. It
+    is refused unless the current version passes every gate below, checked
+    in this order. Requires `approve_labels`, plus `publish_global_reference`
+    when `scope: "global"` is used (never grantable to a company-
+    authenticated caller — rejected outright regardless of permissions).
+
+    **Refusal order and status codes:**
+    1. `scope:"global"` requested by a company caller, or by a system user
+       without `publish_global_reference` — **403**.
+    2. Label not found / wrong tenant — **404**.
+    3. `expectedVersion` doesn't match `label.currentVersion` — **409**.
+    4. `label.status` is already `"approved"` — **409** (revoke first to
+       re-approve).
+    5. No `ValidationReport` exists at all for this label — **422**.
+    6. **Gate 1** — the existing `ValidationReport` is stale relative to the
+       current version — **409**.
+    7. **Gate 2** — the report has any FAIL verdict (`!report.passed`) —
+       **422**, final, no override.
+    8. **Gate 3** — any `UNVERIFIABLE` verdict whose `path` is missing from
+       `acknowledgedUnverifiable` — **422**.
+    9. **Gate 4** — any `labelData.estimatedFields` entry missing from
+       `signedEstimatedFields` — **422**.
+    10. **Gate 5** — `riskScore > 50` and the approver is the label's own
+        creator — **403** (separation of duties); OR `autonomyTier ===
+        "dual_review"` with no `secondApproverUserId` supplied — **422**.
+    11. **Gate 6** — any regulatory document behind the validation's
+        `rulesetIds` is not `status:"approved"` or has `coveragePercent` <
+        95 — **422** ("weak backing documents").
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - expectedVersion
+          properties:
+            expectedVersion:
+              type: integer
+            signedEstimatedFields:
+              type: array
+              items:
+                type: string
+              description: labelSchema field paths — must cover every entry in the label's labelData.estimatedFields.
+              example: ["strength", "withdrawalPeriod"]
+            acknowledgedUnverifiable:
+              type: array
+              items:
+                type: string
+              description: FieldVerdict.path values — must cover every UNVERIFIABLE verdict in the latest report.
+              example: ["registrationNumber"]
+            scope:
+              type: string
+              enum: [company, global]
+              default: company
+              description: '"global" requires publish_global_reference and is never available to a company-authenticated caller.'
+            note:
+              type: string
+              nullable: true
+            secondApproverUserId:
+              type: string
+              format: uuid
+              nullable: true
+              description: Required when the label's autonomyTier is "dual_review".
+  responses:
+    '201':
+      description: Approved. The label was also promoted to a ReferenceLabel.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  approval:
+                    $ref: '../../components/components.yaml#/components/schemas/LabelApproval'
+                  reference:
+                    $ref: '../../components/components.yaml#/components/schemas/ReferenceLabel'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      description: "Global-scope permission denial, or a high-risk label approved by its own creator (separation of duties)."
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "High risk: cannot approve a label you created yourself."
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '409':
+      description: Stale expectedVersion, already approved, or the existing validation report is stale relative to the current version.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This version is already approved. Revoke the existing approval first if you need to re-approve."
+    '422':
+      $ref: '../../components/components.yaml#/components/responses/UnprocessableEntityError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

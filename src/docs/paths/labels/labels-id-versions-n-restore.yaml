@@ -1,0 +1,47 @@
+post:
+  tags:
+    - Label Versions
+  summary: Restore a previous label version
+  description: >-
+    Forward-only: restoring version `n` creates a brand-new version with
+    that version's content (`changeSource: "restore"`, `restoredFrom: n`) —
+    it never rewrites version `n` itself. The new version is immediately
+    (re-)validated. Requires `update_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+    - $ref: '../../components/components.yaml#/components/parameters/VersionNumberN'
+  responses:
+    '201':
+      description: A new version was created from the restored content.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  version:
+                    $ref: '../../components/components.yaml#/components/schemas/LabelVersion'
+                  report:
+                    $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      description: Label not found, wrong tenant, or the target version doesn't exist.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

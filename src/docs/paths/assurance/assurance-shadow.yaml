@@ -1,0 +1,44 @@
+get:
+  tags:
+    - Assurance
+  summary: List shadow-mode engine comparisons
+  description: >-
+    Requires `read_assurance`. Returns real `ShadowComparison` rows when any
+    exist. When none exist (no live migration is currently being shadowed),
+    still returns 200 with an empty `comparisons` array plus an explanatory
+    `message` — this is an intentionally-empty, always-available surface,
+    not an error.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+  responses:
+    '200':
+      description: Shadow comparisons (possibly empty).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              total:
+                type: integer
+              message:
+                type: string
+                nullable: true
+                description: Present only when total is 0.
+                example: "No shadow runs recorded yet — see PROGRESS.md's Phase 8 entry: this session replaced the generator in place rather than running two versions in parallel, so there's no live migration to shadow right now."
+              data:
+                type: object
+                properties:
+                  comparisons:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/ShadowComparison'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

@@ -1,0 +1,72 @@
+post:
+  tags:
+    - Assurance
+  summary: Run the adversarial auditor against a label's latest validation
+  description: >-
+    A second, independent (different model family) AI review of the label's
+    latest `ValidationReport`. Every place it disagrees with the
+    deterministic engine is persisted as an `AuditDisagreement`. Also
+    recomputes `riskScore`/`autonomyTier`. Requires `update_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '201':
+      description: Audit complete.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  auditorVerdicts:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/AuditorFieldOpinion'
+                  disagreements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        fieldPath:
+                          type: string
+                        deterministicVerdict:
+                          $ref: '../../components/components.yaml#/components/schemas/FieldVerdict'
+                        auditorVerdict:
+                          $ref: '../../components/components.yaml#/components/schemas/AuditorFieldOpinion'
+                        auditorReasoning:
+                          type: string
+                  riskScore:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+                  autonomyTier:
+                    type: string
+                    enum: [auto_approve, batch_review, mandatory_review, dual_review]
+                    description: "Thresholds on riskScore: ≤20 auto_approve, ≤50 batch_review, ≤75 mandatory_review, >75 dual_review."
+    '400':
+      description: The label has never been validated — run `POST /labels/{id}/validate` first.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This label has not been validated yet — POST /labels/:id/validate first."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '503':
+      $ref: '../../components/components.yaml#/components/responses/ServiceUnavailableError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

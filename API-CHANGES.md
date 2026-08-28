@@ -120,6 +120,15 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   for a feature that's simply not there yet.
 - `GET /review-inbox` — **new**. `read_assurance`. The single risk-sorted queue
   (§14.6) of every label with `status` in `validated`/`failed_validation`.
+- `POST /reference-labels/generate-text-ai` — **result shape gains two fields,
+  not previously logged here**. `BackgroundTask.result` now also carries
+  `riskScore` (int) and `autonomyTier` (`auto_approve`|`batch_review`|
+  `mandatory_review`|`dual_review`) alongside the `taskId`/`labelId`/`label`/
+  `validation` keys Phase 4 added — risk scoring got wired directly into
+  `labelGeneratorWorker.js` in this phase, not just exposed via the new
+  `/labels/:id/audit` endpoint. Additive — no caller reading the Phase 4 keys
+  is affected, but any caller that inspects the whole `result` object (e.g.
+  strict shape validation) needs to allow these two new keys.
 
 ## Phase 6
 
@@ -184,3 +193,34 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   (see PROGRESS.md's Phase 9 entry for why: `ai.batches.create()` 400s on
   this project's free-tier Gemini key, so there is no verified call site to
   expose).
+
+## Post-Phase 9 (found while writing this handoff — not part of the label engine, but caller-visible)
+
+- `POST /companies/:companyId/templates` and `PATCH /templates/:id` — **bug
+  fix, caller-visible for a request that was already broken**. Creating (or
+  updating) a template with `isGlobal: false` and no `productId` used to
+  reach the duplicate-template check with `productId: undefined` in the
+  Prisma `where` clause — Prisma treats `undefined` as "don't filter on this
+  field," not "match null," so the check silently matched ANY other
+  non-global template of that type for the company and returned the wrong
+  error: `400 "A template of this type already exists for this company and
+  product. Please delete the existing template first."` (or, if none
+  existed, silently created a broken template row with no `productId` at
+  all). Fixed in `src/services/templateService.js`
+  (commit `be8d53a`): now returns `400 "Product ID is required for a
+  non-global (product-scoped) template."` immediately. No previously-working
+  request is affected — this only changes the error a caller sees for a
+  request that was never valid to begin with.
+- **Known gap, not a phase-introduced change — flagging because it
+  contradicts CLAUDE.md's invariant #10** ("every reference-label query is
+  tenant-scoped"): `GET /reference-labels` and `GET /reference-labels/:id`
+  do **not** apply the `where: { OR: [{ companyId }, { companyId: null }] }`
+  scoping — that pattern is only applied inside the internal generation
+  pipeline's own reference-selection query
+  (`labelGeneratorWorker.js`), not in these public read endpoints. Today,
+  any authenticated caller can list or fetch any tenant's reference labels
+  by id; `companyId` on `GET /reference-labels` is an opt-in filter, not
+  enforced scoping. The frontend must not rely on these two endpoints to
+  hide another tenant's reference labels — do not build a UI that exposes
+  raw reference-label search/browse to end users until this is fixed
+  server-side.

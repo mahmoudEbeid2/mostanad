@@ -1,0 +1,41 @@
+get:
+  tags:
+    - Label Versions
+  summary: Get one specific label version
+  description: Requires `read_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+    - $ref: '../../components/components.yaml#/components/parameters/VersionNumberN'
+  responses:
+    '200':
+      description: The version
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  version:
+                    $ref: '../../components/components.yaml#/components/schemas/LabelVersion'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      description: Label not found, wrong tenant, or `n` out of range for this label.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "Version 7 not found for this label"
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

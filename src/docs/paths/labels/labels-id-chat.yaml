@@ -1,0 +1,197 @@
+post:
+  tags:
+    - Label Chat
+  summary: Send a message to the label's AI editing/Q&A agent
+  description: >-
+    A single endpoint handles three different intents, classified by the AI
+    itself: `question`, `explain_validation` (both answer-only, no state
+    change), and `edit` (may create a new label version). Requires
+    `update_labels`. See FRONTEND-GUIDE.md for the full conflict/override
+    flow.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+              example: "Why did withdrawal period fail?"
+            expectedVersion:
+              type: integer
+              nullable: true
+              description: If provided and it doesn't match the label's current version, the request is refused with 409 before any AI call is made.
+            overrideAcknowledged:
+              type: boolean
+              default: false
+              description: >-
+                Resend the SAME message with this set to true to push an
+                edit through past a conflict. The patch is regenerated from
+                scratch on retry, not replayed — it is possible (rare) for
+                the AI to propose a slightly different patch the second
+                time.
+  responses:
+    '200':
+      description: Question answered, or an edit applied cleanly / applied via override.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                oneOf:
+                  - type: object
+                    description: question or explain_validation turn — no state change.
+                    properties:
+                      intent:
+                        type: string
+                        enum: [question, explain_validation]
+                      answer:
+                        type: string
+                  - type: object
+                    description: edit turn, applied (clean, or overridden).
+                    properties:
+                      intent:
+                        type: string
+                        enum: [edit]
+                      status:
+                        type: string
+                        enum: [applied]
+                      resultVersion:
+                        type: integer
+                      report:
+                        $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '403':
+      $ref: '../../components/components.yaml#/components/responses/ForbiddenError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '409':
+      description: >-
+        Stale `expectedVersion` (plain fail envelope), OR an edit whose
+        proposed patch would introduce a new validation failure and
+        `overrideAcknowledged` was not set (`data.status === "conflict"`,
+        outer envelope `status` stays `"success"`).
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "fail"
+                  message:
+                    type: string
+                    example: "Version conflict: expected 3, label is now at 4. Reload before editing."
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      intent:
+                        type: string
+                        enum: [edit]
+                      status:
+                        type: string
+                        enum: [conflict]
+                      proposedPatch:
+                        type: object
+                        properties:
+                          rationale:
+                            type: string
+                          changes:
+                            type: array
+                            items:
+                              $ref: '../../components/components.yaml#/components/schemas/LabelPatchChange'
+                      wouldViolate:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ruleKey:
+                              type: string
+                              nullable: true
+                            message:
+                              type: string
+                            citation:
+                              type: string
+                              nullable: true
+                            path:
+                              type: string
+                      options:
+                        type: array
+                        items:
+                          type: string
+                        example: ["cancel", "apply_and_fix:withdrawalPeriod", "apply_anyway_with_override"]
+    '422':
+      description: The AI-proposed patch was structurally invalid (unknown path, unsupported op, missing value, or bulk-replacement threshold).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "Proposed edit was rejected: unsupported op \"delete\""
+    '423':
+      $ref: '../../components/components.yaml#/components/responses/LockedError'
+    '503':
+      $ref: '../../components/components.yaml#/components/responses/ServiceUnavailableError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+get:
+  tags:
+    - Label Chat
+  summary: Get the full chat history for a label
+  description: >-
+    Ordered oldest-first. A turn writes a `role:"user"` row always (with
+    `intent`, and for edit attempts `proposedPatch`/`conflicts` populated);
+    `question`/`explain_validation` turns also write a `role:"assistant"`
+    row. Edit outcomes live on the user row's `appliedPatch`/
+    `resultVersion`/`conflicts` — there's no separate assistant row for
+    edits. Requires `read_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '200':
+      description: Full message history.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              data:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/ChatMessage'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

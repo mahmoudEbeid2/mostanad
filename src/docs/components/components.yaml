@@ -1135,6 +1135,1070 @@ components:
           items:
             type: string
 
+    # ==========================================================
+    # Label engine (Phases 1-9) — shared building-block schemas
+    # ==========================================================
+
+    LocalizedText:
+      type: object
+      description: >-
+        A bilingual text field. `translations` keys are language codes (at
+        minimum `en`/`ar`); `primary` names which key is the canonical
+        source-of-truth language for this value.
+      required:
+        - translations
+        - primary
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+          example: { en: "For veterinary use only", ar: "للاستخدام البيطري فقط" }
+        primary:
+          type: string
+          example: "en"
+
+    LabelActiveIngredient:
+      type: object
+      description: LocalizedText plus dosage fields — not a plain LocalizedText. Distinct from the plain product-catalog ActiveIngredient schema.
+      required:
+        - translations
+        - primary
+        - amount
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+        primary:
+          type: string
+          example: "en"
+        amount:
+          type: string
+          description: Never empty — "q.s." when a precise quantity is unavailable.
+          example: "500"
+        unit:
+          type: string
+          nullable: true
+          example: "mg"
+        normalizedName:
+          type: string
+          nullable: true
+          example: "amoxicillin_trihydrate"
+
+    TargetAnimalSpecies:
+      type: object
+      description: LocalizedText plus the resolved species list and how it was resolved.
+      required:
+        - translations
+        - primary
+        - list
+        - source
+      properties:
+        translations:
+          type: object
+          additionalProperties:
+            type: string
+        primary:
+          type: string
+        list:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: ["poultry", "cattle"]
+        source:
+          type: string
+          enum: [confirmed, reference, inferred]
+
+    LabelAnalysis:
+      type: object
+      nullable: true
+      properties:
+        basis:
+          type: string
+          example: "per 1 kg"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+
+    LabelData:
+      type: object
+      description: >-
+        A `labelSchema`-conformant label body (schemaVersion `vet-label@2.0.0`).
+        Every text field is bilingual (`LocalizedText`) unless noted. This is
+        the shape of `GeneratedLabel.labelData`, `LabelVersion.labelData`, and
+        the `label` key returned by `POST /reference-labels/generate-text-ai`.
+      properties:
+        schemaVersion:
+          type: string
+          example: "vet-label@2.0.0"
+        productType:
+          type: string
+          enum: [veterinary_drug, feed_additive, premix, supplement, compound_feed]
+        productName:
+          $ref: '#/components/schemas/LocalizedText'
+        pharmaceuticalForm:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        strength:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        feedClassification:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        activeIngredients:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/LabelActiveIngredient'
+        excipients:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        analysis:
+          $ref: '#/components/schemas/LabelAnalysis'
+        targetAnimalSpecies:
+          $ref: '#/components/schemas/TargetAnimalSpecies'
+        aimOfUse:
+          $ref: '#/components/schemas/LocalizedText'
+        indications:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        routeOfAdministration:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        directionOfUse:
+          $ref: '#/components/schemas/LocalizedText'
+        contraindications:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        sideEffects:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        withdrawalPeriod:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+          description: >-
+            Never filled from web lookup or model knowledge — confirmed
+            source or matched reference only, otherwise empty and the field
+            FAILs validation.
+        userSafety:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        storage:
+          $ref: '#/components/schemas/LocalizedText'
+        shelfLifeAfterOpening:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        disposal:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        netWeight:
+          $ref: '#/components/schemas/LocalizedText'
+        packaging:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        registrationNumber:
+          type: string
+          nullable: true
+        marketingAuthorisationHolder:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        manufacturer:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        importer:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        countryOfProduction:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LocalizedText'
+        batchNo:
+          type: string
+          nullable: true
+        productionDate:
+          type: string
+          nullable: true
+        expiryDate:
+          type: string
+          nullable: true
+        prescriptionStatus:
+          type: string
+          enum: [POM, OTC, VFD, NA]
+          default: NA
+        usageDeclaration:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizedText'
+        keepOutOfReachOfChildren:
+          type: boolean
+          default: true
+        estimatedFields:
+          type: array
+          items:
+            type: string
+          description: >-
+            labelSchema field-path names the model marked as estimated
+            (not confirmed from a source). Every entry here must be signed
+            (`signedEstimatedFields`) before the label can be approved.
+          example: ["strength", "withdrawalPeriod"]
+
+    FieldVerdict:
+      type: object
+      description: One verdict from the deterministic validation engine, per labelSchema field path.
+      required:
+        - path
+        - label
+        - status
+        - presence
+        - severity
+        - layer
+      properties:
+        path:
+          type: string
+          description: Dot/bracket path into labelSchema, e.g. "activeIngredients[0].amount". A few synthetic paths exist for cross-field checks — "_regulatory", "_localized_text", "_placeholder_x".
+          example: "withdrawalPeriod"
+        label:
+          type: object
+          properties:
+            en:
+              type: string
+            ar:
+              type: string
+        status:
+          type: string
+          enum: [PASS, FAIL, WARN, NOT_APPLICABLE, UNVERIFIABLE]
+        presence:
+          type: string
+          enum: [PRESENT, MISSING, EMPTY, INVALID]
+        severity:
+          type: string
+          enum: [error, warning]
+        layer:
+          type: string
+          enum: [schema, applicability, regulatory_rule, coherence, semantic]
+          description: Which validation layer produced this verdict.
+        ruleKey:
+          type: string
+          nullable: true
+          example: "APPLICABILITY.WITHDRAWALPERIOD.REQUIRED"
+        message:
+          type: string
+          nullable: true
+        citation:
+          type: string
+          nullable: true
+          description: Only ever set for layer "regulatory_rule" — verbatim quote from the source document.
+        sourceDocumentId:
+          type: string
+          nullable: true
+          description: Only ever set for layer "regulatory_rule".
+        autoFixable:
+          type: boolean
+        suggestion:
+          type: string
+          nullable: true
+          description: Reserved — never populated by any code path as of Phase 9.
+
+    ValidationReport:
+      type: object
+      description: >-
+        The deterministic validation engine's output (§10.2). Returned by
+        `POST /labels/:id/validate`, `GET /labels/:id/validation`, embedded
+        in chat/patch/restore/replay responses, and (with `rulesetIds`
+        always `[]`) by `POST /products/verify-label`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Present when this is a persisted ValidationReport row (not the in-memory verify-label shape).
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        passed:
+          type: boolean
+        errorCount:
+          type: integer
+        warningCount:
+          type: integer
+        verdicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldVerdict'
+        coveragePercent:
+          type: number
+          nullable: true
+          description: Always null as of Phase 9 — reserved, not yet populated by any validator.
+        engineVersion:
+          type: string
+          example: "label-validation-engine@1.0.0"
+        rulesetIds:
+          type: array
+          items:
+            type: string
+          description: IDs of the approved RegulatoryRule rows applied. Empty for POST /products/verify-label, which always validates with no rules.
+        aiAssisted:
+          type: boolean
+          description: Always false as of Phase 9 — reserved for the semantic (AI) validation layer, not yet wired in.
+        createdAt:
+          type: string
+          format: date-time
+
+    GeneratedLabel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        createdByUserId:
+          type: string
+          nullable: true
+        inputPayload:
+          type: object
+          description: Frozen snapshot of what the caller submitted to generate this label.
+        productProfile:
+          type: object
+          nullable: true
+          description: Reserved since Phase 4. Null for labels generated before Phase 4 — replay is not possible for those.
+        labelData:
+          $ref: '#/components/schemas/LabelData'
+        labelProvenance:
+          type: object
+          description: 'Map of labelSchema field path -> { tier, source, citation, modelId, promptHash, at }.'
+        schemaVersion:
+          type: string
+        country:
+          type: string
+        language:
+          type: string
+        status:
+          type: string
+          enum: [draft, validated, failed_validation, approved, revoked, archived]
+        referenceLabelIds:
+          type: array
+          items:
+            type: string
+        regulatoryDocIds:
+          type: array
+          items:
+            type: string
+        matchTier:
+          type: string
+          nullable: true
+        generationMeta:
+          type: object
+          nullable: true
+          description: Includes `promptHash` for labels generated from Phase 9 onward; null/absent on older labels.
+        riskScore:
+          type: integer
+          example: 35
+        autonomyTier:
+          type: string
+          enum: [auto_approve, batch_review, mandatory_review, dual_review]
+        shadowRunId:
+          type: string
+          nullable: true
+        promotedToReferenceId:
+          type: string
+          nullable: true
+        currentVersion:
+          type: integer
+        needsReview:
+          type: boolean
+          description: Set true when a reference label this label cites gets its approval revoked.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LabelSummary:
+      type: object
+      description: The projection returned by `GET /labels` (list view) — not the full GeneratedLabel.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        country:
+          type: string
+        language:
+          type: string
+        status:
+          type: string
+          enum: [draft, validated, failed_validation, approved, revoked, archived]
+        matchTier:
+          type: string
+          nullable: true
+        currentVersion:
+          type: integer
+        riskScore:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LabelVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        labelData:
+          $ref: '#/components/schemas/LabelData'
+        changeSource:
+          type: string
+          enum: [ai_generation, ai_chat_edit, manual_edit, restore]
+        changedByUserId:
+          type: string
+          nullable: true
+        changeSummary:
+          type: string
+          nullable: true
+        diff:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/VersionDiffEntry'
+        restoredFrom:
+          type: integer
+          nullable: true
+          description: Set when changeSource is "restore" — the version number this one was restored from.
+        overrideAcknowledged:
+          type: boolean
+          description: True if this version was created by overriding a chat conflict.
+        validationReportId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    VersionDiffEntry:
+      type: object
+      properties:
+        path:
+          type: string
+          example: "activeIngredients[0].amount"
+        op:
+          type: string
+          enum: [add, remove, replace]
+        before:
+          description: The field's value before this change, of whatever type that field is. Absent/null if the field didn't previously exist.
+        after:
+          description: The field's value after this change, of whatever type that field is. Absent/null if the field was removed.
+
+    LabelPatchChange:
+      type: object
+      description: One change in a PATCH /labels/:id or chat-proposed patch.
+      required:
+        - path
+        - op
+      properties:
+        path:
+          type: string
+          description: Dot/bracket path into labelSchema, e.g. "activeIngredients[0].amount". Top segment must be a real labelSchema field.
+        op:
+          type: string
+          enum: [replace, append, remove, insert]
+        value:
+          description: Required for every op except "remove".
+
+    PatchConflict:
+      type: object
+      description: >-
+        Returned with HTTP 409 when a proposed patch would introduce a NEW
+        validation failure that didn't exist before the patch. The outer
+        response envelope's `status` stays "success" — branch on this
+        object's own `status` field, which is "conflict".
+      properties:
+        status:
+          type: string
+          enum: [conflict]
+        proposedPatch:
+          type: object
+          description: Only present on the chat conflict shape (not the direct PATCH conflict shape).
+          properties:
+            rationale:
+              type: string
+            changes:
+              type: array
+              items:
+                $ref: '#/components/schemas/LabelPatchChange'
+        wouldViolate:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleKey:
+                type: string
+                nullable: true
+              message:
+                type: string
+              citation:
+                type: string
+                nullable: true
+              path:
+                type: string
+        options:
+          type: array
+          items:
+            type: string
+          description: >-
+            Plain strings, not objects: "cancel", one "apply_and_fix:<path>"
+            per newly-failing path, then "apply_anyway_with_override" last.
+          example: ["cancel", "apply_and_fix:withdrawalPeriod", "apply_anyway_with_override"]
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+        content:
+          type: string
+        intent:
+          type: string
+          nullable: true
+          enum: [edit, question, explain_validation]
+        toolCalls:
+          type: object
+          nullable: true
+        proposedPatch:
+          type: object
+          nullable: true
+        appliedPatch:
+          type: object
+          nullable: true
+        resultVersion:
+          type: integer
+          nullable: true
+        conflicts:
+          type: object
+          nullable: true
+          description: The wouldViolate array (or a shape-error object) for a conflicted/invalid edit attempt.
+        userId:
+          type: string
+          nullable: true
+        tokenUsage:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    LabelApproval:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        approvedVersion:
+          type: integer
+        labelSnapshot:
+          $ref: '#/components/schemas/LabelData'
+        validationReportId:
+          type: string
+          format: uuid
+        approvedByUserId:
+          type: string
+          format: uuid
+        approverName:
+          type: string
+        approverRole:
+          type: string
+          nullable: true
+        approvedAt:
+          type: string
+          format: date-time
+        signedEstimatedFields:
+          type: array
+          items:
+            type: string
+        acknowledgedUnverifiable:
+          type: array
+          items:
+            type: string
+        riskScoreAtApproval:
+          type: integer
+        autonomyTier:
+          type: string
+        coveragePercentAtApproval:
+          type: number
+          nullable: true
+        rulesetSnapshot:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+          nullable: true
+        secondApproverUserId:
+          type: string
+          nullable: true
+        secondApprovedAt:
+          type: string
+          format: date-time
+          nullable: true
+        promotedReferenceId:
+          type: string
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedByUserId:
+          type: string
+          nullable: true
+        revocationReason:
+          type: string
+          nullable: true
+
+    ReferenceLabel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        fullText:
+          type: string
+          nullable: true
+        extractedData:
+          type: object
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        companyId:
+          type: string
+          nullable: true
+          description: Null means a global (cross-tenant) reference label.
+        sourceType:
+          type: string
+          nullable: true
+        isApproved:
+          type: boolean
+        needsReview:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RegulatoryDocument:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        authority:
+          type: string
+          nullable: true
+          example: "EDA"
+        country:
+          type: string
+          default: "Egypt"
+        productScope:
+          type: array
+          items:
+            type: string
+        sourceType:
+          type: string
+          nullable: true
+          enum: [official_upload, official_url, ai_web_search, manual]
+        sourceUrl:
+          type: string
+          nullable: true
+        sourceIsOfficial:
+          type: boolean
+        documentVersion:
+          type: string
+          nullable: true
+        effectiveDate:
+          type: string
+          format: date-time
+          nullable: true
+        supersededById:
+          type: string
+          nullable: true
+        retrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        documentHash:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending_review, extracted, approved, rejected, superseded]
+        reviewedByUserId:
+          type: string
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        clauseTotal:
+          type: integer
+          nullable: true
+        clauseCovered:
+          type: integer
+          nullable: true
+        coveragePercent:
+          type: number
+          nullable: true
+        uncoveredClauses:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              reference:
+                type: string
+              text:
+                type: string
+        coverageAuditedAt:
+          type: string
+          format: date-time
+          nullable: true
+        extractedText:
+          type: string
+          nullable: true
+        extractedData:
+          type: object
+          nullable: true
+        companyId:
+          type: string
+          nullable: true
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegulatoryRule'
+          description: Only included on GET /regulatory-documents/:id.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RegulatoryRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        ruleKey:
+          type: string
+          example: "EG.VET.TARGET_SPECIES.REQUIRED"
+        ruleType:
+          type: string
+          enum: [required_field, forbidden_content, format, conditional, value_constraint, language_set, semantic]
+        severity:
+          type: string
+          enum: [error, warning, info]
+        targetPath:
+          type: string
+          nullable: true
+          description: Path in labelSchema this rule constrains.
+        appliesWhen:
+          type: object
+          nullable: true
+          description: Condition DSL payload — null means "always applies".
+        constraint:
+          type: object
+          description: The rule's constraint DSL payload (§7.3).
+        description:
+          type: string
+        citation:
+          type: string
+          nullable: true
+          description: Verbatim quote from the source document.
+        status:
+          type: string
+          enum: [pending_review, approved, rejected]
+        autoFixable:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AuditDisagreement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        fieldPath:
+          type: string
+        deterministicVerdict:
+          $ref: '#/components/schemas/FieldVerdict'
+        auditorVerdict:
+          type: object
+          properties:
+            path:
+              type: string
+            status:
+              type: string
+              enum: [PASS, FAIL, WARN]
+            reasoning:
+              type: string
+        auditorReasoning:
+          type: string
+        resolution:
+          type: string
+          nullable: true
+          enum: [human_agreed_engine, human_agreed_auditor, new_rule_created]
+        becameRuleId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    GoldenEvalRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runAt:
+          type: string
+          format: date-time
+        engineVersion:
+          type: string
+        modelId:
+          type: string
+          nullable: true
+        promptHash:
+          type: string
+          nullable: true
+        fieldAccuracy:
+          type: object
+          description: 'Map of labelSchema field path -> { exact, partial, wrong, notApplicable, accuracyPercent }.'
+        overallAccuracy:
+          type: number
+        baselineAccuracy:
+          type: number
+          nullable: true
+          description: Previous run's overallAccuracy. Null for the first run.
+        regressed:
+          type: boolean
+        blockedDeploy:
+          type: boolean
+          description: True when any field regressed more than 2% — blocks the change per CLAUDE.md invariant #11.
+        caseCount:
+          type: integer
+        failedCaseIds:
+          type: array
+          items:
+            type: string
+
+    ShadowComparison:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        labelId:
+          type: string
+          nullable: true
+        oldEngineResult:
+          type: object
+        newEngineResult:
+          type: object
+        fieldsDiffered:
+          type: array
+          items:
+            type: string
+        verdictDiffered:
+          type: boolean
+        latencyDeltaMs:
+          type: integer
+          nullable: true
+        costDelta:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    BackgroundTask:
+      type: object
+      description: >-
+        Every long-running label-engine operation (label generation,
+        reference-label extraction, regulatory-document extraction, PDF/image
+        label verification) runs through this same row. Poll
+        `GET /background-tasks/{id}` until `status` is `completed` or
+        `failed`; `result` is a different shape per `type` — see the specific
+        endpoint's docs for what `result` looks like once `status` is
+        `completed`.
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: "label_generation"
+          description: 'One of: catalog_upload, label_verification, certificate_generation, regulatory_document_extraction, reference_label_extraction, label_generation.'
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        result:
+          type: object
+          nullable: true
+          description: Only populated once status is "completed". Shape depends on `type` — see the endpoint that created this task.
+        error:
+          type: string
+          nullable: true
+          description: Only populated once status is "failed".
+        companyId:
+          type: string
+          nullable: true
+        brandId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReviewInboxEntry:
+      type: object
+      description: A risk-sorted projection of GeneratedLabel — not the full record. Returned by GET /review-inbox.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        country:
+          type: string
+        status:
+          type: string
+          enum: [validated, failed_validation]
+        riskScore:
+          type: integer
+        autonomyTier:
+          type: string
+          enum: [auto_approve, batch_review, mandatory_review, dual_review]
+        currentVersion:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditorFieldOpinion:
+      type: object
+      description: The adversarial auditor's independent opinion on one field — deliberately a narrower shape than FieldVerdict.
+      properties:
+        path:
+          type: string
+        status:
+          type: string
+          enum: [PASS, FAIL, WARN]
+        reasoning:
+          type: string
+
   parameters:
     UserId:
       name: id
@@ -1263,6 +2327,106 @@ components:
         type: string
         format: uuid
       example: "f1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    LabelId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the generated label
+      schema:
+        type: string
+        format: uuid
+      example: "11111111-1111-4111-8111-111111111111"
+
+    VersionNumberN:
+      name: n
+      in: path
+      required: true
+      description: A specific label version number
+      schema:
+        type: integer
+        minimum: 1
+      example: 2
+
+    VersionNumberA:
+      name: a
+      in: path
+      required: true
+      description: The "from" version number in a diff
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+
+    VersionNumberB:
+      name: b
+      in: path
+      required: true
+      description: The "to" version number in a diff
+      schema:
+        type: integer
+        minimum: 1
+      example: 3
+
+    ApprovalId:
+      name: approvalId
+      in: path
+      required: true
+      description: UUID of the label approval
+      schema:
+        type: string
+        format: uuid
+      example: "22222222-2222-4222-8222-222222222222"
+
+    RegulatoryDocumentId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the regulatory document
+      schema:
+        type: string
+        format: uuid
+      example: "33333333-3333-4333-8333-333333333333"
+
+    RegulatoryRuleId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the regulatory rule
+      schema:
+        type: string
+        format: uuid
+      example: "44444444-4444-4444-8444-444444444444"
+
+    DisagreementId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the audit disagreement
+      schema:
+        type: string
+        format: uuid
+      example: "55555555-5555-4555-8555-555555555555"
+
+    ReferenceLabelId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the reference label
+      schema:
+        type: string
+        format: uuid
+      example: "66666666-6666-4666-8666-666666666666"
+
+    BackgroundTaskId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the background task
+      schema:
+        type: string
+        format: uuid
+      example: "77777777-7777-4777-8777-777777777777"
 
   responses:
     UserResponse:
@@ -1878,6 +3042,119 @@ components:
                     type: array
                     items:
                       $ref: '#/components/schemas/Role'
+
+    ConflictError:
+      description: >-
+        Version conflict — either the caller's `expectedVersion` is stale
+        (label moved on since it was read), the label/approval/document is
+        already in the target state, or (label patch/chat endpoints only)
+        applying the change would introduce a NEW validation failure. For
+        the last case the response envelope's top-level `status` is still
+        `"success"` — check `data.status === "conflict"` instead; see
+        `PatchConflict`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "fail"
+                  message:
+                    type: string
+                    example: "Version conflict: expected 3, label is now at 4. Reload before editing."
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/PatchConflict'
+                      - type: object
+                        properties:
+                          intent:
+                            type: string
+                            enum: [edit]
+
+    UnprocessableEntityError:
+      description: >-
+        The request was well-formed but rejected by a business rule (a
+        structurally invalid patch, an approval gate, a coverage/approval
+        precondition). `message` is human-readable and, for the label patch
+        protocol, may concatenate multiple violations with "; ".
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "Cannot approve a label with validation errors."
+
+    LockedError:
+      description: The label is mid-generation and cannot accept edits yet.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "This label is still generating."
+
+    ServiceUnavailableError:
+      description: The underlying AI call failed or timed out. Safe to retry the whole request.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "fail"
+              message:
+                type: string
+                example: "AI service temporarily unavailable — could not process this message: <details>"
+
+    TaskAcceptedResponse:
+      description: The operation was queued as a BackgroundTask. Poll GET /background-tasks/{id} for the result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+              data:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                    format: uuid
+
+    BackgroundTaskResponse:
+      description: Current state of a background task.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                $ref: '#/components/schemas/BackgroundTask'
 
   securitySchemes:
     BearerAuth:

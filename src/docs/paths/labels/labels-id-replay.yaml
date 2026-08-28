@@ -1,0 +1,60 @@
+post:
+  tags:
+    - Assurance
+  summary: Re-run generation and compare against the stored label (deterministic replay)
+  description: >-
+    Re-runs generation against the label's frozen `productProfile`,
+    re-selecting references and re-fetching approved rules AS THEY STAND
+    NOW (not a frozen snapshot of the exact rows used originally). Read-only
+    — never creates a new version or touches the stored label. Requires
+    `read_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '200':
+      description: Replay result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              identical:
+                type: boolean
+              fieldsDiffered:
+                type: array
+                items:
+                  $ref: '../../components/components.yaml#/components/schemas/VersionDiffEntry'
+              promptHashMatches:
+                type: boolean
+                nullable: true
+                description: null specifically means the original label predates Phase 9 and has no stored promptHash — not comparable, not false.
+              referenceSetDrifted:
+                type: boolean
+              ruleSetDrifted:
+                type: boolean
+              originalGenerationMeta:
+                type: object
+              regeneratedGenerationMeta:
+                type: object
+              interpretation:
+                type: string
+                description: One of three fixed messages explaining what a difference (if any) means.
+                example: "Reference and rule sets are unchanged, yet output differs — this points to real model non-determinism, not stale inputs."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '422':
+      description: The label predates Phase 4 and has no stored productProfile to replay from.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "This label has no stored productProfile (generated before Phase 4) — replay is not possible."
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

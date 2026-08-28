@@ -1,0 +1,59 @@
+post:
+  tags:
+    - Regulatory Rules
+  summary: Dry-run every approved rule for a label's country against its current data
+  description: >-
+    Writes nothing. Only rules with `status:"approved"` whose owning
+    document is also `status:"approved"` and matches the label's `country`
+    are run. Requires `read_regulatory`.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - labelId
+          properties:
+            labelId:
+              type: string
+              format: uuid
+  responses:
+    '200':
+      description: Dry-run verdicts.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  verdicts:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/FieldVerdict'
+                  ruleCount:
+                    type: integer
+                    description: Count of approved rules (in approved documents, matching country) that were actually run.
+    '400':
+      description: labelId missing.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "Please provide labelId"
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

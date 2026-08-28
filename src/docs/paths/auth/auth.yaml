@@ -3,6 +3,7 @@ post:
     - Authentication
   summary: Log in internal user
   description: Authenticate an internal user (admin/staff) using their username or email and password.
+  security: []
   requestBody:
     required: true
     content:

@@ -1,0 +1,33 @@
+get:
+  tags:
+    - Label Approval
+  summary: List a label's approval history
+  description: Newest first. Requires `read_labels`.
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/LabelId'
+  responses:
+    '200':
+      description: Approval history
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              data:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/LabelApproval'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

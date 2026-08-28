@@ -1,0 +1,47 @@
+patch:
+  tags:
+    - Assurance
+  summary: Resolve an auditor/engine disagreement
+  description: >-
+    Requires `read_assurance` (not a distinct write permission — same
+    permission as the list endpoint).
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/DisagreementId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - resolution
+          properties:
+            resolution:
+              type: string
+              enum: [human_agreed_engine, human_agreed_auditor, new_rule_created]
+            becameRuleId:
+              type: string
+              nullable: true
+              description: Set when resolution is "new_rule_created".
+  responses:
+    '200':
+      description: Updated disagreement.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              data:
+                type: object
+                properties:
+                  disagreement:
+                    $ref: '../../components/components.yaml#/components/schemas/AuditDisagreement'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '404':
+      $ref: '../../components/components.yaml#/components/responses/NotFoundError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'

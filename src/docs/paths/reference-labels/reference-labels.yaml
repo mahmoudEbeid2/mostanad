@@ -1,0 +1,138 @@
+get:
+  tags:
+    - Reference Labels
+  summary: List reference labels
+  description: >-
+    **Not tenant-scoped by the endpoint itself** — any authenticated caller
+    can list every tenant's reference labels; `companyId` (or any other
+    field) narrows the result only if explicitly passed as a query filter.
+    This differs from the internal generation pipeline's own reference
+    lookup, which IS tenant-scoped. Any query key beyond `page`/`limit`/
+    `sort`/`search` is passed straight through as an exact-match filter
+    (e.g. `?brandId=...`, `?categoryId=...`).
+  parameters:
+    - $ref: '../../components/components.yaml#/components/parameters/PageParam'
+    - $ref: '../../components/components.yaml#/components/parameters/LimitParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SortParam'
+    - $ref: '../../components/components.yaml#/components/parameters/SearchParam'
+    - name: companyId
+      in: query
+      required: false
+      description: Not enforced — an opt-in filter, not tenant scoping.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: Reference label list.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              results:
+                type: integer
+              total:
+                type: integer
+              data:
+                type: object
+                properties:
+                  referenceLabels:
+                    type: array
+                    items:
+                      $ref: '../../components/components.yaml#/components/schemas/ReferenceLabel'
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
+
+post:
+  tags:
+    - Reference Labels
+  summary: Upload a reference label file for AI extraction
+  description: >-
+    Multipart, field `files`, max 1 file. A file whose original filename
+    already matches an existing reference label's `name` (checked globally,
+    not per-tenant) is skipped as a duplicate. If every uploaded file was a
+    duplicate, returns 400. Otherwise queues one `BackgroundTask`
+    (`type: "reference_label_extraction"`) per non-duplicate file and
+    returns 202; poll `GET /background-tasks/{taskId}` per task — on
+    completion `.result` is the full created `ReferenceLabel` row.
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required:
+            - files
+            - country
+          properties:
+            files:
+              type: array
+              maxItems: 1
+              items:
+                type: string
+                format: binary
+            country:
+              type: string
+              description: Country this reference is accepted in.
+            companyId:
+              type: string
+              nullable: true
+              description: Explicit "" or omitted defaults to the caller's own company (company caller) or global (system caller, no value given).
+            brandId:
+              type: string
+              nullable: true
+            categoryId:
+              type: string
+              nullable: true
+            manualCategoryName:
+              type: string
+              nullable: true
+  responses:
+    '202':
+      description: Queued.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: "success"
+              message:
+                type: string
+                example: "1 reference(s) queued for AI analysis."
+              data:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        taskId:
+                          type: string
+                          format: uuid
+                        fileName:
+                          type: string
+    '400':
+      description: Missing country, or every uploaded file was a duplicate.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              message:
+                type: string
+                example: "All 1 uploaded files already exist in the system."
+    '401':
+      $ref: '../../components/components.yaml#/components/responses/UnauthorizedError'
+    '500':
+      $ref: '../../components/components.yaml#/components/responses/ServerError'
