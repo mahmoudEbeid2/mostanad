@@ -662,3 +662,67 @@ explore tools mid-conversation.
 Next phase should start with: Phase 7 (approval + LabelApproval + promotion +
 revocation).
 
+## Phase 7 — Approval, promotion carousel, revocation (done)
+
+No AI involved anywhere in this phase - approval is a human action - so
+everything here was tested live against a real DB with zero quota dependency.
+This is the most thoroughly live-proven phase of the whole run.
+
+Built:
+- LabelApproval model (sec 5.5), brand-new table.
+- ReferenceLabel's sec 5.9 extension, finally built (flagged as missing since
+  Phase 0): activeIngredients, targetSpecies, dosageForm,
+  routeOfAdministration, indicationTags, strengthSummary, productType,
+  isApproved, qualityWeight, originLabelId, approvalId, fingerprint,
+  supersededById, needsReview. All nullable/defaulted, additive over an
+  existing table. embedding (pgvector) deliberately NOT added - same volume
+  gate as Phase 4, sec 5.12 lists it as its own optional migration anyway.
+- GeneratedLabel.needsReview (boolean) added - the doc's revocation flow says
+  "needsReview = true" on affected labels, which needs a real boolean column,
+  not an ad-hoc overload of the documented status vocabulary
+  (draft/validated/failed_validation/approved/revoked/archived).
+- approvalService.js: assertApprovable's six gates exactly as specified
+  (stale report, any FAIL, unacknowledged UNVERIFIABLE, unsigned estimated
+  fields, separation of duties + dual_review's second approver, weak/
+  unapproved backing documents), approveLabel as one transaction, and
+  revokeApproval (never deletes the reference, flags every OTHER label whose
+  provenance cites it as needsReview).
+- promotionService.js: fingerprint-based dedup (superseding an existing
+  approved reference with the same fingerprint), zero-AI-cost structured
+  promotion straight from labelData, and the company-scoped-by-default rule
+  (Invariant #13) enforced with a comment explaining why defaulting to global
+  would reopen G5's leak.
+- POST /labels/:id/approve, GET /labels/:id/approvals,
+  POST /labels/:id/approvals/:approvalId/revoke. New approve_labels
+  permission (module "labels", already in companyAllowedModules - a company
+  approving its own label is normal) and publish_global_reference (module
+  "global", deliberately NOT in companyAllowedModules - a company account can
+  never be granted this at all, checked explicitly in the controller before
+  approveLabel is even called).
+
+A real bug found and fixed live, not by inspection: approving an
+already-approved label at the same version succeeded a second time,
+creating a duplicate LabelApproval and promoting a second reference. None of
+the six gates checked label.status itself. Fixed: approveLabel now refuses
+(409) if status is already "approved", directing the caller to revoke first.
+
+Verified: tests/label.approval.test.js, 21 assertions, all live against a
+real server + DB: every one of the six gates individually triggered and then
+satisfied (unacknowledged UNVERIFIABLE, unsigned estimated field, high-risk
+self-approval, dual_review without/with a second approver), a company
+account blocked from scope:"global" regardless of what it requests, the
+re-approval guard, and the full revoke flow (reference NOT deleted, isApproved
+flips false, double-revoke refused). node tests/runAll.js: 18/23, same 5
+pre-existing failures, no new regressions.
+
+Deferred: sec 12.6's promotion-impact dashboard ("if it's not improving, the
+carousel isn't working") - a reporting view over data that doesn't exist yet in volume
+(0 reference_labels rows, same constraint as Phase 4's retrieval layer). The
+underlying data (originLabelId, approvalId, qualityWeight) is now captured
+correctly by every approval - building the dashboard itself is straightforward
+once there's real data to show.
+
+Next phase should start with: Phase 8 (shadow mode - dual running with
+promotion gates) or Phase 9 (deterministic replay + batch API + pgvector
+reconsideration), per the instruction to run through Phase 9.
+

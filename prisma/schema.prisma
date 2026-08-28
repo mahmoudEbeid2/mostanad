@@ -369,6 +369,30 @@ model ReferenceLabel {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // §5.9 extension (Phase 7 — the promotion carousel). Deferred since Phase 0
+  // (flagged there as "never built"); built now because promoteToReference
+  // structurally needs it. All nullable/defaulted — additive over an existing
+  // table with data. `embedding` (pgvector) is NOT added — same §16 volume
+  // gate as Phase 4's retrieval layer; §5.12 lists it as its own optional
+  // migration (item 9) for exactly this reason.
+  activeIngredients     Json?    @map("active_ingredients") // a real column now — distinct from the legacy extractedData.active_ingredients JSON key, no collision (that key only ever lived inside the Json blob)
+  targetSpecies         String[] @default([]) @map("target_species")
+  dosageForm            String?  @map("dosage_form")
+  routeOfAdministration String?  @map("route_of_administration")
+  indicationTags        String[] @default([]) @map("indication_tags")
+  strengthSummary       String?  @map("strength_summary")
+  productType           String?  @map("product_type")
+  isApproved            Boolean  @default(true) @map("is_approved")
+
+  qualityWeight  Float   @default(0.7) @map("quality_weight")
+  originLabelId  String? @map("origin_label_id")
+  approvalId     String? @map("approval_id")
+  fingerprint    String?
+  supersededById String? @map("superseded_by_id")
+  needsReview    Boolean @default(false) @map("needs_review")
+
+  @@index([country, productType])
+  @@index([fingerprint, companyId])
   @@map("reference_labels")
 }
 
@@ -406,11 +430,13 @@ model GeneratedLabel {
   shadowRunId           String? @map("shadow_run_id")
   promotedToReferenceId String? @map("promoted_to_reference_id")
 
-  currentVersion Int @default(1) @map("current_version")
+  currentVersion Int     @default(1) @map("current_version")
+  needsReview    Boolean @default(false) @map("needs_review") // Phase 7, §12.5 — set true when a reference this label cites gets revoked
 
   versions     LabelVersion[]
   validations  ValidationReport[]
   chatMessages LabelChatMessage[]
+  approvals    LabelApproval[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -568,4 +594,43 @@ model AuditDisagreement {
 
   @@index([labelId, versionNumber])
   @@map("audit_disagreements")
+}
+
+// ==========================================
+// 14. Approval — the human signature (Phase 7, §5.5/§12)
+// ==========================================
+
+model LabelApproval {
+  id      String         @id @default(uuid())
+  labelId String         @map("label_id")
+  label   GeneratedLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  approvedVersion    Int    @map("approved_version")
+  labelSnapshot      Json   @map("label_snapshot") // full copy, not a pointer — see §12.1
+  validationReportId String @map("validation_report_id")
+
+  approvedByUserId String   @map("approved_by_user_id")
+  approverName     String   @map("approver_name") // copied at signing time
+  approverRole     String?  @map("approver_role")
+  approvedAt       DateTime @default(now()) @map("approved_at")
+
+  signedEstimatedFields     String[] @map("signed_estimated_fields")
+  acknowledgedUnverifiable  String[] @map("acknowledged_unverifiable")
+  riskScoreAtApproval       Int      @map("risk_score_at_approval")
+  autonomyTier              String   @map("autonomy_tier")
+  coveragePercentAtApproval Float?   @map("coverage_percent_at_approval")
+  rulesetSnapshot           String[] @map("ruleset_snapshot")
+  note                      String?  @db.Text
+
+  secondApproverUserId String?   @map("second_approver_user_id")
+  secondApprovedAt     DateTime? @map("second_approved_at")
+  promotedReferenceId  String?   @map("promoted_reference_id")
+
+  revokedAt        DateTime? @map("revoked_at")
+  revokedByUserId  String?   @map("revoked_by_user_id")
+  revocationReason String?   @map("revocation_reason") @db.Text
+
+  @@index([labelId, approvedVersion])
+  @@index([approvedByUserId, approvedAt])
+  @@map("label_approvals")
 }

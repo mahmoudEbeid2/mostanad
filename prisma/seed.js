@@ -69,6 +69,10 @@ const permissions = [
   // are added as their endpoints land in later phases.
   { name: "Read Labels", slug: "read_labels", module: "labels" },
   { name: "Update Labels", slug: "update_labels", module: "labels" }, // Phase 2: POST /labels/:id/validate mutates state
+  { name: "Approve Labels", slug: "approve_labels", module: "labels" }, // Phase 7: POST /labels/:id/approve, .../revoke
+  // Deliberately NOT in companyAllowedModules (module "global") — a company
+  // tenant can never be granted this; only an internal role can (Invariant #13).
+  { name: "Publish Global Reference", slug: "publish_global_reference", module: "global" },
 
   // Regulatory documents/rules (Phase 3, §15)
   { name: "Read Regulatory", slug: "read_regulatory", module: "regulatory" },

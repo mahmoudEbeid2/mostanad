@@ -140,3 +140,20 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   (`409`, not applied) or `{ intent, status: "applied", resultVersion, report }`
   (`200`). `503` if the underlying AI call fails.
 - `GET /labels/:id/chat` — **new**. `read_labels`. Full message history.
+
+## Phase 7
+
+- `POST /labels/:id/approve` — **new**. `approve_labels`. Body:
+  `{ expectedVersion, signedEstimatedFields[], acknowledgedUnverifiable[], scope?, note?, secondApproverUserId? }`.
+  `scope: "global"` additionally requires `publish_global_reference` (never
+  available to a company-authenticated caller) — `403` otherwise. `409` on a
+  stale version or an already-approved version; `422` on any of the other five
+  gates (validation errors, unacknowledged UNVERIFIABLE, unsigned estimated
+  fields, missing second approver for `dual_review`, weak backing documents);
+  `403` on a high-risk label approved by its own creator. Returns
+  `{ approval, reference }` — `reference` is the newly promoted `ReferenceLabel`.
+- `GET /labels/:id/approvals` — **new**. `read_labels`.
+- `POST /labels/:id/approvals/:approvalId/revoke` — **new**. `approve_labels`.
+  Body: `{ reason }`. `400` if already revoked. Returns
+  `{ approval, affectedLabelIds }` — every OTHER label whose provenance cites
+  the now-revoked reference, flagged `needsReview: true`.
