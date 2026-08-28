@@ -158,12 +158,41 @@ today (reserved fields — don't build UI that expects them populated yet).
 Each `FieldVerdict` is `{ path, label:{en,ar}, status, presence, severity,
 layer, ruleKey, message, citation, sourceDocumentId, autoFixable,
 suggestion }`. `status` is one of `PASS | FAIL | WARN | NOT_APPLICABLE |
-UNVERIFIABLE` — **`UNVERIFIABLE` is not a pass** (CLAUDE.md invariant #6):
-render it distinctly from `PASS`, and remember every `UNVERIFIABLE` verdict
-on the label blocks approval until acknowledged (§5, Gate 3). `layer` tells
-you where a verdict came from (`schema`/`applicability`/`regulatory_rule`/
-`coherence`/`semantic`) — useful for grouping the report in a UI (e.g.
-"Missing required fields" vs "Regulatory citations" vs "Consistency checks").
+UNVERIFIABLE | NEEDS_REVIEW` — **`UNVERIFIABLE` is not a pass** (CLAUDE.md
+invariant #6): render it distinctly from `PASS`, and remember every
+`UNVERIFIABLE` verdict on the label blocks approval until acknowledged (§5,
+Gate 3). `NEEDS_REVIEW` is the plausibility layer's (§14.5.7) uncited case —
+an observation the model flagged but couldn't back with a citable source
+(`plausibilitySource: "model_knowledge"` on that verdict). Render it
+distinctly from `WARN` too: a `WARN` from plausibility always carries a real
+`citation`/`sourceUrl` (`plausibilitySource: "external"`); a `NEEDS_REVIEW`
+never does — that distinction is the entire point of the status, so don't
+merge the two into one generic "warning" badge. `layer` tells you where a
+verdict came from (`schema`/`applicability`/`regulatory_rule`/`coherence`/
+`semantic`/`plausibility`) — useful for grouping the report in a UI (e.g.
+"Missing required fields" vs "Regulatory citations" vs "Consistency checks"
+vs "Worth a second look").
+
+**Sibling verdicts on the same `path`.** `verdicts` is a flat array with no
+dedup or grouping by `path` — the same field can legitimately carry more than
+one entry (e.g. coherence emits a `FAIL` on `activeIngredients` because the
+totals are mathematically impossible, while plausibility separately emits a
+`WARN` on `activeIngredients[0].amount` because one ingredient's concentration
+is unusual — different layers, different questions, both real). **Never
+collapse a field down to a single verdict or silently drop the others.**
+Group by `path`, then within each group sort by this severity order (most
+severe first) and render the lead verdict prominently with the rest visible
+underneath it — a "+N more" expansion is fine, discarding them is not:
+
+```
+FAIL  >  UNVERIFIABLE  >  NEEDS_REVIEW  >  WARN  >  NOT_APPLICABLE  >  PASS
+```
+
+`FAIL` leads because it's a known, certain problem; `UNVERIFIABLE` right
+behind it because it also blocks approval even though the system doesn't know
+the answer. `NEEDS_REVIEW` outranks `WARN` deliberately: a `WARN` is already a
+sourced, resolved observation, while `NEEDS_REVIEW` is unresolved uncertainty
+that most needs a human's eyes next.
 
 **`POST /products/verify-label` is a separate, older flow** — same
 deterministic engine, but always validates with an **empty ruleset**

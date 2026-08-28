@@ -6,7 +6,7 @@ import { resolveApplicability } from "../schema/fieldCatalog.js";
 // Bump this whenever layers 1-4's logic changes in a way that could change a
 // verdict for the same input — it's part of what "determinism" (§10.3, T10) is
 // measured against.
-export const ENGINE_VERSION = "label-validation-engine@1.0.0";
+export const ENGINE_VERSION = "label-validation-engine@1.1.0"; // coherence gained checks 5/6 (units-vs-form, ingredient-total impossibility), moved in from plausibility (§14.5.7 correction)
 
 const getPlain = (obj, path) => path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
 

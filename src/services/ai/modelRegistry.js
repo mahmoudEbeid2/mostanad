@@ -83,4 +83,12 @@ export const MODELS = {
   // classification; patch proposal gets a bit more room to reason since it's
   // producing structured content, not a one-word label).
   CHAT_AGENT: { id: "gemini-2.5-flash", thinkingBudget: 2048, temperature: 0.2 },
+
+  // §14.5.7 — plausibility layer's "is this worth flagging at all" judgment
+  // (concentration/dose/compatibility/withdrawal-period suspicion, before any
+  // knowledgeResolver citation search runs). Deliberately a separate entry
+  // from WEB_SEARCH even though the values currently match — this call never
+  // touches the googleSearch tool, and giving it its own name lets the two be
+  // tuned independently later without an unrelated caller silently following.
+  PLAUSIBILITY_JUDGE: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
 };

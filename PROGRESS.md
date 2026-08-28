@@ -867,3 +867,91 @@ final consolidated report (what landed across all phases, every departure
 from the architecture doc, and the definitive list of what's needed from the
 user to make the system fully operational).
 
+## Post-Phase-9 — Gemini rate limiting, then plausibility/coherence split (ad hoc, no consolidated report yet)
+
+Two unrelated fixes done back to back after Phase 9 closed, before the
+consolidated report was written. **If you're a fresh session picking this up,
+read both — the second one especially, since it corrects a design this same
+run got wrong on the first pass.**
+
+**1. Gemini 429/rate limiting.** `geminiClient.js` is now the *only* place
+`new GoogleGenAI(...)` may be constructed — 6 separate client instances and 3
+more call sites bypassing even the old retry wrapper (`labelGenerator.js`,
+`selfConsistency.js`, `labelGeneratorWorker.js`, `productAiWorker.js`,
+`referenceLabelWorker.js`, plus direct `.ai.models.generateContent` reaches
+from `labelExtractor.js`/`knowledgeResolver.js`/`chatAgent.js`) all now route
+through it. Added: a real token-bucket rate limiter (`rateLimiter.js`,
+`GEMINI_RPM`/`GEMINI_MAX_CONCURRENT` env, defaults 8/2 — conservative for a
+free-tier key); 429-vs-503 differentiation with `RetryInfo.retryDelay`
+honoured and daily/project quota failing fast instead of retrying
+(`geminiErrors.js`); per-call cost tracking via `AsyncLocalStorage`
+(`generationMetrics.js`) written to `generationMeta.geminiUsage`;
+`ENABLE_ADVERSARIAL_AUDIT`/`ENABLE_SELF_CONSISTENCY` dev flags (both default
+`true`; **note**: neither audit nor self-consistency is wired into the
+automatic `labelGeneratorWorker` flow — audit is a separate
+`POST /labels/:id/audit` call, self-consistency has no caller anywhere yet —
+so a real label generation today is 1-2 Gemini calls, not seven). Removed a
+hand-rolled 6-second sleep in `referenceLabelWorker.js` that was a manual
+patch for exactly this problem.
+
+**2. Plausibility (§14.5.7) drafted, then corrected.** While drafting the
+not-yet-built §14.5 "verify uploaded label" flow, wrote §14.5.7 (scientific
+plausibility, a proposed layer 6) with two mistakes the user caught before any
+code existed:
+- `status` was keyed off how severe an observation sounded instead of where
+  it came from. Corrected to `status = plausibilitySource === "external" ?
+  "WARN" : "NEEDS_REVIEW"` — a cited claim is always `WARN`, an uncited one is
+  always `NEEDS_REVIEW`, regardless of how alarming either reads.
+- Units-vs-pharmaceutical-form and ingredient-total-impossibility were
+  drafted as plausibility checks (WARN-only). Corrected: both are judgeable
+  entirely from the label itself (no external knowledge needed), so they
+  belong in coherence (layer 4, §10.1) instead — and *can* emit `FAIL`, unlike
+  plausibility which structurally never can. Real dividing line: "does
+  judging this need anything from outside the label", not "deterministic vs
+  AI".
+
+Built (matching the corrected design, before any of it existed in code):
+- `coherenceValidator.js` gained checks 5/6 (units-vs-form, ingredient-total
+  impossibility) — both deterministic, no AI, can `FAIL`. `ENGINE_VERSION`
+  bumped to `1.1.0` since this changes layer-4 output for the same input.
+- `plausibilityValidator.js` (new) — layer 6, async, four checks
+  (concentration/dose/compatibility/withdrawal-period), each a two-stage
+  `judgeFn` (suspicious? no citation needed) then `resolveFn`
+  (`knowledgeResolver`, §8.2-strict). `buildVerdict()` computes `status` from
+  `plausibilitySource` itself — no call site anywhere in the file can produce
+  `PASS`/`FAIL`, and `remediation.suggested` is hardcoded `null` for every
+  field, not just the five §8.2 fields. **Not wired into
+  `validationEngine.validate()`** — deliberately kept separate and async, same
+  pattern as `adversarialAuditor.audit()` (its own future endpoint, not
+  automatic on every generation). `MODELS.PLAUSIBILITY_JUDGE` added to
+  `modelRegistry.js` for the judge step.
+- `MOSTANAD_ARCHITECTURE.md` §10.1/§10.2/§14.5.7 and `FRONTEND-GUIDE.md`
+  updated to match: `NEEDS_REVIEW` added to the status enum, `plausibility`
+  added to the layer enum, and an explicit sibling-verdicts rendering contract
+  added (`verdicts` is flat/ungrouped by design — multiple entries can share
+  one `path`; render order `FAIL > UNVERIFIABLE > NEEDS_REVIEW > WARN >
+  NOT_APPLICABLE > PASS`, lead verdict prominent, the rest visible
+  underneath, never collapsed away).
+
+Verified: `tests/label.coherence.test.js` (14 assertions) and
+`tests/label.plausibility.test.js` (19 assertions), both live-Gemini-free —
+plausibility's tests inject fake `judgeFn`/`resolveFn` so they're safe to run
+against an exhausted key (see the free-tier daily quota note at the top of
+this file). `node tests/runAll.js`: no new regressions in any test that
+doesn't require the live API server (Docker wasn't running in this
+environment to check the server-dependent suites).
+
+Deferred:
+- Wiring `plausibilityValidator.run()` into an actual call site (its own
+  endpoint? merged into the audit endpoint? part of `labelGeneratorWorker`
+  behind `ENABLE_SELF_CONSISTENCY`-style flag?) — not decided, needs a call.
+- The four AI-touching plausibility checks are unverified against the real
+  API (same free-tier quota constraint as every prior phase) — the two-stage
+  judge/resolve *logic* is tested via injected fakes, but never seen a real
+  Gemini judgment or a real `knowledgeResolver` citation search.
+- The rest of §14.5 (extraction confidence/`NEEDS_CONFIRMATION`, `origin`/
+  `extractionMeta` fields, the 3-way generation/product/rules comparison,
+  `comparison` field on every layer's verdicts) is still just architecture-doc
+  prose, not built — out of scope for this ad hoc fix, flagged here so it
+  isn't mistaken for done.
+
