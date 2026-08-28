@@ -286,4 +286,127 @@ resets or a paid-tier key is available; this becomes the real first baseline
 once it produces non-zero scores. The 2 synthetic cases should stay as harness
 smoke tests even after real cases are added — don't delete them.
 
-**Next phase should start with:** Phase 3 (regulatory ingestion).
+## Phase 3 — Regulatory ingestion + coverage auditing ✅
+
+**Built:**
+- `RegulatoryDocument` + `RegulatoryRule` (§5.6-5.7). `eda_requirements` TABLE
+  renamed to `regulatory_documents` via hand-written SQL (`ALTER TABLE ...
+  RENAME TO ...` + `ADD COLUMN`s), NOT `prisma migrate diff`'s auto-generated
+  script — that generated `DROP TABLE eda_requirements` + `CREATE TABLE
+  regulatory_documents` (Prisma's diff engine matches by `@@map`, not model
+  name, so a model rename looks like drop+create to it). Verified the correct
+  script myself, hand-wrote the migration, applied and recorded it.
+  Migration `20260828030000_add_regulatory_documents_and_rules`.
+- `src/services/label/regulatory/officialSources.js` (§7.2) — the
+  country→authority→allowed-domains registry.
+- `src/services/label/regulatory/ruleCompiler.js` — whole document in one call
+  (§9.4, never chunked), strict JSON schema, high thinking budget. Exports
+  `validateProposedRule` (pure) separately from `compile` (the AI call) so the
+  citation-verification and targetPath-validation logic is unit-testable
+  without Gemini. **Rejects, never downgrades:** a bad citation, an unknown
+  `targetPath`, or an unrecognized `constraint.kind` all drop the candidate
+  rule entirely — reported back, never silently coerced or saved as a lesser
+  severity.
+- `src/services/label/regulatory/coverageAuditor.js` (§7.5) — the reverse pass,
+  with `computeCoverage` (pure) separated from `auditDocument` (the AI call)
+  for the same testability reason.
+- `src/services/label/regulatory/regulatoryDocumentService.js` — orchestrates
+  the whole journey: `createFromExtraction` (hash dedup, refuses a duplicate
+  with 409), `compileRulesFor`, `auditCoverageFor`, `approveDocument` (the
+  95%-coverage hard gate, §7.5), `markClauseNonNormative` (the human-clears-a-
+  false-positive path), rule CRUD.
+- `edaRequirementWorker.js` extended: still feeds the PDF to the model natively
+  (never `pdf-parse`), now computes `documentHash` and refuses a duplicate via
+  `regulatoryDocumentService.createFromExtraction`. Also fixed G4's specific
+  complaint in the same pass while I was in this file: the web-search fallback
+  in `labelGeneratorWorker.js` (Step 2.6) now stores its cache with
+  `sourceIsOfficial: false, status: "pending_review"` instead of implying it's
+  authoritative, and Step 2.5's lookup now prefers an `approved` document over
+  a `pending_review` one for the same country.
+- `edaRequirementService.js` is now a thin shim over `regulatoryDocument` —
+  `edaRequirementController.js` (and the `/eda-requirements` routes) needed
+  ZERO changes, exactly as the phase asked.
+- New routes: `GET/POST /regulatory-documents`, `GET /regulatory-documents/:id`,
+  `POST /regulatory-documents/:id/compile-rules`, `.../audit-coverage`,
+  `.../approve`, `PATCH .../clauses/clear` (the human-clears-a-clause
+  endpoint — not in §15's list verbatim, added because `approveDocument`'s
+  gate needs somewhere for a human to actually clear a clause);
+  `GET /regulatory-rules`, `POST /regulatory-rules/preview`,
+  `PATCH /regulatory-rules/:id`, `.../approve`, `.../reject`. Three new
+  permissions seeded: `read_regulatory`, `create_regulatory`,
+  `approve_regulatory`; `"regulatory"` added to `authMiddleware.js`'s
+  `companyAllowedModules`.
+- `fixtures/regulatory/synthetic-authority-fixture.{txt,pdf}` — the ~15-clause
+  synthetic document (clearly marked as fictional/synthetic in its own text),
+  containing the conditional withdrawal-period rule and the forbidden-content
+  no-cure-claims rule the instructions specifically asked for.
+- `tests/regulatory.ingestion.test.js` — consolidates T9/T11/T12 from §17 into
+  one file (the underlying logic is one pipeline; three near-identical files
+  each re-deriving the same fixture felt like duplication for its own sake,
+  not real separation of concerns). 29 assertions, all against real logic
+  (not mocks): hash dedup, citation verification (accept + reject), targetPath
+  validation, constraint-kind validation, the `UNVERIFIABLE`/
+  `NO_AUTHORITATIVE_REQUIREMENTS` fallback, an actual compiled conditional
+  rule firing correctly through `ruleValidator` (and correctly NOT firing for
+  an exempt species), coverage math, and the full approve/block/clear/approve
+  gate sequence.
+
+**Decisions not in the doc:**
+- Kept `extractedText`/`extractedData` as their pre-existing UNMAPPED physical
+  column names (not `extracted_text`/`extracted_data` as §5.6's snippet shows)
+  — renaming an existing column is exactly what the additive-migration rule
+  forbids. `schema.prisma`'s `RegulatoryDocument` model has a header comment
+  explaining this.
+- `title`/`authority`/`sourceType` are `String?` here, not `String` (required)
+  as §5.6 shows — adding a required column with no default to an existing
+  table isn't an additive migration. Same reasoning as Phase 1's
+  `GeneratedLabel` deviations.
+- `product_scope: TEXT[] NOT NULL DEFAULT '{}'`, `source_is_official: BOOLEAN
+  NOT NULL DEFAULT false`, `status: TEXT NOT NULL DEFAULT 'pending_review'`
+  ARE `NOT NULL` additions to the existing table — but every one carries a
+  `DEFAULT`, so Postgres backfills automatically with zero data-loss risk
+  regardless of existing row count. Same judgment call made (and flagged) for
+  Phase 1's `reference_labels` catch-up migration — applying it consistently
+  here rather than treating the rule differently case to case.
+- `PATCH /regulatory-documents/:id/clauses/clear` isn't in §15's literal
+  endpoint list — added because the 95% gate (§7.5) is meaningless without
+  somewhere for a human to actually clear a false-positive uncovered clause.
+- `POST /regulatory-rules/preview` scopes by matching the label's `country` to
+  `approved` documents for that country, then runs every rule attached to
+  those documents — §15 doesn't specify the exact scoping logic, only that the
+  endpoint should exist.
+
+**Verified:**
+- `tests/regulatory.ingestion.test.js`: 29/29 — every deterministic piece of
+  the pipeline (everything except the two actual Gemini calls) proven correct
+  against the real fixture text, not synthetic stand-ins.
+- Live HTTP run: uploaded the real fixture PDF through
+  `POST /regulatory-documents` → task queued → `edaRequirementWorker` picked
+  it up → **extraction failed cleanly after 5 real retries against the still-
+  exhausted Gemini quota** (`RESOURCE_EXHAUSTED`, same constraint since
+  Phase 0) — this proves the route→controller→queue→worker→geminiClient
+  wiring is correct; the actual text-extraction call itself is what's blocked.
+  `GET /regulatory-documents`, `GET /regulatory-documents/:id`,
+  `GET /regulatory-rules` all verified live (200s, correct data) against a
+  document created directly through `regulatoryDocumentService` (bypassing
+  the blocked extraction step).
+- `node tests/runAll.js`: 14/19 (added `regulatory.ingestion.test.js`). Same 5
+  pre-existing failures, no new regressions.
+
+**Deferred:** the two actual AI calls (`ruleCompiler.compile`,
+`coverageAuditor.auditDocument`) against the real fixture document — blocked
+by Gemini quota exhaustion, not code. Once quota resets: upload
+`fixtures/regulatory/synthetic-authority-fixture.pdf` via
+`POST /regulatory-documents`, then `POST /regulatory-documents/:id/compile-rules`,
+then `.../audit-coverage`, and report the actual coverage number against the
+~15-clause fixture (the instructions' "run it and report the coverage number"
+step) — the harness/fixture/gate are ready, only the live numbers are missing.
+`POST /regulatory-documents/:id/supersede` (§15) was not implemented — lower
+priority than the core journey, no document has ever reached `approved` status
+long enough to need superseding yet in this environment.
+
+**Next phase should start with:** Phase 4 (retrieval, product ladder,
+structured generation) — this is also where the pre-existing scope note about
+counting references before building weighted retrieval/pgvector applies
+(§16's own caveat: <30 references, skip it — `reference_labels` still has 0
+rows in this environment).

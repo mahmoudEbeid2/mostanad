@@ -77,14 +77,14 @@ model Company {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Scoped Relations
-  products        Product[]
-  images          CompanyImage[]
-  subscriptions   Subscription[]
-  templates       Template[]
-  brands          Brand[]
-  edaRequirements EdaRequirement[]
-  referenceLabels ReferenceLabel[]
-  generatedLabels GeneratedLabel[]
+  products            Product[]
+  images              CompanyImage[]
+  subscriptions       Subscription[]
+  templates           Template[]
+  brands              Brand[]
+  regulatoryDocuments RegulatoryDocument[]
+  referenceLabels     ReferenceLabel[]
+  generatedLabels     GeneratedLabel[]
 
   @@map("companies")
 }
@@ -267,20 +267,82 @@ model BackgroundTask {
 // 8. EDA Requirements (Egyptian Drug Authority)
 // ==========================================
 
-model EdaRequirement {
-  id            String  @id @default(uuid())
-  extractedText String? @db.Text
-  extractedData Json? // AI-structured array of sections
+// Was EdaRequirement / eda_requirements (Phase 3, §5.6). The TABLE was renamed
+// (ALTER TABLE ... RENAME TO — no data loss, no column touched) but the two
+// pre-existing columns keep their original unmapped physical names
+// (extractedText/extractedData, not extracted_text/extracted_data as §5.6's
+// own snippet shows) — renaming an EXISTING column is exactly what the
+// additive-migration rule forbids. `title`/`authority`/`sourceType` are
+// `String` (required) in §5.6 but nullable here for the same reason: adding a
+// required column with no default to an existing table is not an additive
+// migration. edaRequirementService.js is a thin shim over this model so
+// existing callers (edaRequirementController.js) are unaffected.
+model RegulatoryDocument {
+  id String @id @default(uuid())
 
-  country String @default("Egypt")
+  title        String? // nullable — see file header
+  authority    String? // "EDA" | "SFDA" | "MOHAP" — nullable, see file header
+  country      String   @default("Egypt")
+  productScope String[] @map("product_scope")
 
-  companyId String?  @map("company_id")
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceType       String?   @map("source_type") // official_upload|official_url|ai_web_search|manual — nullable, see file header
+  sourceUrl        String?   @map("source_url")
+  sourceIsOfficial Boolean   @default(false) @map("source_is_official")
+  documentVersion  String?   @map("document_version")
+  effectiveDate    DateTime? @map("effective_date")
+  supersededById   String?   @map("superseded_by_id")
+  retrievedAt      DateTime? @map("retrieved_at")
+  documentHash     String?   @map("document_hash") // sha256 — dedup + change detection
+
+  status           String    @default("pending_review") // pending_review|extracted|approved|rejected|superseded
+  reviewedByUserId String?   @map("reviewed_by_user_id")
+  reviewedAt       DateTime? @map("reviewed_at")
+
+  // Coverage (§7.5)
+  clauseTotal       Int?      @map("clause_total")
+  clauseCovered     Int?      @map("clause_covered")
+  coveragePercent   Float?    @map("coverage_percent")
+  uncoveredClauses  Json?     @map("uncovered_clauses")
+  coverageAuditedAt DateTime? @map("coverage_audited_at")
+
+  extractedText String? @db.Text // physical column name unchanged, see file header
+  extractedData Json? // physical column name unchanged, see file header
+
+  companyId String?          @map("company_id")
+  company   Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rules     RegulatoryRule[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("eda_requirements")
+  @@index([country, authority, status])
+  @@map("regulatory_documents")
+}
+
+model RegulatoryRule {
+  id         String             @id @default(uuid())
+  documentId String             @map("document_id")
+  document   RegulatoryDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  ruleKey  String // "EG.VET.TARGET_SPECIES.REQUIRED"
+  ruleType String // required_field|forbidden_content|format|conditional|value_constraint|language_set|semantic
+  severity String // error | warning | info
+
+  targetPath  String? @map("target_path") // path in labelSchema
+  appliesWhen Json?   @map("applies_when") // condition — null = always
+  constraint  Json // the §7.3 DSL payload
+
+  description String  @db.Text
+  citation    String? @db.Text // verbatim quote from the source document
+  status      String  @default("pending_review") // pending_review|approved|rejected
+  autoFixable Boolean @default(false) @map("auto_fixable")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([documentId, ruleKey])
+  @@index([ruleType, severity, status])
+  @@map("regulatory_rules")
 }
 
 // ==========================================

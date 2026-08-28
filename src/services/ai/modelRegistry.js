@@ -57,4 +57,15 @@ export const MODELS = {
   // dynamic budget; temperature stays 0 to match this pipeline's pre-existing
   // behavior (geminiClient.generateJson always forced temperature 0).
   TEMPLATE_RECONSTRUCT: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
+
+  // Phase 3 — regulatory rule compilation (§9.3: "تجميع القواعد -> high", called
+  // out as the hardest task in the whole system: translating legal text into
+  // executable logic). Large fixed budget, temperature 0 for reproducibility —
+  // a rule extraction that changes between runs on the same document is unusable.
+  RULE_COMPILE: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+
+  // Phase 3 — coverage auditor (§7.5): the reverse pass over the same document,
+  // checking which clauses produced no rule. Same reasoning weight as compilation
+  // since it's re-reading the whole document with equal scrutiny.
+  COVERAGE_AUDIT: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
 };

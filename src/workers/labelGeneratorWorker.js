@@ -276,14 +276,18 @@ export const labelGeneratorWorker = new Worker(
       // Step 2.5: Search EDA Requirements (stored in DB first, then fall back to a live web search)
       let edaRequirementsText = "";
       try {
-        const edaReqs = await prisma.edaRequirement.findMany({
+        // §7.1's resolution order — prefer an approved (human-reviewed) document for
+        // this country over anything still pending_review (e.g. a cached web search
+        // from Step 2.6 below), so an unofficial/unreviewed source never silently
+        // outranks one a human actually approved.
+        const edaReqs = await prisma.regulatoryDocument.findMany({
           where: { country: { equals: country, mode: 'insensitive' } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], // 'approved' < 'pending_review' alphabetically
           take: 1
         });
         if (edaReqs.length > 0 && edaReqs[0].extractedText) {
           edaRequirementsText = edaReqs[0].extractedText;
-          console.log(`[Label Generator] Found stored EDA Requirements for ${country}`);
+          console.log(`[Label Generator] Found stored regulatory document for ${country} (status: ${edaReqs[0].status})`);
         }
       } catch (err) {
         console.error(`[Label Generator] Task ${taskId}: EDA search error`, err);
@@ -327,10 +331,18 @@ export const labelGeneratorWorker = new Worker(
             edaRequirementsText = searchJson.requirementsText.trim();
             console.log(`[Label Generator] Task ${taskId}: Found requirements via web search for ${country}.`);
 
-            // Cache it so we never need to search for this country again.
-            await prisma.edaRequirement.create({
+            // Cache it so we never need to search for this country again — but NEVER
+            // as authoritative: no sourceUrl survived a generic Google Search grounding
+            // call, so this is explicitly unofficial and pending_review (§7.1/§7.2 — G4's
+            // fix). It's still usable as advisory context for THIS generation (below),
+            // but Step 2.5 above will always prefer a real approved document over this
+            // the next time this country comes up.
+            await prisma.regulatoryDocument.create({
               data: {
                 country,
+                sourceType: "ai_web_search",
+                sourceIsOfficial: false,
+                status: "pending_review",
                 extractedText: edaRequirementsText,
                 extractedData: {
                   source: "ai_web_search",

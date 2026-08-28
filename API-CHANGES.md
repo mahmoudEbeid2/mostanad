@@ -43,3 +43,42 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
 - `GET /labels/:id/validation` — **new**. `protect` + `restrictToPermission("read_labels")`.
   Returns the most recent `ValidationReport` for the label. 404 if none exists yet
   (validate first) or if the label belongs to a different tenant.
+
+## Phase 3
+
+- `GET /eda-requirements`, `PATCH /eda-requirements/:id`, `DELETE /eda-requirements/:id`,
+  `POST /eda-requirements` — **unchanged**, still work exactly as before. Backed
+  by `regulatory_documents` now instead of `eda_requirements` (table renamed),
+  via a service shim — no caller-visible change.
+- `GET /regulatory-documents` — **new**. `read_regulatory`. Filters: `country`,
+  `authority`, `status`.
+- `POST /regulatory-documents` — **new**. `create_regulatory`. Multipart:
+  `file` (PDF only), `country`, `title?`, `authority?`, `productScope?`
+  (comma-separated or array), `sourceUrl?`, `documentVersion?`. Returns
+  `202 { taskId, documentId: null }` — `documentId` is null until extraction
+  completes (poll `GET /background-tasks/:taskId`, read `.result.id`).
+- `GET /regulatory-documents/:id` — **new**. `read_regulatory`. Returns the
+  document with its `rules` included.
+- `POST /regulatory-documents/:id/compile-rules` — **new**. `approve_regulatory`.
+  Runs `ruleCompiler` against the document's extracted text. Returns
+  `201 { rules: RegulatoryRule[] (created, pending_review), rejected: [{candidate, reason}] }`.
+- `POST /regulatory-documents/:id/audit-coverage` — **new**. `approve_regulatory`.
+  Runs `coverageAuditor`, persists `clauseTotal/clauseCovered/coveragePercent/uncoveredClauses`
+  onto the document. Returns the updated document.
+- `POST /regulatory-documents/:id/approve` — **new**. `approve_regulatory`.
+  `422` if coverage < 95% and unresolved clauses remain; `400` if never
+  coverage-audited. Sets `status: "approved"`.
+- `PATCH /regulatory-documents/:id/clauses/clear` — **new, not in §15's literal
+  list** (added because the 95% gate needs a way for a human to clear a
+  false-positive uncovered clause). Body: `{ reference }`. Removes that entry
+  from `uncoveredClauses`.
+- `GET /regulatory-rules` — **new**. `read_regulatory`. Filters: `documentId`,
+  `ruleType`, `severity`, `status`.
+- `POST /regulatory-rules/preview` — **new**. `read_regulatory`. Body:
+  `{ labelId }`. Dry-runs every `approved` rule scoped to the label's country
+  against its current `labelData`. Returns `{ verdicts, ruleCount }`, writes
+  nothing.
+- `PATCH /regulatory-rules/:id` — **new**. `approve_regulatory`. Body:
+  `{ constraint?, severity?, targetPath? }`. `400` if the rule is already
+  approved (reject + recompile instead of editing a live rule).
+- `PATCH /regulatory-rules/:id/approve`, `PATCH /regulatory-rules/:id/reject` — **new**. `approve_regulatory`.

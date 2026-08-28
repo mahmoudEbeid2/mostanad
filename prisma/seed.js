@@ -69,6 +69,11 @@ const permissions = [
   // are added as their endpoints land in later phases.
   { name: "Read Labels", slug: "read_labels", module: "labels" },
   { name: "Update Labels", slug: "update_labels", module: "labels" }, // Phase 2: POST /labels/:id/validate mutates state
+
+  // Regulatory documents/rules (Phase 3, §15)
+  { name: "Read Regulatory", slug: "read_regulatory", module: "regulatory" },
+  { name: "Create Regulatory", slug: "create_regulatory", module: "regulatory" }, // upload a document
+  { name: "Approve Regulatory", slug: "approve_regulatory", module: "regulatory" }, // compile/audit/approve/reject
 ];
 
 async function main() {

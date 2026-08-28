@@ -1,0 +1,61 @@
+SYNTHETIC FIXTURE DOCUMENT — NOT A REAL REGULATORY AUTHORITY PUBLICATION.
+Written for Mostanad Phase 3 testing (MOSTANAD_ARCHITECTURE.md §7.4). Do not
+treat any clause below as real veterinary/feed labeling law for any country.
+
+TITLE: Fictional Veterinary and Animal Feed Product Labeling Guide, Edition 1 (Synthetic)
+AUTHORITY: Fictional Animal Health Authority (FAHA)
+COUNTRY: Fictionland
+
+PREAMBLE. This guide sets out the labeling requirements for veterinary drugs
+and animal feed products marketed in Fictionland. It does not itself impose
+requirements and exists only to introduce the sections that follow.
+
+SECTION 1 — PRODUCT IDENTITY
+1.1 Every label must state the product name in both Arabic and English.
+1.2 Every label must list all active ingredients with their exact amount and
+    unit of measure. An ingredient listed without a stated amount is not
+    permitted; where no numeric quantity applies, the label must state "q.s."
+
+SECTION 2 — TARGET SPECIES AND WITHDRAWAL
+2.1 Every label must state the target animal species for which the product is
+    intended.
+2.2 If the product's target animal species includes Cattle, Sheep, Goat, or
+    Poultry, the label must state a withdrawal period in days before the
+    animal or its products (meat, milk, eggs) may enter the food supply.
+2.3 Products intended solely for companion animals (Dogs, Cats) are exempt
+    from the withdrawal period requirement in clause 2.2.
+
+SECTION 3 — PROHIBITED CLAIMS
+3.1 A label must not claim that the product "cures" or "treats" any disease
+    unless the product is registered as a veterinary drug with a valid
+    registration number. Feed additives and supplements must not use the
+    words "cures", "treats", "heals", or the Arabic equivalent "يعالج".
+3.2 A label must not state or imply that the product is safe for human
+    consumption.
+
+SECTION 4 — STORAGE AND HANDLING
+4.1 Every label must state a storage temperature limit expressed in degrees
+    Celsius. A vague instruction such as "store in a cool place" without a
+    numeric limit does not satisfy this requirement.
+4.2 Products packaged in a multi-dose container (bottle, vial, or drum) must
+    state the shelf life after first opening.
+
+SECTION 5 — MANUFACTURER AND REGISTRATION
+5.1 Every label must display the name of the manufacturer or importer.
+5.2 Veterinary drug products must display a valid registration number issued
+    by FAHA. Feed additives and supplements are exempt from this requirement.
+5.3 Every label must display a batch number and an expiry date.
+
+SECTION 6 — LANGUAGE
+6.1 All mandatory statements under this guide must appear in both Arabic and
+    English on the same label. A label in English only, or Arabic only, does
+    not satisfy this guide.
+
+SECTION 7 — CHILD SAFETY
+7.1 Every label must display a statement directing that the product be kept
+    out of the reach of children.
+
+APPENDIX A — DEFINITIONS (informational, not a requirement)
+"Withdrawal period" means the minimum time that must elapse between the last
+administration of a product and the legal marketing of food derived from the
+treated animal.
