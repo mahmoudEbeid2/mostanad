@@ -26,7 +26,16 @@ export const createTemplate = async (companyId, data) => {
 
   const finalIsGlobal = isGlobal !== undefined ? isGlobal : true;
 
-  // 3. Verify product details if template is product-scoped
+  // 3. A product-scoped template needs a productId. Without this check,
+  // productId stays `undefined` and Prisma's `where` below silently drops the
+  // productId filter entirely (undefined means "don't filter on this field",
+  // not "match null") — over-matching any other non-global template of this
+  // type for the company and reporting the wrong conflict.
+  if (!finalIsGlobal && !productId) {
+    throw new AppError("Product ID is required for a non-global (product-scoped) template.", 400);
+  }
+
+  // 4. Verify product details if template is product-scoped
   if (!finalIsGlobal && productId) {
     const productExists = await prisma.product.findFirst({
       where: { id: productId, companyId },
@@ -36,7 +45,7 @@ export const createTemplate = async (companyId, data) => {
     }
   }
 
-  // 4. Enforce constraint:
+  // 5. Enforce constraint:
   // - Global: Only one global template per type per brand per company
   // - Product-scoped: Only one template per type per product per company
   let existingTemplate;
@@ -66,7 +75,7 @@ export const createTemplate = async (companyId, data) => {
     }
   }
 
-  // 5. Create template
+  // 6. Create template
   const template = await prisma.template.create({
     data: {
       name,
@@ -161,6 +170,12 @@ export const updateTemplate = async (id, data) => {
   const finalProductId = productId !== undefined ? productId : existingTemplate.productId;
   const finalType = type !== undefined ? type : existingTemplate.type;
   const finalBrandId = brandId !== undefined ? brandId : existingTemplate.brandId;
+
+  // A product-scoped template needs a productId — same guard as createTemplate,
+  // covers switching isGlobal:true -> false without also supplying a productId.
+  if (!finalIsGlobal && !finalProductId) {
+    throw new AppError("Product ID is required for a non-global (product-scoped) template.", 400);
+  }
 
   // Validate product if template is product-scoped
   if (!finalIsGlobal && finalProductId) {
