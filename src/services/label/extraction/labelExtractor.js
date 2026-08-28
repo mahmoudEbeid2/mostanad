@@ -81,33 +81,17 @@ function mapToLabelData(extracted, country) {
 }
 
 async function callGeminiWithRetry(parts, label = "Gemini") {
-  let retries = 4;
-  let delay = 3000;
   const modelSpec = MODELS.EXTRACT;
-
-  while (retries > 0) {
-    try {
-      console.log(`[LabelExtractor][${label}] Calling ${modelSpec.id}... (retries left: ${retries})`);
-      const response = await geminiClient.ai.models.generateContent({
-        model: modelSpec.id,
-        contents: parts,
-        config: { temperature: modelSpec.temperature, thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget } },
-      });
-      return response.text;
-    } catch (error) {
-      const msg = error.message || "";
-      const isQuotaOrDemand = ["503", "Service Unavailable", "429", "Too Many Requests", "demand", "quota"].some((s) => msg.includes(s));
-      if (isQuotaOrDemand) {
-        console.warn(`[LabelExtractor][${label}] Quota/demand hit — retrying in ${delay}ms...`);
-        retries--;
-        await new Promise((r) => setTimeout(r, delay));
-        delay = Math.floor(delay * 1.5);
-      } else {
-        throw error;
-      }
-    }
+  try {
+    const response = await geminiClient.generateContentWithRetry({
+      model: modelSpec.id,
+      contents: parts,
+      config: { temperature: modelSpec.temperature, thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget } },
+    });
+    return response.text;
+  } catch (error) {
+    throw new AppError(`[${label}] ${error.message}`, 500);
   }
-  throw new AppError(`[${label}] Failed after all retries.`, 500);
 }
 
 function parseGeminiJson(raw) {

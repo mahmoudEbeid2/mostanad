@@ -57,7 +57,7 @@ User's question: "${message}"
 Answer directly and specifically, citing the actual verdict/rule/citation where relevant. Do not propose any change — if the user actually wants an edit, say so and that they should ask for the change directly.
   `.trim();
 
-  const response = await geminiClient.ai.models.generateContent({
+  const response = await geminiClient.generateContentWithRetry({
     model: MODELS.LABEL_REVIEW.id,
     contents: prompt,
     config: { temperature: 0.2 },

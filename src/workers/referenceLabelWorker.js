@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
-import { GoogleGenAI } from "@google/genai";
+import geminiClient from "../services/ai/geminiClient.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
 
 const redisConfig = getRedisConfig();
@@ -12,7 +12,6 @@ const socket = io(backendWsUrl);
 if (!process.env.GEMINI_API_KEY) {
   console.warn("⚠️ GEMINI_API_KEY is not set. ReferenceLabelWorker might fail.");
 }
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 socket.on("connect", () => {
   console.log(`[ReferenceLabelWorker] Connected to WS at ${backendWsUrl} (Socket ID: ${socket.id})`);
@@ -82,12 +81,11 @@ const referenceLabelWorker = new Worker(
         Return ONLY a raw JSON object. Do not include markdown formatting like \`\`\`json.
       `;
 
-      const result = await ai.models.generateContent({
+      const responseText = await geminiClient.generateText({
         model: MODELS.INGEST.id,
         contents: [prompt, ...parts],
         config: { temperature: MODELS.INGEST.temperature, thinkingConfig: { thinkingBudget: MODELS.INGEST.thinkingBudget } },
       });
-      const responseText = result.text;
       
       socket.emit("job_status_update", {
         jobId: taskId,
@@ -141,10 +139,6 @@ const referenceLabelWorker = new Worker(
         message: "Label extraction complete!",
         result: { referenceLabelId: referenceLabel.id }
       });
-
-      // Add a 6-second delay to avoid hitting Gemini 15 RPM Free Tier Rate Limits
-      // Since BullMQ processes sequentially (concurrency=1), this spaces out API calls.
-      await new Promise(resolve => setTimeout(resolve, 6000));
 
       console.log(`[ReferenceLabelWorker] Successfully processed task ${taskId}`);
       return { success: true, referenceLabelId: referenceLabel.id };

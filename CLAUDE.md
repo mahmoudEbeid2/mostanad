@@ -108,7 +108,6 @@ yourself after editing worker code.
 | `labelGeneratorWorker.js:470-569` | Steps 3.5/3.6 ask Gemini to rewrite the label; no pass/fail is ever produced; both swallow errors |
 | `labelGeneratorWorker.js:338,343` | instructs the model to "use standard veterinary knowledge" — ungrounded guessing, no citation |
 | `labelService.js:399` | reads `dbProduct.routeOfAdmin` — not a field on `Product` |
-| `geminiClient.js:23-26` | computes `currentModel` on 404 and never uses it |
 | schema-wide | generated labels are stored only in `BackgroundTask.result` with `removeOnComplete: true` — no `GeneratedLabel` entity exists |
 
 ---
@@ -131,6 +130,41 @@ yourself after editing worker code.
 - **Feed PDFs and label images natively.** `pdf-parse` destroys the tables that
   carry withdrawal periods and species matrices.
 - **Generator and auditor must be different model families.**
+- **Every Gemini call goes through `geminiClient.js` — never `new GoogleGenAI(...)`
+  anywhere else.** It is the only rate-limited, retry-handled choke point in the
+  process; a per-file client bypasses both and is how a single-key quota gets
+  blown by callers that each think they're behaving. The Batch API
+  (`batchClient.js`, `geminiClient.ai.batches.*`) is the one legitimate
+  exception — it's a different quota surface, not the interactive
+  `generateContent` path the limiter guards.
+- **Rate limiting:** `geminiClient` holds one process-wide token bucket
+  (`GEMINI_RPM`, default 8) plus a concurrency cap (`GEMINI_MAX_CONCURRENT`,
+  default 2) — conservative defaults sized for a free-tier key shared across
+  every worker `dev:all` runs, not a paid key's real ceiling. Calls queue
+  instead of failing when the process is over budget. Raise both via env for a
+  paid project; check the account's actual quota first.
+- **429 vs 503:** treated differently, on purpose. 503 (server busy) gets
+  exponential backoff. 429 (a quota decision) honours Google's own
+  `RetryInfo.retryDelay` when given, and if the violation is a daily/project
+  quota rather than per-minute, `geminiClient` fails the call immediately
+  instead of burning retries — that quota will not recover by waiting. Every
+  failed attempt logs Google's real status/message/retry metadata
+  (`geminiErrors.js`); nothing collapses to a generic "API busy" string
+  anymore, and the final error reaches `BackgroundTask.error` verbatim.
+- **Dev flags to cut Gemini call count** on a constrained key:
+  `ENABLE_ADVERSARIAL_AUDIT` (guards `generatedLabelService.runAudit`) and
+  `ENABLE_SELF_CONSISTENCY` (guards `selfConsistency.runSelfConsistency`), both
+  default `true` unless explicitly set to `"false"`. Note: as of this writing,
+  neither is wired into the automatic `labelGeneratorWorker` flow yet — audit
+  is a separate `POST /labels/:id/audit` call, and self-consistency has no
+  caller at all. A single label generation today is 1-2 Gemini calls
+  (ingredient extraction + generation), not seven; the flags are ready for
+  whichever phase wires audit/self-consistency into the main flow.
+- **Cost visibility:** `generationMetrics.js` (AsyncLocalStorage) tallies every
+  `geminiClient` call made during a tracked job — call count, input/output/
+  thinking/cached tokens, wall-clock time. `labelGeneratorWorker` wraps its job
+  handler in `withGenerationMetrics()` and writes the snapshot to
+  `generationMeta.geminiUsage` before persisting.
 
 ---
 

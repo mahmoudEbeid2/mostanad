@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
-import { GoogleGenAI } from "@google/genai";
+import geminiClient from "../services/ai/geminiClient.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
 
 const redisConfig = getRedisConfig();
@@ -12,7 +12,6 @@ const socket = io(backendWsUrl);
 if (!process.env.GEMINI_API_KEY) {
   console.warn("⚠️ GEMINI_API_KEY is not set. ProductAiWorker might fail.");
 }
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 socket.on("connect", () => {
   console.log(`[ProductAiWorker] Connected to WS at ${backendWsUrl} (Socket ID: ${socket.id})`);
@@ -76,12 +75,11 @@ const productAiWorker = new Worker(
         message: "Generating structured data with AI..."
       });
 
-      const result = await ai.models.generateContent({
+      const responseText = await geminiClient.generateText({
         model: MODELS.EXTRACT.id,
         contents: prompt,
         config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
       });
-      const responseText = result.text;
       
       socket.emit("job_status_update", {
         jobId: taskId,

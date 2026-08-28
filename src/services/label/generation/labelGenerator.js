@@ -1,28 +1,8 @@
 import crypto from "crypto";
-import { GoogleGenAI } from "@google/genai";
+import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { geminiResponseSchema } from "../schema/geminiSchema.js";
 import { buildContext } from "./contextBuilder.js";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-async function callWithRetry(contents, config, retries = 5, delay = 5000) {
-  while (retries > 0) {
-    try {
-      return await ai.models.generateContent({ model: MODELS.LABEL_GENERATE.id, contents, config });
-    } catch (error) {
-      const msg = error.message || "";
-      const isQuotaOrDemand = ["503", "Service Unavailable", "429", "quota"].some((s) => msg.includes(s));
-      if (isQuotaOrDemand && retries > 1) {
-        retries--;
-        await new Promise((r) => setTimeout(r, delay));
-        delay = Math.floor(delay * 1.5);
-      } else {
-        throw error;
-      }
-    }
-  }
-}
 
 // Deterministic target species union (ported from the pre-Phase-4 worker,
 // which the architecture doc's own audit called out as "✅ genuinely works
@@ -123,11 +103,15 @@ GROUNDING RULES (do not violate):
   // rules + references + profile + instructions were sent, verbatim.
   const promptHash = crypto.createHash("sha256").update(fullPrompt, "utf8").digest("hex");
 
-  const response = await callWithRetry(fullPrompt, {
-    temperature: MODELS.LABEL_GENERATE.temperature,
-    thinkingConfig: { thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget },
-    responseMimeType: "application/json",
-    responseJsonSchema: geminiResponseSchema,
+  const response = await geminiClient.generateContentWithRetry({
+    model: MODELS.LABEL_GENERATE.id,
+    contents: fullPrompt,
+    config: {
+      temperature: MODELS.LABEL_GENERATE.temperature,
+      thinkingConfig: { thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget },
+      responseMimeType: "application/json",
+      responseJsonSchema: geminiResponseSchema,
+    },
   });
 
   let labelData;

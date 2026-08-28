@@ -1,7 +1,10 @@
-import { GoogleGenAI } from "@google/genai";
+import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// CLAUDE.md item 4: defaults to true in production; set false to cut the
+// 3 self-consistency calls out of a label's Gemini call count while testing
+// against a constrained key.
+export const SELF_CONSISTENCY_ENABLED = process.env.ENABLE_SELF_CONSISTENCY !== "false";
 
 // §14.2's exact agreement thresholds — pure, no AI needed to evaluate them.
 export const AGREEMENT = {
@@ -44,13 +47,23 @@ export const RISKY_NUMERIC_FIELDS = ["directionOfUse", "strength"];
  * separately-invokable check for specifically risky fields.
  */
 export async function runSelfConsistency(prompt, { agreementFn = AGREEMENT.numeric, runs = 3 } = {}) {
+  if (!SELF_CONSISTENCY_ENABLED) {
+    return { agreed: null, runs: [], confidence: "skipped", skippedReason: "ENABLE_SELF_CONSISTENCY=false" };
+  }
+
+  // Each run goes through geminiClient individually (not a raw Promise.all
+  // fan-out against the SDK) so all 3 queue through the same shared rate
+  // limiter as every other call in the process, and each gets real 429/503
+  // retry handling instead of failing the whole batch on one transient error.
   const results = await Promise.all(
     Array.from({ length: runs }, () =>
-      ai.models.generateContent({
-        model: MODELS.LABEL_GENERATE.id,
-        contents: prompt,
-        config: { temperature: 0.6 },
-      }).then((r) => r.text)
+      geminiClient
+        .generateContentWithRetry({
+          model: MODELS.LABEL_GENERATE.id,
+          contents: prompt,
+          config: { temperature: 0.6 },
+        })
+        .then((r) => r.text)
     )
   );
 

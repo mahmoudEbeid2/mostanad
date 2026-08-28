@@ -1,9 +1,10 @@
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
-import { GoogleGenAI } from "@google/genai";
 import io from "socket.io-client";
+import geminiClient from "../services/ai/geminiClient.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
+import { withGenerationMetrics, generationMetricsSnapshot } from "../services/ai/generationMetrics.js";
 import * as versionService from "../services/label/versioning/versionService.js";
 import { buildProductProfile } from "../services/label/retrieval/productProfile.js";
 import { selectReferences } from "../services/label/retrieval/referenceSelector.js";
@@ -11,39 +12,12 @@ import { generate as generateLabel } from "../services/label/generation/labelGen
 import { validate as validateLabel } from "../services/label/validation/validationEngine.js";
 import { riskScore, autonomyTierFor } from "../services/label/assurance/riskScorer.js";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
 
 socket.on("connect", () => {
   console.log(`[Label Generator Worker] Connected to socket server: ${BACKEND_WS_URL}`);
 });
-
-async function callGeminiWithRetry(modelSpec, requestParams, retries = 5, delay = 5000) {
-  const config = {
-    temperature: modelSpec.temperature,
-    thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget },
-    ...(requestParams.config || {}),
-  };
-  while (retries > 0) {
-    try {
-      return await ai.models.generateContent({ model: modelSpec.id, contents: requestParams.contents, config });
-    } catch (error) {
-      const msg = error.message || "";
-      const isQuotaOrDemand = msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("429") || msg.includes("quota");
-      if (isQuotaOrDemand) {
-        console.warn(`[Label Generator] Gemini API busy (503/429). Retrying in ${delay}ms... (retries left: ${retries - 1})`);
-        retries--;
-        await new Promise((r) => setTimeout(r, delay));
-        delay = Math.floor(delay * 1.5);
-      } else {
-        throw error;
-      }
-    }
-  }
-  throw new Error("Gemini API failed after all retries due to high demand.");
-}
 
 // Per-field provenance (Invariant #3 / §14.4), rebuilt for Phase 4's real
 // labelSchema fields and real tier information — supersedes Phase 1's stopgap
@@ -93,7 +67,10 @@ const connection = getRedisConfig();
 
 export const labelGeneratorWorker = new Worker(
   "labelGeneratorQueue",
-  async (job) => {
+  // CLAUDE.md item 5: withGenerationMetrics gives every geminiClient call made
+  // anywhere during this job (extraction, generation, and anything future
+  // steps add) a shared bucket to record into — see generationMetrics.js.
+  (job) => withGenerationMetrics(async () => {
     const { taskId, companyId, createdByUserId, productId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
 
     console.log(`[Label Generator] Started task: ${taskId} for Country: ${country}, Language: ${language}`);
@@ -119,8 +96,12 @@ export const labelGeneratorWorker = new Worker(
       if (profile.activeIngredients.length === 0 && formulationText) {
         socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 20, message: "Extracting active ingredients..." });
         try {
-          const extractResult = await callGeminiWithRetry(MODELS.EXTRACT, { contents: `Extract the primary active ingredient names from this formulation text as a comma-separated list, nothing else:\n${formulationText}` });
-          const names = extractResult.text.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+          const extractText = await geminiClient.generateText({
+            model: MODELS.EXTRACT.id,
+            contents: `Extract the primary active ingredient names from this formulation text as a comma-separated list, nothing else:\n${formulationText}`,
+            config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
+          });
+          const names = extractText.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
           profile.activeIngredients = names.map((n) => ({ normalizedName: n, amount: null, unit: null, strengthMgPerUnit: null }));
         } catch (err) {
           console.error(`[Label Generator] Task ${taskId}: Ingredient extraction failed, continuing without it.`, err);
@@ -149,6 +130,13 @@ export const labelGeneratorWorker = new Worker(
       const { labelData, generationMeta, matchTier, referenceLabelIds, targetAnimalsSource } = await generateLabel({ profile, rankedReferences, rules });
 
       console.log(`[Label Generator] Task ${taskId}: cachedTokens=${generationMeta.cachedTokens}, refusedFields=${JSON.stringify(generationMeta.refusedUngroundedFields)}`);
+
+      // CLAUDE.md item 5: real per-label cost, not an estimate — every
+      // geminiClient call made since withGenerationMetrics() opened this job
+      // (ingredient extraction + generation, so far; audit/self-consistency
+      // will fold in automatically once/if they're wired into this same job).
+      generationMeta.geminiUsage = generationMetricsSnapshot();
+      console.log(`[Label Generator] Task ${taskId}: geminiUsage=${JSON.stringify(generationMeta.geminiUsage)}`);
 
       // Step 5: Persist — GeneratedLabel + LabelVersion v1 + per-field provenance.
       socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 90, message: "Saving and validating..." });
@@ -204,12 +192,16 @@ export const labelGeneratorWorker = new Worker(
       socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result, message: "Label generated successfully!" });
       console.log(`[Label Generator] Task ${taskId} completed successfully. Label ID: ${label.id}, validation passed: ${report.passed}`);
     } catch (error) {
+      // CLAUDE.md item 3: geminiClient now throws Google's real status/message
+      // (not a generic "API busy" string), so error.message landing on
+      // BackgroundTask.error is enough for the UI to show the real failure —
+      // including "quota exhausted" vs "rate limited" vs anything else.
       console.error(`[Label Generator] Job failed:`, error);
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "failed", error: error.message || "Unknown error occurred" } });
       socket.emit("job_status_update", { jobId: taskId, status: "failed", progress: 0, error: error.message, message: error.message });
       throw error;
     }
-  },
+  }),
   { connection, concurrency: 2 }
 );
 

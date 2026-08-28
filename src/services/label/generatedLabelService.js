@@ -142,7 +142,16 @@ export const getLatestValidation = async (id, { companyId } = {}) => {
  * every disagreement (never auto-resolved — a human decides resolution),
  * and recomputes risk/autonomy since disagreementCount feeds §14.6's formula.
  */
+// CLAUDE.md item 4: defaults to true in production; set false to cut the
+// adversarial audit's 1 call out of a label's Gemini call count while testing
+// against a constrained key.
+export const ADVERSARIAL_AUDIT_ENABLED = process.env.ENABLE_ADVERSARIAL_AUDIT !== "false";
+
 export const runAudit = async (id, { companyId } = {}) => {
+  if (!ADVERSARIAL_AUDIT_ENABLED) {
+    throw new AppError("Adversarial audit is disabled (ENABLE_ADVERSARIAL_AUDIT=false).", 503);
+  }
+
   const label = await prisma.generatedLabel.findUnique({ where: { id } });
   if (!label || (companyId && label.companyId !== companyId)) {
     throw new AppError("No generated label found with that ID", 404);

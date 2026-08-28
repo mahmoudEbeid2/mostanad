@@ -28,7 +28,7 @@ Respond with ONLY a raw JSON object (no markdown):
 Set found:false if you cannot locate a genuinely authoritative source — do not fabricate or guess.
   `.trim();
 
-  const response = await geminiClient.ai.models.generateContent({
+  const response = await geminiClient.generateContentWithRetry({
     model: MODELS.WEB_SEARCH.id,
     contents: prompt,
     config: { temperature: 0, tools: [{ googleSearch: {} }] },
