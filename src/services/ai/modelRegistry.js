@@ -78,4 +78,9 @@ export const MODELS = {
   // family) — this reduces but does NOT eliminate shared-bias risk. Flagged in
   // PROGRESS.md as a "need from the user": a real second-vendor API key.
   AUDITOR: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
+
+  // Phase 6 — chat agent (§9.3: "تصنيف نية الشات -> minimal" for intent
+  // classification; patch proposal gets a bit more room to reason since it's
+  // producing structured content, not a one-word label).
+  CHAT_AGENT: { id: "gemini-2.5-flash", thinkingBudget: 2048, temperature: 0.2 },
 };

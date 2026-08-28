@@ -59,3 +59,47 @@ export const postAudit = catchAsync(async (req, res) => {
   const result = await generatedLabelService.runAudit(req.params.id, { companyId: scopeFor(req) });
   res.status(201).json({ status: "success", data: result });
 });
+
+export const postChat = catchAsync(async (req, res) => {
+  const { message, expectedVersion, overrideAcknowledged } = req.body;
+  const result = await generatedLabelService.chat(req.params.id, {
+    message,
+    expectedVersion,
+    overrideAcknowledged,
+    userId: req.user ? req.user.id : null,
+    companyId: scopeFor(req),
+  });
+  res.status(result.status === "conflict" ? 409 : 200).json({ status: "success", data: result });
+});
+
+export const getChat = catchAsync(async (req, res) => {
+  const messages = await generatedLabelService.getChatHistory(req.params.id, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", results: messages.length, data: { messages } });
+});
+
+export const patchLabel = catchAsync(async (req, res) => {
+  const { changes, rationale, expectedVersion } = req.body;
+  const result = await generatedLabelService.applyDirectPatch(req.params.id, {
+    changes,
+    rationale,
+    expectedVersion,
+    userId: req.user ? req.user.id : null,
+    companyId: scopeFor(req),
+  });
+  res.status(result.status === "conflict" ? 409 : 200).json({ status: "success", data: result });
+});
+
+export const getVersion = catchAsync(async (req, res) => {
+  const version = await generatedLabelService.getVersion(req.params.id, req.params.n, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", data: { version } });
+});
+
+export const postRestore = catchAsync(async (req, res) => {
+  const result = await generatedLabelService.restoreVersion(req.params.id, req.params.n, { companyId: scopeFor(req) });
+  res.status(201).json({ status: "success", data: result });
+});
+
+export const getVersionsDiff = catchAsync(async (req, res) => {
+  const diff = await generatedLabelService.diffVersions(req.params.id, req.params.a, req.params.b, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", data: { diff } });
+});

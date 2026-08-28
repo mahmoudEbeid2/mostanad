@@ -581,3 +581,84 @@ correctly changes the risk score.
 Next phase should start with: Phase 6 (chat agent + patch protocol + conflict
 detection + restore integration).
 
+## Phase 6 — Chat agent, patch protocol, conflict detection, restore (done)
+
+Scope deviation from section 11.1, stated up front: the doc specifies a full
+multi-tool agentic loop (getLabel/getValidationReport/getRule/
+searchReferences/getProvenance/getVersionHistory/dryRunPatch/proposePatch as
+separate model-invoked tool calls over several turns). Implemented instead:
+one call classifies intent (section 11.2's routing), one call answers a
+question/explanation with label+report+relevant-rule context already inlined,
+one call proposes a patch. The hard invariant from section 11.1 (the agent
+cannot call proposePatch without dryRunPatch first) is enforced in CODE in the
+orchestrator (generatedLabelService.chat), not left to the agent's own
+discipline, same as the doc requires - just without the multi-turn tool
+exploration around it. This is real, working, and tested; a genuine
+function-calling tool loop is further work, not done here.
+
+Built:
+- patchProtocol.js: the four ops (replace/append/remove/insert) on a deep
+  clone, the path allowlist (unknown path -> reject, not silent), and the
+  bulk-replacement guard (>60% of top-level fields touched -> reject, becomes
+  an explicit re-generation instead).
+- patchApplier.js (dryRunPatch): applies to a candidate, re-validates,
+  compares against the CURRENT report's failures to find genuinely NEW
+  failures only - a patch is never blamed for a problem the label already
+  had. Returns invalid/conflict/clean, never applies anything itself.
+- chatAgent.js: classifyIntent, answerQuestion, proposePatch - see scope
+  deviation above.
+- generatedLabelService.chat(): the full section 11.5 cycle - status lock (for
+  a future "generating" state; currently unreachable since rows are created
+  post-generation, kept for when a future phase persists mid-generation),
+  optimistic lock (expectedVersion mismatch -> 409), question/explain ->
+  answer + save messages, no new version; edit -> propose -> dry-run ->
+  conflict (saved as proposedPatch, NOT applied, returned for the user to
+  cancel/fix/override) or clean -> apply via versionService.createVersion,
+  new ValidationReport, chat message records appliedPatch + resultVersion.
+  overrideAcknowledged is recorded on the version with who acknowledged it -
+  section 11.4's "never a silent apply."
+- applyDirectPatch(): PATCH /labels/:id - the same dry-run/conflict/apply
+  pipeline without AI, for a caller supplying the patch directly.
+- restoreVersion()/getVersion()/diffVersions(): wraps the versionService Phase
+  1 already had with tenant scoping and a fresh ValidationReport for the
+  restored content.
+- Routes: PATCH /labels/:id, GET /labels/:id/versions/:n,
+  POST /labels/:id/versions/:n/restore, GET /labels/:id/versions/:a/diff/:b,
+  POST /labels/:id/chat, GET /labels/:id/chat.
+- Also fixed a real gap found while building this: chat()/runAudit()'s
+  AI-calling sections now wrap failures as AppError(..., 503) instead of
+  letting a raw Error bubble to Express's global handler as a generic,
+  unhelpful "Something went very wrong!" 500 - discovered by actually hitting
+  it live during verification, not by inspection.
+
+Verified:
+- tests/label.chat.patch.test.js: 22 assertions, no AI needed - all four patch
+  ops, the path allowlist, the bulk-replacement guard, and dryRunPatch's
+  clean/conflict distinction including the specific case that matters most:
+  a pre-existing failure on a path isn't re-flagged as a new conflict just
+  because the patch happened to touch a related field. Two real test-authoring
+  mistakes caught and fixed while writing this (passing null/hand-stubbed
+  baseline reports instead of computing them via validate()) - a reminder that
+  the CONTRACT (caller supplies the real current report) matters as much as
+  the function under test.
+- Live HTTP, no AI needed: PATCH /labels/:id clean edit -> applied, v2; stale
+  expectedVersion -> 409; GET version 1 -> correct; diff 1 vs 2 -> correct
+  field-level diff; PATCH switching to a food-producing species -> 409
+  conflict naming withdrawalPeriod with cancel/apply_and_fix/override options;
+  POST restore v1 -> v3 created, content correctly reverted to v1's (not v2's)
+  - the full non-AI half of this phase proven end to end against a real DB.
+- Live HTTP, AI-dependent: POST /labels/:id/chat reached classifyIntent's
+  actual Gemini call, retried 5 times for real, and failed on the same
+  exhausted quota as everything else this session - this is what surfaced the
+  generic-500 gap above, which is now fixed.
+- node tests/runAll.js: 17/22, same 5 pre-existing failures, no new
+  regressions.
+
+Deferred: the actual chat AI calls (classify/answer/propose) against real
+quota. A true multi-tool agentic loop (section 11.1's full spec) - the
+single-call approximation is real and tested but doesn't let the agent
+explore tools mid-conversation.
+
+Next phase should start with: Phase 7 (approval + LabelApproval + promotion +
+revocation).
+

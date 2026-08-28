@@ -3,6 +3,9 @@ import AppError from "../../utils/appError.js";
 import { validate } from "./validation/validationEngine.js";
 import { audit, compareVerdicts } from "./validation/adversarialAuditor.js";
 import { riskScore, autonomyTierFor } from "./assurance/riskScorer.js";
+import { classifyIntent, answerQuestion, proposePatch } from "./editing/chatAgent.js";
+import { dryRunPatch } from "./editing/patchApplier.js";
+import * as versionService from "./versioning/versionService.js";
 
 async function getApprovedRulesForCountry(country) {
   const documents = await prisma.regulatoryDocument.findMany({ where: { country, status: "approved" }, select: { id: true } });
@@ -154,7 +157,12 @@ export const runAudit = async (id, { companyId } = {}) => {
   if (!latestReport) throw new AppError("This label has not been validated yet — POST /labels/:id/validate first.", 400);
 
   const rules = await getApprovedRulesForCountry(label.country);
-  const auditorVerdicts = await audit(label.labelData, { rules, confirmedFacts: label.inputPayload });
+  let auditorVerdicts;
+  try {
+    auditorVerdicts = await audit(label.labelData, { rules, confirmedFacts: label.inputPayload });
+  } catch (err) {
+    throw new AppError(`AI service temporarily unavailable — could not run the audit: ${err.message}`, 503);
+  }
   const disagreements = compareVerdicts(latestReport.verdicts, auditorVerdicts);
 
   for (const d of disagreements) {
@@ -225,4 +233,209 @@ export const getReviewInbox = async ({ companyId, page = 1, limit = 20 } = {}) =
     prisma.generatedLabel.count({ where }),
   ]);
   return { labels, total };
+};
+
+async function loadLabelForChat(id, companyId) {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  const report = await prisma.validationReport.findFirst({ where: { labelId: id }, orderBy: { createdAt: "desc" } });
+  return { label, report };
+}
+
+/**
+ * §11.5's full cycle. Guards #6/#7 (§11.4): optimistic lock on expectedVersion,
+ * status lock on "generating" (currently unreachable — GeneratedLabel rows are
+ * only created post-generation today — kept for when a future phase persists
+ * a row before generation completes).
+ */
+export const chat = async (id, { message, expectedVersion, overrideAcknowledged = false, userId, companyId } = {}) => {
+  const { label, report } = await loadLabelForChat(id, companyId);
+
+  if (label.status === "generating") {
+    throw new AppError("This label is still being generated — try again shortly.", 423);
+  }
+  if (expectedVersion !== undefined && expectedVersion !== null && Number(expectedVersion) !== label.currentVersion) {
+    throw new AppError(`Version conflict: expected ${expectedVersion}, label is now at ${label.currentVersion}. Reload before editing.`, 409);
+  }
+
+  const rules = await getApprovedRulesForCountry(label.country);
+  let intent;
+  try {
+    intent = await classifyIntent(message);
+  } catch (err) {
+    throw new AppError(`AI service temporarily unavailable — could not process this message: ${err.message}`, 503);
+  }
+
+  const saveMessage = (extra) => prisma.labelChatMessage.create({ data: { labelId: id, role: "user", content: message, intent, userId, ...extra } });
+
+  if (intent === "question" || intent === "explain_validation") {
+    let answer;
+    try {
+      answer = await answerQuestion(message, { labelData: label.labelData, report, rules });
+    } catch (err) {
+      throw new AppError(`AI service temporarily unavailable — could not answer: ${err.message}`, 503);
+    }
+    await saveMessage({});
+    await prisma.labelChatMessage.create({ data: { labelId: id, role: "assistant", content: answer, intent } });
+    return { intent, answer };
+  }
+
+  // intent === "edit"
+  let patch;
+  try {
+    patch = await proposePatch(message, { labelData: label.labelData, report });
+  } catch (err) {
+    throw new AppError(`AI service temporarily unavailable — could not propose an edit: ${err.message}`, 503);
+  }
+  const dryRun = dryRunPatch(label.labelData, report, patch, { rules });
+
+  if (dryRun.status === "invalid") {
+    await saveMessage({ proposedPatch: patch, conflicts: { errors: dryRun.errors } });
+    throw new AppError(`Proposed edit was rejected: ${dryRun.errors.join("; ")}`, 422);
+  }
+
+  if (dryRun.status === "conflict" && !overrideAcknowledged) {
+    await saveMessage({ proposedPatch: patch, conflicts: dryRun.wouldViolate });
+    return { intent, status: "conflict", proposedPatch: patch, wouldViolate: dryRun.wouldViolate, options: dryRun.options };
+  }
+
+  // Clean, or a conflict the user explicitly acknowledged overriding (§11.4
+  // guard #4: overrideAcknowledged is recorded on the version, tied to who did it).
+  const newVersion = await versionService.createVersion(id, dryRun.candidateLabelData, {
+    changeSource: "ai_chat_edit",
+    changedByUserId: userId,
+    changeSummary: patch.rationale,
+    overrideAcknowledged: dryRun.status === "conflict" && overrideAcknowledged,
+  });
+
+  const finalReport = dryRun.report || validate(dryRun.candidateLabelData, { rules });
+  await prisma.validationReport.create({
+    data: {
+      labelId: id,
+      versionNumber: newVersion.versionNumber,
+      passed: finalReport.passed,
+      errorCount: finalReport.errorCount,
+      warningCount: finalReport.warningCount,
+      verdicts: finalReport.verdicts,
+      coveragePercent: finalReport.coveragePercent,
+      engineVersion: finalReport.engineVersion,
+      rulesetIds: finalReport.rulesetIds,
+      aiAssisted: finalReport.aiAssisted,
+    },
+  });
+  await prisma.generatedLabel.update({ where: { id }, data: { status: finalReport.passed ? "validated" : "failed_validation" } });
+  await saveMessage({ appliedPatch: patch, resultVersion: newVersion.versionNumber });
+
+  return { intent, status: "applied", resultVersion: newVersion.versionNumber, report: finalReport };
+};
+
+export const getChatHistory = async (id, { companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  return prisma.labelChatMessage.findMany({ where: { labelId: id }, orderBy: { createdAt: "asc" } });
+};
+
+/**
+ * PATCH /labels/:id — a direct edit, no AI involved. Same guards as chat's
+ * edit path (dry-run, conflict detection, optimistic lock) minus intent
+ * classification and patch proposal — the caller supplies the patch directly.
+ */
+export const applyDirectPatch = async (id, { changes, rationale, expectedVersion, userId, companyId } = {}) => {
+  const { label, report } = await loadLabelForChat(id, companyId);
+
+  if (expectedVersion !== undefined && expectedVersion !== null && Number(expectedVersion) !== label.currentVersion) {
+    throw new AppError(`Version conflict: expected ${expectedVersion}, label is now at ${label.currentVersion}. Reload before editing.`, 409);
+  }
+
+  const rules = await getApprovedRulesForCountry(label.country);
+  const patch = { rationale: rationale || "Manual edit", changes };
+  const dryRun = dryRunPatch(label.labelData, report, patch, { rules });
+
+  if (dryRun.status === "invalid") throw new AppError(`Patch rejected: ${dryRun.errors.join("; ")}`, 422);
+  if (dryRun.status === "conflict") {
+    return { status: "conflict", wouldViolate: dryRun.wouldViolate, options: dryRun.options };
+  }
+
+  const newVersion = await versionService.createVersion(id, dryRun.candidateLabelData, {
+    changeSource: "manual_edit",
+    changedByUserId: userId,
+    changeSummary: rationale || "Manual edit",
+  });
+  await prisma.validationReport.create({
+    data: {
+      labelId: id,
+      versionNumber: newVersion.versionNumber,
+      passed: dryRun.report.passed,
+      errorCount: dryRun.report.errorCount,
+      warningCount: dryRun.report.warningCount,
+      verdicts: dryRun.report.verdicts,
+      coveragePercent: dryRun.report.coveragePercent,
+      engineVersion: dryRun.report.engineVersion,
+      rulesetIds: dryRun.report.rulesetIds,
+      aiAssisted: dryRun.report.aiAssisted,
+    },
+  });
+  await prisma.generatedLabel.update({ where: { id }, data: { status: dryRun.report.passed ? "validated" : "failed_validation" } });
+
+  return { status: "applied", resultVersion: newVersion.versionNumber, report: dryRun.report };
+};
+
+/**
+ * §11.4 guard #6: restoring version K forward-only appends N+1 (versionService
+ * already implements this, Phase 1) — this wraps it with tenant scoping and a
+ * fresh ValidationReport for the restored content.
+ */
+export const restoreVersion = async (id, versionNumber, { companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  const restored = await versionService.restore(id, Number(versionNumber));
+
+  const rules = await getApprovedRulesForCountry(label.country);
+  const report = validate(restored.labelData, { rules });
+  await prisma.validationReport.create({
+    data: {
+      labelId: id,
+      versionNumber: restored.versionNumber,
+      passed: report.passed,
+      errorCount: report.errorCount,
+      warningCount: report.warningCount,
+      verdicts: report.verdicts,
+      coveragePercent: report.coveragePercent,
+      engineVersion: report.engineVersion,
+      rulesetIds: report.rulesetIds,
+      aiAssisted: report.aiAssisted,
+    },
+  });
+  await prisma.generatedLabel.update({ where: { id }, data: { status: report.passed ? "validated" : "failed_validation" } });
+
+  return { version: restored, report };
+};
+
+export const getVersion = async (id, versionNumber, { companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  const version = await prisma.labelVersion.findUnique({ where: { labelId_versionNumber: { labelId: id, versionNumber: Number(versionNumber) } } });
+  if (!version) throw new AppError(`Version ${versionNumber} not found for this label`, 404);
+  return version;
+};
+
+export const diffVersions = async (id, a, b, { companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  const [versionA, versionB] = await Promise.all([
+    prisma.labelVersion.findUnique({ where: { labelId_versionNumber: { labelId: id, versionNumber: Number(a) } } }),
+    prisma.labelVersion.findUnique({ where: { labelId_versionNumber: { labelId: id, versionNumber: Number(b) } } }),
+  ]);
+  if (!versionA || !versionB) throw new AppError("One or both versions not found for this label", 404);
+  return versionService.diff(versionA.labelData, versionB.labelData);
 };

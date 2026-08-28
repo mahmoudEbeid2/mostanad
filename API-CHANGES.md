@@ -120,3 +120,23 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   for a feature that's simply not there yet.
 - `GET /review-inbox` — **new**. `read_assurance`. The single risk-sorted queue
   (§14.6) of every label with `status` in `validated`/`failed_validation`.
+
+## Phase 6
+
+- `PATCH /labels/:id` — **new**. `update_labels`. Body:
+  `{ changes: [{path, op, value?}], rationale?, expectedVersion }`. `409` on a
+  stale `expectedVersion`; `409` (with `{status:"conflict", wouldViolate, options}`)
+  if the patch introduces a new validation failure; `422` for a structurally
+  invalid patch (unknown path, unsupported op, bulk-replacement threshold).
+- `GET /labels/:id/versions/:n` — **new**. `read_labels`.
+- `POST /labels/:id/versions/:n/restore` — **new**. `update_labels`.
+  Forward-only: restoring version K creates a new version, never rewrites K.
+- `GET /labels/:id/versions/:a/diff/:b` — **new**. `read_labels`. Returns
+  `{ diff: [{path, op, before, after}] }`.
+- `POST /labels/:id/chat` — **new**. `update_labels`. Body:
+  `{ message, expectedVersion, overrideAcknowledged? }`. Returns
+  `{ intent, answer }` for a question/explanation (no state change), or for an
+  edit: `{ intent, status: "conflict", proposedPatch, wouldViolate, options }`
+  (`409`, not applied) or `{ intent, status: "applied", resultVersion, report }`
+  (`200`). `503` if the underlying AI call fails.
+- `GET /labels/:id/chat` — **new**. `read_labels`. Full message history.
