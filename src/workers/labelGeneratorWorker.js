@@ -9,6 +9,7 @@ import { buildProductProfile } from "../services/label/retrieval/productProfile.
 import { selectReferences } from "../services/label/retrieval/referenceSelector.js";
 import { generate as generateLabel } from "../services/label/generation/labelGenerator.js";
 import { validate as validateLabel } from "../services/label/validation/validationEngine.js";
+import { riskScore, autonomyTierFor } from "../services/label/assurance/riskScorer.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -186,9 +187,17 @@ export const labelGeneratorWorker = new Worker(
           aiAssisted: report.aiAssisted,
         },
       });
-      await prisma.generatedLabel.update({ where: { id: label.id }, data: { status: report.passed ? "validated" : "failed_validation" } });
+      // Step 7 (§14.6): risk score + autonomy tier, computed in code from the
+      // label content and this version's validation report. disagreementCount
+      // starts at 0 here — the adversarial auditor (Phase 5) runs separately
+      // via POST /labels/:id/audit, not on every generation (a second model
+      // call on every job would double generation cost for every label).
+      const document = approvedDocuments.length > 0 ? await prisma.regulatoryDocument.findFirst({ where: { id: { in: approvedDocuments.map((d) => d.id) } } }) : null;
+      const score = riskScore(labelData, report, { document, disagreementCount: 0, labelProvenance });
+      const { tier: autonomyTier } = autonomyTierFor(score);
+      await prisma.generatedLabel.update({ where: { id: label.id }, data: { status: report.passed ? "validated" : "failed_validation", riskScore: score, autonomyTier } });
 
-      const result = { taskId, labelId: label.id, label: labelData, validation: { passed: report.passed, errorCount: report.errorCount, warningCount: report.warningCount } };
+      const result = { taskId, labelId: label.id, label: labelData, validation: { passed: report.passed, errorCount: report.errorCount, warningCount: report.warningCount }, riskScore: score, autonomyTier };
 
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result } });
       socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result, message: "Label generated successfully!" });

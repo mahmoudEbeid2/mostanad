@@ -498,3 +498,86 @@ doc's own gate. Full multi-language extraction in labelExtractor.js
 Next phase should start with: Phase 5 (assurance: adversarial auditor,
 self-consistency, risk scorer, review inbox).
 
+## Phase 5 — Assurance: adversarial auditor, self-consistency, risk scorer, review inbox (done)
+
+**Real constraint hit (stop conditions 3/4, resolved with a documented
+compromise, not a halt):** section 9.2's invariant is "generator and auditor
+MUST be different model families." This environment has ONLY a Gemini
+credential — no ANTHROPIC_API_KEY or OPENAI_API_KEY configured anywhere.
+A genuine second vendor is not available here. Implemented the auditor with
+`gemini-2.5-pro` instead of the generator's `gemini-2.5-flash` — a different
+model within the SAME family, which reduces but does not eliminate shared-bias
+risk. This is flagged in `modelRegistry.js`'s own comment on the `AUDITOR`
+entry and is one of the "what I need from you" items at the end of this run:
+a real second-vendor API key for genuine cross-family independence.
+
+Built:
+- `AuditDisagreement` model (section 5.11/14.1), brand-new table, migration
+  20260828050000_add_audit_disagreements.
+- `validation/adversarialAuditor.js` — takes ONLY labelData + rules +
+  confirmed facts (never the generator's prompt/reasoning/references it saw,
+  per section 14.1). `compareVerdicts` (pure) flags PASS/FAIL disagreement
+  between the deterministic engine and the auditor — WARN is treated as a
+  soft-FAIL for agreement purposes. A field the auditor did not review is
+  never counted as a disagreement (out of scope, not silence).
+- `validation/selfConsistency.js` — section 14.2's exact agreement thresholds
+  (numeric spread <=5%, set Jaccard >=0.9, categorical exact match) as pure,
+  independently-testable functions, plus `runSelfConsistency` which actually
+  fires 3 real calls at temperature 0.6. NOT wired into every generation by
+  default — that would triple the cost of every single label generated, for a
+  check section 14.2 itself scopes to specifically risky numeric fields. It is
+  a separately-invokable module instead; wiring it into an endpoint is left
+  for whoever needs it for a specific field, not forced onto the whole
+  pipeline as a blanket 3x-cost tax.
+- `assurance/riskScorer.js` — section 14.6's exact formula and four-bracket
+  autonomy table, in code.
+- `POST /labels/:id/audit` — runs the adversarial audit, persists every
+  disagreement, recomputes risk/autonomy tier (disagreementCount feeds the
+  formula).
+- `GET /assurance/disagreements`, `PATCH /assurance/disagreements/:id/resolve`,
+  `GET /assurance/golden-runs` (works immediately — GoldenEvalRun has existed
+  since Phase 0.5), `GET /assurance/shadow` (honestly returns an empty list
+  with a message saying shadow mode isn't built yet, rather than 404ing the
+  whole assurance surface for a Phase 8 feature), `GET /review-inbox` (the
+  "one box" sorted by riskScore descending, section 14.6). New `read_assurance`
+  permission — deliberately NOT added to `companyAllowedModules`: this is
+  internal QA machinery (audit trails, golden-set runs), not something a
+  company tenant should see about its own labels.
+- Also fixed a real, unrelated bug found while touching this file:
+  `generatedLabelService.runValidation` was calling `validate(labelData,
+  { rules: [] })` unconditionally — it never actually fetched the label's
+  country's approved rules, unlike the Phase 4 worker which does. Fixed to
+  match.
+
+Decisions not in the doc:
+- Same-family auditor compromise — see above.
+- selfConsistency not wired into the default generation path — cost, not
+  correctness; the module and its thresholds are real and tested.
+- `read_assurance` scoped to internal roles only.
+
+Verified: tests/label.assurance.test.js, 18 assertions, no AI needed — risk
+scoring across low/mid/high-risk synthetic labels (including confirming the
+score caps at 100 and that a food-producing-but-non-antimicrobial product
+lands in the middle, not the extreme), all three self-consistency agreement
+functions (agree/disagree cases for numeric, set, categorical), and the
+auditor-vs-engine disagreement comparison (agreement -> no disagreements,
+a real conflict -> exactly one flagged disagreement carrying both verdicts
+and reasoning, an auditor that skipped a field -> correctly not flagged).
+Live HTTP: seeded a label + report + disagreement directly via Prisma (the
+live audit call itself needs a real AI call, blocked by the same exhausted
+quota as everything else this session), then verified GET /review-inbox
+(sorted correctly, riskScore visible), GET /assurance/disagreements, PATCH
+.../resolve, GET /assurance/golden-runs, and GET /assurance/shadow all return
+200 with correct data. node tests/runAll.js: 16/21, same 5 pre-existing
+failures, no new regressions.
+
+Deferred: the actual adversarial-audit AI call against a real label (blocked
+by quota). selfConsistency wired into a real endpoint for a specific field
+(module is ready; no caller uses it yet — left for whoever needs the specific
+field-level check). Once quota is available: run POST /labels/:id/audit on a
+real validated label and confirm a genuine disagreement gets created and
+correctly changes the risk score.
+
+Next phase should start with: Phase 6 (chat agent + patch protocol + conflict
+detection + restore integration).
+

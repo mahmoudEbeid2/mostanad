@@ -54,3 +54,8 @@ export const getValidation = catchAsync(async (req, res) => {
     data: { report },
   });
 });
+
+export const postAudit = catchAsync(async (req, res) => {
+  const result = await generatedLabelService.runAudit(req.params.id, { companyId: scopeFor(req) });
+  res.status(201).json({ status: "success", data: result });
+});

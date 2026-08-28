@@ -100,3 +100,23 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   Any caller reading specific old field paths (`label.productName.en`,
   `label.ingredients`) needs to update to the new shape
   (`label.productName.translations.en`, `label.activeIngredients`).
+
+## Phase 5
+
+- `POST /labels/:id/audit` — **new**. `update_labels`. Runs the adversarial
+  auditor against the label's latest `ValidationReport`, persists every
+  disagreement as an `AuditDisagreement`, and recomputes `riskScore`/
+  `autonomyTier`. Returns `{ auditorVerdicts, disagreements, riskScore, autonomyTier }`.
+- `GET /assurance/disagreements` — **new**. `read_assurance`. Filters:
+  `labelId`, `resolution`.
+- `PATCH /assurance/disagreements/:id/resolve` — **new**. `read_assurance`.
+  Body: `{ resolution, becameRuleId? }`.
+- `GET /assurance/golden-runs` — **new**. `read_assurance`. Lists `GoldenEvalRun`
+  rows (has worked since Phase 0.5's harness, just wasn't exposed over HTTP
+  until now).
+- `GET /assurance/shadow` — **new**. `read_assurance`. Always returns
+  `{ comparisons: [] }` with an explanatory message — Phase 8 (shadow mode)
+  hasn't been built yet; this exists so the assurance API surface doesn't 404
+  for a feature that's simply not there yet.
+- `GET /review-inbox` — **new**. `read_assurance`. The single risk-sorted queue
+  (§14.6) of every label with `status` in `validated`/`failed_validation`.

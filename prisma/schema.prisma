@@ -546,3 +546,26 @@ model ExternalKnowledgeCache {
   @@index([kind, status])
   @@map("external_knowledge_cache")
 }
+
+// ==========================================
+// 13. Assurance — Adversarial Audit (Phase 5, §5.11/§14.1)
+// ==========================================
+
+model AuditDisagreement {
+  id            String @id @default(uuid())
+  labelId       String @map("label_id")
+  versionNumber Int    @map("version_number")
+  fieldPath     String @map("field_path")
+
+  deterministicVerdict Json   @map("deterministic_verdict") // the FieldVerdict from validationEngine
+  auditorVerdict       Json   @map("auditor_verdict") // the FieldVerdict-shaped opinion from the adversarial auditor
+  auditorReasoning     String @map("auditor_reasoning") @db.Text
+
+  resolution   String? // human_agreed_engine | human_agreed_auditor | new_rule_created
+  becameRuleId String? @map("became_rule_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([labelId, versionNumber])
+  @@map("audit_disagreements")
+}

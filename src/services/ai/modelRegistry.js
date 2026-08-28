@@ -68,4 +68,14 @@ export const MODELS = {
   // checking which clauses produced no rule. Same reasoning weight as compilation
   // since it's re-reading the whole document with equal scrutiny.
   COVERAGE_AUDIT: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+
+  // Phase 5 — adversarial auditor (§14.1). §9.2's own invariant: "generator and
+  // auditor MUST be different model families." This environment has ONLY a
+  // Gemini credential (no ANTHROPIC_API_KEY/OPENAI_API_KEY configured) — a
+  // real second vendor is genuinely not available here, not skipped by choice.
+  // gemini-2.5-pro is used instead of gemini-2.5-flash as the closest available
+  // approximation (a different model within the same family, not a different
+  // family) — this reduces but does NOT eliminate shared-bias risk. Flagged in
+  // PROGRESS.md as a "need from the user": a real second-vendor API key.
+  AUDITOR: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
 };

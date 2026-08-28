@@ -74,6 +74,9 @@ const permissions = [
   { name: "Read Regulatory", slug: "read_regulatory", module: "regulatory" },
   { name: "Create Regulatory", slug: "create_regulatory", module: "regulatory" }, // upload a document
   { name: "Approve Regulatory", slug: "approve_regulatory", module: "regulatory" }, // compile/audit/approve/reject
+
+  // Assurance (Phase 5, §15) — disagreements, golden runs, shadow, review inbox
+  { name: "Read Assurance", slug: "read_assurance", module: "assurance" },
 ];
 
 async function main() {

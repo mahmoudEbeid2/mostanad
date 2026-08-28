@@ -18,7 +18,9 @@ import referenceLabelRoutes from "./referenceLabelRoutes.js";
 import generatedLabelRoutes from "./generatedLabelRoutes.js";
 import regulatoryDocumentRoutes from "./regulatoryDocumentRoutes.js";
 import regulatoryRuleRoutes from "./regulatoryRuleRoutes.js";
-import { protect } from "../middleware/authMiddleware.js";
+import assuranceRoutes from "./assuranceRoutes.js";
+import { getReviewInbox } from "../controllers/assuranceController.js";
+import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -41,6 +43,8 @@ router.use("/reference-labels", protect, referenceLabelRoutes);
 router.use("/labels", generatedLabelRoutes); // internal protect applied in generatedLabelRoutes.js
 router.use("/regulatory-documents", regulatoryDocumentRoutes); // internal protect applied in regulatoryDocumentRoutes.js
 router.use("/regulatory-rules", regulatoryRuleRoutes); // internal protect applied in regulatoryRuleRoutes.js
+router.use("/assurance", assuranceRoutes); // internal protect applied in assuranceRoutes.js
+router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
 router.use("/", protect, productRoutes);
 router.use("/", protect, templateRoutes);
 router.use("/", protect, certificateRoutes);
