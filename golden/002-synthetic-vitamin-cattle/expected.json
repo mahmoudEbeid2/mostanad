@@ -1,0 +1,32 @@
+{
+  "productName": { "en": "AD3E-Vit Oral Solution (SYNTHETIC)", "target": "أ د٣ ه فيت محلول فموي (تجريبي)" },
+  "feedClassification": { "en": "Feed Additive (Non-Medicated)", "target": "إضافة علفية غير دوائية" },
+  "ingredients": [
+    { "en": "Vitamin A", "target": "فيتامين أ", "amount": "500000 IU" },
+    { "en": "Vitamin D3", "target": "فيتامين د٣", "amount": "75000 IU" },
+    { "en": "Vitamin E", "target": "فيتامين ه", "amount": "500 mg" }
+  ],
+  "analysis": {
+    "basis": "per 1 L",
+    "items": [
+      { "name": "Vitamin A", "value": "500000 IU" },
+      { "name": "Vitamin D3", "value": "75000 IU" },
+      { "name": "Vitamin E", "value": "500 mg" }
+    ]
+  },
+  "aimOfUse": {
+    "en": "A source of vitamins A, D3 and E to support growth and fertility in cattle",
+    "target": "مصدر لفيتامينات أ، د٣، ه لدعم النمو والخصوبة في الأبقار"
+  },
+  "targetAnimalSpecies": { "en": "Cattle", "target": "الأبقار" },
+  "directionOfUse": {
+    "en": "5ml per 100kg body weight, once daily in drinking water for 3-5 days",
+    "target": "٥ مل لكل ١٠٠ كجم من وزن الجسم، مرة يومياً في مياه الشرب لمدة ٣-٥ أيام"
+  },
+  "storage": { "en": "Store below 30°C, protect from direct sunlight", "target": "يحفظ في درجة حرارة أقل من ٣٠ م، بعيداً عن أشعة الشمس المباشرة" },
+  "netWeight": { "en": "1 L", "target": "١ لتر" },
+  "usageDeclaration": [
+    { "en": "For Animal Consumption", "target": "للاستهلاك الحيواني" },
+    { "en": "For Animal Consumption - used in cattle projects", "target": "للاستهلاك الحيواني - يستخدم في مشاريع الأبقار" }
+  ]
+}

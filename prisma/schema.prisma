@@ -427,3 +427,27 @@ model LabelChatMessage {
   @@index([labelId, createdAt])
   @@map("label_chat_messages")
 }
+
+// ==========================================
+// 11. Assurance — Golden Set (Phase 0.5, §5.11/§14.3)
+// ==========================================
+
+model GoldenEvalRun {
+  id            String   @id @default(uuid())
+  runAt         DateTime @default(now()) @map("run_at")
+  engineVersion String   @map("engine_version")
+  modelId       String?  @map("model_id")
+  promptHash    String?  @map("prompt_hash")
+
+  fieldAccuracy    Json    @map("field_accuracy") // { [fieldPath]: { exact, partial, wrong, notApplicable, accuracyPercent } }
+  overallAccuracy  Float   @map("overall_accuracy")
+  baselineAccuracy Float?  @map("baseline_accuracy") // previous run's overallAccuracy, null for the first run
+  regressed        Boolean @default(false)
+  blockedDeploy    Boolean @default(false) @map("blocked_deploy")
+
+  caseCount     Int      @default(0) @map("case_count")
+  failedCaseIds String[] @map("failed_case_ids") // golden/ case directory names that errored outright (not scored)
+
+  @@index([runAt])
+  @@map("golden_eval_runs")
+}

@@ -1,0 +1,8 @@
+{
+  "targetAnimalSpecies": {
+    "synonyms": { "poultry": ["chicken", "broiler", "layer", "hen", "chickens"] }
+  },
+  "directionOfUse": {
+    "numericTolerancePercent": 10
+  }
+}

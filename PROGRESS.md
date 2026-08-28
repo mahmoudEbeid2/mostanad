@@ -213,5 +213,77 @@ architecture doc's numeric order per the user's explicit instruction to build it
 "anyway" despite missing real data). Will run it against Phase 2's validation
 engine once the harness exists and report the baseline there.
 
-**Next phase should start with:** Phase 0.5 (golden set harness + 2 synthetic
-fixtures), then Phase 3 (regulatory ingestion).
+## Phase 0.5 — Golden set harness ✅ (built out of numeric order, per explicit instruction)
+
+**Built:**
+- `GoldenEvalRun` model (§5.11) — pure `CREATE TABLE`, migration
+  `20260828020000_add_golden_eval_run`.
+- `golden/README.md` — tells whoever adds real cases exactly what goes in
+  `input.json`/`expected.json`/`tolerances.json`, including the known gap that
+  `expected.json`'s shape will need to migrate again once Phase 4 makes
+  generation actually conform to `labelSchema`.
+- `golden/001-synthetic-amoxicillin-poultry/` and `golden/002-synthetic-vitamin-cattle/`
+  — 2 fully-synthetic fixture cases (clearly labeled as such in every file),
+  proving the harness runs before real data exists.
+- `scripts/goldenComparator.js` — the field-scoring logic (`compareField`),
+  split into its own module specifically so it's unit-testable without the live
+  pipeline.
+- `scripts/evalGolden.js` — submits every `golden/` case through
+  `POST /reference-labels/generate-text-ai`, polls to completion, scores
+  field-by-field, persists a `GoldenEvalRun`, enforces CLAUDE.md invariant #11
+  (>2% regression on ANY single field blocks — checked per-field against the
+  previous run, not just on the overall average). `npm run eval:golden`.
+- `tests/golden.comparator.test.js` — unit tests the scorer directly (10 cases:
+  notApplicable, wrong, exact, partial, synonym-aware matching, numeric
+  tolerance, array/object field flattening).
+
+**A real bug found and fixed by writing the test above:** synonym expansion was
+asymmetric — a canonical term ("poultry") never expanded to include its listed
+synonyms ("chicken"), so `{en:"Poultry"}` vs `{en:"Chicken"}` with a
+`poultry: ["chicken"]` tolerance would never reach full overlap. Fixed
+`normalizeWords` to expand every group member bidirectionally, and added an
+explicit "exact via full bidirectional overlap" branch to `compareField` (it
+previously had no path to `"exact"` through synonyms at all — only literal
+string equality or a >=0.6 threshold capped at `"partial"`). This is exactly
+why the harness needed a data-independent unit test, not just a live run.
+
+**Verified:**
+- `npm run eval:golden` run against the two synthetic fixtures with the server
+  and `labelGeneratorWorker` live: submission → polling → **both cases timed
+  out at "processing"** (Gemini quota still exhausted — same constraint noted
+  since Phase 0; the worker's own internal retry/backoff across 2-3 sequential
+  AI calls per job takes longer than quota exhaustion allows to reach a final
+  "failed" state) → correctly reported as errored cases, scored 0% across every
+  field (not silently skipped), full table printed, `GoldenEvalRun` persisted
+  as the first-ever run (`baselineAccuracy: null`, `regressed: false`). This
+  proves the harness's submission/polling/failure-handling/reporting/persistence
+  path end to end — but **not** the scorer against a real successful
+  generation, since neither fixture case ever got that far today.
+- `tests/golden.comparator.test.js`: 10/10, run directly against realistic
+  synthetic label data (no server/DB/Gemini needed) — this is what actually
+  proves `compareField`'s exact/partial/wrong/notApplicable logic is correct,
+  independent of live quota.
+- `node tests/runAll.js`: 13/18 (added `golden.comparator.test.js`). Same 5
+  pre-existing failures as before, no new regressions.
+
+**Decisions not in the doc:**
+- Comparator lives in its own module (`goldenComparator.js`) rather than inline
+  in `evalGolden.js` — pure testability, not in the doc's file list but a
+  natural consequence of "build it, prove it works" without live Gemini access.
+- `evalGolden.js` provisions its own sandbox company (`golden_set_eval_co`)
+  rather than requiring a `companyId` in each `input.json` — keeps fixtures
+  portable across databases (Phase 1 made `companyId` required for
+  generation, which the original §14.3 spec predates).
+- Regression check is per-field (compare each field's `accuracyPercent` against
+  that same field's value in the immediately preceding run), not just on the
+  overall average — this is what CLAUDE.md invariant #11 actually says
+  ("regression > 2% on ANY field"), even though §14.3's own worked example only
+  shows an overall-accuracy delta.
+
+**Deferred:** a live run against a real successful generation (blocked by
+Gemini quota exhaustion, not code) — rerun `npm run eval:golden` once quota
+resets or a paid-tier key is available; this becomes the real first baseline
+once it produces non-zero scores. The 2 synthetic cases should stay as harness
+smoke tests even after real cases are added — don't delete them.
+
+**Next phase should start with:** Phase 3 (regulatory ingestion).

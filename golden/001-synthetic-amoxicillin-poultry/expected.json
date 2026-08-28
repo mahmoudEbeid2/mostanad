@@ -1,0 +1,26 @@
+{
+  "productName": { "en": "Amoxi-Vet 10% WSP (SYNTHETIC)", "target": "أموكسي-فيت ١٠٪ (تجريبي)" },
+  "feedClassification": { "en": "Veterinary Antibacterial", "target": "مضاد بكتيري بيطري" },
+  "ingredients": [
+    { "en": "Amoxicillin Trihydrate", "target": "أموكسيسيلين ثلاثي الهيدرات", "amount": "100 g" }
+  ],
+  "analysis": {
+    "basis": "per 1 kg",
+    "items": [{ "name": "Amoxicillin Trihydrate", "value": "100 g" }]
+  },
+  "aimOfUse": {
+    "en": "Treatment of bacterial infections in poultry caused by amoxicillin-sensitive organisms",
+    "target": "علاج الالتهابات البكتيرية في الدواجن الناتجة عن كائنات حساسة للأموكسيسيلين"
+  },
+  "targetAnimalSpecies": { "en": "Poultry", "target": "الدواجن" },
+  "directionOfUse": {
+    "en": "1g per 10kg body weight in drinking water for 5 consecutive days",
+    "target": "١ جم لكل ١٠ كجم من وزن الجسم في مياه الشرب لمدة ٥ أيام متتالية"
+  },
+  "storage": { "en": "Store below 25°C, protect from light and moisture", "target": "يحفظ في درجة حرارة أقل من ٢٥ م، بعيداً عن الضوء والرطوبة" },
+  "netWeight": { "en": "1 kg", "target": "١ كجم" },
+  "usageDeclaration": [
+    { "en": "For Animal Consumption", "target": "للاستهلاك الحيواني" },
+    { "en": "For Animal Feed Plant", "target": "لمصنع الأعلاف الحيوانية" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "targetAnimalSpecies": {
+    "synonyms": { "cattle": ["cow", "cows", "bovine", "calves", "calf"] }
+  },
+  "directionOfUse": {
+    "numericTolerancePercent": 10
+  }
+}
