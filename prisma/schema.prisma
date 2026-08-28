@@ -634,3 +634,25 @@ model LabelApproval {
   @@index([approvedByUserId, approvedAt])
   @@map("label_approvals")
 }
+
+// ==========================================
+// 15. Shadow Mode (Phase 8, §5.11/§14.5)
+// ==========================================
+
+model ShadowComparison {
+  id              String  @id @default(uuid())
+  labelId         String? @map("label_id") // nullable — a shadow run may not correspond to a persisted label
+  oldEngineResult Json    @map("old_engine_result")
+  newEngineResult Json    @map("new_engine_result")
+
+  fieldsDiffered  String[] @map("fields_differed")
+  verdictDiffered Boolean  @map("verdict_differed")
+
+  latencyDeltaMs Int?   @map("latency_delta_ms")
+  costDelta      Float? @map("cost_delta")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("shadow_comparisons")
+}

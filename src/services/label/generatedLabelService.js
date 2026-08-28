@@ -6,12 +6,7 @@ import { riskScore, autonomyTierFor } from "./assurance/riskScorer.js";
 import { classifyIntent, answerQuestion, proposePatch } from "./editing/chatAgent.js";
 import { dryRunPatch } from "./editing/patchApplier.js";
 import * as versionService from "./versioning/versionService.js";
-
-async function getApprovedRulesForCountry(country) {
-  const documents = await prisma.regulatoryDocument.findMany({ where: { country, status: "approved" }, select: { id: true } });
-  if (documents.length === 0) return [];
-  return prisma.regulatoryRule.findMany({ where: { documentId: { in: documents.map((d) => d.id) }, status: "approved" } });
-}
+import { getApprovedRulesForCountry } from "./regulatory/regulatoryDocumentService.js";
 
 /**
  * companyId: forced by the controller for a company caller; optional filter

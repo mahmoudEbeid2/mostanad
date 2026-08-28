@@ -726,3 +726,144 @@ Next phase should start with: Phase 8 (shadow mode - dual running with
 promotion gates) or Phase 9 (deterministic replay + batch API + pgvector
 reconsideration), per the instruction to run through Phase 9.
 
+## Phase 8 — Shadow mode ✅ (commit pending)
+
+HONEST FRAMING FIRST: sec 14.5's shadow mode assumes an old generation path
+still runs in parallel with a new one so the two can be compared before the
+new one is trusted. That premise doesn't exist here - Phases 0 through 6
+replaced labelGeneratorWorker.js and the validation engine in place, the same
+way every phase in this run did. There is no old path left to shadow the
+current one against. Building a fake "old vs new" demo using two versions of
+OUR OWN code would prove nothing real. Given that, this phase built the
+reusable mechanism sec 14.5 actually specifies - proven correct against
+synthetic functions - so it's sitting ready for the next genuine migration
+(a prompt rewrite, a model swap, the pgvector layer if it's ever justified).
+
+Built:
+- ShadowComparison model (migration `20260828070000_add_shadow_comparisons`,
+  pure CREATE TABLE). `labelId` made nullable - a deliberate deviation from
+  the doc's implied non-null spec, because a shadow run comparing two
+  synthetic/test functions has no real label to attach to. A real migration
+  shadow run always has a labelId; the column just doesn't force one.
+- shadowRunner.js: `runShadow(oldFn, newFn, input, {labelId})` - runs both,
+  times each, diffs labelData's top-level fields, runs both through the real
+  validationEngine to catch a PASS->FAIL (or vice versa) verdict flip, and
+  persists the comparison. `checkShadowGates(...)` - sec 14.5's four
+  promotion gates (>=100 clean runs, >=95% verdict agreement, golden accuracy
+  >= baseline, p95 latency within budget) as pure, independently-testable
+  logic.
+- assuranceController.js's `getShadowComparisons` now queries real
+  `prisma.shadowComparison` rows instead of an always-empty stub (that stub
+  was Phase 5's placeholder, documented then as "Phase 8 hasn't been built
+  yet"). Returns an explanatory `message` when there are zero rows, rather
+  than a bare empty array that looks like a bug.
+
+Verified: tests/label.shadow.test.js, 16 assertions - runShadow against
+synthetic old/new implementations (identical output, a real field diff, a
+PASS->FAIL verdict flip), and checkShadowGates against all four gates
+individually (each one made to pass and made to fail). Hit the recurring "X"
+placeholder bug again (coherenceValidator correctly flags a bare "X" as a
+placeholder) - a test fixture used "X" as `productName.translations.en`,
+which made the "baseline passes" premise false before the shadow logic even
+ran. Fixed by using a real word. node tests/runAll.js: same 5 pre-existing
+failures, no new regressions.
+
+Deferred: an actual live shadow run comparing something real. There is
+nothing to shadow right now. The mechanism is ready the next time there's a
+genuine "old vs new" - for example if the pgvector layer is ever built (sec
+8.5), it should ship behind shadowRunner rather than replacing
+referenceSelector.js in place the way Phases 0-7 did with everything else.
+
+Next phase should start with: Phase 9 (deterministic replay, batch API,
+pgvector reconsideration).
+
+## Phase 9 — Deterministic replay, Batch API, pgvector reconsideration ✅ (commit pending)
+
+Built:
+- **promptHash** (Invariant #3 gap, found while building this phase):
+  labelGenerator.js's `generate()` never hashed its own prompt, so no field's
+  provenance actually carried a `promptHash` despite the invariant requiring
+  one for every field. Fixed: `generate()` now computes
+  `sha256(fullPrompt)` and returns it on `generationMeta.promptHash`;
+  labelGeneratorWorker.js's `buildFieldProvenance` now threads it onto every
+  per-field provenance record alongside `modelId`. This is a real fix, not
+  new-for-Phase-9 scope creep - replay's cheapest possible check ("was the
+  exact same prompt sent?") needed it to exist at all.
+- replayService.js (`POST /labels/:id/replay`, `read_labels`): re-runs
+  `labelGenerator.generate()` against the label's frozen `productProfile`
+  (Phase 4 has stored this on every GeneratedLabel row since it was built),
+  re-selecting references and re-fetching approved rules AS THEY STAND NOW
+  (not a frozen snapshot of the exact rows used originally - see the file's
+  header comment for why: no full reference/rule content is snapshotted
+  today, only ids). Reports `{identical, fieldsDiffered, promptHashMatches,
+  referenceSetDrifted, ruleSetDrifted, interpretation}` - `referenceSetDrifted`/
+  `ruleSetDrifted` exist specifically so a caller can tell "the model drifted"
+  apart from "the inputs changed since generation," which sec 14.7 doesn't
+  distinguish but which matters in practice. Read-only - does not write a new
+  version or touch the stored label.
+- `getApprovedRulesForCountry` moved from generatedLabelService.js (private)
+  to regulatoryDocumentService.js (exported) so replayService.js reuses the
+  exact same rule-selection query instead of a second copy that could drift
+  from the real one.
+- batchClient.js: a real wrapper around `@google/genai`'s `ai.batches`
+  module (`createBatch`, `getBatch`, `cancelBatch`, `parseBatchResults`,
+  `isTerminalState`), built exclusively around the Developer API's
+  `inlinedRequests` source (no GCS/BigQuery - this project uses a plain API
+  key, not Vertex).
+
+VERIFIED LIVE, IMPORTANT FINDING: `ai.batches.create()` against this
+project's actual `GEMINI_API_KEY` returns `400 FAILED_PRECONDITION -
+"Precondition check failed."` immediately. This is Gemini's generic error for
+"Batch API isn't available on this account" - the Gemini Developer API's
+Batch endpoint requires a billing-enabled (paid-tier) project, and this
+environment only has a free-tier key. The wrapper is real and correctly
+wired (the call reaches Google's servers and gets a structured API error
+back, not a client-side failure) but is UNTESTED against a real completed
+batch job, because no such job can be created here. Wiring it into an actual
+call site (nightly golden runs, bulk rule compilation) is deferred - there's
+no point building an integration around an endpoint that 400s on this
+project's billing tier, and doing so blind (never having seen one real batch
+job complete) would be exactly the kind of unverified code this run has
+tried hard to avoid. This is a "needed from you" item, listed below.
+
+- pgvector reconsideration (sec 8.5/sec 16's volume gate): re-checked
+  `reference_labels` row count - **1 row**, still far under the 30-row
+  threshold sec 16 sets before weighted ranking/pgvector are worth building.
+  Decision is unchanged from Phase 4: skip it. No code changed for this item;
+  this is a re-confirmation, not a new build.
+
+Verified: tests/label.replay.batch.test.js, 31 assertions, all pure/live-DB-free
+- `idSetsDiffer` and `interpretReplay` (replayService's testable-without-AI
+  logic), `isTerminalState`, `buildInlinedRequest`, and `parseBatchResults`
+  (batchClient's testable-without-a-real-batch-job logic). `replay()` itself
+  and `createBatch()` are NOT covered by an automated test - both require a
+  live Gemini call (generation, or a paid-tier batch job) that this
+  environment cannot make. node tests/runAll.js: same 5 pre-existing
+  failures (brand.test.js, certificates.test.js, label.test.js,
+  queue.test.js, templates.test.js), no new regressions, both new Phase 8
+  and Phase 9 test files pass.
+
+Deferred:
+- A live end-to-end replay run (needs a real generate() call - blocked by
+  the same GEMINI_API_KEY free-tier daily quota exhaustion that has affected
+  every phase since Phase 0).
+- A live batch job run of any kind (needs a billing-enabled Gemini project -
+  see the Batch API finding above).
+- Wiring batch submission into any real call site (golden runs, rule
+  compilation, bulk re-validation) - deferred until there's a way to test it
+  against a real completed job, and until it's decided whether those flows
+  (currently synchronous, BackgroundTask-based) should become async/poll-based
+  to accommodate a batch job's own latency (batch jobs can take up to 24h,
+  which doesn't fit an interactive "eval:golden right now" workflow without
+  redesigning it).
+- Full reference/rule snapshot-at-generation-time (would make replay's
+  drift detection exact instead of inferred from current DB state) - flagged
+  as a decision for you, since it duplicates content CLAUDE.md would
+  otherwise want single-sourced from the reference_labels/regulatory_rules
+  tables themselves.
+
+This was the last phase in the standing Phase 1-9 instruction. Next: the
+final consolidated report (what landed across all phases, every departure
+from the architecture doc, and the definitive list of what's needed from the
+user to make the system fully operational).
+

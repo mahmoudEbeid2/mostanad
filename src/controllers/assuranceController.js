@@ -22,11 +22,20 @@ export const getGoldenRuns = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", results: runs.length, total, data: { runs } });
 });
 
-// GET /assurance/shadow — Phase 8's ShadowComparison model doesn't exist yet.
-// Returns an empty, honestly-labeled result rather than 404ing the whole
-// assurance surface for a feature that's simply not built yet.
 export const getShadowComparisons = catchAsync(async (req, res) => {
-  res.status(200).json({ status: "success", results: 0, total: 0, data: { comparisons: [] }, message: "Shadow mode is not implemented yet (Phase 8)." });
+  const { page = 1, limit = 20 } = req.query;
+  const skip = (Number(page) - 1) * Number(limit);
+  const [comparisons, total] = await Promise.all([
+    prisma.shadowComparison.findMany({ orderBy: { createdAt: "desc" }, skip, take: Number(limit) }),
+    prisma.shadowComparison.count(),
+  ]);
+  res.status(200).json({
+    status: "success",
+    results: comparisons.length,
+    total,
+    data: { comparisons },
+    ...(total === 0 && { message: "No shadow runs recorded yet — see PROGRESS.md's Phase 8 entry: this session replaced the generator in place rather than running two versions in parallel, so there's no live migration to shadow right now." }),
+  });
 });
 
 export const getReviewInbox = catchAsync(async (req, res) => {

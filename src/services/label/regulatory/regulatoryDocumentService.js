@@ -7,6 +7,15 @@ import { AUTHORITIES } from "./officialSources.js";
 
 export const sha256 = (text) => crypto.createHash("sha256").update(text || "", "utf8").digest("hex");
 
+// Moved here from generatedLabelService.js (Phase 9) so replayService.js can
+// reconstruct the exact same rule set generation/validation used, without
+// duplicating the query.
+export async function getApprovedRulesForCountry(country) {
+  const documents = await prisma.regulatoryDocument.findMany({ where: { country, status: "approved" }, select: { id: true } });
+  if (documents.length === 0) return [];
+  return prisma.regulatoryRule.findMany({ where: { documentId: { in: documents.map((d) => d.id) }, status: "approved" } });
+}
+
 /**
  * Step 2 of the ingestion journey (§7.4) — called by edaRequirementWorker after
  * it extracts full text from the uploaded file. Refuses a duplicate hash rather

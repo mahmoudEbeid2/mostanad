@@ -51,12 +51,13 @@ async function callGeminiWithRetry(modelSpec, requestParams, retries = 5, delay 
 function buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData }) {
   const at = new Date().toISOString();
   const modelId = generationMeta.modelId;
+  const promptHash = generationMeta.promptHash;
   const refused = new Set(generationMeta.refusedUngroundedFields || []);
   const estimated = new Set(labelData.estimatedFields || []);
   const bestRefIds = rankedReferences.filter((r) => r.tier === "exact_combo" || r.tier === "ingredient").map((r) => r.reference.id);
   const provenance = {};
   const set = (path, tier, source, sourceRef = null) => {
-    provenance[path] = { tier, provenance: source, sourceRef, modelId, at };
+    provenance[path] = { tier, provenance: source, sourceRef, modelId, promptHash, at };
   };
 
   set("targetAnimalSpecies.list",

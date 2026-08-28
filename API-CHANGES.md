@@ -157,3 +157,30 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   Body: `{ reason }`. `400` if already revoked. Returns
   `{ approval, affectedLabelIds }` — every OTHER label whose provenance cites
   the now-revoked reference, flagged `needsReview: true`.
+
+## Phase 8
+
+- `GET /assurance/shadow` — **behavior change, same endpoint**. Previously
+  always returned `{ comparisons: [] }` (Phase 8 didn't exist yet). Now
+  returns real `ShadowComparison` rows when any exist; still returns
+  `{ comparisons: [] }` with an explanatory `message` when none do (there is
+  no live migration being shadowed right now — see PROGRESS.md's Phase 8
+  entry). No caller-visible shape change otherwise.
+
+## Phase 9
+
+- `POST /labels/:id/replay` — **new**. `read_labels`. No body. Re-runs
+  generation against the label's stored `productProfile` and returns
+  `{ identical, fieldsDiffered, promptHashMatches, referenceSetDrifted,
+  ruleSetDrifted, originalGenerationMeta, regeneratedGenerationMeta,
+  interpretation }`. Read-only — does not create a new version. `422` if the
+  label predates Phase 4 (no stored `productProfile` to replay from).
+- `generationMeta` (already returned wherever a label's full record is
+  returned, e.g. `GET /labels/:id`) gains a `promptHash` key going forward.
+  Labels generated before Phase 9 will not have one (`null`/absent, not an
+  error).
+- No new endpoint for the Batch API — `batchClient.js` exists as an
+  internal wrapper only; nothing under `/labels` or elsewhere calls it yet
+  (see PROGRESS.md's Phase 9 entry for why: `ai.batches.create()` 400s on
+  this project's free-tier Gemini key, so there is no verified call site to
+  expose).

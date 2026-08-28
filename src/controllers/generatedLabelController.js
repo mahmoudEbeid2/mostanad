@@ -1,4 +1,5 @@
 import * as generatedLabelService from "../services/label/generatedLabelService.js";
+import { replay } from "../services/label/assurance/replayService.js";
 import catchAsync from "../utils/catchAsync.js";
 
 // A company caller only ever sees its own labels. A system user may narrow by
@@ -102,4 +103,9 @@ export const postRestore = catchAsync(async (req, res) => {
 export const getVersionsDiff = catchAsync(async (req, res) => {
   const diff = await generatedLabelService.diffVersions(req.params.id, req.params.a, req.params.b, { companyId: scopeFor(req) });
   res.status(200).json({ status: "success", data: { diff } });
+});
+
+export const postReplay = catchAsync(async (req, res) => {
+  const result = await replay(req.params.id, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", data: result });
 });

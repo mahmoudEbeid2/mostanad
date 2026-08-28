@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { geminiResponseSchema } from "../schema/geminiSchema.js";
@@ -116,6 +117,12 @@ GROUNDING RULES (do not violate):
 - No therapeutic/medical claims ("treats", "cures", "يعالج") in aimOfUse for non-drug product types.
 - Every LocalizedText field needs both an "ar" and "en" entry in translations, plus a "primary" key that exists in translations.`;
 
+  // Invariant #3: every field's provenance must carry a promptHash. Hashing
+  // the exact, fully-assembled prompt (not just stablePrefix) means an
+  // identical hash on a later replay (§14.7) is a strong claim: the same
+  // rules + references + profile + instructions were sent, verbatim.
+  const promptHash = crypto.createHash("sha256").update(fullPrompt, "utf8").digest("hex");
+
   const response = await callWithRetry(fullPrompt, {
     temperature: MODELS.LABEL_GENERATE.temperature,
     thinkingConfig: { thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget },
@@ -140,6 +147,7 @@ GROUNDING RULES (do not violate):
       temperature: MODELS.LABEL_GENERATE.temperature,
       thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget,
       schemaVersion: "vet-label@2.0.0",
+      promptHash,
       cachedTokens: response.usageMetadata?.cachedContentTokenCount || 0,
       usage: {
         input: response.usageMetadata?.promptTokenCount,
