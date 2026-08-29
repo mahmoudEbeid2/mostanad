@@ -77,7 +77,7 @@ export const labelGeneratorWorker = new Worker(
 
     try {
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "processing" } });
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 10, message: "Building product profile..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 10, message: "Building product profile..." });
 
       // Step 1: Product profile (§8.1) — reads the Product row when productId is
       // given (fixes G2: generation used to never read it at all).
@@ -90,11 +90,15 @@ export const labelGeneratorWorker = new Worker(
       });
       profile.companyId = companyId;
 
+      let referenceGroundingFailed = false;
+
       // Step 1b: extract ingredient names from free text ONLY to widen reference
       // matching when the Product row didn't already supply them — never used to
       // fill an amount or any other confirmed field.
+      // Invariant #7: if extraction fails, record referenceGroundingFailed = true
+      // and matchTier = "none", emitting UNVERIFIABLE on reference-grounded fields.
       if (profile.activeIngredients.length === 0 && formulationText) {
-        socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 20, message: "Extracting active ingredients..." });
+        socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 20, message: "Extracting active ingredients..." });
         try {
           const extractText = await geminiClient.generateText({
             model: MODELS.EXTRACT.id,
@@ -104,7 +108,8 @@ export const labelGeneratorWorker = new Worker(
           const names = extractText.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
           profile.activeIngredients = names.map((n) => ({ normalizedName: n, amount: null, unit: null, strengthMgPerUnit: null }));
         } catch (err) {
-          console.error(`[Label Generator] Task ${taskId}: Ingredient extraction failed, continuing without it.`, err);
+          console.error(`[Label Generator] Task ${taskId}: Ingredient extraction failed (Invariant #7): ${err.message}`);
+          referenceGroundingFailed = true;
         }
       }
 
@@ -112,13 +117,13 @@ export const labelGeneratorWorker = new Worker(
       // computed in code. Weighted ranking is unproven at this environment's
       // current reference volume (0 rows) but the query/scoring/tiering itself
       // is real, not a stub — see similarity.js.
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 35, message: "Searching for matching reference labels..." });
-      const rankedReferences = await selectReferences(profile, { take: 200, topK: 3 });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 35, message: "Searching for matching reference labels..." });
+      const rankedReferences = referenceGroundingFailed ? [] : await selectReferences(profile, { take: 200, topK: 3 });
 
       // Step 3: Regulatory rules for this country (Phase 3's real output) plus
       // best-available advisory text (approved > pending_review) for drafting
       // quality even before rules exist for a country.
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 45, message: "Loading regulatory requirements..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 45, message: "Loading regulatory requirements..." });
       const approvedDocuments = await prisma.regulatoryDocument.findMany({ where: { country: { equals: country, mode: "insensitive" }, status: "approved" }, select: { id: true } });
       const rules = approvedDocuments.length > 0
         ? await prisma.regulatoryRule.findMany({ where: { documentId: { in: approvedDocuments.map((d) => d.id) }, status: "approved" } })
@@ -126,8 +131,9 @@ export const labelGeneratorWorker = new Worker(
 
       // Step 4: Constrained generation (§9, schema-forced via responseJsonSchema —
       // G6 fixed. No more free-form JSON coerced after the fact).
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 70, message: "Generating label..." });
-      const { labelData, generationMeta, matchTier, referenceLabelIds, targetAnimalsSource } = await generateLabel({ profile, rankedReferences, rules });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 70, message: "Generating label..." });
+      const { labelData, generationMeta, matchTier: generatedTier, referenceLabelIds, targetAnimalsSource } = await generateLabel({ profile, rankedReferences, rules });
+      const matchTier = referenceGroundingFailed ? "none" : generatedTier;
 
       console.log(`[Label Generator] Task ${taskId}: cachedTokens=${generationMeta.cachedTokens}, refusedFields=${JSON.stringify(generationMeta.refusedUngroundedFields)}`);
 
@@ -139,7 +145,7 @@ export const labelGeneratorWorker = new Worker(
       console.log(`[Label Generator] Task ${taskId}: geminiUsage=${JSON.stringify(generationMeta.geminiUsage)}`);
 
       // Step 5: Persist — GeneratedLabel + LabelVersion v1 + per-field provenance.
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 90, message: "Saving and validating..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 90, message: "Saving and validating..." });
       const labelProvenance = buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData });
 
       const label = await versionService.createInitial({
@@ -161,7 +167,7 @@ export const labelGeneratorWorker = new Worker(
       // Step 6: engine unification closes the loop — a schema-conformant label
       // gets an initial ValidationReport immediately, same validationEngine
       // labelExtractor's uploaded labels go through (§4.2).
-      const report = validateLabel(labelData, { rules });
+      const report = await validateLabel(labelData, { rules, referenceGroundingFailed, includePlausibility: false });
       await prisma.validationReport.create({
         data: {
           labelId: label.id,
@@ -189,7 +195,7 @@ export const labelGeneratorWorker = new Worker(
       const result = { taskId, labelId: label.id, label: labelData, validation: { passed: report.passed, errorCount: report.errorCount, warningCount: report.warningCount }, riskScore: score, autonomyTier };
 
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result } });
-      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, result, message: "Label generated successfully!" });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, result, message: "Label generated successfully!" });
       console.log(`[Label Generator] Task ${taskId} completed successfully. Label ID: ${label.id}, validation passed: ${report.passed}`);
     } catch (error) {
       // CLAUDE.md item 3: geminiClient now throws Google's real status/message
@@ -198,7 +204,7 @@ export const labelGeneratorWorker = new Worker(
       // including "quota exhausted" vs "rate limited" vs anything else.
       console.error(`[Label Generator] Job failed:`, error);
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "failed", error: error.message || "Unknown error occurred" } });
-      socket.emit("job_status_update", { jobId: taskId, status: "failed", progress: 0, error: error.message, message: error.message });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "failed", progress: 0, error: error.message, message: error.message });
       throw error;
     }
   }),

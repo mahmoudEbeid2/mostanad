@@ -1,0 +1,70 @@
+post:
+  tags:
+    - Generated Labels
+  summary: Confirm or override a low-confidence extracted field
+  description: |
+    Allows a human reviewer to confirm or edit an ambiguous or low-confidence extracted field.
+    Creates a new label version, and annotates extractionMeta for that path with
+    `confirmedByUser: true`, `confirmedValue`, and `confirmedAt` — the original
+    extractor `confidence` is left untouched (confirmation annotates the
+    extraction, it never rewrites the record of how confident the extractor
+    was), then re-runs deterministic validation.
+    `value` is required and must be non-empty — a missing, null, or blank
+    value is rejected with 400 rather than written into labelData.
+    Required permission: `update_labels`.
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: The GeneratedLabel ID
+      schema:
+        type: string
+        format: uuid
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - path
+            - value
+          properties:
+            path:
+              type: string
+              example: strength
+              description: The field path to confirm
+            value:
+              description: The confirmed value (string, object, or array)
+            expectedVersion:
+              type: integer
+              description: Optimistic concurrency control check against current version
+  responses:
+    '200':
+      description: Field confirmed successfully and new version created
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                    example: 2
+                  label:
+                    type: object
+                  report:
+                    $ref: '../../components/components.yaml#/components/schemas/ValidationReport'
+                  extractionMeta:
+                    type: object
+    '400':
+      description: Missing `path`, or `value` is missing/null/an empty string
+    '404':
+      description: Label not found
+    '409':
+      description: Version conflict

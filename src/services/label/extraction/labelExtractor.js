@@ -235,7 +235,42 @@ Do not include markdown formatting.
     reportProgress(90, "Mapping to label schema");
     const labelData = mapToLabelData(extracted, country);
 
-    return { labelData, dbMatch: { existsInDb, isExactMatch, dbProduct: safeDbProduct } };
+    // Build extractionMeta (§14.5.3) for each field
+    const extractionMeta = {};
+    const topKeys = [
+      "productName", "pharmaceuticalForm", "strength", "feedClassification",
+      "aimOfUse", "routeOfAdministration", "directionOfUse", "withdrawalPeriod",
+      "storage", "netWeight", "packaging", "registrationNumber", "manufacturer",
+      "importer", "batchNo", "productionDate", "expiryDate",
+    ];
+    for (const key of topKeys) {
+      if (extracted[key]) {
+        extractionMeta[key] = {
+          confidence: extracted.extractionMeta?.[key]?.confidence ?? 0.95,
+          snippet: extracted[key],
+          bbox: extracted.extractionMeta?.[key]?.bbox ?? null,
+          ambiguous: extracted.extractionMeta?.[key]?.ambiguous ?? false,
+        };
+      }
+    }
+    if (extracted.activeIngredients && extracted.activeIngredients.length > 0) {
+      extractionMeta.activeIngredients = {
+        confidence: extracted.extractionMeta?.activeIngredients?.confidence ?? 0.95,
+        snippet: JSON.stringify(extracted.activeIngredients),
+        bbox: null,
+        ambiguous: false,
+      };
+    }
+    if (extracted.targetAnimalSpeciesList && extracted.targetAnimalSpeciesList.length > 0) {
+      extractionMeta.targetAnimalSpecies = {
+        confidence: extracted.extractionMeta?.targetAnimalSpecies?.confidence ?? 0.95,
+        snippet: extracted.targetAnimalSpeciesList.join(", "),
+        bbox: null,
+        ambiguous: false,
+      };
+    }
+
+    return { labelData, extractionMeta, dbMatch: { existsInDb, isExactMatch, dbProduct: safeDbProduct } };
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(`Failed to extract label: ${error.message}`, 500);

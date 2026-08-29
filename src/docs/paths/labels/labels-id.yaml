@@ -54,10 +54,10 @@ patch:
     `update_labels`. Rejects a patch that would replace more than 60% of the
     label's top-level fields — use regeneration for that instead. A patch
     that would introduce a NEW validation failure that didn't exist before
-    is refused as a 409 conflict rather than silently applied; there is no
-    `overrideAcknowledged` escape hatch on this endpoint — resolve the
-    conflict and resubmit (or use the chat endpoint, which does support
-    overriding).
+    is refused as a 409 conflict rather than silently applied; resubmit the
+    SAME request with `overrideAcknowledged: true` to push it through anyway
+    — same override contract as `POST /labels/{id}/chat`. The override is
+    recorded on the resulting version, tied to the caller's identity.
   parameters:
     - $ref: '../../components/components.yaml#/components/parameters/LabelId'
   requestBody:
@@ -81,9 +81,17 @@ patch:
             expectedVersion:
               type: integer
               description: Must equal the label's current `currentVersion`, or the request is refused with 409.
+            overrideAcknowledged:
+              type: boolean
+              default: false
+              description: >-
+                Resend the SAME request with this set to true to push the
+                patch through past a conflict (a NEW validation failure the
+                patch would introduce). Persisted on the resulting
+                `LabelVersion` along with the caller's identity.
   responses:
     '200':
-      description: Patch applied — a new version was created.
+      description: Patch applied — a new version was created (clean, or applied via override).
       content:
         application/json:
           schema:
@@ -109,7 +117,54 @@ patch:
     '404':
       $ref: '../../components/components.yaml#/components/responses/NotFoundError'
     '409':
-      $ref: '../../components/components.yaml#/components/responses/ConflictError'
+      description: >-
+        A patch that would introduce a new validation failure and
+        `overrideAcknowledged` was not set (`data.status === "conflict"`,
+        outer envelope `status` stays `"success"`), OR a stale
+        `expectedVersion` (plain fail envelope).
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "conflict"
+                      wouldViolate:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ruleKey:
+                              type: string
+                              nullable: true
+                            message:
+                              type: string
+                            citation:
+                              type: string
+                              nullable: true
+                            path:
+                              type: string
+                      options:
+                        type: array
+                        items:
+                          type: string
+                        example: ["cancel", "apply_and_fix:withdrawalPeriod", "apply_anyway_with_override"]
+              - type: object
+                properties:
+                  status:
+                    type: string
+                    example: "fail"
+                  message:
+                    type: string
+                    example: "Version conflict: expected 3, label is now at 4. Reload before editing."
     '422':
       description: >-
         Structurally invalid patch — unknown path, unsupported op, missing

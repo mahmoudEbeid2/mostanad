@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
 
-const BASE_URL = "http://localhost:3000/api/v1";
+const BASE_URL = "http://127.0.0.1:3000/api/v1";
 
 const colors = {
   green: "\x1b[32m",
@@ -93,12 +93,15 @@ async function run() {
   // Resolve label PDF
   let labelPath = "C:/Users/ENG MAHMOUD/Downloads/10 - H-VIRAL_1L.pdf";
   if (!fs.existsSync(labelPath)) {
+    const fixturePdf = path.join(process.cwd(), "fixtures", "regulatory", "synthetic-authority-fixture.pdf");
     const fallback1 = "D:/gemini_test/Addvet Feed Catalogue 2025.pdf";
     const fallback2 = "C:/Users/ENG MAHMOUD/Downloads/Addvet Feed Catalogue 2025.pdf";
     if (fs.existsSync(fallback1)) {
       labelPath = fallback1;
     } else if (fs.existsSync(fallback2)) {
       labelPath = fallback2;
+    } else if (fs.existsSync(fixturePdf)) {
+      labelPath = fixturePdf;
     } else {
       // Write a minimal mock PDF
       labelPath = path.join(process.cwd(), "test_label_mock.pdf");

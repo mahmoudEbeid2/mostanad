@@ -2,6 +2,7 @@ import express from "express";
 import {
   getAllLabels, getLabel, getLabelVersions, postValidate, getValidation, postAudit,
   postChat, getChat, patchLabel, getVersion, postRestore, getVersionsDiff, postReplay,
+  getExtraction, postConfirmField,
 } from "../controllers/generatedLabelController.js";
 import { postApprove, getApprovals, postRevoke } from "../controllers/labelApprovalController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
@@ -19,6 +20,8 @@ router.post("/:id/versions/:n/restore", restrictToPermission("update_labels"), p
 router.get("/:id/versions/:a/diff/:b", restrictToPermission("read_labels"), getVersionsDiff);
 router.post("/:id/validate", restrictToPermission("update_labels"), postValidate);
 router.get("/:id/validation", restrictToPermission("read_labels"), getValidation);
+router.get("/:id/extraction", restrictToPermission("read_labels"), getExtraction);
+router.post("/:id/confirm-field", restrictToPermission("update_labels"), postConfirmField);
 router.post("/:id/audit", restrictToPermission("update_labels"), postAudit);
 router.post("/:id/chat", restrictToPermission("update_labels"), postChat);
 router.get("/:id/chat", restrictToPermission("read_labels"), getChat);

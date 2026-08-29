@@ -137,6 +137,10 @@ paths:
     $ref: './paths/labels/labels-id-validate.yaml'
   /labels/{id}/validation:
     $ref: './paths/labels/labels-id-validation.yaml'
+  /labels/{id}/extraction:
+    $ref: './paths/labels/labels-id-extraction.yaml'
+  /labels/{id}/confirm-field:
+    $ref: './paths/labels/labels-id-confirm-field.yaml'
   /labels/{id}/audit:
     $ref: './paths/labels/labels-id-audit.yaml'
   /labels/{id}/chat:

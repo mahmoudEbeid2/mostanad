@@ -35,12 +35,14 @@ export const run = (labelData) => {
       presence: "PRESENT",
       severity: "error",
       layer: "schema",
+      comparison: "coherence",
       ruleKey: null,
       message: null,
       citation: null,
       sourceDocumentId: null,
       autoFixable: false,
       suggestion: null,
+      remediation: null,
     }));
   }
 
@@ -60,27 +62,32 @@ export const run = (labelData) => {
         presence: "PRESENT",
         severity: "error",
         layer: "schema",
+        comparison: "coherence",
         ruleKey: null,
         message: null,
         citation: null,
         sourceDocumentId: null,
         autoFixable: false,
         suggestion: null,
+        remediation: null,
       };
     }
+    const presence = presenceFor(issue);
     return {
       path,
       label: labelFor(path),
       status: "FAIL",
-      presence: presenceFor(issue),
+      presence,
       severity: "error",
       layer: "schema",
+      comparison: "coherence",
       ruleKey: `SCHEMA.${String(path).toUpperCase()}.INVALID`,
       message: issue.message,
       citation: null,
       sourceDocumentId: null,
       autoFixable: false,
       suggestion: null,
+      remediation: { action: presence === "MISSING" ? "add" : "correct", suggested: null, source: "none", sourceRef: null },
     };
   });
 };

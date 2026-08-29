@@ -63,28 +63,32 @@ const fixtureRules = [
   },
 ];
 
-console.log("\n=== T10: Determinism of validation layers 1-4 ===\n");
+async function runTest() {
+  console.log("\n=== T10: Determinism of validation layers 1-4 ===\n");
 
-// Same input, same rules, run twice -> identical verdicts.
-const r1 = validate(baseLabel, { rules: fixtureRules });
-const r2 = validate(baseLabel, { rules: fixtureRules });
-assert("Same labelData + same rules -> identical verdicts JSON", JSON.stringify(r1.verdicts) === JSON.stringify(r2.verdicts));
-assert("Same labelData + same rules -> identical passed/errorCount/warningCount", r1.passed === r2.passed && r1.errorCount === r2.errorCount && r1.warningCount === r2.warningCount);
+  // Same input, same rules, run twice -> identical verdicts.
+  const r1 = await validate(baseLabel, { rules: fixtureRules, includePlausibility: false });
+  const r2 = await validate(baseLabel, { rules: fixtureRules, includePlausibility: false });
+  assert("Same labelData + same rules -> identical verdicts JSON", JSON.stringify(r1.verdicts) === JSON.stringify(r2.verdicts));
+  assert("Same labelData + same rules -> identical passed/errorCount/warningCount", r1.passed === r2.passed && r1.errorCount === r2.errorCount && r1.warningCount === r2.warningCount);
 
-// Different object reference, same content -> still identical (proves no reliance on identity/order-of-keys).
-const clone = JSON.parse(JSON.stringify(baseLabel));
-const r3 = validate(clone, { rules: fixtureRules });
-assert("Structurally-equal but distinct object -> identical verdicts", JSON.stringify(r1.verdicts) === JSON.stringify(r3.verdicts));
+  // Different object reference, same content -> still identical (proves no reliance on identity/order-of-keys).
+  const clone = JSON.parse(JSON.stringify(baseLabel));
+  const r3 = await validate(clone, { rules: fixtureRules, includePlausibility: false });
+  assert("Structurally-equal but distinct object -> identical verdicts", JSON.stringify(r1.verdicts) === JSON.stringify(r3.verdicts));
 
-// A real change in input must change the output (sanity: this isn't trivially "always the same").
-const changed = { ...baseLabel, aimOfUse: { translations: { en: "This product cures infections" }, primary: "en" } };
-const r4 = validate(changed, { rules: fixtureRules });
-assert("Changing labelData changes verdicts (not a constant function)", JSON.stringify(r1.verdicts) !== JSON.stringify(r4.verdicts));
-assert("Forbidden-content rule fires on the changed input", r4.verdicts.some((v) => v.ruleKey === "TEST.NO_CURE_CLAIM" && v.status === "FAIL"));
-assert("Forbidden-content rule does not fire on the unchanged input", !r1.verdicts.some((v) => v.ruleKey === "TEST.NO_CURE_CLAIM" && v.status === "FAIL"));
+  // A real change in input must change the output (sanity: this isn't trivially "always the same").
+  const changed = { ...baseLabel, aimOfUse: { translations: { en: "This product cures infections" }, primary: "en" } };
+  const r4 = await validate(changed, { rules: fixtureRules, includePlausibility: false });
+  assert("Changing labelData changes verdicts (not a constant function)", JSON.stringify(r1.verdicts) !== JSON.stringify(r4.verdicts));
+  assert("Forbidden-content rule fires on the changed input", r4.verdicts.some((v) => v.ruleKey === "TEST.NO_CURE_CLAIM" && v.status === "FAIL"));
+  assert("Forbidden-content rule does not fire on the unchanged input", !r1.verdicts.some((v) => v.ruleKey === "TEST.NO_CURE_CLAIM" && v.status === "FAIL"));
 
-// engineVersion is stamped and stable across runs.
-assert("engineVersion present and stable", r1.engineVersion === r2.engineVersion && !!r1.engineVersion);
+  // engineVersion is stamped and stable across runs.
+  assert("engineVersion present and stable", r1.engineVersion === r2.engineVersion && !!r1.engineVersion);
 
-console.log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`);
-process.exit(failed > 0 ? 1 : 0);
+  console.log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+runTest();

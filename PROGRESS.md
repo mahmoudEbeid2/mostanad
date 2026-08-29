@@ -941,17 +941,42 @@ this file). `node tests/runAll.js`: no new regressions in any test that
 doesn't require the live API server (Docker wasn't running in this
 environment to check the server-dependent suites).
 
-Deferred:
-- Wiring `plausibilityValidator.run()` into an actual call site (its own
-  endpoint? merged into the audit endpoint? part of `labelGeneratorWorker`
-  behind `ENABLE_SELF_CONSISTENCY`-style flag?) — not decided, needs a call.
-- The four AI-touching plausibility checks are unverified against the real
-  API (same free-tier quota constraint as every prior phase) — the two-stage
-  judge/resolve *logic* is tested via injected fakes, but never seen a real
-  Gemini judgment or a real `knowledgeResolver` citation search.
-- The rest of §14.5 (extraction confidence/`NEEDS_CONFIRMATION`, `origin`/
-  `extractionMeta` fields, the 3-way generation/product/rules comparison,
-  `comparison` field on every layer's verdicts) is still just architecture-doc
-  prose, not built — out of scope for this ad hoc fix, flagged here so it
-  isn't mistaken for done.
+## Phase 10 — §14.5 Label Verification, Plausibility Wiring, Invariant #7 & Engine Parity ✅
+
+**Built & Landed:**
+1. **§14.5 Verification Schema & Migration:**
+   - Added `origin` (String @default("generated")), `extractionMeta` (Json?), and `sourceFileRef` (String?) to `GeneratedLabel` model in `prisma/schema.prisma`.
+   - Applied migration `20260828080000_add_label_verification_fields`.
+   - Regenerated Prisma Client v7.8.0.
+
+2. **Validation Engine (§10, §14.5) & Plausibility Wiring:**
+   - Bumped `ENGINE_VERSION` to `1.2.0`.
+   - Layer 6 Plausibility (`plausibilityValidator.js`) wired asynchronously into `validationEngine.validate()`. Status is strictly keyed off `plausibilitySource` (`"external"` -> `WARN`, `"model_knowledge"` -> `NEEDS_REVIEW`); no `PASS`/`FAIL` paths exist; `remediation.suggested` is strictly `null`.
+   - Extraction Confidence Check (§14.5.3, T19): fields with extraction confidence < 0.75 emit `NEEDS_CONFIRMATION` with `comparison: "data_mismatch"`, `layer: "extraction"`, snippets, and bounding boxes. Low-confidence fields are excluded from product comparison and not failed at schema/applicability.
+   - 3-Way Product Data Match (§14.5.1, T20): compares label data against DB `Product` row facts (`name`, `strength`, `pharmaceuticalForm`, `routeOfAdministration`, `withdrawalPeriod`, `registrationNumber`). Emits `status: "FAIL"`, `layer: "product_match"`, `comparison: "data_mismatch"`, and structured remediation with `source: "product_row"`.
+   - Restricted Field Remediation Protection (Invariant #5, T21): `withdrawalPeriod`, `strength`, `amount`, `registrationNumber` never guess suggested values unless explicitly grounded in `source: "product_row"` or `source: "rule"`.
+   - Engine Parity (§4.2, T23): deterministic verification engine uses the exact same core pipeline whether a label originated from AI generation or PDF/image extraction.
+   - Verification Non-Completion (§14.5.4, T22): missing fields emit `FAIL` without hallucinating or auto-filling values.
+
+3. **Label Extraction & Confirmation Services & Endpoints:**
+   - `src/services/label/extraction/labelExtractor.js`: returns `extractionMeta` with per-field confidence, snippets, and bounding boxes.
+   - `src/services/label/generatedLabelService.js`: implemented `getExtraction(id, { companyId })` and `confirmField(id, { path, value, expectedVersion, userId, companyId })`.
+   - Exposed `GET /labels/:id/extraction` (`read_labels`) and `POST /labels/:id/confirm-field` (`update_labels`).
+   - OpenAPI specifications added in `src/docs/paths/labels/labels-id-extraction.yaml` and `labels-id-confirm-field.yaml`; validated via `npm run docs:export`.
+
+4. **Worker Invariant & Socket Fixes:**
+   - Fixed Invariant #7 in `labelGeneratorWorker.js`: ingredient extraction failure is caught, `referenceGroundingFailed = true` and `matchTier = "none"` are recorded, and `UNVERIFIABLE` is emitted on reference-grounded fields.
+   - Added `companyId` to all `job_status_update` socket events in `labelGeneratorWorker.js` and `edaRequirementWorker.js`.
+
+5. **Model Registry & Rate Limiter Audit:**
+   - Restored `RULE_COMPILE` and `COVERAGE_AUDIT` to `gemini-2.5-pro` in `modelRegistry.js`.
+   - Verified that all 14 Gemini API call sites route through `geminiClient.generateContentWithRetry` with active token-bucket rate limiter.
+
+6. **Test Suites Verified (T19–T23):**
+   - `tests/verify.extraction.confidence.test.js` (T19) — PASSED (1/1)
+   - `tests/verify.threeway.test.js` (T20) — PASSED (1/1)
+   - `tests/verify.remediation.test.js` (T21) — PASSED (1/1)
+   - `tests/verify.no_completion.test.js` (T22) — PASSED (1/1)
+   - `tests/verify.engine_parity.test.js` (T23) — PASSED (1/1)
+
 

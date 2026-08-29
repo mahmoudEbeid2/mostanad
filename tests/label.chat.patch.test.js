@@ -62,57 +62,61 @@ assert("A patch touching most top-level fields is rejected as a bulk replacement
 const smallPatch = { rationale: "test", changes: [{ path: "storage", op: "replace", value: { translations: { en: "Store cold" }, primary: "en" } }] };
 assert("A small, targeted patch passes shape validation", validatePatchShape(smallPatch).ok);
 
-// ── dryRunPatch: clean vs. conflict (§11.4 guard #3-4) ──────────────────────
-log("\n-- dryRunPatch: clean apply vs. conflict detection --", "cyan");
-const currentLabel = {
-  schemaVersion: "vet-label@2.0.0", productType: "feed_additive",
-  productName: { translations: { en: "X" }, primary: "en" }, pharmaceuticalForm: null, strength: null,
-  feedClassification: { translations: { en: "Feed" }, primary: "en" },
-  activeIngredients: [{ translations: { en: "A" }, primary: "en", amount: "10mg", unit: null, normalizedName: null }],
-  excipients: [], analysis: null,
-  targetAnimalSpecies: { translations: { en: "Poultry" }, primary: "en", list: ["Poultry"], source: "reference" },
-  aimOfUse: { translations: { en: "Support" }, primary: "en" }, indications: [], routeOfAdministration: null,
-  directionOfUse: { translations: { en: "1g/L" }, primary: "en" }, contraindications: null, warnings: [], sideEffects: null,
-  withdrawalPeriod: null, userSafety: [], storage: { translations: { en: "Cool" }, primary: "en" }, shelfLifeAfterOpening: null,
-  disposal: null, netWeight: { translations: { en: "1kg" }, primary: "en" }, packaging: null, registrationNumber: null,
-  marketingAuthorisationHolder: null, manufacturer: null, importer: null, countryOfProduction: null, batchNo: null,
-  productionDate: null, expiryDate: null, prescriptionStatus: "NA", usageDeclaration: [], keepOutOfReachOfChildren: true, estimatedFields: [],
-};
+async function run() {
+  log("\n-- dryRunPatch: clean apply vs. conflict detection --", "cyan");
+  const currentLabel = {
+    schemaVersion: "vet-label@2.0.0", productType: "feed_additive",
+    productName: { translations: { en: "X" }, primary: "en" }, pharmaceuticalForm: null, strength: null,
+    feedClassification: { translations: { en: "Feed" }, primary: "en" },
+    activeIngredients: [{ translations: { en: "A" }, primary: "en", amount: "10mg", unit: null, normalizedName: null }],
+    excipients: [], analysis: null,
+    targetAnimalSpecies: { translations: { en: "Poultry" }, primary: "en", list: ["Poultry"], source: "reference" },
+    aimOfUse: { translations: { en: "Support" }, primary: "en" }, indications: [], routeOfAdministration: null,
+    directionOfUse: { translations: { en: "1g/L" }, primary: "en" }, contraindications: null, warnings: [], sideEffects: null,
+    withdrawalPeriod: null, userSafety: [], storage: { translations: { en: "Cool" }, primary: "en" }, shelfLifeAfterOpening: null,
+    disposal: null, netWeight: { translations: { en: "1kg" }, primary: "en" }, packaging: null, registrationNumber: null,
+    marketingAuthorisationHolder: null, manufacturer: null, importer: null, countryOfProduction: null, batchNo: null,
+    productionDate: null, expiryDate: null, prescriptionStatus: "NA", usageDeclaration: [], keepOutOfReachOfChildren: true, estimatedFields: [],
+  };
 
-// dryRunPatch's contract expects the caller's ACTUAL current report (the
-// controller always fetches this for real) — compute a real baseline here too,
-// not a hand-stubbed one, so "new vs. pre-existing" failures are judged fairly.
-const baselineReport = validate(currentLabel);
+  // dryRunPatch's contract expects the caller's ACTUAL current report (the
+  // controller always fetches this for real) — compute a real baseline here too,
+  // not a hand-stubbed one, so "new vs. pre-existing" failures are judged fairly.
+  const baselineReport = await validate(currentLabel, { includePlausibility: false });
 
-const cleanPatch = { rationale: "Update storage instructions", changes: [{ path: "storage", op: "replace", value: { translations: { en: "Store below 25C" }, primary: "en" } }] };
-const cleanResult = dryRunPatch(currentLabel, baselineReport, cleanPatch);
-assert("A patch that doesn't introduce a new FAIL is 'clean'", cleanResult.status === "clean", cleanResult);
-assert("Clean result carries the candidate label with the change applied", cleanResult.candidateLabelData.storage.translations.en === "Store below 25C");
+  const cleanPatch = { rationale: "Update storage instructions", changes: [{ path: "storage", op: "replace", value: { translations: { en: "Store below 25C" }, primary: "en" } }] };
+  const cleanResult = await dryRunPatch(currentLabel, baselineReport, cleanPatch);
+  assert("A patch that doesn't introduce a new FAIL is 'clean'", cleanResult.status === "clean", cleanResult);
+  assert("Clean result carries the candidate label with the change applied", cleanResult.candidateLabelData.storage.translations.en === "Store below 25C");
 
-// Switching to Cattle makes withdrawalPeriod required (fieldCatalog) — this
-// SHOULD be flagged as a conflict since it's a NEW failure the current label doesn't have.
-// Starts from a NON-food-producing species (Poultry is also food-producing, so
-// reusing currentLabel here would make withdrawalPeriod already-failing, not new).
-const dogLabel = { ...currentLabel, targetAnimalSpecies: { translations: { en: "Dog" }, primary: "en", list: ["Dog"], source: "reference" } };
-const dogBaselineReport = validate(dogLabel);
-assert("Sanity: withdrawalPeriod is NOT required for a non-food-producing species baseline", !dogBaselineReport.verdicts.some((v) => v.path === "withdrawalPeriod" && v.status === "FAIL"));
+  // Switching to Cattle makes withdrawalPeriod required (fieldCatalog) — this
+  // SHOULD be flagged as a conflict since it's a NEW failure the current label doesn't have.
+  // Starts from a NON-food-producing species (Poultry is also food-producing, so
+  // reusing currentLabel here would make withdrawalPeriod already-failing, not new).
+  const dogLabel = { ...currentLabel, targetAnimalSpecies: { translations: { en: "Dog" }, primary: "en", list: ["Dog"], source: "reference" } };
+  const dogBaselineReport = await validate(dogLabel, { includePlausibility: false });
+  assert("Sanity: withdrawalPeriod is NOT required for a non-food-producing species baseline", !dogBaselineReport.verdicts.some((v) => v.path === "withdrawalPeriod" && v.status === "FAIL"));
 
-const conflictPatch = { rationale: "Add cattle as a target species", changes: [{ path: "targetAnimalSpecies.list", op: "replace", value: ["Cattle"] }] };
-const conflictResult = dryRunPatch(dogLabel, dogBaselineReport, conflictPatch);
-assert("A patch introducing a new required-field FAIL is a 'conflict', not silently applied", conflictResult.status === "conflict", conflictResult);
-assert("Conflict result names the violated rule/path", conflictResult.wouldViolate?.some((v) => v.path === "withdrawalPeriod"));
-assert("Conflict options include cancel and override, never a silent apply", conflictResult.options?.includes("cancel") && conflictResult.options?.includes("apply_anyway_with_override"));
+  const conflictPatch = { rationale: "Add cattle as a target species", changes: [{ path: "targetAnimalSpecies.list", op: "replace", value: ["Cattle"] }] };
+  const conflictResult = await dryRunPatch(dogLabel, dogBaselineReport, conflictPatch);
+  assert("A patch introducing a new required-field FAIL is a 'conflict', not silently applied", conflictResult.status === "conflict", conflictResult);
+  assert("Conflict result names the violated rule/path", conflictResult.wouldViolate?.some((v) => v.path === "withdrawalPeriod"));
+  assert("Conflict options include cancel and override, never a silent apply", conflictResult.options?.includes("cancel") && conflictResult.options?.includes("apply_anyway_with_override"));
 
-// A patch is judged against what was ALREADY failing — pre-existing failures
-// don't make every subsequent edit look like a "new" conflict.
-const cattleAlreadyLabel = { ...currentLabel, targetAnimalSpecies: { translations: { en: "Cattle" }, primary: "en", list: ["Cattle"], source: "reference" } };
-const cattleAlreadyReport = validate(cattleAlreadyLabel); // withdrawalPeriod already FAILs here
-const stillCattlePatch = { rationale: "test", changes: [{ path: "targetAnimalSpecies.list", op: "replace", value: ["Cattle", "Sheep"] }] };
-const noNewConflictResult = dryRunPatch(cattleAlreadyLabel, cattleAlreadyReport, stillCattlePatch);
-assert("Pre-existing failure on the same path isn't re-flagged as a NEW conflict", noNewConflictResult.status === "clean", noNewConflictResult);
+  // A patch is judged against what was ALREADY failing — pre-existing failures
+  // don't make every subsequent edit look like a "new" conflict.
+  const cattleAlreadyLabel = { ...currentLabel, targetAnimalSpecies: { translations: { en: "Cattle" }, primary: "en", list: ["Cattle"], source: "reference" } };
+  const cattleAlreadyReport = await validate(cattleAlreadyLabel, { includePlausibility: false }); // withdrawalPeriod already FAILs here
+  const stillCattlePatch = { rationale: "test", changes: [{ path: "targetAnimalSpecies.list", op: "replace", value: ["Cattle", "Sheep"] }] };
+  const noNewConflictResult = await dryRunPatch(cattleAlreadyLabel, cattleAlreadyReport, stillCattlePatch);
+  assert("Pre-existing failure on the same path isn't re-flagged as a NEW conflict", noNewConflictResult.status === "clean", noNewConflictResult);
 
-const invalidPatch = { rationale: "test", changes: [{ path: "notReal", op: "replace", value: "x" }] };
-assert("An invalid patch never reaches apply/dry-run — status 'invalid'", dryRunPatch(currentLabel, baselineReport, invalidPatch).status === "invalid");
+  const invalidPatch = { rationale: "test", changes: [{ path: "notReal", op: "replace", value: "x" }] };
+  const invalidResult = await dryRunPatch(currentLabel, baselineReport, invalidPatch);
+  assert("An invalid patch never reaches apply/dry-run — status 'invalid'", invalidResult.status === "invalid");
 
-log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`, failed === 0 ? "green" : "red");
-process.exit(failed > 0 ? 1 : 0);
+  log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`, failed === 0 ? "green" : "red");
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+run();

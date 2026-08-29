@@ -433,6 +433,11 @@ model GeneratedLabel {
   currentVersion Int     @default(1) @map("current_version")
   needsReview    Boolean @default(false) @map("needs_review") // Phase 7, §12.5 — set true when a reference this label cites gets revoked
 
+  // §14.5 Verification (uploaded labels)
+  origin         String  @default("generated") // generated | extracted
+  extractionMeta Json?   @map("extraction_meta")
+  sourceFileRef  String? @map("source_file_ref")
+
   versions     LabelVersion[]
   validations  ValidationReport[]
   chatMessages LabelChatMessage[]

@@ -6,7 +6,7 @@ import { prisma } from "../src/lib/prisma.js";
 import * as versionService from "../src/services/label/versioning/versionService.js";
 import { validate } from "../src/services/label/validation/validationEngine.js";
 
-const BASE_URL = "http://localhost:3000/api/v1";
+const BASE_URL = "http://127.0.0.1:3000/api/v1";
 const colors = { green: "\x1b[32m", red: "\x1b[31m", cyan: "\x1b[36m", bold: "\x1b[1m", reset: "\x1b[0m" };
 const log = (msg, color = "") => console.log(color ? `${colors[color]}${msg}${colors.reset}` : msg);
 let passed = 0, failed = 0;
@@ -32,7 +32,7 @@ const baseLabelData = {
 
 async function seedLabel(company, overrides = {}) {
   const labelData = { ...baseLabelData, ...overrides.labelData };
-  const report = validate(labelData);
+  const report = await validate(labelData, { includePlausibility: false });
   const label = await versionService.createInitial({
     companyId: company.id, createdByUserId: "creator-user-id", inputPayload: {},
     labelData, labelProvenance: {}, schemaVersion: "vet-label@2.0.0", country: "Egypt", language: "ar",

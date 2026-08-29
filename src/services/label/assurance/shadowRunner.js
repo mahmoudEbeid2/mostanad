@@ -22,8 +22,8 @@ export async function runShadow(oldFn, newFn, input, { labelId = null } = {}) {
   const t2 = Date.now();
 
   const fieldsDiffered = diffTopLevelFields(oldResult.labelData, newResult.labelData);
-  const oldReport = validate(oldResult.labelData, { rules: oldResult.rules || [] });
-  const newReport = validate(newResult.labelData, { rules: newResult.rules || [] });
+  const oldReport = await validate(oldResult.labelData, { rules: oldResult.rules || [], includePlausibility: false });
+  const newReport = await validate(newResult.labelData, { rules: newResult.rules || [], includePlausibility: false });
   const verdictDiffered = oldReport.passed !== newReport.passed;
 
   const comparison = await prisma.shadowComparison.create({

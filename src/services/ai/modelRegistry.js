@@ -62,12 +62,12 @@ export const MODELS = {
   // out as the hardest task in the whole system: translating legal text into
   // executable logic). Large fixed budget, temperature 0 for reproducibility —
   // a rule extraction that changes between runs on the same document is unusable.
-  RULE_COMPILE: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+  RULE_COMPILE: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
 
   // Phase 3 — coverage auditor (§7.5): the reverse pass over the same document,
   // checking which clauses produced no rule. Same reasoning weight as compilation
   // since it's re-reading the whole document with equal scrutiny.
-  COVERAGE_AUDIT: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+  COVERAGE_AUDIT: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
 
   // Phase 5 — adversarial auditor (§14.1). §9.2's own invariant: "generator and
   // auditor MUST be different model families." This environment has ONLY a

@@ -9,7 +9,7 @@ import { validate } from "../validation/validationEngine.js";
  *   { status: "conflict", candidateLabelData, wouldViolate: [...] } — new FAILs introduced
  *   { status: "clean", candidateLabelData, report }     — safe to apply
  */
-export function dryRunPatch(currentLabelData, currentReport, patch, { rules = [] } = {}) {
+export async function dryRunPatch(currentLabelData, currentReport, patch, { rules = [] } = {}) {
   const shapeCheck = validatePatchShape(patch);
   if (!shapeCheck.ok) return { status: "invalid", errors: shapeCheck.errors };
 
@@ -20,7 +20,11 @@ export function dryRunPatch(currentLabelData, currentReport, patch, { rules = []
     return { status: "invalid", errors: [err.message] };
   }
 
-  const newReport = validate(candidateLabelData, { rules });
+  // includePlausibility: false — this only compares FAIL sets (see below),
+  // and plausibility can structurally never emit FAIL, so it can never change
+  // the conflict decision. Running it here would just be 4 extra Gemini calls
+  // on every chat-edit attempt for zero effect on the outcome.
+  const newReport = await validate(candidateLabelData, { rules, includePlausibility: false });
 
   // A "new" FAIL is one that wasn't already a FAIL on the same path before
   // this patch — an edit that doesn't make anything WORSE is never a conflict,

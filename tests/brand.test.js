@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
 
-const BASE_URL = "http://localhost:3000/api/v1";
-const STATIC_URL = "http://localhost:3000";
+const BASE_URL = "http://127.0.0.1:3000/api/v1";
+const STATIC_URL = "http://127.0.0.1:3000";
 
 const colors = {
   green: "\x1b[32m",

@@ -79,11 +79,12 @@ export const getChat = catchAsync(async (req, res) => {
 });
 
 export const patchLabel = catchAsync(async (req, res) => {
-  const { changes, rationale, expectedVersion } = req.body;
+  const { changes, rationale, expectedVersion, overrideAcknowledged } = req.body;
   const result = await generatedLabelService.applyDirectPatch(req.params.id, {
     changes,
     rationale,
     expectedVersion,
+    overrideAcknowledged,
     userId: req.user ? req.user.id : null,
     companyId: scopeFor(req),
   });
@@ -107,5 +108,22 @@ export const getVersionsDiff = catchAsync(async (req, res) => {
 
 export const postReplay = catchAsync(async (req, res) => {
   const result = await replay(req.params.id, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", data: result });
+});
+
+export const getExtraction = catchAsync(async (req, res) => {
+  const result = await generatedLabelService.getExtraction(req.params.id, { companyId: scopeFor(req) });
+  res.status(200).json({ status: "success", data: result });
+});
+
+export const postConfirmField = catchAsync(async (req, res) => {
+  const { path, value, expectedVersion } = req.body;
+  const result = await generatedLabelService.confirmField(req.params.id, {
+    path,
+    value,
+    expectedVersion,
+    userId: req.user ? req.user.id : null,
+    companyId: scopeFor(req),
+  });
   res.status(200).json({ status: "success", data: result });
 });

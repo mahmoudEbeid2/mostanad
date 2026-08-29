@@ -1528,7 +1528,7 @@ paths:
       tags:
         - Generated Labels
       summary: Apply a structural edit to a label (patch protocol)
-      description: Applies a set of field-level changes directly (no AI involved — for the AI-assisted equivalent see `POST /labels/{id}/chat`). Requires `update_labels`. Rejects a patch that would replace more than 60% of the label's top-level fields — use regeneration for that instead. A patch that would introduce a NEW validation failure that didn't exist before is refused as a 409 conflict rather than silently applied; there is no `overrideAcknowledged` escape hatch on this endpoint — resolve the conflict and resubmit (or use the chat endpoint, which does support overriding).
+      description: 'Applies a set of field-level changes directly (no AI involved — for the AI-assisted equivalent see `POST /labels/{id}/chat`). Requires `update_labels`. Rejects a patch that would replace more than 60% of the label''s top-level fields — use regeneration for that instead. A patch that would introduce a NEW validation failure that didn''t exist before is refused as a 409 conflict rather than silently applied; resubmit the SAME request with `overrideAcknowledged: true` to push it through anyway — same override contract as `POST /labels/{id}/chat`. The override is recorded on the resulting version, tied to the caller''s identity.'
       parameters:
         - $ref: '#/components/parameters/LabelId'
       requestBody:
@@ -1552,9 +1552,13 @@ paths:
                 expectedVersion:
                   type: integer
                   description: Must equal the label's current `currentVersion`, or the request is refused with 409.
+                overrideAcknowledged:
+                  type: boolean
+                  default: false
+                  description: Resend the SAME request with this set to true to push the patch through past a conflict (a NEW validation failure the patch would introduce). Persisted on the resulting `LabelVersion` along with the caller's identity.
       responses:
         '200':
-          description: Patch applied — a new version was created.
+          description: Patch applied — a new version was created (clean, or applied via override).
           content:
             application/json:
               schema:
@@ -1580,7 +1584,53 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundError'
         '409':
-          $ref: '#/components/responses/ConflictError'
+          description: A patch that would introduce a new validation failure and `overrideAcknowledged` was not set (`data.status === "conflict"`, outer envelope `status` stays `"success"`), OR a stale `expectedVersion` (plain fail envelope).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        example: success
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            example: conflict
+                          wouldViolate:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                ruleKey:
+                                  type: string
+                                  nullable: true
+                                message:
+                                  type: string
+                                citation:
+                                  type: string
+                                  nullable: true
+                                path:
+                                  type: string
+                          options:
+                            type: array
+                            items:
+                              type: string
+                            example:
+                              - cancel
+                              - apply_and_fix:withdrawalPeriod
+                              - apply_anyway_with_override
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        example: fail
+                      message:
+                        type: string
+                        example: 'Version conflict: expected 3, label is now at 4. Reload before editing.'
         '422':
           description: Structurally invalid patch — unknown path, unsupported op, missing `value`, or the patch touches more than 60% of top-level fields (bulk replacement). All causes are joined into one message string with "; ".
           content:
@@ -1832,6 +1882,118 @@ paths:
                     example: This label has not been validated yet — POST /labels/:id/validate first.
         '500':
           $ref: '#/components/responses/ServerError'
+  /labels/{id}/extraction:
+    get:
+      tags:
+        - Generated Labels
+      summary: Get extraction metadata for an uploaded/extracted label
+      description: |
+        Returns the extraction metadata (`extractionMeta`), origin (`extracted` or `generated`), and source file reference.
+        Required permission: `read_labels`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The GeneratedLabel ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Extraction details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      origin:
+                        type: string
+                        example: extracted
+                      extractionMeta:
+                        type: object
+                        description: Per-field extraction confidence, snippets, bounding boxes, and ambiguity flags
+                      sourceFileRef:
+                        type: string
+                        nullable: true
+        '404':
+          description: Label not found
+  /labels/{id}/confirm-field:
+    post:
+      tags:
+        - Generated Labels
+      summary: Confirm or override a low-confidence extracted field
+      description: |
+        Allows a human reviewer to confirm or edit an ambiguous or low-confidence extracted field.
+        Creates a new label version, and annotates extractionMeta for that path with
+        `confirmedByUser: true`, `confirmedValue`, and `confirmedAt` — the original
+        extractor `confidence` is left untouched (confirmation annotates the
+        extraction, it never rewrites the record of how confident the extractor
+        was), then re-runs deterministic validation.
+        `value` is required and must be non-empty — a missing, null, or blank
+        value is rejected with 400 rather than written into labelData.
+        Required permission: `update_labels`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The GeneratedLabel ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - value
+              properties:
+                path:
+                  type: string
+                  example: strength
+                  description: The field path to confirm
+                value:
+                  description: The confirmed value (string, object, or array)
+                expectedVersion:
+                  type: integer
+                  description: Optimistic concurrency control check against current version
+      responses:
+        '200':
+          description: Field confirmed successfully and new version created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        type: integer
+                        example: 2
+                      label:
+                        type: object
+                      report:
+                        $ref: '#/components/schemas/ValidationReport'
+                      extractionMeta:
+                        type: object
+        '400':
+          description: Missing `path`, or `value` is missing/null/an empty string
+        '404':
+          description: Label not found
+        '409':
+          description: Version conflict
   /labels/{id}/audit:
     post:
       tags:
@@ -5279,48 +5441,6 @@ components:
             - insert
         value:
           description: Required for every op except "remove".
-    PatchConflict:
-      type: object
-      description: Returned with HTTP 409 when a proposed patch would introduce a NEW validation failure that didn't exist before the patch. The outer response envelope's `status` stays "success" — branch on this object's own `status` field, which is "conflict".
-      properties:
-        status:
-          type: string
-          enum:
-            - conflict
-        proposedPatch:
-          type: object
-          description: Only present on the chat conflict shape (not the direct PATCH conflict shape).
-          properties:
-            rationale:
-              type: string
-            changes:
-              type: array
-              items:
-                $ref: '#/components/schemas/LabelPatchChange'
-        wouldViolate:
-          type: array
-          items:
-            type: object
-            properties:
-              ruleKey:
-                type: string
-                nullable: true
-              message:
-                type: string
-              citation:
-                type: string
-                nullable: true
-              path:
-                type: string
-        options:
-          type: array
-          items:
-            type: string
-          description: 'Plain strings, not objects: "cancel", one "apply_and_fix:<path>" per newly-failing path, then "apply_anyway_with_override" last.'
-          example:
-            - cancel
-            - apply_and_fix:withdrawalPeriod
-            - apply_anyway_with_override
     VersionDiffEntry:
       type: object
       properties:
@@ -5858,6 +5978,48 @@ components:
         createdAt:
           type: string
           format: date-time
+    PatchConflict:
+      type: object
+      description: Returned with HTTP 409 when a proposed patch would introduce a NEW validation failure that didn't exist before the patch. The outer response envelope's `status` stays "success" — branch on this object's own `status` field, which is "conflict".
+      properties:
+        status:
+          type: string
+          enum:
+            - conflict
+        proposedPatch:
+          type: object
+          description: Only present on the chat conflict shape (not the direct PATCH conflict shape).
+          properties:
+            rationale:
+              type: string
+            changes:
+              type: array
+              items:
+                $ref: '#/components/schemas/LabelPatchChange'
+        wouldViolate:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleKey:
+                type: string
+                nullable: true
+              message:
+                type: string
+              citation:
+                type: string
+                nullable: true
+              path:
+                type: string
+        options:
+          type: array
+          items:
+            type: string
+          description: 'Plain strings, not objects: "cancel", one "apply_and_fix:<path>" per newly-failing path, then "apply_anyway_with_override" last.'
+          example:
+            - cancel
+            - apply_and_fix:withdrawalPeriod
+            - apply_anyway_with_override
   responses:
     BadRequestError:
       description: Validation error or bad input
@@ -6461,34 +6623,6 @@ components:
                 example: success
               data:
                 $ref: '#/components/schemas/BackgroundTask'
-    ConflictError:
-      description: Version conflict — either the caller's `expectedVersion` is stale (label moved on since it was read), the label/approval/document is already in the target state, or (label patch/chat endpoints only) applying the change would introduce a NEW validation failure. For the last case the response envelope's top-level `status` is still `"success"` — check `data.status === "conflict"` instead; see `PatchConflict`.
-      content:
-        application/json:
-          schema:
-            oneOf:
-              - type: object
-                properties:
-                  status:
-                    type: string
-                    example: fail
-                  message:
-                    type: string
-                    example: 'Version conflict: expected 3, label is now at 4. Reload before editing.'
-              - type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  data:
-                    allOf:
-                      - $ref: '#/components/schemas/PatchConflict'
-                      - type: object
-                        properties:
-                          intent:
-                            type: string
-                            enum:
-                              - edit
     ServiceUnavailableError:
       description: The underlying AI call failed or timed out. Safe to retry the whole request.
       content:

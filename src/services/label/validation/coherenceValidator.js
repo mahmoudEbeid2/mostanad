@@ -25,12 +25,14 @@ const verdict = (path, status, message, extra = {}) => ({
   presence: status === "FAIL" ? "INVALID" : "PRESENT",
   severity: status === "FAIL" ? "error" : status === "WARN" ? "warning" : "error",
   layer: "coherence",
+  comparison: "coherence",
   ruleKey: `COHERENCE.${path.toUpperCase()}`,
   message,
   citation: null,
   sourceDocumentId: null,
   autoFixable: false,
   suggestion: null,
+  remediation: status === "FAIL" ? { action: "correct", suggested: null, source: "none", sourceRef: null } : null,
   ...extra,
 });
 

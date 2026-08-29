@@ -35,7 +35,7 @@ const worker = new Worker(
     console.log(`[EDA Requirement Worker] Starting job ${job.id} (Task ${taskId})`);
 
     await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "processing" } });
-    socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 10, message: "Reading document..." });
+    socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 10, message: "Reading document..." });
 
     try {
       const parts = [
@@ -43,7 +43,7 @@ const worker = new Worker(
         { text: "Please carefully read the attached regulatory document and extract the complete, unabridged text exactly as it is written. Preserve headings, lists, and tables as markdown. Do not summarize." },
       ];
 
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 30, message: "Extracting full text..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 30, message: "Extracting full text..." });
 
       let fullText = "";
       try {
@@ -60,7 +60,7 @@ const worker = new Worker(
         throw new Error("Extraction produced no text — refusing to store an empty regulatory document.");
       }
 
-      socket.emit("job_status_update", { jobId: taskId, status: "processing", progress: 80, message: "Checking for duplicates and saving..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 80, message: "Checking for duplicates and saving..." });
 
       const document = await regulatoryDocumentService.createFromExtraction({
         title: title || null,
@@ -75,7 +75,7 @@ const worker = new Worker(
       });
 
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: document } });
-      socket.emit("job_status_update", { jobId: taskId, status: "completed", progress: 100, message: "Document extracted and stored.", result: document });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, message: "Document extracted and stored.", result: document });
 
       console.log(`[EDA Requirement Worker] Job ${job.id} completed successfully. Document ID: ${document.id}`);
       return document;
@@ -86,7 +86,7 @@ const worker = new Worker(
         where: { id: taskId },
         data: { status: "failed", error: error.message },
       });
-      socket.emit("job_status_update", { jobId: taskId, status: "failed", error: error.message });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "failed", error: error.message });
 
       // A duplicate hash (AppError 409) is an expected, reportable outcome, not a
       // worker crash — but it still needs to fail the task so the caller sees it.

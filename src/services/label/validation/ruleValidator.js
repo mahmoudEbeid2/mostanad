@@ -139,12 +139,14 @@ export const run = (labelData, rules = []) => {
       presence: "MISSING",
       severity: "warning",
       layer: "regulatory_rule",
+      comparison: "regulatory",
       ruleKey: "NO_AUTHORITATIVE_REQUIREMENTS",
       message: "No approved regulatory rules exist yet for this country/product scope.",
       citation: null,
       sourceDocumentId: null,
       autoFixable: false,
       suggestion: null,
+      remediation: null,
     }];
   }
 
@@ -157,25 +159,35 @@ export const run = (labelData, rules = []) => {
       if (r.semantic) {
         verdicts.push({
           path: r.path, label: labelFor(r.path), status: "UNVERIFIABLE", presence: "PRESENT",
-          severity: rule.severity, layer: "semantic", ruleKey: rule.ruleKey,
+          severity: rule.severity, layer: "semantic", comparison: "regulatory", ruleKey: rule.ruleKey,
           message: "Semantic check deferred to AI validator (Phase 5).", citation: rule.citation,
           sourceDocumentId: rule.documentId || null, autoFixable: false, suggestion: null,
+          remediation: null,
         });
         continue;
       }
+      const isFail = !r.ok && rule.severity !== "warning";
+      const isWarn = !r.ok && rule.severity === "warning";
       verdicts.push({
         path: r.path,
         label: labelFor(r.path),
-        status: r.ok ? "PASS" : (rule.severity === "warning" ? "WARN" : "FAIL"),
+        status: r.ok ? "PASS" : (isWarn ? "WARN" : "FAIL"),
         presence: r.ok ? "PRESENT" : "MISSING",
         severity: rule.severity,
         layer: "regulatory_rule",
+        comparison: "regulatory",
         ruleKey: rule.ruleKey,
         message: r.ok ? null : (r.message || rule.description),
         citation: rule.citation || null,
         sourceDocumentId: rule.documentId || null,
         autoFixable: rule.autoFixable || false,
         suggestion: null,
+        remediation: isFail ? {
+          action: r.presence === "MISSING" ? "add" : "correct",
+          suggested: null,
+          source: "rule",
+          sourceRef: { ruleKey: rule.ruleKey, documentId: rule.documentId || null },
+        } : null,
       });
     }
   }

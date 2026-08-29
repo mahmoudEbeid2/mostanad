@@ -1,0 +1,40 @@
+get:
+  tags:
+    - Generated Labels
+  summary: Get extraction metadata for an uploaded/extracted label
+  description: |
+    Returns the extraction metadata (`extractionMeta`), origin (`extracted` or `generated`), and source file reference.
+    Required permission: `read_labels`.
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: The GeneratedLabel ID
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: Extraction details
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                example: success
+              data:
+                type: object
+                properties:
+                  origin:
+                    type: string
+                    example: extracted
+                  extractionMeta:
+                    type: object
+                    description: Per-field extraction confidence, snippets, bounding boxes, and ambiguity flags
+                  sourceFileRef:
+                    type: string
+                    nullable: true
+    '404':
+      description: Label not found

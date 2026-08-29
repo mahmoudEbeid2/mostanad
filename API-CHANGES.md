@@ -219,8 +219,7 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   pipeline's own reference-selection query
   (`labelGeneratorWorker.js`), not in these public read endpoints. Today,
   any authenticated caller can list or fetch any tenant's reference labels
-  by id; `companyId` on `GET /reference-labels` is an opt-in filter, not
-  enforced scoping. The frontend must not rely on these two endpoints to
-  hide another tenant's reference labels — do not build a UI that exposes
-  raw reference-label search/browse to end users until this is fixed
-  server-side.
+## Phase 10 (§14.5 Verification)
+- `GET /labels/:id/extraction` — **new**. `read_labels`. Returns `{ extractionMeta, sourceFileRef, origin }` for an extracted label (confidence scores, snippets, bounding boxes, ambiguity flags). `404` if the label belongs to a different tenant.
+- `POST /labels/:id/confirm-field` — **new**. `update_labels`. Body: `{ path, value, expectedVersion }`. Sets user confirmation on a low-confidence extracted field, updates `extractionMeta[path]` with `confidence: 1.0` and `confirmedByUser: true`, bumps version (append-only), and re-runs deterministic validation.
+- `POST /products/verify-label` — **updated**. Now performs full 3-way product matching against DB `Product` row facts and regulatory rules, returning structured remediations (`action: "correct"`, `source: "product_row"`).

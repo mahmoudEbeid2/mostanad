@@ -94,7 +94,7 @@ export const runValidation = async (id, { companyId } = {}) => {
   }
 
   const rules = await getApprovedRulesForCountry(label.country);
-  const report = validate(label.labelData, { rules });
+  const report = await validate(label.labelData, { rules, extractionMeta: label.extractionMeta });
 
   const saved = await prisma.validationReport.create({
     data: {
@@ -314,7 +314,7 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
     overrideAcknowledged: dryRun.status === "conflict" && overrideAcknowledged,
   });
 
-  const finalReport = dryRun.report || validate(dryRun.candidateLabelData, { rules });
+  const finalReport = dryRun.report || (await validate(dryRun.candidateLabelData, { rules, includePlausibility: false }));
   await prisma.validationReport.create({
     data: {
       labelId: id,
@@ -348,7 +348,7 @@ export const getChatHistory = async (id, { companyId } = {}) => {
  * edit path (dry-run, conflict detection, optimistic lock) minus intent
  * classification and patch proposal — the caller supplies the patch directly.
  */
-export const applyDirectPatch = async (id, { changes, rationale, expectedVersion, userId, companyId } = {}) => {
+export const applyDirectPatch = async (id, { changes, rationale, expectedVersion, overrideAcknowledged = false, userId, companyId } = {}) => {
   const { label, report } = await loadLabelForChat(id, companyId);
 
   if (expectedVersion !== undefined && expectedVersion !== null && Number(expectedVersion) !== label.currentVersion) {
@@ -357,17 +357,21 @@ export const applyDirectPatch = async (id, { changes, rationale, expectedVersion
 
   const rules = await getApprovedRulesForCountry(label.country);
   const patch = { rationale: rationale || "Manual edit", changes };
-  const dryRun = dryRunPatch(label.labelData, report, patch, { rules });
+  const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
   if (dryRun.status === "invalid") throw new AppError(`Patch rejected: ${dryRun.errors.join("; ")}`, 422);
-  if (dryRun.status === "conflict") {
+  if (dryRun.status === "conflict" && !overrideAcknowledged) {
     return { status: "conflict", wouldViolate: dryRun.wouldViolate, options: dryRun.options };
   }
 
+  // Clean, or a conflict the caller explicitly acknowledged overriding (same
+  // guard as chat's edit path — the override is recorded on the version, tied
+  // to who made it, never applied silently).
   const newVersion = await versionService.createVersion(id, dryRun.candidateLabelData, {
     changeSource: "manual_edit",
     changedByUserId: userId,
     changeSummary: rationale || "Manual edit",
+    overrideAcknowledged: dryRun.status === "conflict" && overrideAcknowledged,
   });
   await prisma.validationReport.create({
     data: {
@@ -401,7 +405,7 @@ export const restoreVersion = async (id, versionNumber, { companyId } = {}) => {
   const restored = await versionService.restore(id, Number(versionNumber));
 
   const rules = await getApprovedRulesForCountry(label.country);
-  const report = validate(restored.labelData, { rules });
+  const report = await validate(restored.labelData, { rules, includePlausibility: false });
   await prisma.validationReport.create({
     data: {
       labelId: id,
@@ -443,3 +447,111 @@ export const diffVersions = async (id, a, b, { companyId } = {}) => {
   if (!versionA || !versionB) throw new AppError("One or both versions not found for this label", 404);
   return versionService.diff(versionA.labelData, versionB.labelData);
 };
+
+/**
+ * §14.5.3: GET /labels/:id/extraction — returns extraction metadata and source file reference
+ */
+export const getExtraction = async (id, { companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+  return {
+    origin: label.origin,
+    extractionMeta: label.extractionMeta,
+    sourceFileRef: label.sourceFileRef,
+  };
+};
+
+/**
+ * §14.5.3: POST /labels/:id/confirm-field — human confirmation of a low-confidence/ambiguous field
+ */
+export const confirmField = async (id, { path, value, expectedVersion, userId, companyId } = {}) => {
+  const label = await prisma.generatedLabel.findUnique({ where: { id } });
+  if (!label || (companyId && label.companyId !== companyId)) {
+    throw new AppError("No generated label found with that ID", 404);
+  }
+
+  if (expectedVersion !== undefined && expectedVersion !== null && Number(expectedVersion) !== label.currentVersion) {
+    throw new AppError(`Version conflict: expected ${expectedVersion}, label is now at ${label.currentVersion}. Reload before confirming.`, 409);
+  }
+
+  if (!path) throw new AppError("Path is required for confirming a field", 400);
+
+  // A confirmation that writes nothing is not a confirmation — it's silent
+  // data loss on regulated content. Reject missing/undefined/empty outright
+  // rather than let it overwrite a real value in labelData.
+  const isEmptyValue =
+    value === undefined ||
+    value === null ||
+    (typeof value === "string" && value.trim() === "");
+  if (isEmptyValue) {
+    throw new AppError("A non-empty value is required to confirm this field", 400);
+  }
+
+  // Deep clone labelData and update path with confirmed value
+  const newLabelData = JSON.parse(JSON.stringify(label.labelData));
+  const keys = path.split(".");
+  let curr = newLabelData;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!curr[keys[i]]) curr[keys[i]] = {};
+    curr = curr[keys[i]];
+  }
+  curr[keys[keys.length - 1]] = value;
+
+  // Update extractionMeta. Human confirmation and machine confidence are
+  // different facts: confirmedByUser is what supersedes the verdict, so the
+  // original extractor confidence is left untouched for later measurement of
+  // extraction accuracy — confirming a field must never rewrite the record of
+  // how confident the extractor actually was.
+  const newExtractionMeta = JSON.parse(JSON.stringify(label.extractionMeta || {}));
+  const previousMeta = newExtractionMeta[path];
+  newExtractionMeta[path] = {
+    confidence: previousMeta?.confidence ?? null,
+    snippet: typeof value === "object" && value?.translations ? Object.values(value.translations)[0] : String(value),
+    bbox: previousMeta?.bbox || null,
+    ambiguous: false,
+    confirmedByUser: true,
+    confirmedValue: value,
+    confirmedAt: new Date().toISOString(),
+  };
+
+  const newVersion = await versionService.createVersion(id, newLabelData, {
+    changeSource: "manual_edit",
+    changedByUserId: userId,
+    changeSummary: `Confirmed field "${path}"`,
+  });
+
+  const rules = await getApprovedRulesForCountry(label.country);
+  const report = await validate(newLabelData, {
+    rules,
+    extractionMeta: newExtractionMeta,
+    includePlausibility: false,
+  });
+
+  await prisma.validationReport.create({
+    data: {
+      labelId: id,
+      versionNumber: newVersion.versionNumber,
+      passed: report.passed,
+      errorCount: report.errorCount,
+      warningCount: report.warningCount,
+      verdicts: report.verdicts,
+      coveragePercent: report.coveragePercent,
+      engineVersion: report.engineVersion,
+      rulesetIds: report.rulesetIds,
+      aiAssisted: report.aiAssisted,
+    },
+  });
+
+  await prisma.generatedLabel.update({
+    where: { id },
+    data: {
+      status: report.passed ? "validated" : "failed_validation",
+      extractionMeta: newExtractionMeta,
+    },
+  });
+
+  return { label: newLabelData, version: newVersion.versionNumber, report, extractionMeta: newExtractionMeta };
+};
+

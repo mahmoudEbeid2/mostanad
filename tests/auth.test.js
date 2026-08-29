@@ -3,7 +3,7 @@ dotenv.config();
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma.js";
 
-const BASE_URL = "http://localhost:3000/api/v1";
+const BASE_URL = "http://127.0.0.1:3000/api/v1";
 
 const colors = {
   green: "\x1b[32m",
