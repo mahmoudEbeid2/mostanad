@@ -157,6 +157,9 @@ async function run() {
   assert("Has verdicts array", Array.isArray(d3?.data?.validation?.verdicts), "Not an array");
   assert("passed is boolean", typeof d3?.data?.validation?.passed === "boolean", "Expected boolean");
   assert("engineVersion present", !!d3?.data?.validation?.engineVersion, "Missing engineVersion");
+  assert("regulatoryStatus present at top level", !!d3?.data?.regulatoryStatus, JSON.stringify(d3?.data));
+  assert("no companyId → no product match → 'none' state", d3?.data?.productMatchStatus?.state === "none", JSON.stringify(d3?.data?.productMatchStatus));
+  assert("no product match → zero data_mismatch verdicts", !d3?.data?.validation?.verdicts?.some((v) => v.comparison === "data_mismatch"), "Unexpected data_mismatch with no matched product");
 
   if (d3?.data?.validation?.verdicts?.length > 0) {
     const v = d3.data.validation.verdicts[0];
@@ -210,6 +213,11 @@ async function run() {
   const form4 = new FormData();
   form4.append("label", labelBlob, labelName);
   form4.append("country", "Saudi Arabia");
+  // §14.5.1: product matching is tenant-scoped. The test-bypass caller here has
+  // no req.company (it's an admin bypass), so — same as every other endpoint in
+  // this codebase (referenceLabelController, regulatoryDocumentController) —
+  // it must state which tenant to match against explicitly.
+  form4.append("companyId", testCompany.id);
   const { status: s4, data: d4Raw } = await sendLabelRequest(form4);
   log(`⏱️ Request completed in ${((Date.now() - t1) / 1000).toFixed(1)}s`, "cyan");
 
@@ -240,6 +248,9 @@ async function run() {
   assert("dbProduct.id matches", d4?.data?.product?.dbProduct?.id === testProductId, `Got ${d4?.data?.product?.dbProduct?.id}`);
   assert("companyId NOT exposed", d4?.data?.product?.dbProduct?.companyId === undefined, "companyId should be stripped");
   assert("Verdicts array present", Array.isArray(d4?.data?.validation?.verdicts), "Not an array");
+  assert("exact name match → 'matched' state", d4?.data?.productMatchStatus?.state === "matched", JSON.stringify(d4?.data?.productMatchStatus));
+  assert("'matched' state → no productMatchStatus message", d4?.data?.productMatchStatus?.message === null, JSON.stringify(d4?.data?.productMatchStatus));
+  assert("productMatchStatus carries the candidate and score", !!d4?.data?.productMatchStatus?.candidate && typeof d4?.data?.productMatchStatus?.score === "number", JSON.stringify(d4?.data?.productMatchStatus));
 
   log(`  DB match: "${d4?.data?.product?.dbProduct?.name}"`, "green");
   log(`  Errors: ${d4?.data?.validation?.errorCount}, Warnings: ${d4?.data?.validation?.warningCount}`, "green");

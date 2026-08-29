@@ -7,7 +7,7 @@ import { resolveApplicability } from "../schema/fieldCatalog.js";
 // Bump this whenever layers 1-4's logic changes in a way that could change a
 // verdict for the same input — it's part of what "determinism" (§10.3, T10) is
 // measured against.
-export const ENGINE_VERSION = "label-validation-engine@1.2.0"; // §14.5 3-way verification + extraction confidence + plausibility integration
+export const ENGINE_VERSION = "label-validation-engine@1.4.0"; // §UI redesign: whySource/triggeredBy/observed/expected, remediation.confidence
 
 const getPlain = (obj, path) => path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
 
@@ -28,6 +28,64 @@ const extractTextString = (val) => {
     return (val.translations[val.primary] || Object.values(val.translations)[0] || "").trim();
   }
   return String(val).trim();
+};
+
+// §14.5.2 item 3: a raw string-equality check flags a full stop ("None" vs
+// "None.") or a spacing difference ("5 mg" vs "5mg") as a must-fix regulated
+// finding. Normalise first — a difference that survives normalisation is a
+// real finding; punctuation/spacing/case is not.
+const normalizeForCompare = (s) =>
+  s.trim().replace(/\s+/g, " ").replace(/[.,;:!?]+$/g, "").toLowerCase();
+
+const NUMBER_UNIT_RE = /^(-?\d+(?:\.\d+)?)\s*([a-z/%µμ]*)$/;
+
+const parseNumberUnit = (s) => {
+  const m = normalizeForCompare(s).match(NUMBER_UNIT_RE);
+  return m ? { value: parseFloat(m[1]), unit: m[2] } : null;
+};
+
+// True when two label-facing strings mean the same thing: same text after
+// normalisation, or the same number+unit regardless of spacing/decimal form
+// (5 mg == 5mg == 5.0 mg).
+const valuesMatch = (a, b) => {
+  const na = normalizeForCompare(a);
+  const nb = normalizeForCompare(b);
+  if (na === nb) return true;
+  const pa = parseNumberUnit(a);
+  const pb = parseNumberUnit(b);
+  return !!pa && !!pb && pa.unit === pb.unit && Math.abs(pa.value - pb.value) < 1e-9;
+};
+
+// FieldVerdict.whySource (§UI redesign item 1): what the user is being told
+// to TRUST — deliberately not the same axis as `comparison`. A regulation
+// stops a shipment; a disagreement with the caller's own catalogue might mean
+// the catalogue is wrong, not the label. Derived from `layer`, not
+// `comparison`: applicability/fieldCatalog verdicts keep comparison:"regulatory"
+// for backward compatibility, but they're an internal completeness heuristic
+// (see fieldCatalog.js's own header), not a sourced country regulation —
+// labeling them "regulation" would imply a citable authority that isn't there.
+const WHY_SOURCE_BY_LAYER = {
+  regulatory_rule: "regulation",
+  semantic: "regulation",
+  applicability: "structure",
+  product_match: "your_data",
+  extraction: "your_data",
+  schema: "structure",
+  coherence: "structure",
+  plausibility: "plausibility",
+};
+
+// FieldVerdict.remediation.confidence (§UI redesign item 2): how much to
+// trust the suggested fix, derived from where it came from. "common_practice"
+// must read as low-confidence and unsourced — never let it masquerade as a
+// verified fix. Also doubles as an enum guard: an unrecognized source is a
+// bug in whichever validator produced it, not something to silently accept.
+const REMEDIATION_CONFIDENCE_BY_SOURCE = {
+  rule: 1,
+  product_row: 1,
+  reference: 0.6,
+  common_practice: 0.3,
+  none: 0,
 };
 
 const RESTRICTED_SUGGESTION_FIELDS = new Set([
@@ -54,10 +112,11 @@ function applyApplicabilityLayer(labelData, schemaVerdicts) {
         comparison: "regulatory",
         ruleKey: null,
         message: null,
+        triggeredBy: null,
         remediation: null,
       };
     }
-    if (verdict.status === "FAIL") return verdict; // a real structural problem outranks "is it required"
+    if (verdict.status === "FAIL") return { ...verdict, triggeredBy: resolved.triggeredBy }; // a real structural problem outranks "is it required"
 
     const value = getPlain(labelData, verdict.path);
     if (isEmptyValue(value)) {
@@ -70,6 +129,9 @@ function applyApplicabilityLayer(labelData, schemaVerdicts) {
         comparison: "regulatory",
         ruleKey: `APPLICABILITY.${verdict.path.toUpperCase()}.REQUIRED`,
         message: resolved.reason || `"${verdict.path}" is required for this product/species.`,
+        triggeredBy: resolved.triggeredBy,
+        observed: null,
+        expected: null,
         remediation: {
           action: "add",
           suggested: null,
@@ -78,7 +140,7 @@ function applyApplicabilityLayer(labelData, schemaVerdicts) {
         },
       };
     }
-    return verdict;
+    return { ...verdict, triggeredBy: resolved.triggeredBy };
   });
 }
 
@@ -125,7 +187,7 @@ function checkProductDataMatch(labelData, product, unconfirmedPaths = new Set())
     const prodStr = extractTextString(productVal);
     if (!prodStr || !labelStr) return;
 
-    if (labelStr.toLowerCase() !== prodStr.toLowerCase()) {
+    if (!valuesMatch(labelStr, prodStr)) {
       verdicts.push({
         path,
         label: { en: labelName, ar: labelName },
@@ -140,6 +202,9 @@ function checkProductDataMatch(labelData, product, unconfirmedPaths = new Set())
         sourceDocumentId: null,
         autoFixable: false,
         suggestion: prodStr,
+        triggeredBy: null,
+        observed: labelStr,
+        expected: prodStr,
         remediation: {
           action: "correct",
           suggested: prodStr,
@@ -287,6 +352,27 @@ export const validate = async (
         verdictCopy.remediation.suggested = null;
       }
     }
+
+    // §UI redesign item 2: every remediation carries a confidence derived from
+    // its source — also doubles as a hard check that no validator emitted an
+    // unrecognized source string.
+    if (verdictCopy.remediation) {
+      const src = verdictCopy.remediation.source;
+      if (!(src in REMEDIATION_CONFIDENCE_BY_SOURCE)) {
+        throw new Error(`validationEngine: remediation.source "${src}" at path "${verdictCopy.path}" is not a recognized value (expected one of ${Object.keys(REMEDIATION_CONFIDENCE_BY_SOURCE).join(", ")}).`);
+      }
+      if (verdictCopy.remediation.confidence === undefined) {
+        verdictCopy.remediation.confidence = REMEDIATION_CONFIDENCE_BY_SOURCE[src];
+      }
+    }
+
+    // §UI redesign item 1: whySource + defaults for the new discriminant fields.
+    if (!verdictCopy.whySource) {
+      verdictCopy.whySource = WHY_SOURCE_BY_LAYER[verdictCopy.layer] || "structure";
+    }
+    if (verdictCopy.triggeredBy === undefined) verdictCopy.triggeredBy = null;
+    if (verdictCopy.observed === undefined) verdictCopy.observed = null;
+    if (verdictCopy.expected === undefined) verdictCopy.expected = null;
 
     return verdictCopy;
   });

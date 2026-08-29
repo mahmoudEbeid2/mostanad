@@ -4,16 +4,23 @@ post:
   summary: General PDF or image drug label compliance verification
   description: >-
     Upload an animal feed, supplement, or veterinary drug PDF/image label.
-    The system extracts product metadata via Gemini, searches the database
-    globally for matching/alternative products, and runs the same
-    deterministic validation engine used by the label-generation pipeline
-    (§4.2 engine unification) — **always with an empty ruleset**
-    (`rulesetIds` is always `[]`; unlike `POST /labels/{id}/validate`, this
-    endpoint is not country/rule aware yet). **Always asynchronous**: returns
-    202 immediately with a `jobId`; poll `GET /background-tasks/{jobId}`
-    (`pending` → `processing` → `completed`|`failed`) for the result. This
-    replaces the old synchronous AI-judged shape this endpoint used to
-    return directly — see API-CHANGES.md Phase 2.
+    The system extracts product metadata via Gemini, matches it against the
+    caller's own products only (tenant-scoped weighted similarity — never a
+    global search across tenants), and runs the same deterministic validation
+    engine used by the label-generation pipeline (§4.2 engine unification),
+    including the caller-country's approved regulatory ruleset if one exists.
+    If no approved ruleset exists for the country, regulatory verdicts are
+    `UNVERIFIABLE` (`validation.regulatoryStatus.status`), never silently
+    treated as passing. Product matching returns one of three states, never
+    a silent substitute: `matched` (high confidence, same product —
+    `data_mismatch` verdicts are meaningful), `similar` (a different product;
+    zero `data_mismatch` verdicts, surfaced only as information via
+    `productMatchStatus`), or `none` (no candidate — regulations/coherence
+    only). **Always asynchronous**: returns 202 immediately with
+    a `jobId`; poll `GET /background-tasks/{jobId}` (`pending` → `processing`
+    → `completed`|`failed`) for the result. This replaces the old synchronous
+    AI-judged shape this endpoint used to return directly — see
+    API-CHANGES.md Phase 2.
   requestBody:
     required: true
     content:
@@ -64,6 +71,39 @@ post:
     schema:
       type: object
       properties:
+        regulatoryStatus:
+          type: object
+          description: Top-level, not buried under the detailed verdict list (§14.5.4).
+          properties:
+            status:
+              type: string
+              enum: [CHECKED, UNVERIFIABLE]
+            rulesetCount:
+              type: integer
+            message:
+              type: string
+              nullable: true
+        productMatchStatus:
+          type: object
+          description: The state, the candidate, and the score — so the UI can show the match and let the user correct it (§14.5.1 item 4).
+          properties:
+            state:
+              type: string
+              enum: [matched, similar, none]
+            tier:
+              type: string
+              description: The similarity.js tier that produced this state, e.g. "name_exact", "exact_combo", "ingredient", "attribute", "style_only", "none".
+            score:
+              type: number
+              description: The weighted-similarity finalScore (0-1) behind the match, for the UI to show alongside the candidate.
+            candidate:
+              type: object
+              nullable: true
+              description: The matched/similar product row, or null for "none". Same object as product.dbProduct.
+            message:
+              type: string
+              nullable: true
+              description: Set for "similar" ("closest match, not the same product") and "none" ("no matching product found"); null for "matched".
         product:
           type: object
           properties:
@@ -74,6 +114,9 @@ post:
               type: boolean
             isExactMatch:
               type: boolean
+            matchState:
+              type: string
+              enum: [matched, similar, none]
             dbProduct:
               type: object
               nullable: true

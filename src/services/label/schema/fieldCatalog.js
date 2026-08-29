@@ -35,46 +35,63 @@ export const isMultiDose = (packaging) => {
   return values.some((v) => MULTI_DOSE_HINTS.some((hint) => v.includes(hint)));
 };
 
+// describeTrigger(l): a plain-words statement of WHAT about this specific
+// label satisfied appliesWhen — e.g. "this label lists poultry and calves,
+// which are food-producing". Only called when appliesWhen(l) is true. Feeds
+// FieldVerdict.triggeredBy so the user sees why a conditional rule fired on
+// their label, not just that one did.
 export const fieldCatalog = {
   withdrawalPeriod: {
     severity: "error",
     appliesWhen: (l) => (l.targetAnimalSpecies?.list || []).some(isFoodProducingSpecies),
     reason: "Withdrawal period is mandatory for food-producing species.",
+    describeTrigger: (l) => {
+      const matched = (l.targetAnimalSpecies?.list || []).filter(isFoodProducingSpecies);
+      if (matched.length === 0) return null;
+      return `this label lists ${matched.join(", ")}, which ${matched.length > 1 ? "are" : "is"} food-producing`;
+    },
   },
   routeOfAdministration: {
     severity: "error",
     appliesWhen: (l) => l.productType === "veterinary_drug",
     reason: "Route of administration is mandatory for veterinary drugs.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}"`,
   },
   pharmaceuticalForm: {
     severity: "error",
     appliesWhen: (l) => l.productType === "veterinary_drug",
     reason: "Pharmaceutical form is mandatory for veterinary drugs.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}"`,
   },
   strength: {
     severity: "error",
     appliesWhen: (l) => l.productType === "veterinary_drug",
     reason: "Strength is mandatory for veterinary drugs.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}"`,
   },
   sideEffects: {
     severity: "warning",
     appliesWhen: (l) => l.productType === "veterinary_drug",
     reason: "Side effects should be stated for veterinary drugs.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}"`,
   },
   feedClassification: {
     severity: "error",
     appliesWhen: (l) => ["feed_additive", "premix", "supplement", "compound_feed"].includes(l.productType),
     reason: "Feed classification is mandatory for feed-type products.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}", a feed-type product`,
   },
   analysis: {
     severity: "warning",
     appliesWhen: (l) => ["feed_additive", "premix", "compound_feed"].includes(l.productType),
     reason: "A nutrient/analysis panel is expected for this product type.",
+    describeTrigger: (l) => `this label's product type is "${l.productType}", a feed-type product`,
   },
   shelfLifeAfterOpening: {
     severity: "warning",
     appliesWhen: (l) => isMultiDose(l.packaging),
     reason: "Multi-dose packaging should state shelf life after opening.",
+    describeTrigger: () => "this label's packaging reads as multi-dose (bottle/vial/container/bag/drum)",
   },
 };
 
@@ -85,5 +102,11 @@ export const fieldCatalog = {
 export const resolveApplicability = (path, labelData) => {
   const entry = fieldCatalog[path];
   if (!entry) return null;
-  return { applies: entry.appliesWhen(labelData), severity: entry.severity, reason: entry.reason };
+  const applies = entry.appliesWhen(labelData);
+  return {
+    applies,
+    severity: entry.severity,
+    reason: entry.reason,
+    triggeredBy: applies && entry.describeTrigger ? entry.describeTrigger(labelData) : null,
+  };
 };

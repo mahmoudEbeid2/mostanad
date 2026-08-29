@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { prisma } from "../../../lib/prisma.js";
 import AppError from "../../../utils/appError.js";
 import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
+import { matchProduct } from "../retrieval/productMatcher.js";
 
 // labelExtractor — EXTRACTION ONLY (§4.2). Was labelService.verifyProductLabel's
 // Steps 1-2. No compliance judgement is made here — that violates Invariant #1
@@ -80,6 +80,26 @@ function mapToLabelData(extracted, country) {
   };
 }
 
+// §14.5's item 5 fix: always emits meta for target species, even when the
+// model read nothing. Previously the extractionMeta.targetAnimalSpecies entry
+// was only built when the list was non-empty, so a failed pictogram read fell
+// straight through to mapToLabelData's ["Unknown"] fallback with NO
+// extractionMeta entry at all — invisible to checkExtractionConfidence, so a
+// required field the extractor could not read silently looked like a normal
+// PASS instead of NEEDS_CONFIRMATION. Exported for direct unit testing.
+export function buildSpeciesExtractionMeta(extracted) {
+  const speciesList = Array.isArray(extracted.targetAnimalSpeciesList) ? extracted.targetAnimalSpeciesList : [];
+  const speciesMeta = extracted.extractionMeta?.targetAnimalSpeciesList;
+  const found = speciesList.length > 0;
+  return {
+    confidence: found ? (speciesMeta?.confidence ?? 0.95) : 0,
+    snippet: found ? speciesList.join(", ") : "No species text or pictogram was read from the label.",
+    bbox: null,
+    region: speciesMeta?.region ?? null,
+    ambiguous: found ? (speciesMeta?.ambiguous ?? false) : true,
+  };
+}
+
 async function callGeminiWithRetry(parts, label = "Gemini") {
   const modelSpec = MODELS.EXTRACT;
   try {
@@ -102,42 +122,15 @@ function parseGeminiJson(raw) {
   return JSON.parse(clean.trim());
 }
 
-async function findDbMatch(extractedName, extractedIngredients) {
-  let dbProduct = null;
-  let isExactMatch = false;
-
-  if (extractedName) {
-    dbProduct = await prisma.product.findFirst({
-      where: { name: { equals: extractedName, mode: "insensitive" } },
-      orderBy: { createdAt: "desc" },
-      include: { category: true, brand: true },
-    });
-    if (dbProduct) isExactMatch = true;
-  }
-
-  if (!dbProduct && extractedIngredients.length > 0) {
-    const ingredientNames = extractedIngredients.map((i) => (i.name || "").toLowerCase());
-    const candidates = await prisma.product.findMany({
-      where: { activeIngredients: { not: null } },
-      orderBy: { createdAt: "desc" },
-      include: { category: true, brand: true },
-    });
-    dbProduct = candidates.find((p) =>
-      Array.isArray(p.activeIngredients) && p.activeIngredients.some((ing) => ingredientNames.includes((ing.name || "").toLowerCase()))
-    ) || null;
-  }
-
-  return { dbProduct, isExactMatch: !!dbProduct && isExactMatch, existsInDb: !!dbProduct };
-}
-
 /**
  * Extracts a labelSchema-shaped labelData object from an uploaded label file,
  * plus supplementary (non-judgemental) DB match context. Makes exactly one AI
- * call — no compliance/validation reasoning happens here. Extraction itself has
- * no tenant concept (a label's content doesn't depend on who uploaded it), so
- * there is no companyId parameter here.
+ * call — no compliance/validation reasoning happens here. Extraction of the
+ * label's content has no tenant concept, but matching it against a Product
+ * row does (§14.5.1, Invariant #10) — companyId is threaded through only for
+ * that step, never to change what gets extracted from the file.
  */
-export const extract = async (fileBuffer, fileName, mimeType, country, onProgress) => {
+export const extract = async (fileBuffer, fileName, mimeType, country, companyId, onProgress) => {
   if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
@@ -165,6 +158,7 @@ export const extract = async (fileBuffer, fileName, mimeType, country, onProgres
         productType: "feed_additive",
         activeIngredients: [{ name: "Olive Leaves", concentration: "10%" }, { name: "Sorbitol", concentration: "5%" }],
         targetAnimalSpeciesList: ["Poultry"],
+        extractionMeta: { targetAnimalSpeciesList: { confidence: 0.9, ambiguous: false } },
         aimOfUse: "Immune support and stress relief.",
         directionOfUse: "1-2 ml per Litre",
         storage: "Store below 25C",
@@ -191,7 +185,17 @@ export const extract = async (fileBuffer, fileName, mimeType, country, onProgres
       const extractPrompt = `
 You are extracting the content of a veterinary/animal-feed product label — EXTRACTION ONLY.
 Do not judge compliance, do not compare against any regulation, do not decide pass/fail.
-Return ONLY a raw JSON object with whatever of these fields the label visibly states (use null for anything not stated — do not guess or invent):
+
+Read the WHOLE label, not just body text: target species are very often shown as
+PICTOGRAMS/ICONS (e.g. chicken, cattle, sheep, horse, camel) printed across the top
+of the label or elsewhere in the artwork, not written out as words. Identify every
+species icon you can see and list the species it depicts in "targetAnimalSpeciesList" —
+do not limit yourself to species mentioned in running text. Also read any other
+information conveyed through package artwork/graphics (tables, diagrams, warning
+symbols), not only paragraph text.
+
+Return ONLY a raw JSON object with whatever of these fields the label visibly states
+(use null for anything not stated — do not guess or invent):
 {
   "productName": "string or null",
   "productType": "one of veterinary_drug|feed_additive|premix|supplement|compound_feed — your best reading of the label, or null",
@@ -212,7 +216,14 @@ Return ONLY a raw JSON object with whatever of these fields the label visibly st
   "importer": "string or null",
   "batchNo": "string or null",
   "productionDate": "string or null",
-  "expiryDate": "string or null"
+  "expiryDate": "string or null",
+  "extractionMeta": {
+    "targetAnimalSpeciesList": {
+      "confidence": "number 0-1 — how sure you are you found EVERY species shown (icons included); 0 if you saw no species text or icons at all",
+      "ambiguous": "boolean — true if any icon/text was unclear or you are not confident the list is complete",
+      "region": "string or null — brief description of where on the label you read species from, e.g. 'pictogram row, top of label'"
+    }
+  }
 }
 Do not include markdown formatting.
       `.trim();
@@ -222,8 +233,7 @@ Do not include markdown formatting.
     }
 
     reportProgress(70, "Searching database");
-    const extractedIngredients = Array.isArray(extracted.activeIngredients) ? extracted.activeIngredients : [];
-    const { dbProduct, isExactMatch, existsInDb } = await findDbMatch((extracted.productName || "").trim(), extractedIngredients);
+    const { dbProduct, isExactMatch, existsInDb, matchState, matchTier, matchScore } = await matchProduct(extracted, country, companyId);
 
     let safeDbProduct = null;
     if (dbProduct) {
@@ -261,16 +271,13 @@ Do not include markdown formatting.
         ambiguous: false,
       };
     }
-    if (extracted.targetAnimalSpeciesList && extracted.targetAnimalSpeciesList.length > 0) {
-      extractionMeta.targetAnimalSpecies = {
-        confidence: extracted.extractionMeta?.targetAnimalSpecies?.confidence ?? 0.95,
-        snippet: extracted.targetAnimalSpeciesList.join(", "),
-        bbox: null,
-        ambiguous: false,
-      };
-    }
+    extractionMeta.targetAnimalSpecies = buildSpeciesExtractionMeta(extracted);
 
-    return { labelData, extractionMeta, dbMatch: { existsInDb, isExactMatch, dbProduct: safeDbProduct } };
+    return {
+      labelData,
+      extractionMeta,
+      dbMatch: { existsInDb, isExactMatch, dbProduct: safeDbProduct, matchState, matchTier, matchScore },
+    };
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(`Failed to extract label: ${error.message}`, 500);

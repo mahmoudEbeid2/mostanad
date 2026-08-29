@@ -67,7 +67,7 @@ function buildVerdict(path, message, { plausibilitySource, citation = null, sour
     sourceUrl,
     plausibilitySource,
     autoFixable: false,
-    remediation: { action: "review", suggested: null, source: null },
+    remediation: { action: "review", suggested: null, source: "none", sourceRef: null },
   };
 }
 

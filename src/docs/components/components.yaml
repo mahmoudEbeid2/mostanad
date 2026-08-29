@@ -1417,8 +1417,33 @@ components:
           enum: [error, warning]
         layer:
           type: string
-          enum: [schema, applicability, regulatory_rule, coherence, semantic]
+          enum: [schema, applicability, regulatory_rule, coherence, semantic, product_match, extraction, plausibility]
           description: Which validation layer produced this verdict.
+        comparison:
+          type: string
+          enum: [regulatory, data_mismatch, coherence, plausibility]
+          description: What was compared against what (§14.5.1) — label-vs-rules, label-vs-product, label-vs-itself, or label-vs-external-knowledge.
+        whySource:
+          type: string
+          enum: [regulation, your_data, structure, plausibility]
+          description: >-
+            What the user is being told to trust — NOT the same axis as `comparison`.
+            A regulation stops a shipment; a disagreement with the caller's own
+            catalogue ("your_data") might mean the catalogue is wrong, not the label.
+            "structure" covers both internal label coherence and internal
+            completeness heuristics (fieldCatalog) that aren't a citable regulation.
+        triggeredBy:
+          type: string
+          nullable: true
+          description: For a conditional rule/field requirement, the condition in plain words, e.g. "this label lists poultry and calves, which are food-producing". Null when the verdict isn't conditional.
+        observed:
+          type: string
+          nullable: true
+          description: For a data_mismatch verdict, the value found on the label. Null otherwise.
+        expected:
+          type: string
+          nullable: true
+          description: For a data_mismatch verdict, the value on the matched product record. Null otherwise.
         ruleKey:
           type: string
           nullable: true
@@ -1429,25 +1454,56 @@ components:
         citation:
           type: string
           nullable: true
-          description: Only ever set for layer "regulatory_rule" — verbatim quote from the source document.
+          description: Populated on every whySource:"regulation" FAIL/WARN verdict — verbatim quote from the source document. A regulation verdict without one is a bug (rejected upstream at rule ingestion, Invariant #4).
         sourceDocumentId:
           type: string
           nullable: true
-          description: Only ever set for layer "regulatory_rule".
+          description: Only ever set for layer "regulatory_rule"/"semantic".
         autoFixable:
           type: boolean
         suggestion:
           type: string
           nullable: true
           description: Reserved — never populated by any code path as of Phase 9.
+        remediation:
+          type: object
+          nullable: true
+          description: Set on every FAIL verdict (§14.5.5). Never set on a restricted field (withdrawalPeriod, strength, registrationNumber, activeIngredients) unless source is "rule" or "product_row".
+          properties:
+            action:
+              type: string
+              enum: [add, correct, review]
+            suggested:
+              type: string
+              nullable: true
+              description: A concrete replacement value. Always null for the restricted fields unless source is "rule" or "product_row" — never a guess.
+            source:
+              type: string
+              enum: [rule, product_row, reference, common_practice, none]
+              description: >-
+                Where the fix came from. "common_practice" is an unsourced,
+                low-confidence convention — the UI must mark it as unverified,
+                never present it as a sourced fix. "none" means "this is wrong
+                and there is no sourced fix" — legitimate, preferred over inventing one.
+            sourceRef:
+              type: object
+              nullable: true
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: "How much to trust `suggested`, derived from `source`: rule/product_row=1, reference=0.6, common_practice=0.3, none=0."
 
     ValidationReport:
       type: object
       description: >-
         The deterministic validation engine's output (§10.2). Returned by
         `POST /labels/:id/validate`, `GET /labels/:id/validation`, embedded
-        in chat/patch/restore/replay responses, and (with `rulesetIds`
-        always `[]`) by `POST /products/verify-label`.
+        in chat/patch/restore/replay responses, and by `POST
+        /products/verify-label` (which resolves the same country-scoped
+        approved ruleset generation uses — `rulesetIds` is empty only when no
+        ruleset is approved for that country, see `regulatoryStatus` on the
+        verify-label response).
       properties:
         id:
           type: string
@@ -1479,7 +1535,7 @@ components:
           type: array
           items:
             type: string
-          description: IDs of the approved RegulatoryRule rows applied. Empty for POST /products/verify-label, which always validates with no rules.
+          description: IDs of the approved RegulatoryRule rows applied. Empty when no approved ruleset exists for the resolved country.
         aiAssisted:
           type: boolean
           description: Always false as of Phase 9 — reserved for the semantic (AI) validation layer, not yet wired in.

@@ -7,7 +7,9 @@ import { addLabelJob } from "../lib/queue.js";
 /**
  * POST /products/verify-label
  * Upload a PDF or image label and verify compliance against country regulations.
- * Searches globally across all products in the DB — no company scope needed.
+ * Product matching (§14.5.1) is tenant-scoped: a company caller always matches
+ * against its own products, never a caller-supplied companyId — otherwise any
+ * authenticated company could point this endpoint at another tenant's catalog.
  */
 export const verifyLabel = catchAsync(async (req, res, next) => {
   if (!req.file) {
@@ -19,7 +21,7 @@ export const verifyLabel = catchAsync(async (req, res, next) => {
     return next(new AppError("Target country is required!", 400));
   }
 
-  const companyId = req.query.companyId || req.body.companyId || (req.company && req.company.id) || null;
+  const companyId = req.company ? req.company.id : (req.query.companyId || req.body.companyId || null);
 
   // 1. Save uploaded file to temp storage
   const filePath = saveTempFile(req.file.buffer, req.file.originalname);

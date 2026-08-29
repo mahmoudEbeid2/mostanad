@@ -748,7 +748,7 @@ paths:
       tags:
         - Label Verification
       summary: General PDF or image drug label compliance verification
-      description: 'Upload an animal feed, supplement, or veterinary drug PDF/image label. The system extracts product metadata via Gemini, searches the database globally for matching/alternative products, and runs the same deterministic validation engine used by the label-generation pipeline (§4.2 engine unification) — **always with an empty ruleset** (`rulesetIds` is always `[]`; unlike `POST /labels/{id}/validate`, this endpoint is not country/rule aware yet). **Always asynchronous**: returns 202 immediately with a `jobId`; poll `GET /background-tasks/{jobId}` (`pending` → `processing` → `completed`|`failed`) for the result. This replaces the old synchronous AI-judged shape this endpoint used to return directly — see API-CHANGES.md Phase 2.'
+      description: 'Upload an animal feed, supplement, or veterinary drug PDF/image label. The system extracts product metadata via Gemini, matches it against the caller''s own products only (tenant-scoped weighted similarity — never a global search across tenants), and runs the same deterministic validation engine used by the label-generation pipeline (§4.2 engine unification), including the caller-country''s approved regulatory ruleset if one exists. If no approved ruleset exists for the country, regulatory verdicts are `UNVERIFIABLE` (`validation.regulatoryStatus.status`), never silently treated as passing. Product matching returns one of three states, never a silent substitute: `matched` (high confidence, same product — `data_mismatch` verdicts are meaningful), `similar` (a different product; zero `data_mismatch` verdicts, surfaced only as information via `productMatchStatus`), or `none` (no candidate — regulations/coherence only). **Always asynchronous**: returns 202 immediately with a `jobId`; poll `GET /background-tasks/{jobId}` (`pending` → `processing` → `completed`|`failed`) for the result. This replaces the old synchronous AI-judged shape this endpoint used to return directly — see API-CHANGES.md Phase 2.'
       requestBody:
         required: true
         content:
@@ -799,6 +799,44 @@ paths:
         schema:
           type: object
           properties:
+            regulatoryStatus:
+              type: object
+              description: Top-level, not buried under the detailed verdict list (§14.5.4).
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - CHECKED
+                    - UNVERIFIABLE
+                rulesetCount:
+                  type: integer
+                message:
+                  type: string
+                  nullable: true
+            productMatchStatus:
+              type: object
+              description: The state, the candidate, and the score — so the UI can show the match and let the user correct it (§14.5.1 item 4).
+              properties:
+                state:
+                  type: string
+                  enum:
+                    - matched
+                    - similar
+                    - none
+                tier:
+                  type: string
+                  description: The similarity.js tier that produced this state, e.g. "name_exact", "exact_combo", "ingredient", "attribute", "style_only", "none".
+                score:
+                  type: number
+                  description: The weighted-similarity finalScore (0-1) behind the match, for the UI to show alongside the candidate.
+                candidate:
+                  type: object
+                  nullable: true
+                  description: The matched/similar product row, or null for "none". Same object as product.dbProduct.
+                message:
+                  type: string
+                  nullable: true
+                  description: Set for "similar" ("closest match, not the same product") and "none" ("no matching product found"); null for "matched".
             product:
               type: object
               properties:
@@ -809,6 +847,12 @@ paths:
                   type: boolean
                 isExactMatch:
                   type: boolean
+                matchState:
+                  type: string
+                  enum:
+                    - matched
+                    - similar
+                    - none
                 dbProduct:
                   type: object
                   nullable: true
@@ -5359,7 +5403,38 @@ components:
             - regulatory_rule
             - coherence
             - semantic
+            - product_match
+            - extraction
+            - plausibility
           description: Which validation layer produced this verdict.
+        comparison:
+          type: string
+          enum:
+            - regulatory
+            - data_mismatch
+            - coherence
+            - plausibility
+          description: What was compared against what (§14.5.1) — label-vs-rules, label-vs-product, label-vs-itself, or label-vs-external-knowledge.
+        whySource:
+          type: string
+          enum:
+            - regulation
+            - your_data
+            - structure
+            - plausibility
+          description: What the user is being told to trust — NOT the same axis as `comparison`. A regulation stops a shipment; a disagreement with the caller's own catalogue ("your_data") might mean the catalogue is wrong, not the label. "structure" covers both internal label coherence and internal completeness heuristics (fieldCatalog) that aren't a citable regulation.
+        triggeredBy:
+          type: string
+          nullable: true
+          description: For a conditional rule/field requirement, the condition in plain words, e.g. "this label lists poultry and calves, which are food-producing". Null when the verdict isn't conditional.
+        observed:
+          type: string
+          nullable: true
+          description: For a data_mismatch verdict, the value found on the label. Null otherwise.
+        expected:
+          type: string
+          nullable: true
+          description: For a data_mismatch verdict, the value on the matched product record. Null otherwise.
         ruleKey:
           type: string
           nullable: true
@@ -5370,20 +5445,52 @@ components:
         citation:
           type: string
           nullable: true
-          description: Only ever set for layer "regulatory_rule" — verbatim quote from the source document.
+          description: Populated on every whySource:"regulation" FAIL/WARN verdict — verbatim quote from the source document. A regulation verdict without one is a bug (rejected upstream at rule ingestion, Invariant
         sourceDocumentId:
           type: string
           nullable: true
-          description: Only ever set for layer "regulatory_rule".
+          description: Only ever set for layer "regulatory_rule"/"semantic".
         autoFixable:
           type: boolean
         suggestion:
           type: string
           nullable: true
           description: Reserved — never populated by any code path as of Phase 9.
+        remediation:
+          type: object
+          nullable: true
+          description: Set on every FAIL verdict (§14.5.5). Never set on a restricted field (withdrawalPeriod, strength, registrationNumber, activeIngredients) unless source is "rule" or "product_row".
+          properties:
+            action:
+              type: string
+              enum:
+                - add
+                - correct
+                - review
+            suggested:
+              type: string
+              nullable: true
+              description: A concrete replacement value. Always null for the restricted fields unless source is "rule" or "product_row" — never a guess.
+            source:
+              type: string
+              enum:
+                - rule
+                - product_row
+                - reference
+                - common_practice
+                - none
+              description: Where the fix came from. "common_practice" is an unsourced, low-confidence convention — the UI must mark it as unverified, never present it as a sourced fix. "none" means "this is wrong and there is no sourced fix" — legitimate, preferred over inventing one.
+            sourceRef:
+              type: object
+              nullable: true
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: 'How much to trust `suggested`, derived from `source`: rule/product_row=1, reference=0.6, common_practice=0.3, none=0.'
     ValidationReport:
       type: object
-      description: The deterministic validation engine's output (§10.2). Returned by `POST /labels/:id/validate`, `GET /labels/:id/validation`, embedded in chat/patch/restore/replay responses, and (with `rulesetIds` always `[]`) by `POST /products/verify-label`.
+      description: The deterministic validation engine's output (§10.2). Returned by `POST /labels/:id/validate`, `GET /labels/:id/validation`, embedded in chat/patch/restore/replay responses, and by `POST /products/verify-label` (which resolves the same country-scoped approved ruleset generation uses — `rulesetIds` is empty only when no ruleset is approved for that country, see `regulatoryStatus` on the verify-label response).
       properties:
         id:
           type: string
@@ -5415,7 +5522,7 @@ components:
           type: array
           items:
             type: string
-          description: IDs of the approved RegulatoryRule rows applied. Empty for POST /products/verify-label, which always validates with no rules.
+          description: IDs of the approved RegulatoryRule rows applied. Empty when no approved ruleset exists for the resolved country.
         aiAssisted:
           type: boolean
           description: Always false as of Phase 9 — reserved for the semantic (AI) validation layer, not yet wired in.

@@ -51,6 +51,32 @@ function evaluateWhen(labelData, when) {
   throw new Error(`ruleValidator: unsupported "when" shape for path "${when.path}" — no anyOf given.`);
 }
 
+// FieldVerdict.triggeredBy (§UI redesign item 1): the condition that made a
+// conditional rule apply to THIS label, in plain words — "today the user sees
+// a rule fired but not why it applied to them". Only meaningful for `anyOf`
+// conditions (the only "when" shape this engine supports); returns null when
+// it can't produce a real match list rather than a vague restatement.
+function describeWhen(labelData, when) {
+  const { value } = resolvePath(labelData, when.path)[0];
+  if (!when.anyOf) return null;
+  const list = Array.isArray(value) ? value : [value];
+  const matched = list.filter((v) => when.anyOf.some((expected) => (v || "").toString().toLowerCase() === expected.toLowerCase()));
+  if (matched.length === 0) return null;
+  return `this label's "${when.path}" includes ${matched.join(", ")}`;
+}
+
+function ruleTriggeredBy(labelData, rule) {
+  if (rule.appliesWhen) {
+    const d = describeWhen(labelData, rule.appliesWhen);
+    if (d) return d;
+  }
+  if (rule.constraint?.kind === "conditional" && rule.constraint.when) {
+    const d = describeWhen(labelData, rule.constraint.when);
+    if (d) return d;
+  }
+  return null;
+}
+
 // Evaluates one constraint payload against labelData, returning [{path, ok, message}].
 // Throws on an unrecognized "kind" — an unsupported DSL parameter is a hard error,
 // never a silent skip (§7.3's own rule).
@@ -153,6 +179,7 @@ export const run = (labelData, rules = []) => {
   const verdicts = [];
   for (const rule of rules) {
     if (rule.appliesWhen && !evaluateWhen(labelData, rule.appliesWhen)) continue;
+    const triggeredBy = ruleTriggeredBy(labelData, rule);
 
     const results = evaluateConstraint(labelData, rule.constraint);
     for (const r of results) {
@@ -162,6 +189,7 @@ export const run = (labelData, rules = []) => {
           severity: rule.severity, layer: "semantic", comparison: "regulatory", ruleKey: rule.ruleKey,
           message: "Semantic check deferred to AI validator (Phase 5).", citation: rule.citation,
           sourceDocumentId: rule.documentId || null, autoFixable: false, suggestion: null,
+          triggeredBy, observed: null, expected: null,
           remediation: null,
         });
         continue;
@@ -182,6 +210,9 @@ export const run = (labelData, rules = []) => {
         sourceDocumentId: rule.documentId || null,
         autoFixable: rule.autoFixable || false,
         suggestion: null,
+        triggeredBy,
+        observed: null,
+        expected: null,
         remediation: isFail ? {
           action: r.presence === "MISSING" ? "add" : "correct",
           suggested: null,
