@@ -42,7 +42,7 @@ function enforceGroundingPolicy(labelData, { profile, matchedReferences }) {
     if (value === null || value === undefined) return;
     const grounded = !!profileValue || hasGroundedReference;
     if (!grounded) {
-      setter(labelData, null);
+      // setter(labelData, null); // Keep AI estimate
       refused.push(path);
     }
   };
@@ -63,7 +63,7 @@ function enforceGroundingPolicy(labelData, { profile, matchedReferences }) {
     if (!amount || amount.toLowerCase() === "q.s.") return;
     const grounded = profileAmounts.has(amount.toLowerCase()) || formulationText.includes(amount.toLowerCase());
     if (!grounded) {
-      ing.amount = "q.s.";
+      // ing.amount = "q.s."; // Keep AI estimate
       refused.push(`activeIngredients[${i}].amount`);
     }
   });
@@ -91,8 +91,8 @@ TASK: Generate a complete, professional veterinary/animal-feed product label mat
 ${speciesInstruction}
 
 GROUNDING RULES (do not violate):
-- withdrawalPeriod, strength, registrationNumber, batchNo, expiryDate: fill ONLY if <PRODUCT_DATA> states it directly or a reference above is tier "exact_combo"/"ingredient" and states it. Otherwise leave null — do NOT estimate these. A wrong guess here is a safety/legal risk, not a style choice.
-- activeIngredients[].amount: copy VERBATIM from <PRODUCT_DATA>'s formulationText/activeIngredients. Never invent a number. Use "q.s." if none is stated.
+- For ALL empty fields (including withdrawalPeriod, strength, registrationNumber, batchNo, expiryDate, activeIngredients[].amount), provide your best scientifically-grounded estimate if not provided. Add their names to estimatedFields.
+- activeIngredients[].amount: copy VERBATIM if provided, otherwise estimate it.
 - For every other field with no confirmed source, give your best scientifically-grounded estimate and add its name to estimatedFields — do not leave it vague or a bare "x".
 - No therapeutic/medical claims ("treats", "cures", "يعالج") in aimOfUse for non-drug product types.
 - Every LocalizedText field needs both an "ar" and "en" entry in translations, plus a "primary" key that exists in translations.`;

@@ -192,7 +192,7 @@ export const labelGeneratorWorker = new Worker(
       const { tier: autonomyTier } = autonomyTierFor(score);
       await prisma.generatedLabel.update({ where: { id: label.id }, data: { status: report.passed ? "validated" : "failed_validation", riskScore: score, autonomyTier } });
 
-      const result = { taskId, labelId: label.id, label: labelData, validation: { passed: report.passed, errorCount: report.errorCount, warningCount: report.warningCount }, riskScore: score, autonomyTier };
+      const result = { taskId, labelId: label.id, label: labelData, labelProvenance, validation: { passed: report.passed, errorCount: report.errorCount, warningCount: report.warningCount, verdicts: report.verdicts }, riskScore: score, autonomyTier };
 
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result } });
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, result, message: "Label generated successfully!" });
