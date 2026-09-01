@@ -37,7 +37,7 @@ export async function dryRunPatch(currentLabelData, currentReport, patch, { rule
       status: "conflict",
       candidateLabelData,
       report: newReport,
-      wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey, message: v.message, citation: v.citation, path: v.path })),
+      wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey || null, message: v.message || null, citation: v.citation || null, path: v.path || null })),
       options: ["cancel", ...newFailures.map((v) => `apply_and_fix:${v.path}`), "apply_anyway_with_override"],
     };
   }

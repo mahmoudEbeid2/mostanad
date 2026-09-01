@@ -1,14 +1,12 @@
-﻿const { prisma } = require("./src/lib/prisma.js");
-async function run() {
-  const latestLabel = await prisma.generatedLabel.findFirst({
-    orderBy: { createdAt: "desc" },
-    include: { validations: { orderBy: { createdAt: "desc" }, take: 1 } }
-  });
-  if (latestLabel && latestLabel.validations[0]) {
-    const report = latestLabel.validations[0];
-    console.log("Recent Validation Passed:", report.passed, "Errors:", report.errorCount);
-    console.log("Recent Validation Verdicts:", JSON.stringify(report.verdicts.filter(v => v.status === "error" || v.status === "unverifiable"), null, 2));
-  }
-}
-run().then(() => process.exit(0)).catch(e => console.error(e));
+﻿const fs = require("fs");
+const path = "src/services/label/editing/patchApplier.js";
+let content = fs.readFileSync(path, "utf8");
+
+content = content.replace(
+  `wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey, message: v.message, citation: v.citation, path: v.path })),`,
+  `wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey || null, message: v.message || null, citation: v.citation || null, path: v.path || null })),`
+);
+
+fs.writeFileSync(path, content);
+console.log("Fixed undefined in patchApplier.js");
 
