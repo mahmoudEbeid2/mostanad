@@ -293,7 +293,7 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
   } catch (err) {
     throw new AppError(`AI service temporarily unavailable — could not propose an edit: ${err.message}`, 503);
   }
-  const dryRun = dryRunPatch(label.labelData, report, patch, { rules });
+  const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
   if (dryRun.status === "invalid") {
     await saveMessage({ proposedPatch: patch, conflicts: { errors: dryRun.errors } });

@@ -1,12 +1,12 @@
 ﻿const fs = require("fs");
-const path = "src/middleware/errorMiddleware.js";
+const path = "src/services/label/generatedLabelService.js";
 let content = fs.readFileSync(path, "utf8");
 
 content = content.replace(
-  `const message = \`Invalid database input data. Check your fields schema.\`;`,
-  `const message = \`Invalid database input data. Check your fields schema. DETAILS: \${err.message}\`;`
+  `const dryRun = dryRunPatch(label.labelData, report, patch, { rules });`,
+  `const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });`
 );
 
 fs.writeFileSync(path, content);
-console.log("Patched errorMiddleware.js to include details in message");
+console.log("Patched generatedLabelService.js to await dryRunPatch");
 
