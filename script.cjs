@@ -1,12 +1,12 @@
 ﻿const fs = require("fs");
-const path = "src/services/label/editing/patchApplier.js";
+const path = "src/middleware/errorMiddleware.js";
 let content = fs.readFileSync(path, "utf8");
 
 content = content.replace(
-  `wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey, message: v.message, citation: v.citation, path: v.path })),`,
-  `wouldViolate: newFailures.map((v) => ({ ruleKey: v.ruleKey || null, message: v.message || null, citation: v.citation || null, path: v.path || null })),`
+  `const message = \`Invalid database input data. Check your fields schema.\`;`,
+  `const message = \`Invalid database input data. Check your fields schema. DETAILS: \${err.message}\`;`
 );
 
 fs.writeFileSync(path, content);
-console.log("Fixed undefined in patchApplier.js");
+console.log("Patched errorMiddleware.js to include details in message");
 

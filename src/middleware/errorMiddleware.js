@@ -19,7 +19,9 @@ const handlePrismaForeignKeyConstraintError = (err) => {
 };
 
 const handlePrismaValidationError = (err) => {
-  const message = `Invalid database input data. Check your fields schema.`;
+  console.error("PRISMA VALIDATION ERROR INTERCEPTED:", err);
+
+  const message = `Invalid database input data. Check your fields schema. DETAILS: ${err.message}`;
   return new AppError(message, 400);
 };
 
