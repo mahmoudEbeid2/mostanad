@@ -137,11 +137,6 @@ export async function generate({ profile, rankedReferences = [], rules = [] }) {
   const groundedFacts = await resolveGroundedFields({ profile, rankedReferences });
   const contentFields = GROUNDED_CONTENT_FIELDS.filter((f) => f !== "targetAnimalSpecies");
   const unresolvedContentFields = contentFields.filter((f) => !groundedFacts[f]);
-  // directionOfUse/storage are non-nullable in labelSchema (every label needs
-  // some instruction/storage text to be usable) — every other grounded-content
-  // field is nullable/array-default and can genuinely stay empty.
-  const mustStillWrite = unresolvedContentFields.filter((f) => f === "directionOfUse" || f === "storage");
-  const leaveEmpty = unresolvedContentFields.filter((f) => f !== "directionOfUse" && f !== "storage");
 
   const speciesInstruction = resolvedSpeciesList
     ? `targetAnimalSpecies.list MUST be exactly this set (translated), nothing added or dropped: ${resolvedSpeciesList.join(", ")}. Set targetAnimalSpecies.source to "${targetAnimalsSource}".`
@@ -149,7 +144,7 @@ export async function generate({ profile, rankedReferences = [], rules = [] }) {
 
   const groundedFactsBlock = Object.keys(groundedFacts).length === 0
     ? ""
-    : `\nGROUNDED FACTS (§8.2 — Tier 1/2/4/5, already resolved in code, NOT for you to invent):\n${Object.entries(groundedFacts)
+    : `\nGROUNDED FACTS (§8.2 — Tier 1/2/4/5, already resolved in code — treat as CONFIRMED, do not contradict or re-derive):\n${Object.entries(groundedFacts)
         .map(([field, fact]) => `- ${field} (tier ${fact.tier}, ${fact.provenance}): "${fact.value}"`)
         .join("\n")}\nUse this text as the factual content for each named field — translate it faithfully into ar/en, do not alter its meaning, do not add claims it doesn't make.\n`;
 
@@ -160,9 +155,8 @@ TASK: Generate a complete, professional veterinary/animal-feed product label mat
 ${speciesInstruction}
 ${groundedFactsBlock}
 GROUNDING RULES (do not violate):
-- withdrawalPeriod, strength, registrationNumber, batchNo, expiryDate, activeIngredients[].amount: use ONLY a confirmed value (product data above) or a matched reference. If none exists, leave the field null (or "q.s." for activeIngredients[].amount) — do NOT estimate a number or ID. These are never guessed, no matter how standard they seem.
-${leaveEmpty.length > 0 ? `- ${leaveEmpty.join(", ")}: no confirmed source, matched reference, or citable authoritative source exists for these. Leave each as null (or an empty array, per its schema type) — do NOT guess from general knowledge, and do NOT add them to estimatedFields.` : ""}
-${mustStillWrite.length > 0 ? `- ${mustStillWrite.join(", ")}: these are required fields with no confirmed/reference/cited source. Write brief, generic, non-product-specific safe-practice guidance ONLY (do not invent a specific number, temperature, or claim), and add their names to estimatedFields.` : ""}
+- withdrawalPeriod, strength, registrationNumber, batchNo, expiryDate, activeIngredients[].amount, shelfLifeAfterOpening: use ONLY a confirmed value (product data above) or a matched reference. If none exists, leave the field null (or "q.s." for activeIngredients[].amount) — do NOT estimate a number or ID, even a "typical" one. These few fields are never guessed, no matter how standard they seem — a wrong number here is a safety/forgery risk, not a stylistic gap.
+${unresolvedContentFields.length > 0 ? `- ${unresolvedContentFields.join(", ")}: no confirmed source, matched reference, or citable authoritative source exists for these. You MAY still fill them with your own reliable inference from the product's active ingredient(s), dosage form, product type, and species — this is expected, not discouraged. Base it on real pharmacological/regulatory knowledge for this ingredient class, not a vague placeholder. Add every field you filled this way to estimatedFields so it gets human review. If you genuinely cannot form a reliable inference (e.g. active ingredient is unclear), leave it null/empty rather than inventing something baseless.` : ""}
 - For purely stylistic/presentational fields with no confirmed source (e.g. productName phrasing, packaging wording, usageDeclaration boilerplate), give your best draft and add its name to estimatedFields — this class of field carries no regulatory-fact risk.
 - No therapeutic/medical claims ("treats", "cures", "يعالج") in aimOfUse for non-drug product types.
 - Every LocalizedText field needs both an "ar" and "en" entry in translations, plus a "primary" key that exists in translations.`;
@@ -193,20 +187,21 @@ ${mustStillWrite.length > 0 ? `- ${mustStillWrite.join(", ")}: these are require
 
   const refusedFields = enforceGroundingPolicy(labelData, { profile, matchedReferences: rankedReferences });
 
-  // Backstop for GROUNDED_CONTENT_FIELDS that had no Tier 1/2/4/5 source: the
-  // model was instructed to leave these empty rather than guess, but a prompt
-  // instruction is not a guarantee — enforce it in code the same way
-  // enforceGroundingPolicy backstops NEVER_GUESS_FIELDS.
-  const EMPTY_VALUE = { sideEffects: null, contraindications: null, feedClassification: null, routeOfAdministration: null, indications: [], warnings: [] };
-  for (const field of leaveEmpty) {
-    const empty = EMPTY_VALUE[field];
-    const current = labelData[field];
-    const isEmpty = empty === null ? current === null || current === undefined : Array.isArray(current) && current.length === 0;
-    if (!isEmpty) {
-      labelData[field] = empty;
-      refusedFields.push(field);
-    }
-  }
+  // GROUNDED_CONTENT_FIELDS with no Tier 1/2/4/5 source: the model was invited
+  // to infer a reliable value from product context (active ingredient class,
+  // dosage form, species, product type) rather than forced to leave them
+  // empty — this is a generation system, not a lookup table, and requiring
+  // verbatim source text for every content field left most labels with holes
+  // a competent formulator could fill correctly. Whatever it actually wrote
+  // is classified here, not overwritten: still-empty stays empty (Tier 6 ->
+  // UNVERIFIABLE at the provenance layer), non-empty is flagged Tier 6
+  // "inferred" and pushed into estimatedFields for human review — never
+  // silently trusted as if it were grounded.
+  const isFieldEmpty = (field) => {
+    const value = labelData[field];
+    return value === null || value === undefined || (Array.isArray(value) && value.length === 0);
+  };
+  const modelInferredContentFields = unresolvedContentFields.filter((field) => !isFieldEmpty(field));
 
   // Tier 4/5 fills are real content the model did not invent, but they are
   // still not the manufacturer's own confirmed data — surfaced in
@@ -216,7 +211,7 @@ ${mustStillWrite.length > 0 ? `- ${mustStillWrite.join(", ")}: these are require
     .filter(([, fact]) => fact.tier === 4 || fact.tier === 5)
     .map(([field]) => field);
 
-  labelData.estimatedFields = [...new Set([...(labelData.estimatedFields || []), ...refusedFields, ...mustStillWrite, ...groundedContentFields])];
+  labelData.estimatedFields = [...new Set([...(labelData.estimatedFields || []), ...refusedFields, ...modelInferredContentFields, ...groundedContentFields])];
 
   return {
     labelData,
@@ -238,7 +233,11 @@ ${mustStillWrite.length > 0 ? `- ${mustStillWrite.join(", ")}: these are require
     referenceLabelIds: rankedReferences.map((r) => r.reference.id),
     targetAnimalsSource,
     groundedFacts,
-    unresolvedContentFields: leaveEmpty,
+    // Only the genuinely-still-empty ones — a field the model filled via
+    // reliable inference (modelInferredContentFields, now in estimatedFields)
+    // is not UNVERIFIABLE, it's Tier 6/"inferred" and needs review, not a
+    // refusal reason.
+    unresolvedContentFields: unresolvedContentFields.filter(isFieldEmpty),
   };
 }
 

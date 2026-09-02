@@ -56,20 +56,19 @@ function buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, 
 
   // §8.2's ladder for content fields — groundedFacts already carries the real
   // tier/citation/sourceUrl computed in fieldLadder.js (code-computed, never
-  // the model's self-report of where it got something). Fields the ladder
-  // could not resolve are UNVERIFIABLE with a reason, not silently blank.
+  // the model's self-report of where it got something). A field the ladder
+  // couldn't resolve AND the model left empty is UNVERIFIABLE with a reason;
+  // one the model filled anyway is Tier 6 "inferred" — real content, not
+  // grounded in a citation, always in estimatedFields for human review.
   for (const path of GROUNDED_CONTENT_FIELDS) {
     if (path === "targetAnimalSpecies") continue;
     const fact = groundedFacts[path];
     if (fact) {
       set(path, fact.tier, fact.provenance, fact.sourceRef, { citation: fact.citation, sourceUrl: fact.sourceUrl });
     } else if (unresolvedContentFields.includes(path)) {
-      set(path, 6, "unverifiable", null, { status: "UNVERIFIABLE", refusalReason: `Not estimated — no confirmed source, matched reference, or citable authoritative source found for "${path}".` });
+      set(path, 6, "unverifiable", null, { status: "UNVERIFIABLE", refusalReason: `Not estimated — no confirmed source, matched reference, citable authoritative source, or reliable inference was available for "${path}".` });
     } else {
-      // directionOfUse/storage when unresolved: schema requires content, so
-      // generation wrote a generic best-effort draft (mustStillWrite in
-      // labelGenerator.js) — flagged as estimated, not silently trusted.
-      set(path, estimated.has(path) ? 5 : 4, estimated.has(path) ? "inferred" : "reference", bestRefIds.length > 0 ? { kind: "reference_label", ids: bestRefIds } : null);
+      set(path, 6, "inferred", null, { refusalReason: null });
     }
   }
 
