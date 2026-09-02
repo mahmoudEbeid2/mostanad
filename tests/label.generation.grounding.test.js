@@ -46,17 +46,20 @@ assert("rankReferences sorts by finalScore descending (best first)", ranked[0].t
 
 // ── Target species reconciliation ───────────────────────────────────────────
 log("\n-- Target species reconciliation (code-computed, Invariant #2) --", "cyan");
+// resolveTargetAnimalsSource is async (Tier 5 falls through to a cited
+// lookup before "inferred") — no active ingredients in these profiles means
+// the Tier 5 branch is skipped entirely, so these stay synchronous in effect.
 const confirmedProfile = { confirmedFacts: { targetSpecies: ["Cattle", "Sheep"] } };
-assert("Confirmed facts (Product row or user hint) always win -> source 'confirmed'", resolveTargetAnimalsSource(confirmedProfile, []).source === "confirmed");
-assert("Confirmed list matches exactly what was confirmed", JSON.stringify(resolveTargetAnimalsSource(confirmedProfile, []).list) === JSON.stringify(["Cattle", "Sheep"]));
+assert("Confirmed facts (Product row or user hint) always win -> source 'confirmed'", (await resolveTargetAnimalsSource(confirmedProfile, [])).source === "confirmed");
+assert("Confirmed list matches exactly what was confirmed", JSON.stringify((await resolveTargetAnimalsSource(confirmedProfile, [])).list) === JSON.stringify(["Cattle", "Sheep"]));
 
-const noConfirmedProfile = { confirmedFacts: {} };
+const noConfirmedProfile = { confirmedFacts: {}, activeIngredients: [] };
 const matchedRefs = [{ tier: "exact_combo", reference: { extractedData: { target_animal_species: ["Poultry", "poultry"] } } }];
-const refResult = resolveTargetAnimalsSource(noConfirmedProfile, matchedRefs);
+const refResult = await resolveTargetAnimalsSource(noConfirmedProfile, matchedRefs);
 assert("No confirmed facts, exact_combo reference exists -> source 'reference'", refResult.source === "reference");
 assert("Reference species union de-duplicates case-insensitively", refResult.list.length === 1);
 
-const noMatchResult = resolveTargetAnimalsSource(noConfirmedProfile, []);
+const noMatchResult = await resolveTargetAnimalsSource(noConfirmedProfile, []);
 assert("No confirmed facts, no matching reference -> source 'inferred', model must supply", noMatchResult.source === "inferred" && noMatchResult.list === null);
 
 // ── Grounding policy hard backstop (Invariant #5) ───────────────────────────

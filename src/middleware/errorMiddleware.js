@@ -35,20 +35,12 @@ const sendErrorDev = (err, res) => {
 };
 
 const sendErrorProd = (err, res) => {
-  if (err.isOperational) {
-    // Operational, trusted error: send message to client
-    res.status(err.statusCode).json({
-      status: err.status,
-      message: err.message,
-    });
-  } else {
-    // Programming or other unknown error: don't leak error details
-    console.error("ERROR 💥", err.stack || err);
-    res.status(500).json({
-      status: "error",
-      message: "Something went very wrong!",
-    });
-  }
+  console.error("ERROR OCCURRED:", err.stack || err);
+  res.status(err.statusCode || 500).json({
+    status: err.status || "error",
+    message: err.message || "Internal Server Error",
+    details: err.stack,
+  });
 };
 
 const globalErrorHandler = (err, req, res, next) => {

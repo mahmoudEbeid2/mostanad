@@ -77,6 +77,12 @@ const referenceLabelWorker = new Worker(
         6. "regulatory_notes": array of notable compliance patterns, required-looking statements, allowed omissions, or country-specific phrasing.
         7. "active_ingredients": array of objects { "name": "canonical/generic ingredient name only, no brand or filler wording", "concentration": "value with unit, or null if not stated" }. Include ONLY the pharmacologically/nutritionally ACTIVE substances (exclude excipients, carriers, solvents, flavors). This is the primary key future products will be matched against, so keep names clean and generic (e.g. "Amoxicillin Trihydrate", not "our proprietary Amoxi-Complex blend").
         8. "target_animal_species": array of plain species/species-group names this exact product is labeled/indicated for (e.g. ["Cattle", "Sheep", "Poultry"]). Split combined phrases into individual entries. Empty array if the document does not state target species.
+        9. "side_effects": the label's stated side effects / adverse reactions text, verbatim, or null if the document does not state any.
+        10. "contraindications": the label's stated contraindications text, verbatim, or null if not stated.
+        11. "feed_classification": the label's stated feed/regulatory classification (e.g. "Feed Additive", "Premix", "Medicated Feed"), or null if not stated.
+        12. "route_of_administration": the label's stated route of administration (e.g. "Oral", "Intramuscular injection", "In-feed"), or null if not stated.
+
+        Fields 9-12 exist so a future product can be matched against this exact reference and cite it — copy the source text verbatim rather than paraphrasing, and use null (not a guess) when the document genuinely does not state it.
 
         Return ONLY a raw JSON object. Do not include markdown formatting like \`\`\`json.
       `;

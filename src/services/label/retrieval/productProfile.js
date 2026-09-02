@@ -36,7 +36,30 @@ export const buildProductProfile = async ({ productId, formulationText, country,
 
   if (product?.indications?.trim()) {
     confirmedFacts.aimOfUse = product.indications.trim();
+    confirmedFacts.indications = product.indications.trim();
     provenance.fromProductRow.push("indications");
+  }
+
+  // Bug fix: these three used to only get pushed onto provenance.fromProductRow
+  // (bookkeeping) without ever landing in confirmedFacts (the actual data the
+  // ladder reads) — so a Product row's own storage/contraindications/dosage
+  // text never reached generation as a Tier 1 fact, silently falling through
+  // to Tier 4/5/estimate even when the confirmed value was sitting right there.
+  if (product?.storage?.trim()) {
+    confirmedFacts.storage = product.storage.trim();
+    provenance.fromProductRow.push("storage");
+  }
+  if (product?.contraindications?.trim()) {
+    confirmedFacts.contraindications = product.contraindications.trim();
+    provenance.fromProductRow.push("contraindications");
+  }
+  if (product?.mixingInstructions?.trim() || product?.dosage?.trim()) {
+    confirmedFacts.directionOfUse = (product.mixingInstructions || product.dosage).trim();
+    provenance.fromProductRow.push("directionOfUse");
+  }
+  if (Array.isArray(product?.userSafety) && product.userSafety.length > 0) {
+    confirmedFacts.warnings = product.userSafety.filter(Boolean);
+    provenance.fromProductRow.push("userSafety");
   }
 
   if (hints.aimOfUseHint?.trim()) {

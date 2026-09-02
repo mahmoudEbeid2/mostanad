@@ -24,7 +24,7 @@ export function buildReferenceBlock(rankedReferences) {
   const blocks = rankedReferences.map(({ reference, tier }, i) => {
     const validity =
       tier === "exact_combo" || tier === "ingredient"
-        ? "Factual grounding permitted for aimOfUse/directionOfUse/storage/targetAnimalSpecies — same or overlapping active ingredient(s)."
+        ? "Factual grounding permitted for aimOfUse/directionOfUse/storage/targetAnimalSpecies/indications/sideEffects/contraindications/warnings/feedClassification/routeOfAdministration — same or overlapping active ingredient(s). (Note: for the latter six, the field ladder already resolved what it could from this reference before you saw this prompt — GROUNDED FACTS below is authoritative; only use this reference directly for a field NOT already listed there.)"
         : "STYLE/FORMAT/PHRASING ONLY. This reference does NOT share this product's active ingredient(s) — do not copy any factual content (dosage, indications, species) from it.";
     return `--- Reference ${i + 1} (tier: ${tier}) ---\n${validity}\n${JSON.stringify(reference.extractedData || { fullText: reference.fullText }).slice(0, 2000)}`;
   });

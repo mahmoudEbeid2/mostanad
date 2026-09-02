@@ -43,7 +43,7 @@ export const labelSchema = z.object({
     translations: z.record(z.string(), z.string()),
     primary: z.string(),
     list: z.array(z.string().min(1)).min(1),
-    source: z.enum(["confirmed", "reference", "inferred"]), // computed in code, never by the model
+    source: z.enum(["confirmed", "reference", "external", "inferred"]), // computed in code, never by the model
   }),
   aimOfUse: LocalizedText,
   indications: z.array(LocalizedText).default([]),
