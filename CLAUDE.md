@@ -76,9 +76,16 @@ yourself after editing worker code.
    promptHash, timestamp. No untraceable values.
 4. **A regulatory rule with no citation verifiable verbatim in its source document
    is rejected** — not warned, not downgraded.
-5. **`withdrawalPeriod`, `strength`, ingredient `amount`, and `registrationNumber`
-   may never be filled from web lookup or model knowledge.** Confirmed source or
-   matched reference, or they stay empty and FAIL. Refusing beats guessing.
+5. **Every field is generated — none render blank.** `withdrawalPeriod`, `strength`,
+   ingredient `amount`, `registrationNumber`, `batchNo`, `expiryDate`, and
+   `shelfLifeAfterOpening` resolve through the same Tier 1-6 ladder as every other
+   field: confirmed source/reference/cited-external first, model inference (Tier 6)
+   as the last resort — never a null or a refusal placeholder. A Tier 6 value on one
+   of these is marked `estimated: true` with `estimateBasis` in provenance, is not
+   auto-PASS (a targeted regulatory rule downgrades it to `NEEDS_REVIEW` at minimum),
+   and must be explicitly signed for at approval (invariant 12). **Product owner
+   decision, superseding the original "refuse rather than guess" policy** — the risk
+   of a blank regulated field outweighed the risk of a flagged, reviewable estimate.
 6. **`UNVERIFIABLE` is a real verdict.** Never coerce it to `PASS`.
 7. **No empty catch blocks in the label pipeline.** A failed AI call fails the task
    or downgrades a verdict — it never silently keeps a previous draft.

@@ -4,7 +4,7 @@
 // absolute exclusions) that runs on generated output regardless of what the
 // model actually produced. No AI call needed for any of this.
 import { scoreReference, tierFor, rankReferences } from "../src/services/label/retrieval/similarity.js";
-import { enforceGroundingPolicy, resolveTargetAnimalsSource } from "../src/services/label/generation/labelGenerator.js";
+import { classifyNeverGuessFields, resolveTargetAnimalsSource } from "../src/services/label/generation/labelGenerator.js";
 
 const colors = { green: "\x1b[32m", red: "\x1b[31m", cyan: "\x1b[36m", bold: "\x1b[1m", reset: "\x1b[0m" };
 const log = (msg, color = "") => console.log(color ? `${colors[color]}${msg}${colors.reset}` : msg);
@@ -62,8 +62,13 @@ assert("Reference species union de-duplicates case-insensitively", refResult.lis
 const noMatchResult = await resolveTargetAnimalsSource(noConfirmedProfile, []);
 assert("No confirmed facts, no matching reference -> source 'inferred', model must supply", noMatchResult.source === "inferred" && noMatchResult.list === null);
 
-// ── Grounding policy hard backstop (Invariant #5) ───────────────────────────
-log("\n-- Grounding policy enforcement (Invariant #5's hard backstop) --", "cyan");
+// ── Grounding policy classification (amended Invariant #5) ─────────────────
+// "Every field is generated — none render blank" (product owner decision,
+// CLAUDE.md). classifyNeverGuessFields no longer nulls anything — labelData
+// keeps whatever the model wrote; it only classifies WHY each never-guess
+// field should be trusted (grounded: tier 1/4/5) vs. must be flagged as a
+// Tier 6 estimate (estimated[]).
+log("\n-- Grounding policy classification (amended Invariant #5) --", "cyan");
 
 const ungroundedLabel = {
   withdrawalPeriod: { translations: { en: "14 days" }, primary: "en" },
@@ -75,35 +80,37 @@ const ungroundedLabel = {
   estimatedFields: [],
 };
 const emptyProfile = { withdrawalPeriod: null, strength: null, registrationNumber: null, activeIngredients: [], formulationText: "Amoxicillin Trihydrate 100 g per kg" };
-const refused = enforceGroundingPolicy(ungroundedLabel, { profile: emptyProfile, matchedReferences: [] });
+const { estimated: allEstimated } = classifyNeverGuessFields(ungroundedLabel, { profile: emptyProfile, groundedNeverGuessFacts: {} });
 
-assert("Ungrounded withdrawalPeriod is nulled", ungroundedLabel.withdrawalPeriod === null);
-assert("Ungrounded strength is nulled", ungroundedLabel.strength === null);
-assert("Ungrounded registrationNumber is nulled", ungroundedLabel.registrationNumber === null);
-assert("batchNo is always nulled unless code explicitly trusts it (never derivable from formulation/reference)", ungroundedLabel.batchNo === null);
-assert("expiryDate is always nulled the same way", ungroundedLabel.expiryDate === null);
-assert("Ungrounded ingredient amount is downgraded to 'q.s.', not left as an invented number", ungroundedLabel.activeIngredients[0].amount === "q.s.");
-assert("All refusals are reported back (for estimatedFields / audit trail)", refused.length === 6);
+assert("Model's withdrawalPeriod value is untouched, not nulled", ungroundedLabel.withdrawalPeriod !== null);
+assert("Model's strength value is untouched, not nulled", ungroundedLabel.strength !== null);
+assert("Model's registrationNumber value is untouched, not nulled", ungroundedLabel.registrationNumber !== null);
+assert("Model's batchNo value is untouched, not nulled", ungroundedLabel.batchNo !== null);
+assert("Model's expiryDate value is untouched, not nulled", ungroundedLabel.expiryDate !== null);
+assert("Ungrounded ingredient amount is kept as the model wrote it, not forced to 'q.s.'", ungroundedLabel.activeIngredients[0].amount === "999 mg");
+assert("Everything ungrounded is classified as estimated (for estimatedFields / audit trail / NEEDS_REVIEW)", allEstimated.length === 7); // 6 scalars + 1 ingredient amount
 
 const groundedLabel = {
   withdrawalPeriod: { translations: { en: "14 days" }, primary: "en" },
   strength: { translations: { en: "100 mg" }, primary: "en" },
   registrationNumber: "REG-12345",
-  batchNo: null,
-  expiryDate: null,
+  batchNo: "LOT1",
+  expiryDate: "2028-01-01",
   activeIngredients: [{ amount: "100 g" }],
   estimatedFields: [],
 };
 const groundedProfile = { withdrawalPeriod: "14 days", strength: "100 mg", registrationNumber: "REG-12345", activeIngredients: [{ amount: "100 g" }], formulationText: "Amoxicillin Trihydrate 100 g per kg" };
-const noRefusals = enforceGroundingPolicy(groundedLabel, { profile: groundedProfile, matchedReferences: [] });
-assert("A value backed by the Product row profile is NOT refused", groundedLabel.withdrawalPeriod !== null && groundedLabel.strength !== null && groundedLabel.registrationNumber !== null);
-assert("An ingredient amount present in formulationText is NOT downgraded", groundedLabel.activeIngredients[0].amount === "100 g");
-assert("No refusals when everything is properly grounded", noRefusals.length === 0);
+const { estimated: noneEstimated, grounded } = classifyNeverGuessFields(groundedLabel, { profile: groundedProfile, groundedNeverGuessFacts: {} });
+assert("A value backed by the Product row profile is classified grounded, tier 1", grounded.withdrawalPeriod?.tier === 1 && grounded.strength?.tier === 1 && grounded.registrationNumber?.tier === 1);
+assert("An ingredient amount present in formulationText is classified grounded, not estimated", grounded["activeIngredients[0].amount"] !== undefined);
+assert("batchNo/expiryDate/shelfLifeAfterOpening have no profile/ladder source, so they're still estimated even on an otherwise-grounded label", noneEstimated.includes("batchNo") && noneEstimated.includes("expiryDate") && noneEstimated.includes("shelfLifeAfterOpening"));
+assert("Only the genuinely ungroundable fields (batchNo, expiryDate, shelfLifeAfterOpening) are estimated here", noneEstimated.length === 3);
 
 const referenceGroundedLabel = { withdrawalPeriod: { translations: { en: "10 days" }, primary: "en" }, strength: null, registrationNumber: null, batchNo: null, expiryDate: null, activeIngredients: [], estimatedFields: [] };
-const tier4Refusals = enforceGroundingPolicy(referenceGroundedLabel, { profile: emptyProfile, matchedReferences: [{ tier: "ingredient", reference: {} }] });
-assert("A Tier 4 (matched reference) justifies withdrawalPeriod without a Product row value", referenceGroundedLabel.withdrawalPeriod !== null);
-assert("Tier 4 justification isn't in the refused list for that field", !tier4Refusals.includes("withdrawalPeriod"));
+const tier4Facts = { withdrawalPeriod: { tier: 4, provenance: "reference", sourceRef: { kind: "reference_label", ids: ["ref-1"] }, citation: null, sourceUrl: null } };
+const { estimated: tier4Estimated, grounded: tier4Grounded } = classifyNeverGuessFields(referenceGroundedLabel, { profile: emptyProfile, groundedNeverGuessFacts: tier4Facts });
+assert("A Tier 4 (matched reference, via the field ladder) justifies withdrawalPeriod without a Product row value", tier4Grounded.withdrawalPeriod?.tier === 4);
+assert("Tier 4 justification isn't in the estimated list for that field", !tier4Estimated.includes("withdrawalPeriod"));
 
 log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`, failed === 0 ? "green" : "red");
 process.exit(failed > 0 ? 1 : 0);

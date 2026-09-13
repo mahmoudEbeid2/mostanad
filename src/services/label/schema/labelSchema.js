@@ -21,7 +21,7 @@ export const labelSchema = z.object({
   // Identity
   productName: LocalizedText,
   pharmaceuticalForm: LocalizedText.nullable(),
-  strength: LocalizedText.nullable(),
+  strength: LocalizedText, // NEVER_GUESS_FIELDS (groundingPolicy.js) — amended Invariant #5: always generated, never null; Tier 6 estimates are flagged in estimatedFields/provenance instead
   feedClassification: LocalizedText.nullable(),
 
   // Composition
@@ -52,25 +52,25 @@ export const labelSchema = z.object({
   contraindications: LocalizedText.nullable(),
   warnings: z.array(LocalizedText).default([]),
   sideEffects: LocalizedText.nullable(),
-  withdrawalPeriod: LocalizedText.nullable(),
+  withdrawalPeriod: LocalizedText, // NEVER_GUESS_FIELDS — see strength above
   userSafety: z.array(LocalizedText).default([]),
 
   // Handling
   storage: LocalizedText,
-  shelfLifeAfterOpening: LocalizedText.nullable(),
+  shelfLifeAfterOpening: LocalizedText, // NEVER_GUESS_FIELDS — see strength above
   disposal: LocalizedText.nullable(),
   netWeight: LocalizedText,
   packaging: LocalizedText.nullable(),
 
   // Regulatory identity — real values, never booleans
-  registrationNumber: z.string().nullable(),
+  registrationNumber: z.string().min(1), // NEVER_GUESS_FIELDS — see strength above
   marketingAuthorisationHolder: LocalizedText.nullable(),
   manufacturer: LocalizedText.nullable(),
   importer: LocalizedText.nullable(),
   countryOfProduction: LocalizedText.nullable(),
-  batchNo: z.string().nullable(),
+  batchNo: z.string().min(1), // NEVER_GUESS_FIELDS — see strength above
   productionDate: z.string().nullable(),
-  expiryDate: z.string().nullable(),
+  expiryDate: z.string().min(1), // NEVER_GUESS_FIELDS — see strength above
   prescriptionStatus: z.enum(["POM", "OTC", "VFD", "NA"]).default("NA"),
 
   // Declarations

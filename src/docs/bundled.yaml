@@ -1572,7 +1572,7 @@ paths:
       tags:
         - Generated Labels
       summary: Apply a structural edit to a label (patch protocol)
-      description: 'Applies a set of field-level changes directly (no AI involved — for the AI-assisted equivalent see `POST /labels/{id}/chat`). Requires `update_labels`. Rejects a patch that would replace more than 60% of the label''s top-level fields — use regeneration for that instead. A patch that would introduce a NEW validation failure that didn''t exist before is refused as a 409 conflict rather than silently applied; resubmit the SAME request with `overrideAcknowledged: true` to push it through anyway — same override contract as `POST /labels/{id}/chat`. The override is recorded on the resulting version, tied to the caller''s identity.'
+      description: 'Applies a set of field-level changes directly (no AI involved — for the AI-assisted equivalent see `POST /labels/{id}/chat`). Requires `update_labels`. A structurally invalid patch (unknown path, unsupported op, missing value, or one that would replace more than 60% of the label''s top-level fields — use regeneration for that instead) is returned as a normal 200 `{status:"refused", path, reason, previousValue, errors}`, never an HTTP error — a business-rule refusal is an outcome of the operation, not a transport failure. A patch that would introduce a NEW validation failure that didn''t exist before is refused as a 409 conflict rather than silently applied; resubmit the SAME request with `overrideAcknowledged: true` to push it through anyway — same override contract as `POST /labels/{id}/chat`. The override is recorded on the resulting version, tied to the caller''s identity.'
       parameters:
         - $ref: '#/components/parameters/LabelId'
       requestBody:
@@ -1612,15 +1612,42 @@ paths:
                     type: string
                     example: success
                   data:
-                    type: object
-                    properties:
-                      status:
-                        type: string
-                        example: applied
-                      resultVersion:
-                        type: integer
-                      report:
-                        $ref: '#/components/schemas/ValidationReport'
+                    oneOf:
+                      - type: object
+                        description: applied — clean, or applied via override.
+                        properties:
+                          status:
+                            type: string
+                            example: applied
+                          resultVersion:
+                            type: integer
+                          report:
+                            $ref: '#/components/schemas/ValidationReport'
+                      - type: object
+                        description: refused — structurally invalid patch (unknown path, unsupported op, missing value, or bulk-replacement threshold). A normal outcome, not a transport error — always 200, never 422. `errors` carries every rejected change; `path`/`reason`/`previousValue` mirror the first one.
+                        properties:
+                          status:
+                            type: string
+                            example: refused
+                          path:
+                            type: string
+                            nullable: true
+                          reason:
+                            type: string
+                            example: Patch touches 22/30 top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead.
+                          previousValue:
+                            description: The value currently at `path`, unchanged — nothing was applied.
+                          errors:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                path:
+                                  type: string
+                                  nullable: true
+                                reason:
+                                  type: string
+                                previousValue: {}
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '403':
@@ -1675,19 +1702,6 @@ paths:
                       message:
                         type: string
                         example: 'Version conflict: expected 3, label is now at 4. Reload before editing.'
-        '422':
-          description: Structurally invalid patch — unknown path, unsupported op, missing `value`, or the patch touches more than 60% of top-level fields (bulk replacement). All causes are joined into one message string with "; ".
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: fail
-                  message:
-                    type: string
-                    example: Patch touches 22/30 top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead.
         '500':
           $ref: '#/components/responses/ServerError'
   /labels/{id}/versions:
@@ -2177,6 +2191,36 @@ paths:
                             type: integer
                           report:
                             $ref: '#/components/schemas/ValidationReport'
+                      - type: object
+                        description: edit turn, refused — the AI-proposed patch was structurally invalid (unknown path, unsupported op, missing value, or bulk-replacement threshold). This is a normal outcome of the operation, not a transport error — always 200, never 422. `errors` carries every rejected change (a patch can touch several paths at once); `path`/`reason`/`previousValue` mirror the FIRST one for a client that only wants to render a single message.
+                        properties:
+                          intent:
+                            type: string
+                            enum:
+                              - edit
+                          status:
+                            type: string
+                            enum:
+                              - refused
+                          path:
+                            type: string
+                            nullable: true
+                            description: The rejected change's path, or null for a patch-level error (e.g. the bulk-replacement threshold).
+                          reason:
+                            type: string
+                          previousValue:
+                            description: The value currently at `path`, unchanged — nothing was applied.
+                          errors:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                path:
+                                  type: string
+                                  nullable: true
+                                reason:
+                                  type: string
+                                previousValue: {}
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '403':
@@ -2245,19 +2289,6 @@ paths:
                               - cancel
                               - apply_and_fix:withdrawalPeriod
                               - apply_anyway_with_override
-        '422':
-          description: The AI-proposed patch was structurally invalid (unknown path, unsupported op, missing value, or bulk-replacement threshold).
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: fail
-                  message:
-                    type: string
-                    example: 'Proposed edit was rejected: unsupported op "delete"'
         '423':
           $ref: '#/components/responses/LockedError'
         '500':

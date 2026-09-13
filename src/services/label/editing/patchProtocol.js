@@ -14,18 +14,20 @@ export function isValidPatchPath(path) {
 
 /**
  * Validates a proposed patch's SHAPE (§11.3/§11.4) before anything is applied.
- * Returns { ok: true } or { ok: false, errors: [...] }. Pure.
+ * Returns { ok: true } or { ok: false, errors: [{path, reason}] } — path is
+ * null for a patch-level error (empty changes[], bulk-replacement threshold)
+ * that isn't tied to one change. Pure.
  */
 export function validatePatchShape(patch) {
   const errors = [];
   if (!patch || !Array.isArray(patch.changes) || patch.changes.length === 0) {
-    return { ok: false, errors: ["Patch must have a non-empty changes[] array."] };
+    return { ok: false, errors: [{ path: null, reason: "Patch must have a non-empty changes[] array." }] };
   }
   for (const change of patch.changes) {
-    if (!change.path) errors.push(`Change missing "path": ${JSON.stringify(change)}`);
-    else if (!isValidPatchPath(change.path)) errors.push(`Unknown path "${change.path}" — not a field in labelSchema. Rejected, not silently ignored.`);
-    if (!VALID_OPS.includes(change.op)) errors.push(`Unsupported op "${change.op}" for path "${change.path}" — must be one of ${VALID_OPS.join(", ")}.`);
-    if (change.op !== "remove" && change.value === undefined) errors.push(`Change on "${change.path}" (op: ${change.op}) requires a "value".`);
+    if (!change.path) errors.push({ path: null, reason: `Change missing "path": ${JSON.stringify(change)}` });
+    else if (!isValidPatchPath(change.path)) errors.push({ path: change.path, reason: `Unknown path "${change.path}" — not a field in labelSchema. Rejected, not silently ignored.` });
+    if (!VALID_OPS.includes(change.op)) errors.push({ path: change.path || null, reason: `Unsupported op "${change.op}" for path "${change.path}" — must be one of ${VALID_OPS.join(", ")}.` });
+    if (change.op !== "remove" && change.value === undefined) errors.push({ path: change.path || null, reason: `Change on "${change.path}" (op: ${change.op}) requires a "value".` });
   }
 
   // Guard #2: no bulk replacement — a patch touching > 60% of TOP-LEVEL fields
@@ -33,7 +35,7 @@ export function validatePatchShape(patch) {
   const touchedTopFields = new Set(patch.changes.map((c) => (c.path || "").split(/[.[]/)[0]));
   const bulkThreshold = 0.6 * LABEL_SCHEMA_TOP_LEVEL_PATHS.size;
   if (touchedTopFields.size > bulkThreshold) {
-    errors.push(`Patch touches ${touchedTopFields.size}/${LABEL_SCHEMA_TOP_LEVEL_PATHS.size} top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead.`);
+    errors.push({ path: null, reason: `Patch touches ${touchedTopFields.size}/${LABEL_SCHEMA_TOP_LEVEL_PATHS.size} top-level fields (> 60%) — this is a bulk replacement, not an edit. Use explicit re-generation instead.` });
   }
 
   return { ok: errors.length === 0, errors };
@@ -46,6 +48,14 @@ function parsePath(path) {
 
 function getAt(obj, segments) {
   return segments.reduce((acc, seg) => (acc === null || acc === undefined ? undefined : acc[seg]), obj);
+}
+
+// Exposed so callers (patchApplier.js) can read the CURRENT value at a
+// rejected/invalid change's path for a refusal's `previousValue` — the value
+// is never touched, only reported back.
+export function readPath(labelData, path) {
+  if (!path) return undefined;
+  return getAt(labelData, parsePath(path));
 }
 
 function setAt(root, segments, value) {
@@ -79,13 +89,13 @@ export function applyPatch(labelData, changes) {
         break;
       case "append": {
         const arr = getAt(candidate, segments);
-        if (!Array.isArray(arr)) throw new Error(`Cannot "append" — "${change.path}" is not an array.`);
+        if (!Array.isArray(arr)) { const e = new Error(`Cannot "append" — "${change.path}" is not an array.`); e.path = change.path; throw e; }
         arr.push(change.value);
         break;
       }
       case "insert": {
         const arr = getAt(candidate, parentSegments);
-        if (!Array.isArray(arr)) throw new Error(`Cannot "insert" — parent of "${change.path}" is not an array.`);
+        if (!Array.isArray(arr)) { const e = new Error(`Cannot "insert" — parent of "${change.path}" is not an array.`); e.path = change.path; throw e; }
         arr.splice(Number(lastSeg), 0, change.value);
         break;
       }
@@ -95,8 +105,11 @@ export function applyPatch(labelData, changes) {
         else if (parent && typeof parent === "object") delete parent[lastSeg];
         break;
       }
-      default:
-        throw new Error(`Unsupported op "${change.op}".`);
+      default: {
+        const e = new Error(`Unsupported op "${change.op}".`);
+        e.path = change.path || null;
+        throw e;
+      }
     }
   }
 

@@ -223,3 +223,31 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
 - `GET /labels/:id/extraction` — **new**. `read_labels`. Returns `{ extractionMeta, sourceFileRef, origin }` for an extracted label (confidence scores, snippets, bounding boxes, ambiguity flags). `404` if the label belongs to a different tenant.
 - `POST /labels/:id/confirm-field` — **new**. `update_labels`. Body: `{ path, value, expectedVersion }`. Sets user confirmation on a low-confidence extracted field, updates `extractionMeta[path]` with `confidence: 1.0` and `confirmedByUser: true`, bumps version (append-only), and re-runs deterministic validation.
 - `POST /products/verify-label` — **updated**. Now performs full 3-way product matching against DB `Product` row facts and regulatory rules, returning structured remediations (`action: "correct"`, `source: "product_row"`).
+
+## Post-Phase 10 — chat/patch refusal is no longer thrown (caller-visible)
+
+- `POST /labels/:id/chat` (edit intent) and `PATCH /labels/:id` — **breaking
+  for any caller that caught the old error**. A structurally invalid patch
+  (unknown path, unsupported op, missing `value`, or the bulk-replacement
+  threshold) used to be a **thrown `422`** (`{status:"fail", message:
+  "Proposed edit was rejected: ..."}` / `"Patch rejected: ..."`) — an
+  exception carries no `path` and no structured reason, so the only thing a
+  caller could do with it was show "something went wrong". It is now a
+  **normal `200`**, aligned with the existing `applied`/`conflict` shape so a
+  client switches on `data.status` alone:
+  `{ status: "refused", path, reason, previousValue, errors: [{path, reason,
+  previousValue}, ...] }` (chat also keeps its `intent: "edit"`). `path` is
+  `null` for a patch-level error not tied to one change (empty `changes[]`,
+  the bulk-replacement threshold). Nothing changed about *when* a patch is
+  refused — same shape/path-allowlist/bulk-replacement checks as before —
+  only how the refusal is delivered. `422` is no longer returned by either
+  endpoint for this case (other, unrelated `422`s — approval gates, coverage
+  preconditions — are unaffected). Every existing caller was audited before
+  this change: `generatedLabelController.js`'s `postChat`/`patchLabel` (no
+  change needed — both already mapped any non-`"conflict"` `result.status`
+  to `200`), and the only tests exercising this path
+  (`tests/label.chat.patch.test.js`, `tests/label.editing.guards.test.js`)
+  were updated for the new `{path, reason, previousValue}` error shape.
+  `dryRunPatch`'s own internal `status: "invalid"` (patchApplier.js) is
+  unchanged — only the two callers that used to throw on it now return it
+  as `"refused"`.

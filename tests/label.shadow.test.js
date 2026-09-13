@@ -18,17 +18,19 @@ function assert(label, condition, details = "") {
 
 const validLabel = {
   schemaVersion: "vet-label@2.0.0", productType: "supplement",
-  productName: { translations: { en: "TestProduct" }, primary: "en" }, pharmaceuticalForm: null, strength: null,
+  productName: { translations: { en: "TestProduct" }, primary: "en" }, pharmaceuticalForm: null, strength: { translations: { en: "500 mg" }, primary: "en" },
   feedClassification: { translations: { en: "Feed" }, primary: "en" },
   activeIngredients: [{ translations: { en: "A" }, primary: "en", amount: "10mg", unit: null, normalizedName: null }],
   excipients: [], analysis: null,
   targetAnimalSpecies: { translations: { en: "Dog" }, primary: "en", list: ["Dog"], source: "confirmed" },
   aimOfUse: { translations: { en: "Support" }, primary: "en" }, indications: [], routeOfAdministration: null,
   directionOfUse: { translations: { en: "1g/L" }, primary: "en" }, contraindications: null, warnings: [], sideEffects: null,
-  withdrawalPeriod: null, userSafety: [], storage: { translations: { en: "Cool" }, primary: "en" }, shelfLifeAfterOpening: null,
-  disposal: null, netWeight: { translations: { en: "1kg" }, primary: "en" }, packaging: null, registrationNumber: null,
-  marketingAuthorisationHolder: null, manufacturer: null, importer: null, countryOfProduction: null, batchNo: null,
-  productionDate: null, expiryDate: null, prescriptionStatus: "NA", usageDeclaration: [], keepOutOfReachOfChildren: true, estimatedFields: [],
+  // Amended Invariant #5: these six are no longer Zod-nullable (labelSchema.js) — a
+  // fixture used against the full validate() pipeline needs real values, not null.
+  withdrawalPeriod: { translations: { en: "Not applicable" }, primary: "en" }, userSafety: [], storage: { translations: { en: "Cool" }, primary: "en" }, shelfLifeAfterOpening: { translations: { en: "6 months" }, primary: "en" },
+  disposal: null, netWeight: { translations: { en: "1kg" }, primary: "en" }, packaging: null, registrationNumber: "REG-TEST-001",
+  marketingAuthorisationHolder: null, manufacturer: null, importer: null, countryOfProduction: null, batchNo: "LOT-TEST-001",
+  productionDate: null, expiryDate: "2028-01-01", prescriptionStatus: "NA", usageDeclaration: [], keepOutOfReachOfChildren: true, estimatedFields: [],
 };
 
 async function run() {

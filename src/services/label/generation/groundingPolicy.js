@@ -1,18 +1,22 @@
-// CLAUDE.md invariant #5 / §8.2's absolute exclusions. These fields may NEVER
-// be filled from model knowledge or unconfirmed external lookup — Tier 1
-// (Product row), Tier 2 (user hint), or Tier 4 (a matched reference) only.
-// Empty + FAIL beats a plausible-looking guess: a wrong withdrawal period or
-// strength is a direct human/animal safety risk, and a fabricated registration
-// number is forging an official document.
+// CLAUDE.md invariant #5 (amended — "every field is generated" policy). These
+// fields used to be hard-refused (empty + FAIL) when no confirmed source or
+// matched reference existed. That is no longer the behavior: they now run the
+// SAME Tier 1-6 ladder as every other field, Tier 6 (model inference) included
+// — but they stay in this list because they get the strictest downstream
+// treatment for it: a Tier 6 value on one of these is always tagged
+// `estimated: true` with `estimateBasis`, a targeted regulatory rule downgrades
+// an otherwise-PASS verdict to NEEDS_REVIEW (validationEngine.js), and
+// approval must explicitly list it in signedEstimatedFields. A wrong
+// withdrawal period or strength is a direct human/animal safety risk, and a
+// fabricated registration number reads as an official document — the
+// mitigation is now "flagged and reviewed", not "refused".
 //
-// shelfLifeAfterOpening is here for a different reason than the other five:
-// it isn't a regulatory-lookup fact at all, it's the result of a stability
-// study run by the manufacturer on THIS product. No reference label, no
-// EMA/FDA/EDA/SFDA/VICH/WHO/USP document, and no amount of model knowledge can
-// supply it — there is nothing external to cite. Tier 4 and Tier 5 are both
-// structurally the wrong kind of source for this field, not just an unproven
-// one, so it is excluded the same as the others rather than routed through
-// them and hoping the search comes up empty.
+// shelfLifeAfterOpening is here for a different reason than the other six: it
+// isn't a regulatory-lookup fact at all, it's the result of a stability study
+// run by the manufacturer on THIS product — no reference label or
+// EMA/FDA/EDA/SFDA/VICH/WHO/USP document can supply it. Tier 4/5 will almost
+// always miss for this field specifically; Tier 6 is expected to carry it more
+// often than the others.
 export const NEVER_GUESS_FIELDS = [
   "withdrawalPeriod",
   "strength",
@@ -23,19 +27,19 @@ export const NEVER_GUESS_FIELDS = [
   "shelfLifeAfterOpening",
 ];
 
-// Shown to the user in place of a value when a NEVER_GUESS field is empty —
-// the UI needs to distinguish "we couldn't find it" from "this can never be
-// estimated, go get it yourself" instead of leaving it looking like an
-// oversight. Fields not listed here fall back to a generic refusal message.
-const REFUSAL_REASONS = {
-  shelfLifeAfterOpening: "Not estimated — this comes from your own stability data.",
+// One-line "what it was inferred from" text for labelProvenance[path].estimateBasis
+// when a NEVER_GUESS_FIELDS field lands on Tier 6 (no confirmed source, matched
+// reference, or cited external lookup found it). Shown to a human reviewer/signer,
+// not baked into labelData itself — provenance carries it (§ policy decision:
+// "provenance-only", labelData fields keep their plain natural type).
+const DEFAULT_ESTIMATE_BASIS = (field) => `No confirmed source, matched reference, or cited external lookup for "${field}" — model's best inference from the product's active ingredient(s), dosage form, and product type. Requires human review before approval.`;
+const ESTIMATE_BASIS_OVERRIDES = {
+  shelfLifeAfterOpening: "No manufacturer stability data available — model's best inference from dosage form and packaging. Requires human review before approval.",
 };
-
-const DEFAULT_REFUSAL_REASON = (field) => `Not estimated — "${field}" may only come from a confirmed source or a matched reference, never a guess.`;
 
 export const isNeverGuessField = (fieldPath) => NEVER_GUESS_FIELDS.includes(fieldPath);
 
-export const refusalReasonFor = (fieldPath) => REFUSAL_REASONS[fieldPath] || DEFAULT_REFUSAL_REASON(fieldPath);
+export const estimateBasisFor = (fieldPath) => ESTIMATE_BASIS_OVERRIDES[fieldPath] || DEFAULT_ESTIMATE_BASIS(fieldPath);
 
 // §8.2's field-by-field ladder (Tier 1 confirmed -> Tier 2 hint -> Tier 4
 // matched reference -> Tier 5 cited external lookup -> Tier 6 null/UNVERIFIABLE)

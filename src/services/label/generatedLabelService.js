@@ -295,9 +295,15 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
   }
   const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
+  // A refused patch is an OUTCOME of the operation, not a transport failure —
+  // it carries path/reason/previousValue so the UI can render exactly what
+  // was rejected and why, the same way "conflict" already does. Never thrown:
+  // an exception here would give the client no path/reason to render, only
+  // "something went wrong".
   if (dryRun.status === "invalid") {
     await saveMessage({ proposedPatch: patch, conflicts: { errors: dryRun.errors } });
-    throw new AppError(`Proposed edit was rejected: ${dryRun.errors.join("; ")}`, 422);
+    const primary = dryRun.errors[0] || { path: null, reason: "Patch rejected.", previousValue: undefined };
+    return { intent, status: "refused", path: primary.path, reason: primary.reason, previousValue: primary.previousValue, errors: dryRun.errors };
   }
 
   if (dryRun.status === "conflict" && !overrideAcknowledged) {
@@ -359,7 +365,12 @@ export const applyDirectPatch = async (id, { changes, rationale, expectedVersion
   const patch = { rationale: rationale || "Manual edit", changes };
   const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
-  if (dryRun.status === "invalid") throw new AppError(`Patch rejected: ${dryRun.errors.join("; ")}`, 422);
+  // See chat()'s identical comment: a refused patch is a normal outcome, not
+  // an HTTP error.
+  if (dryRun.status === "invalid") {
+    const primary = dryRun.errors[0] || { path: null, reason: "Patch rejected.", previousValue: undefined };
+    return { status: "refused", path: primary.path, reason: primary.reason, previousValue: primary.previousValue, errors: dryRun.errors };
+  }
   if (dryRun.status === "conflict" && !overrideAcknowledged) {
     return { status: "conflict", wouldViolate: dryRun.wouldViolate, options: dryRun.options };
   }

@@ -18,10 +18,13 @@ caller: a **company-authenticated caller** (a tenant) and a **system user**
 differently depending on which one you are — called out per-endpoint.
 
 **Envelope.** Every response is `{ status: "success"|"fail"|"error", data?, message?, results?, total? }`.
-`status` in the outer envelope does **not** always mean "no error" — the chat
-endpoint's conflict response is the one place `status:"success"` wraps a
-`data.status:"conflict"` you must still treat as blocked. Watch for that
-distinction throughout this doc.
+`status` in the outer envelope does **not** always mean "no error" — the
+chat/patch endpoints' `conflict` and `refused` outcomes are both plain `200`s
+where `status:"success"` wraps a `data.status` you must still treat as
+blocked/not-applied. Watch for that distinction throughout this doc: a
+business-rule refusal is a normal outcome of the operation (`data.status`),
+never an HTTP error — reserve 4xx/5xx for actual auth/transport/server
+failures.
 
 **Tenant scoping.** Almost everything under `/labels` and `/assurance` is
 scoped: a company caller only ever sees its own rows, and a cross-tenant
@@ -224,7 +227,34 @@ first.
 200 { data: { intent:"edit", status:"applied", resultVersion, report: ValidationReport } }
 ```
 
-### 4c. Edit, conflict — **the flow the frontend must not skip**
+### 4c. Edit, refused — structurally invalid patch
+
+The AI-proposed patch itself was malformed (unknown path, unsupported op,
+missing `value`, or the bulk-replacement threshold) — this is **not** a
+server error. It's a normal `200`, `status:"refused"`, so you can switch on
+`data.status` alongside `applied`/`conflict` without ever catching an
+exception to find out an edit didn't go through:
+
+```
+200 {
+  status: "success",
+  data: {
+    intent: "edit",
+    status: "refused",           // ← branch on THIS, same as "conflict"
+    path: "notAField",           // the rejected change's path, or null for a
+                                  // patch-level error (e.g. bulk-replacement)
+    reason: "Unknown path \"notAField\" — not a field in labelSchema...",
+    previousValue: <unchanged>,  // whatever was at `path` before — nothing applied
+    errors: [ { path, reason, previousValue }, ... ]  // every rejected change, if more than one
+  }
+}
+```
+
+Render `reason` directly — it's already a full sentence. `errors` exists for
+a patch that touched several paths at once; most UIs only need the top-level
+`path`/`reason`/`previousValue` (mirrors `errors[0]`).
+
+### 4d. Edit, conflict — **the flow the frontend must not skip**
 
 The AI proposes a patch; if applying it would create a validation failure
 that didn't exist before (a genuinely *new* FAIL, not a pre-existing one),
@@ -263,12 +293,11 @@ Show `wouldViolate` to the user before they pick an option — it's the same
 `message`, `citation`), so you can reuse your validation-report rendering
 component here.
 
-### 4d. Other status codes
+### 4e. Other status codes
 
 | Code | Cause |
 |---|---|
 | `409` (plain envelope, not the conflict shape) | Stale `expectedVersion` — reload the label and retry |
-| `422` | The AI's proposed patch was structurally invalid (rare — the model is schema-constrained) |
 | `423` | Label is mid-generation (`status:"generating"`) — currently unreachable in practice, but code for it |
 | `503` | The underlying AI call failed — safe to retry the whole request as-is |
 
@@ -286,12 +315,14 @@ directly without going through chat. `update_labels`.
 `op` ∈ `replace | append | remove | insert`. `value` required for every op
 except `remove`. There's a hard guard against accidental mass-replacement:
 touching more than 60% of the label's top-level fields in one patch is
-rejected with `422` — if you're building a "regenerate this section"
-feature, that's a real limit, not a bug to route around; use the
-generate-text-ai flow again instead for that case.
+**refused** — same `200 {status:"refused", path, reason, previousValue,
+errors}` shape as §4c, no `intent` field (this endpoint has none) — if
+you're building a "regenerate this section" feature, that's a real limit,
+not a bug to route around; use the generate-text-ai flow again instead for
+that case.
 
 **Key difference from chat: no override escape hatch here.** A conflict
-(`409`, same `{status:"conflict", wouldViolate, options}` shape as §4c
+(`409`, same `{status:"conflict", wouldViolate, options}` shape as §4d
 except there's no `proposedPatch` — you already know what you sent) must be
 resolved by the human adjusting their own patch and resubmitting; there's no
 `overrideAcknowledged` on this endpoint. If your UI wants "apply anyway"
@@ -496,10 +527,10 @@ library" feature yet.
 | 401 | No/invalid/expired token | |
 | 403 | Permission denied, OR a business-rule authorization refusal (global-scope promotion, self-approval on a high-risk label) — read the message, not just the code | Approval Gate 0 and 5a |
 | 404 | Not found, **or** belongs to a different tenant — indistinguishable by design | Almost every `:id` route under `/labels`, `/assurance` |
-| 409 | Optimistic-concurrency conflict (stale `expectedVersion`, already-approved/revoked), or a chat/patch validation conflict (`data.status:"conflict"`, outer envelope may still say `"success"`) | §4c, §5, §7 |
-| 422 | Well-formed but rejected by a business rule — structurally invalid patch, an approval gate, a coverage precondition | §5, §7, §9 step 5 |
-| 423 | Label is mid-generation, not yet editable | §4d (currently unreachable in practice) |
-| 503 | The underlying AI call failed — safe to retry as-is | §4d, §6 (audit) |
+| 409 | Optimistic-concurrency conflict (stale `expectedVersion`, already-approved/revoked), or a chat/patch validation conflict (`data.status:"conflict"`, outer envelope may still say `"success"`) | §4d, §5, §7 |
+| 422 | Well-formed but rejected by a business rule — an approval gate, a coverage precondition. **Not** a structurally invalid chat/direct patch — that's a normal `200 {status:"refused"}`, never an HTTP error (§4c, §5) | §7, §9 step 5 |
+| 423 | Label is mid-generation, not yet editable | §4e (currently unreachable in practice) |
+| 503 | The underlying AI call failed — safe to retry as-is | §4e, §6 (audit) |
 
 When in doubt about a specific endpoint's exact status-code set, check its
 entry in `src/docs/swagger.yaml` (or the rendered `/api/v1/docs` UI) — this

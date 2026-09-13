@@ -15,7 +15,7 @@
 // reference's own extracted text) -> Tier 5 (knowledgeResolver, cited) ->
 // Tier 6 (null, caller must not invent).
 import { resolve as resolveKnowledge } from "../knowledge/knowledgeResolver.js";
-import { isNeverGuessField, GROUNDED_CONTENT_FIELDS } from "./groundingPolicy.js";
+import { GROUNDED_CONTENT_FIELDS } from "./groundingPolicy.js";
 import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { acceptGroundedClaim } from "../knowledge/knowledgeResolver.js";
@@ -27,6 +27,14 @@ import { acceptGroundedClaim } from "../knowledge/knowledgeResolver.js";
 // "sections" object every already-ingested reference has instead. Try the
 // explicit key first, fall back to the section so existing references still
 // ground something.
+// withdrawalPeriod/registrationNumber/strength (NEVER_GUESS_LADDER_FIELDS,
+// labelGenerator.js) were added when the amended Invariant #5 opened Tier 4/5
+// to these fields too — a reference label's own sections.withdrawal_period/
+// registration ARE a real, citable source for them, unlike batchNo/expiryDate/
+// shelfLifeAfterOpening which have no getter at all (see that file's comment).
+// strength reads `reference` itself (2nd getter arg), not just `data`, because
+// it's a real top-level ReferenceLabel column (strengthSummary), not something
+// buried in the free-form extractedData blob.
 const REFERENCE_FIELD_SOURCES = {
   indications: (data) => data?.sections?.indications,
   directionOfUse: (data) => data?.sections?.dosage,
@@ -36,6 +44,9 @@ const REFERENCE_FIELD_SOURCES = {
   contraindications: (data) => data?.contraindications,
   feedClassification: (data) => data?.feed_classification,
   routeOfAdministration: (data) => data?.route_of_administration,
+  withdrawalPeriod: (data) => data?.sections?.withdrawal_period,
+  registrationNumber: (data) => data?.sections?.registration,
+  strength: (data, reference) => reference?.strengthSummary || data?.strength,
 };
 
 const FIELD_SEARCH_TOPIC = {
@@ -47,6 +58,9 @@ const FIELD_SEARCH_TOPIC = {
   warnings: "warnings and precautions",
   feedClassification: "feed/regulatory classification (e.g. feed additive, premix, medicated feed)",
   routeOfAdministration: "route of administration",
+  withdrawalPeriod: "official withdrawal period (meat/milk/eggs as applicable) for this exact product/ingredient — must be from an authoritative regulatory/pharmacopoeial source, not a general estimate",
+  registrationNumber: "official marketing authorisation / registration number for this exact product in this country",
+  strength: "labeled strength/concentration of the active ingredient(s) for this exact product",
 };
 
 function flattenText(value) {
@@ -109,15 +123,20 @@ Set found:false if you cannot locate a genuinely authoritative source for THIS s
 }
 
 /**
- * Resolves one field through §8.2's ladder. Returns null if unresolved
- * (caller's job is Tier 6: leave it empty, never invent) — otherwise
+ * Resolves one field through §8.2's ladder (Tiers 1/2/4/5). Returns null if
+ * unresolved at those tiers — caller's job is then Tier 6 (model inference),
+ * per the amended invariant #5: every field gets a value, never left empty,
+ * but Tier 6 must be tagged `estimated` downstream. Otherwise returns
  * { value, tier, provenance, sourceRef, citation, sourceUrl }.
+ *
+ * NEVER_GUESS_FIELDS (withdrawalPeriod, strength, registrationNumber, etc.) run
+ * through this SAME ladder now — the old hard refusal before Tier 1-5 even ran
+ * is gone. What still sets them apart is entirely downstream: classifyNeverGuessFields
+ * in labelGenerator.js tags a Tier 6 result on one of these as an estimate
+ * (estimatedFields + labelProvenance.estimateBasis), and validationEngine.js
+ * never lets that be a silent PASS.
  */
 export async function resolveGroundedField(fieldPath, { profile, rankedReferences = [] }) {
-  if (isNeverGuessField(fieldPath)) {
-    throw new Error(`fieldLadder.resolveGroundedField refused: "${fieldPath}" is a NEVER_GUESS field (Invariant #5) — it may not go through the external ladder at all.`);
-  }
-
   // Tier 1/2: Product row or user hint, already merged into confirmedFacts by
   // buildProductProfile.
   const confirmed = flattenText(profile.confirmedFacts?.[fieldPath]);
@@ -130,7 +149,7 @@ export async function resolveGroundedField(fieldPath, { profile, rankedReference
   const getter = REFERENCE_FIELD_SOURCES[fieldPath];
   if (getter) {
     for (const { reference } of referenceGroundedTier(rankedReferences)) {
-      const text = flattenText(getter(reference.extractedData));
+      const text = flattenText(getter(reference.extractedData, reference));
       if (text) {
         return { value: text, tier: 4, provenance: "reference", sourceRef: { kind: "reference_label", ids: [reference.id] }, citation: null, sourceUrl: null };
       }
@@ -163,17 +182,21 @@ export async function resolveGroundedField(fieldPath, { profile, rankedReference
 }
 
 /**
- * Runs the ladder for every field in GROUNDED_CONTENT_FIELDS except
- * targetAnimalSpecies (that field has its own array-shaped resolver in
- * labelGenerator.js — resolveTargetAnimalsSource — because its value is a
- * species list, not free text, and Tier 1/2/4 already fully cover it there).
- * Runs in parallel: Tier 1/2/4 are synchronous lookups, only genuinely
- * unresolved fields fall through to a Tier 5 Gemini call.
+ * Runs the ladder for a set of fields (defaults to GROUNDED_CONTENT_FIELDS
+ * minus targetAnimalSpecies, which has its own array-shaped resolver in
+ * labelGenerator.js — resolveTargetAnimalsSource). Also used for
+ * NEVER_GUESS_FIELDS' scalar members (labelGenerator.js passes those
+ * explicitly) — Tier 1 here checks profile.confirmedFacts, which those fields
+ * don't populate (they use profile.<field> directly, checked separately by
+ * the caller), so for them this effectively runs Tier 4/5 only before the
+ * caller falls through to Tier 6. Runs in parallel: Tier 1/2/4 are
+ * synchronous lookups, only genuinely unresolved fields fall through to a
+ * Tier 5 Gemini call.
  */
-export async function resolveGroundedFields({ profile, rankedReferences = [] }) {
-  const fields = GROUNDED_CONTENT_FIELDS.filter((f) => f !== "targetAnimalSpecies");
+export async function resolveGroundedFields({ profile, rankedReferences = [], fields = null }) {
+  const fieldList = fields || GROUNDED_CONTENT_FIELDS.filter((f) => f !== "targetAnimalSpecies");
   const entries = await Promise.all(
-    fields.map(async (fieldPath) => [fieldPath, await resolveGroundedField(fieldPath, { profile, rankedReferences })])
+    fieldList.map(async (fieldPath) => [fieldPath, await resolveGroundedField(fieldPath, { profile, rankedReferences })])
   );
   return Object.fromEntries(entries.filter(([, result]) => result !== null));
 }

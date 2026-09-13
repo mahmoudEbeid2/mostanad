@@ -49,7 +49,7 @@ assert("An unknown field is rejected, not silently ignored", !isValidPatchPath("
 const unknownPathPatch = { rationale: "test", changes: [{ path: "notAField", op: "replace", value: "x" }] };
 const unknownPathResult = validatePatchShape(unknownPathPatch);
 assert("Patch with an unknown path fails shape validation", !unknownPathResult.ok);
-assert("Error message names the offending path", unknownPathResult.errors.some((e) => e.includes("notAField")));
+assert("Error names the offending path", unknownPathResult.errors.some((e) => e.path === "notAField" || e.reason.includes("notAField")));
 
 const badOpPatch = { rationale: "test", changes: [{ path: "storage", op: "overwrite_everything", value: "x" }] };
 assert("Patch with an unsupported op is rejected", !validatePatchShape(badOpPatch).ok);
@@ -114,6 +114,20 @@ async function run() {
   const invalidPatch = { rationale: "test", changes: [{ path: "notReal", op: "replace", value: "x" }] };
   const invalidResult = await dryRunPatch(currentLabel, baselineReport, invalidPatch);
   assert("An invalid patch never reaches apply/dry-run — status 'invalid'", invalidResult.status === "invalid");
+
+  // A refusal must carry enough for the client to render it without an HTTP
+  // error: which path was rejected, why, and the untouched current value.
+  // generatedLabelService's chat()/applyDirectPatch() return this AS-IS in a
+  // normal 200 { status: "refused" } — see their comments.
+  const [firstError] = invalidResult.errors;
+  assert("Refusal errors carry a path", firstError.path === "notReal", firstError);
+  assert("Refusal errors carry a human-readable reason", typeof firstError.reason === "string" && firstError.reason.length > 0, firstError);
+  assert("Refusal errors carry the untouched previousValue for that path", firstError.previousValue === undefined, firstError); // "notReal" was never a real field
+
+  const appendOnScalarPatch = { rationale: "test", changes: [{ path: "productName", op: "append", value: "x" }] };
+  const appendResult = await dryRunPatch(currentLabel, baselineReport, appendOnScalarPatch);
+  assert("Applying an array-only op to a non-array is refused, not thrown", appendResult.status === "invalid");
+  assert("That refusal's previousValue is the field's actual current value, unchanged", appendResult.errors[0].previousValue === currentLabel.productName, appendResult.errors[0]);
 
   log(`\n  Summary: ${passed} passed / ${failed} failed / ${passed + failed} total\n`, failed === 0 ? "green" : "red");
   process.exit(failed > 0 ? 1 : 0);

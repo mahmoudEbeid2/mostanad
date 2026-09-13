@@ -18,7 +18,11 @@ const baseLabel = (overrides = {}) => ({
   ],
   storage: { translations: { en: "Store below 25C" }, primary: "en" },
   directionOfUse: { translations: { en: "Add to drinking water" }, primary: "en" },
-  withdrawalPeriod: null, // present-but-empty, so applicability (not schema) is what fails it
+  // Amended Invariant #5: withdrawalPeriod is no longer Zod-nullable (labelSchema.js),
+  // so a real "empty" value must be a well-formed-but-blank LocalizedText, not null —
+  // null would now fail at the SCHEMA layer (comparison "coherence"), which defeats
+  // this test's point (applicability, comparison "regulatory", is what should fail it).
+  withdrawalPeriod: { translations: {}, primary: "" },
   ...overrides,
 });
 

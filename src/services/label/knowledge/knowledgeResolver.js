@@ -2,7 +2,6 @@ import { prisma } from "../../../lib/prisma.js";
 import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { isAllowedKnowledgeHost } from "./authoritativeSources.js";
-import { isNeverGuessField } from "../generation/groundingPolicy.js";
 
 const CACHE_TTL_DAYS = 90;
 
@@ -52,15 +51,14 @@ Set found:false if you cannot locate a genuinely authoritative source — do not
 }
 
 /**
- * Tier 5 (§8.2). NEVER called for a NEVER_GUESS_FIELDS path — refuses outright
- * rather than silently answering, since that field class must stay Tier 1/2/4
- * or empty+FAIL no matter what.
+ * Tier 5 (§8.2). Amended Invariant #5 ("every field is generated") opened this
+ * to NEVER_GUESS_FIELDS paths too — a cited, allowlisted external source is a
+ * real source, same as for any other field. The old hard refusal here is gone;
+ * fieldLadder.js's REFERENCE_FIELD_SOURCES/FIELD_SEARCH_TOPIC entries for
+ * withdrawalPeriod/strength/registrationNumber are what actually route those
+ * fields through this function now.
  */
 export const resolve = async (kind, lookupKey, { fieldPath, searchFn = defaultSearch } = {}) => {
-  if (fieldPath && isNeverGuessField(fieldPath)) {
-    throw new Error(`knowledgeResolver.resolve refused: "${fieldPath}" may never be filled from external knowledge (Invariant #5).`);
-  }
-
   const cached = await prisma.externalKnowledgeCache.findUnique({ where: { kind_lookupKey: { kind, lookupKey } } });
   if (cached && cached.status !== "rejected" && (!cached.expiresAt || cached.expiresAt > new Date())) {
     return cached;

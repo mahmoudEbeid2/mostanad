@@ -133,3 +133,25 @@ test("applyDirectPatch: a conflicting patch is refused without overrideAcknowled
   const afterOverride = await prisma.generatedLabel.findUnique({ where: { id: label.id } });
   assert.deepEqual(afterOverride.labelData.targetAnimalSpecies.list, ["Cattle"]);
 });
+
+test("applyDirectPatch: a structurally invalid patch is RETURNED as status:'refused' (200), never thrown as an HTTP error", async () => {
+  const label = await seedLabel(company);
+
+  const result = await generatedLabelService.applyDirectPatch(label.id, {
+    changes: [{ path: "notARealField", op: "replace", value: "x" }],
+    rationale: "test",
+    expectedVersion: 1,
+    userId: "editor-1",
+    companyId: company.id,
+  });
+
+  assert.equal(result.status, "refused", "a refusal is a normal return value, not a thrown AppError");
+  assert.equal(result.path, "notARealField");
+  assert.equal(typeof result.reason, "string");
+  assert.ok(result.reason.length > 0);
+  assert.equal(result.previousValue, undefined, "notARealField was never a real field on the label");
+  assert.ok(Array.isArray(result.errors) && result.errors.length > 0, "full error list is preserved alongside the primary path/reason");
+
+  const fresh = await prisma.generatedLabel.findUnique({ where: { id: label.id } });
+  assert.equal(fresh.currentVersion, 1, "a refused patch must not create a version");
+});

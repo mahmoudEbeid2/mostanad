@@ -11,7 +11,7 @@ import { selectReferences } from "../services/label/retrieval/referenceSelector.
 import { generate as generateLabel } from "../services/label/generation/labelGenerator.js";
 import { validate as validateLabel } from "../services/label/validation/validationEngine.js";
 import { riskScore, autonomyTierFor } from "../services/label/assurance/riskScorer.js";
-import { refusalReasonFor, GROUNDED_CONTENT_FIELDS } from "../services/label/generation/groundingPolicy.js";
+import { estimateBasisFor, GROUNDED_CONTENT_FIELDS, NEVER_GUESS_FIELDS } from "../services/label/generation/groundingPolicy.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -23,11 +23,10 @@ socket.on("connect", () => {
 // Per-field provenance (Invariant #3 / §14.4), rebuilt for Phase 4's real
 // labelSchema fields and real tier information — supersedes Phase 1's stopgap
 // (which never had Tier 1 because productProfile.js didn't exist yet).
-function buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData, groundedFacts = {}, unresolvedContentFields = [] }) {
+function buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData, groundedFacts = {}, groundedNeverGuessPaths = {}, unresolvedContentFields = [] }) {
   const at = new Date().toISOString();
   const modelId = generationMeta.modelId;
   const promptHash = generationMeta.promptHash;
-  const refused = new Set(generationMeta.refusedUngroundedFields || []);
   const estimated = new Set(labelData.estimatedFields || []);
   const bestRefIds = rankedReferences.filter((r) => r.tier === "exact_combo" || r.tier === "ingredient").map((r) => r.reference.id);
   const provenance = {};
@@ -41,18 +40,24 @@ function buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, 
     targetAnimalsSource === "reference" ? { kind: "reference_label", ids: bestRefIds } : null,
     targetAnimalsSource === "inferred" ? { refusalReason: null } : {});
 
-  // The absolute-exclusion fields (Invariant #5, §8.2's exclusions): tier is 1
-  // (Product row) if grounded, 6/refused with a refusalReason if the grounding
-  // policy nulled the value — never left ambiguous as to why it's empty.
-  for (const path of ["withdrawalPeriod", "strength", "registrationNumber", "shelfLifeAfterOpening"]) {
-    if (refused.has(path)) set(path, 6, "refused_ungrounded", null, { refusalReason: refusalReasonFor(path) });
-    else if (profile[path]) set(path, 1, "confirmed", { kind: "product_row", field: path });
-    else if (labelData[path] && bestRefIds.length > 0) set(path, 4, "reference", { kind: "reference_label", ids: bestRefIds });
-    else if (!labelData[path]) set(path, 6, "refused_ungrounded", null, { refusalReason: refusalReasonFor(path) });
+  // NEVER_GUESS_FIELDS (amended Invariant #5 — "every field is generated,
+  // none render blank"): classifyNeverGuessFields (labelGenerator.js) already
+  // decided, for every one of these, whether it's grounded (tier 1/4/5, real
+  // source — groundedNeverGuessPaths) or a Tier 6 estimate (labelData.estimatedFields).
+  // Every field lands in exactly one bucket — never left ambiguous as to why
+  // a value is (or isn't) trustworthy as printed.
+  for (const path of NEVER_GUESS_FIELDS) {
+    if (path === "activeIngredients[].amount") continue; // per-ingredient, handled below
+    const fact = groundedNeverGuessPaths[path];
+    if (fact) set(path, fact.tier, fact.provenance, fact.sourceRef, { citation: fact.citation || null, sourceUrl: fact.sourceUrl || null });
+    else if (estimated.has(path)) set(path, 6, "inferred", null, { estimated: true, estimateBasis: estimateBasisFor(path) });
   }
-  for (const path of ["batchNo", "expiryDate"]) {
-    if (refused.has(path)) set(path, 6, "refused_ungrounded", null, { refusalReason: refusalReasonFor(path) });
-  }
+  (labelData.activeIngredients || []).forEach((_, i) => {
+    const path = `activeIngredients[${i}].amount`;
+    const fact = groundedNeverGuessPaths[path];
+    if (fact) set(path, fact.tier, fact.provenance, fact.sourceRef);
+    else if (estimated.has(path)) set(path, 6, "inferred", null, { estimated: true, estimateBasis: estimateBasisFor("activeIngredients[].amount") });
+  });
 
   // §8.2's ladder for content fields — groundedFacts already carries the real
   // tier/citation/sourceUrl computed in fieldLadder.js (code-computed, never
@@ -154,10 +159,10 @@ export const labelGeneratorWorker = new Worker(
       // Step 4: Constrained generation (§9, schema-forced via responseJsonSchema —
       // G6 fixed. No more free-form JSON coerced after the fact).
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 70, message: "Generating label..." });
-      const { labelData, generationMeta, matchTier: generatedTier, referenceLabelIds, targetAnimalsSource, groundedFacts, unresolvedContentFields } = await generateLabel({ profile, rankedReferences, rules });
+      const { labelData, generationMeta, matchTier: generatedTier, referenceLabelIds, targetAnimalsSource, groundedFacts, groundedNeverGuessPaths, unresolvedContentFields } = await generateLabel({ profile, rankedReferences, rules });
       const matchTier = referenceGroundingFailed ? "none" : generatedTier;
 
-      console.log(`[Label Generator] Task ${taskId}: cachedTokens=${generationMeta.cachedTokens}, refusedFields=${JSON.stringify(generationMeta.refusedUngroundedFields)}`);
+      console.log(`[Label Generator] Task ${taskId}: cachedTokens=${generationMeta.cachedTokens}, estimatedNeverGuessFields=${JSON.stringify(generationMeta.estimatedNeverGuessFields)}`);
 
       // CLAUDE.md item 5: real per-label cost, not an estimate — every
       // geminiClient call made since withGenerationMetrics() opened this job
@@ -168,7 +173,7 @@ export const labelGeneratorWorker = new Worker(
 
       // Step 5: Persist — GeneratedLabel + LabelVersion v1 + per-field provenance.
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 90, message: "Saving and validating..." });
-      const labelProvenance = buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData, groundedFacts, unresolvedContentFields });
+      const labelProvenance = buildFieldProvenance({ profile, rankedReferences, targetAnimalsSource, generationMeta, labelData, groundedFacts, groundedNeverGuessPaths, unresolvedContentFields });
 
       const label = await versionService.createInitial({
         companyId,

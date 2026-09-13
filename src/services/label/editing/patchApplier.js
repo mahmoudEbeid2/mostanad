@@ -1,23 +1,28 @@
-import { applyPatch, validatePatchShape } from "./patchProtocol.js";
+import { applyPatch, validatePatchShape, readPath } from "./patchProtocol.js";
 import { validate } from "../validation/validationEngine.js";
 
 /**
  * §11.4 guards #3-4: dry-run first, then conflict detection. Never mutates
  * anything — pure function of (currentLabelData, currentReport, patch, rules).
  * Returns one of:
- *   { status: "invalid", errors: [...] }               — shape/path rejected
+ *   { status: "invalid", errors: [{path, reason, previousValue}] } — shape/path
+ *     rejected. This is an OUTCOME, not a transport failure — the caller
+ *     (generatedLabelService's chat()/applyDirectPatch()) returns it to the
+ *     client as a normal 200 { status: "refused" }, never an HTTP error.
  *   { status: "conflict", candidateLabelData, wouldViolate: [...] } — new FAILs introduced
  *   { status: "clean", candidateLabelData, report }     — safe to apply
  */
 export async function dryRunPatch(currentLabelData, currentReport, patch, { rules = [] } = {}) {
+  const withPreviousValue = (errors) => errors.map((e) => ({ ...e, previousValue: readPath(currentLabelData, e.path) }));
+
   const shapeCheck = validatePatchShape(patch);
-  if (!shapeCheck.ok) return { status: "invalid", errors: shapeCheck.errors };
+  if (!shapeCheck.ok) return { status: "invalid", errors: withPreviousValue(shapeCheck.errors) };
 
   let candidateLabelData;
   try {
     candidateLabelData = applyPatch(currentLabelData, patch.changes);
   } catch (err) {
-    return { status: "invalid", errors: [err.message] };
+    return { status: "invalid", errors: withPreviousValue([{ path: err.path || null, reason: err.message }]) };
   }
 
   // includePlausibility: false — this only compares FAIL sets (see below),
