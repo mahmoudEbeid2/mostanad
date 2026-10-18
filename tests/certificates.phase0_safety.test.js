@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 // Certificates V2 Phase 0 — tenancy and V1 safety (CERTIFICATES_V2_PLAN.md §17);
 // since Phase 8, V1 retirement (its routes are 404, its tables remain).
 // Company callers use the dev bypass as a company (x-bypass-type: company), so
@@ -19,11 +20,11 @@ function assert(label, condition, details = "") {
 }
 
 const asCompany = (id) => ({
-  "x-test-bypass": "supersecretbypass",
+  "x-test-bypass": BYPASS,
   "x-bypass-type": "company",
   "x-bypass-id": id,
 });
-const asAdmin = { "x-test-bypass": "supersecretbypass" };
+const asAdmin = { "x-test-bypass": BYPASS };
 
 async function call(method, path, headers, body) {
   const opts = { method, headers: { ...headers } };

@@ -1,4 +1,6 @@
 import { spawn } from "child_process";
+import crypto from "crypto";
+import fs from "fs";
 
 // Single-command local dev: the API process only imports/runs
 // referenceLabelWorker.js and productAiWorker.js in-process (see app.js) — the
@@ -32,7 +34,17 @@ const targets = [
 // `--no-gemini` (npm run dev:test): every child gets GEMINI_DISABLED=true, so
 // no process can reach the Gemini API. `npm test` refuses to run unless every
 // queue consumer was started this way (tests/runAll.js preflight).
-if (process.argv.includes("--no-gemini")) process.env.GEMINI_DISABLED = "true";
+// It is also the ONLY place the test auth bypass is switched on: a fresh random
+// secret per start, handed to every child via env and written to the
+// gitignored .test-bypass-secret so `npm test` (tests/testBypass.js) can send
+// it. `npm run dev:all` never enables it.
+export const BYPASS_SECRET_FILE = ".test-bypass-secret";
+if (process.argv.includes("--no-gemini")) {
+  process.env.GEMINI_DISABLED = "true";
+  process.env.ALLOW_TEST_BYPASS = "true";
+  process.env.TEST_BYPASS_SECRET = crypto.randomBytes(24).toString("base64url");
+  fs.writeFileSync(BYPASS_SECRET_FILE, process.env.TEST_BYPASS_SECRET, { mode: 0o600 });
+}
 
 const COLORS = ["\x1b[36m", "\x1b[35m", "\x1b[33m", "\x1b[32m", "\x1b[34m", "\x1b[91m", "\x1b[92m", "\x1b[93m", "\x1b[94m"];
 const RESET = "\x1b[0m";
@@ -65,6 +77,7 @@ const children = targets.map(({ name, script }, i) => {
 
 console.log(`Started ${children.length} processes: ${targets.map((t) => t.name).join(", ")}`);
 console.log(`Gemini: ${process.env.GEMINI_DISABLED === "true" ? "DISABLED (GEMINI_DISABLED=true)" : "enabled"}`);
+console.log(`Test auth bypass: ${process.env.ALLOW_TEST_BYPASS === "true" ? `ENABLED (secret in ${BYPASS_SECRET_FILE})` : "off"}`);
 console.log("Postgres + Redis are NOT started by this script — bring them up first. Press Ctrl+C to stop all.\n");
 
 let shuttingDown = false;
@@ -73,6 +86,7 @@ function shutdown() {
   shuttingDown = true;
   console.log("\nStopping all processes...");
   for (const child of children) child.kill();
+  if (process.env.ALLOW_TEST_BYPASS === "true") fs.rmSync(BYPASS_SECRET_FILE, { force: true });
   setTimeout(() => process.exit(0), 500);
 }
 

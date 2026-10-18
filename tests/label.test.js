@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
@@ -71,7 +72,7 @@ function assert(label, condition, details = "") {
 async function sendLabelRequest(formData) {
   const res = await fetch(`${BASE_URL}/products/verify-label`, {
     method: "POST",
-    headers: { "x-test-bypass": "supersecretbypass" },
+    headers: { "x-test-bypass": BYPASS },
     body: formData,
   });
   let data = null;
@@ -84,7 +85,7 @@ async function pollTask(jobId) {
   let task = null;
   for (let i = 0; i < 20; i++) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, { headers: { "x-test-bypass": "supersecretbypass" } });
+    const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, { headers: { "x-test-bypass": BYPASS } });
     task = (await checkRes.json())?.data;
     if (task && (task.status === "completed" || task.status === "failed")) break;
   }

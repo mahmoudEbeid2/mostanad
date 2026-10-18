@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
@@ -42,7 +43,7 @@ async function request(method, path, body = null) {
     method,
     headers: {
       "Content-Type": "application/json",
-      "x-test-bypass": "supersecretbypass",
+      "x-test-bypass": BYPASS,
     },
   };
   if (body) options.body = JSON.stringify(body);
@@ -88,7 +89,7 @@ async function run() {
 
     const res = await fetch(`${BASE_URL}/brands`, {
       method: "POST",
-      headers: { "x-test-bypass": "supersecretbypass" },
+      headers: { "x-test-bypass": BYPASS },
       body: form,
     });
 
@@ -153,7 +154,7 @@ async function run() {
 
     const res = await fetch(`${BASE_URL}/brands/${testBrandId}`, {
       method: "PATCH",
-      headers: { "x-test-bypass": "supersecretbypass" },
+      headers: { "x-test-bypass": BYPASS },
       body: form,
     });
 

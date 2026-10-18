@@ -67,6 +67,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -90,6 +91,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -113,6 +115,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -136,6 +139,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -159,6 +163,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -182,6 +187,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -203,6 +209,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -230,6 +237,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
@@ -253,6 +261,7 @@ services:
     env_file:
       - .env
     environment:
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000

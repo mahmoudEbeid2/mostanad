@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
@@ -35,7 +36,7 @@ function assert(label, condition, details = "") {
 }
 
 async function request(method, path, body = null) {
-  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": "supersecretbypass" } };
+  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": BYPASS } };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
   let data = null;
@@ -78,7 +79,7 @@ async function run() {
     const form = new FormData();
     const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=${testCompanyId}`, {
       method: "POST",
-      headers: { "x-test-bypass": "supersecretbypass" },
+      headers: { "x-test-bypass": BYPASS },
       body: form,
     });
     const status = res.status;
@@ -108,7 +109,7 @@ async function run() {
 
       const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=00000000-0000-0000-0000-000000000000`, {
         method: "POST",
-        headers: { "x-test-bypass": "supersecretbypass" },
+        headers: { "x-test-bypass": BYPASS },
         body: form,
       });
       const status = res.status;
@@ -140,7 +141,7 @@ async function run() {
     const startTime = Date.now();
     const res = await fetch(`${BASE_URL}/products/upload-catalog?companyId=${testCompanyId}`, {
       method: "POST",
-      headers: { "x-test-bypass": "supersecretbypass" },
+      headers: { "x-test-bypass": BYPASS },
       body: form,
     });
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -162,7 +163,7 @@ async function run() {
       for (let i = 0; i < 20; i++) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
-          headers: { "x-test-bypass": "supersecretbypass" }
+          headers: { "x-test-bypass": BYPASS }
         });
         const checkData = await checkRes.json();
         task = checkData?.data;

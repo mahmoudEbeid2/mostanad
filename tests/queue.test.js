@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import io from "socket.io-client";
 import fs from "fs";
 import path from "path";
@@ -38,7 +39,7 @@ async function request(method, path, body = null) {
     method,
     headers: {
       "Content-Type": "application/json",
-      "x-test-bypass": "supersecretbypass",
+      "x-test-bypass": BYPASS,
     },
   };
   if (body) options.body = JSON.stringify(body);
@@ -125,7 +126,7 @@ async function run() {
 
   const uploadRes = await fetch(`${BASE_URL}/products/upload-catalog?companyId=${companyId}`, {
     method: "POST",
-    headers: { "x-test-bypass": "supersecretbypass" },
+    headers: { "x-test-bypass": BYPASS },
     body: form,
   });
 

@@ -6,35 +6,45 @@ import {
   updateProduct as updateProductService,
   deleteProduct as deleteProductService,
 } from "../services/productService.js";
+import { assertCompanyAccess } from "../utils/tenantScope.js";
+
+// Tenancy: a company caller only ever sees and changes its own products —
+// another tenant's product is a 404 (never 403), a ?companyId= / body companyId
+// naming another company is ignored (list) or refused (create). A system user
+// keeps the global view (and may filter with ?companyId=).
+const ownCompanyId = (req) => req.company?.id;
 
 // 1. CREATE PRODUCT
 export const createProduct = catchAsync(async (req, res, next) => {
   const { companyId, ...productData } = req.body;
-  const product = await createProductService(companyId, productData);
+  assertCompanyAccess(req, companyId);
+  const product = await createProductService(ownCompanyId(req) || companyId, productData);
   res.status(201).json({ status: "success", data: { product } });
 });
 
 // 2. GET ALL PRODUCTS (global with query filters)
 export const getAllProducts = catchAsync(async (req, res, next) => {
-  const { meta, products } = await getAllProductsService(req.query);
+  const own = ownCompanyId(req);
+  const query = own ? Object.fromEntries(Object.entries(req.query).filter(([k]) => k !== "companyId")) : req.query;
+  const { meta, products } = await getAllProductsService(query, own);
   res.status(200).json({ status: "success", meta, data: { products } });
 });
 
 // 3. GET PRODUCT BY ID
 export const getProductById = catchAsync(async (req, res, next) => {
-  const product = await getProductByIdService(req.params.id);
+  const product = await getProductByIdService(req.params.id, ownCompanyId(req));
   res.status(200).json({ status: "success", data: { product } });
 });
 
 // 4. UPDATE PRODUCT
 export const updateProduct = catchAsync(async (req, res, next) => {
-  const product = await updateProductService(req.params.id, req.body);
+  const product = await updateProductService(req.params.id, req.body, ownCompanyId(req));
   res.status(200).json({ status: "success", data: { product } });
 });
 
 // 5. DELETE PRODUCT
 export const deleteProduct = catchAsync(async (req, res, next) => {
-  await deleteProductService(req.params.id);
+  await deleteProductService(req.params.id, ownCompanyId(req));
   res.status(204).json({ status: "success", data: null });
 });
 
@@ -52,11 +62,13 @@ export const extractProductAi = catchAsync(async (req, res, next) => {
     return next(new AppError("Please provide the raw text to extract from.", 400));
   }
 
+  // a company caller extracts into its own catalogue only (another tenant → 404)
+  assertCompanyAccess(req, companyId || req.company?.id);
   let finalCompanyId = null;
-  if (companyId !== undefined) {
+  if (req.company) {
+    finalCompanyId = req.company.id;
+  } else if (companyId !== undefined) {
     finalCompanyId = companyId || null;
-  } else if (req.user && req.user.type === "company") {
-    finalCompanyId = req.user.id;
   }
 
   // 1. Create a BackgroundTask record

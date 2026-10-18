@@ -1,3 +1,4 @@
+import { BYPASS } from "../testBypass.js";
 // Shared helpers for tests/certificates-v2/*. Same conventions as the other
 // suites: live API on :3000 with the dev bypass header; company callers use
 // x-bypass-type: company so every tenant check runs as for a real token.
@@ -25,8 +26,8 @@ export function makeAssert() {
   return { assert, counts };
 }
 
-export const asCompany = (id) => ({ "x-test-bypass": "supersecretbypass", "x-bypass-type": "company", "x-bypass-id": id });
-export const asAdmin = { "x-test-bypass": "supersecretbypass" };
+export const asCompany = (id) => ({ "x-test-bypass": BYPASS, "x-bypass-type": "company", "x-bypass-id": id });
+export const asAdmin = { "x-test-bypass": BYPASS };
 
 export async function api(method, url, headers = {}, body) {
   const opts = { method, headers: { ...headers } };

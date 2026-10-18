@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 // T15/T16 (§17): the six approval gates, the promotion carousel, revocation,
 // and company-scoped-by-default (Invariant #13). No AI involved anywhere in
 // this phase — approval is a human action — so this runs live against a real
@@ -51,7 +52,7 @@ async function run() {
   log("\n=== Phase 7: approval gates, promotion, revocation ===\n", "bold");
 
   const company = await prisma.company.create({ data: { name: `Approval Test Co ${Date.now()}`, username: `approval_test_${Date.now()}`, password: "x" } });
-  const headers = { "x-test-bypass": "supersecretbypass", "x-bypass-type": "company", "x-bypass-id": company.id, "Content-Type": "application/json" };
+  const headers = { "x-test-bypass": BYPASS, "x-bypass-type": "company", "x-bypass-id": company.id, "Content-Type": "application/json" };
   const cleanupLabelIds = [];
   const cleanupReferenceIds = [];
 

@@ -3,6 +3,7 @@ import AppError from "../utils/appError.js";
 import { prisma } from "../lib/prisma.js";
 import { saveTempFile } from "../utils/fileHelper.js";
 import { addCatalogJob } from "../lib/queue.js";
+import { assertCompanyAccess } from "../utils/tenantScope.js";
 
 /**
  * Handle POST request for uploading PDF catalog and extracting products/categories
@@ -12,7 +13,10 @@ export const uploadCatalog = catchAsync(async (req, res, next) => {
     return next(new AppError("Please upload a PDF file using the 'catalog' field!", 400));
   }
 
-  const companyId = req.query.companyId || req.body.companyId || req.params.companyId;
+  const requested = req.query.companyId || req.body.companyId || req.params.companyId;
+  // a company caller uploads into its own catalogue only (another tenant → 404)
+  if (requested) assertCompanyAccess(req, requested);
+  const companyId = req.company?.id || requested;
   if (!companyId) {
     return next(new AppError("Company ID is required to associate the catalog products!", 400));
   }

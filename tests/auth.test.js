@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import dotenv from "dotenv";
 dotenv.config();
 import bcrypt from "bcryptjs";
@@ -238,7 +239,7 @@ async function run() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-test-bypass": "supersecretbypass"
+        "x-test-bypass": BYPASS
       },
       body: JSON.stringify({
         name: "Auth Test Company",

@@ -47,3 +47,4 @@ backups/
 
 # Certificates V2 runtime files (per-tenant; StoredFile rows point here)
 uploads/certificates/
+.test-bypass-secret

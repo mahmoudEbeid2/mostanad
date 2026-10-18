@@ -1,3 +1,4 @@
+import { BYPASS } from "../tests/testBypass.js";
 // scripts/evalGolden.js — Phase 0.5 (§14.3). Runs every golden/ case through the
 // live generation pipeline (POST /reference-labels/generate-text-ai), scores the
 // result field by field against golden/<case>/expected.json, persists a
@@ -44,7 +45,7 @@ async function runCase(caseDir, companyId) {
 
   const submitRes = await fetch(`${BASE_URL}/reference-labels/generate-text-ai`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-test-bypass": "supersecretbypass" },
+    headers: { "Content-Type": "application/json", "x-test-bypass": BYPASS },
     body: JSON.stringify({ ...input, companyId }),
   });
   const submitData = await submitRes.json();
@@ -56,7 +57,7 @@ async function runCase(caseDir, companyId) {
   let task = null;
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 2000));
-    const pollRes = await fetch(`${BASE_URL}/background-tasks/${taskId}`, { headers: { "x-test-bypass": "supersecretbypass" } });
+    const pollRes = await fetch(`${BASE_URL}/background-tasks/${taskId}`, { headers: { "x-test-bypass": BYPASS } });
     const pollData = await pollRes.json();
     task = pollData?.data;
     if (task && (task.status === "completed" || task.status === "failed")) break;

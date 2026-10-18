@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import { prisma } from "../src/lib/prisma.js";
 
 const BASE_URL = "http://127.0.0.1:3000/api/v1";
@@ -25,7 +26,7 @@ const log = (msg, color = "white") =>
 const separator = () => log("─".repeat(62), "cyan");
 
 async function request(method, path, body = null) {
-  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": "supersecretbypass" } };
+  const options = { method, headers: { "Content-Type": "application/json", "x-test-bypass": BYPASS } };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(`${BASE_URL}${path}`, options);
   let data = null;

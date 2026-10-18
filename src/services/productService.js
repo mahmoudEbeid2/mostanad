@@ -49,9 +49,11 @@ export const createProduct = async (companyId, data) => {
 };
 
 /**
- * Get all products with filtering, sorting, search, pagination
+ * Get all products with filtering, sorting, search, pagination.
+ * `scopeCompanyId` (a company caller's own id) is forced AFTER the query-string
+ * filters, so no query parameter can widen the list to another tenant.
  */
-export const getAllProducts = async (queryString) => {
+export const getAllProducts = async (queryString, scopeCompanyId) => {
   // Verify company exists if companyId provided in query string
   if (queryString?.companyId) {
     const companyExists = await prisma.company.findUnique({ where: { id: queryString.companyId } });
@@ -66,6 +68,7 @@ export const getAllProducts = async (queryString) => {
     .sort()
     .paginate();
 
+  if (scopeCompanyId) features.queryOptions.where.companyId = scopeCompanyId;
   features.queryOptions.include = { category: true, brand: true };
 
   const result = await features.exec();
@@ -77,15 +80,16 @@ export const getAllProducts = async (queryString) => {
 };
 
 /**
- * Get a product by ID
+ * Get a product by ID. With `scopeCompanyId`, another tenant's product is
+ * "not found" (404, never 403).
  */
-export const getProductById = async (id) => {
+export const getProductById = async (id, scopeCompanyId) => {
   const product = await prisma.product.findUnique({
     where: { id },
     include: { category: true, brand: true },
   });
 
-  if (!product) {
+  if (!product || (scopeCompanyId && product.companyId !== scopeCompanyId)) {
     throw new AppError("Product not found!", 404);
   }
 
@@ -95,9 +99,9 @@ export const getProductById = async (id) => {
 /**
  * Update a product
  */
-export const updateProduct = async (id, data) => {
+export const updateProduct = async (id, data, scopeCompanyId) => {
   const existingProduct = await prisma.product.findUnique({ where: { id } });
-  if (!existingProduct) {
+  if (!existingProduct || (scopeCompanyId && existingProduct.companyId !== scopeCompanyId)) {
     throw new AppError("Product not found!", 404);
   }
 
@@ -141,9 +145,9 @@ export const updateProduct = async (id, data) => {
 /**
  * Delete a product (Hard Delete)
  */
-export const deleteProduct = async (id) => {
+export const deleteProduct = async (id, scopeCompanyId) => {
   const existingProduct = await prisma.product.findUnique({ where: { id } });
-  if (!existingProduct) {
+  if (!existingProduct || (scopeCompanyId && existingProduct.companyId !== scopeCompanyId)) {
     throw new AppError("Product not found!", 404);
   }
 

@@ -5,6 +5,7 @@ import path from "path";
 import { promisify } from "util";
 import { Queue } from "bullmq";
 import { getRedisConfig } from "../src/lib/redis.js";
+import { readBypassSecret } from "./testBypass.js";
 
 const execAsync = promisify(exec);
 
@@ -74,7 +75,27 @@ const files = [
   ),
 ];
 
+// The suites authenticate with the test bypass, which only `npm run dev:test`
+// switches on (opt-in, random secret per start — src/middleware/testBypass.js).
+// Refuse to run against an API that doesn't honour it (e.g. `dev:all`).
+async function assertTestBypass() {
+  const secret = readBypassSecret();
+  if (!secret) throw new Error("No test bypass secret (.test-bypass-secret). Start the guarded stack with `npm run dev:test`.");
+  process.env.TEST_BYPASS_SECRET = secret; // inherited by every suite
+  const url = "http://127.0.0.1:3000/api/v1/background-tasks/00000000-0000-0000-0000-000000000000";
+  let status;
+  try {
+    status = (await fetch(url, { headers: { "x-test-bypass": secret } })).status;
+  } catch (err) {
+    throw new Error(`The API is not reachable at ${url} (${err.message}). Start \`npm run dev:test\`.`);
+  }
+  if (status !== 404) {
+    throw new Error(`The API did not accept the test bypass (HTTP ${status}). It must be the \`npm run dev:test\` stack that wrote .test-bypass-secret.`);
+  }
+}
+
 async function runTests() {
+  await assertTestBypass();
   await assertNoGeminiConsumers();
   console.log(`${colors.cyan}${colors.bold}==================================================${colors.reset}`);
   console.log(`${colors.cyan}${colors.bold}   🏃‍♂️ RUNNING ALL SYSTEM INTEGRATION TEST SUITES   ${colors.reset}`);

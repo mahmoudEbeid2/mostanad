@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import catchAsync from "../utils/catchAsync.js";
+import { isBypassed } from "./testBypass.js";
 
 /**
  * Protect middleware: Verifies JWT token and attaches user/company details to request
@@ -12,11 +13,9 @@ export const protect = catchAsync(async (req, res, next) => {
     return next();
   }
 
-  // For testing convenience under non-production environments
-  const isTestBypass = req.headers["x-test-bypass"] === "supersecretbypass";
-  const isTestEnv = process.env.NODE_ENV === "test" && req.headers["x-force-auth"] !== "true";
-
-  if (process.env.NODE_ENV !== "production" && (isTestBypass || isTestEnv)) {
+  // Test-only bypass — opt-in via ALLOW_TEST_BYPASS + TEST_BYPASS_SECRET, never
+  // in production (see testBypass.js; the app refuses to boot otherwise)
+  if (isBypassed(req)) {
     if (req.headers["x-bypass-type"] === "company") {
       const companyId = req.headers["x-bypass-id"] || "test-bypass-company-id";
       req.company = { id: companyId, name: "Test Bypass Company", isActive: true };
@@ -118,12 +117,8 @@ export const permissionModule = (permissionSlug) => {
  */
 export const restrictToPermission = (permissionSlug) => {
   return (req, res, next) => {
-    // 1. Bypass for test environment or test bypass header
-    if (
-      process.env.NODE_ENV !== "production" &&
-      (req.headers["x-test-bypass"] === "supersecretbypass" ||
-        (process.env.NODE_ENV === "test" && req.headers["x-force-auth"] !== "true"))
-    ) {
+    // 1. Test-only bypass (opt-in, never in production — testBypass.js)
+    if (isBypassed(req)) {
       return next();
     }
 

@@ -1,3 +1,4 @@
+import { BYPASS } from "./testBypass.js";
 import { prisma } from "../src/lib/prisma.js";
 
 const BASE_URL = "http://127.0.0.1:3000/api/v1";
@@ -26,7 +27,7 @@ async function request(method, path, body = null) {
     method,
     headers: {
       "Content-Type": "application/json",
-      "x-test-bypass": "supersecretbypass",
+      "x-test-bypass": BYPASS,
     },
   };
   if (body) options.body = JSON.stringify(body);
