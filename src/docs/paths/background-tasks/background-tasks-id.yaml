@@ -8,8 +8,9 @@ get:
     label verification) is fronted by a `BackgroundTask` row. Poll this
     endpoint until `status` is `completed` or `failed`; `result`'s shape
     depends on which endpoint created the task — see that endpoint's docs.
-    No permission restriction beyond `protect` (any authenticated caller can
-    read any task by id — there is no tenant check here).
+    No permission restriction beyond `protect`, but tenant-scoped (Certificates
+    V2 Phase 0): a company caller only sees its own tasks — another company's
+    task is 404.
   parameters:
     - $ref: '../../components/components.yaml#/components/parameters/BackgroundTaskId'
   responses:

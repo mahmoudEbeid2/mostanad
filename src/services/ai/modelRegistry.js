@@ -58,16 +58,37 @@ export const MODELS = {
   // behavior (geminiClient.generateJson always forced temperature 0).
   TEMPLATE_RECONSTRUCT: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
 
+  // Phase 4 — regulatory document ingestion's combined text+catalog extraction
+  // (MOSTANAD ingestion overhaul §2). Replaces the old plain-text-only EXTRACT
+  // call for regulatory documents specifically: this one call must both
+  // transcribe the whole document AND discover its discriminants/fields, which
+  // is real interpretation (not "minimal" mechanical extraction) — thinking
+  // stays high, same weight as RULE_COMPILE/COVERAGE_AUDIT below. Interactive
+  // (generateJson), never Batch — ingestion is user-triggered and must finish
+  // within the same job, not queued for a nightly batch window.
+  // 2026-09-13: was gemini-2.5-pro — confirmed LIVE-BROKEN on this API key
+  // ("This model models/gemini-2.5-pro is no longer available to new users",
+  // HTTP 404, not a quota/rate issue) during the real SFDA-document ingestion
+  // run. gemini-3.1-pro-preview exists on this key but returned 429 (quota
+  // exhausted) on the same run. Falls back to gemini-2.5-flash — the only
+  // model this codebase has verified working end-to-end — keeping the "high"
+  // thinking weight via thinkingBudget. Re-promote to a pro-tier model once
+  // one is confirmed reachable on this key.
+  EXTRACT_WITH_CATALOG: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+
   // Phase 3 — regulatory rule compilation (§9.3: "تجميع القواعد -> high", called
   // out as the hardest task in the whole system: translating legal text into
   // executable logic). Large fixed budget, temperature 0 for reproducibility —
   // a rule extraction that changes between runs on the same document is unusable.
-  RULE_COMPILE: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
+  // 2026-09-13: same gemini-2.5-pro 404 as EXTRACT_WITH_CATALOG above — see
+  // that comment. Falls back to gemini-2.5-flash for the same reason.
+  RULE_COMPILE: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
 
   // Phase 3 — coverage auditor (§7.5): the reverse pass over the same document,
   // checking which clauses produced no rule. Same reasoning weight as compilation
   // since it's re-reading the whole document with equal scrutiny.
-  COVERAGE_AUDIT: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
+  // 2026-09-13: same gemini-2.5-pro 404 as EXTRACT_WITH_CATALOG above.
+  COVERAGE_AUDIT: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
 
   // Phase 5 — adversarial auditor (§14.1). §9.2's own invariant: "generator and
   // auditor MUST be different model families." This environment has ONLY a
@@ -77,6 +98,14 @@ export const MODELS = {
   // approximation (a different model within the same family, not a different
   // family) — this reduces but does NOT eliminate shared-bias risk. Flagged in
   // PROGRESS.md as a "need from the user": a real second-vendor API key.
+  // 2026-09-13: NOT changed to gemini-2.5-flash despite the same live 404
+  // confirmed on EXTRACT_WITH_CATALOG/RULE_COMPILE/COVERAGE_AUDIT above —
+  // doing so would make this call IDENTICAL to LABEL_GENERATE's model
+  // (both gemini-2.5-flash), which is strictly worse for this invariant than
+  // today's "different model, same family" compromise. This entry is
+  // currently unverified/likely broken on this key (untested this session —
+  // out of scope for the ingestion work that surfaced the other three) —
+  // needs its own fix decision, not a silent one bundled in here.
   AUDITOR: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
 
   // Phase 6 — chat agent (§9.3: "تصنيف نية الشات -> minimal" for intent
@@ -91,4 +120,12 @@ export const MODELS = {
   // touches the googleSearch tool, and giving it its own name lets the two be
   // tuned independently later without an unrelated caller silently following.
   PLAUSIBILITY_JUDGE: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+
+  // Certificates V2 (CERTIFICATES_V2_PLAN.md §5.1). Invoice extraction is the
+  // ONLY AI call in the certificate pipeline: a mechanical read of one
+  // invoice file into a fixed responseSchema — thinking off, temperature 0.
+  INVOICE_EXTRACT: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  // Optional field suggestions (§8.3): receives template line TEXT only (never
+  // HTML) and proposes values/names/sources the user accepts one by one.
+  CERT_ASSIST: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
 };

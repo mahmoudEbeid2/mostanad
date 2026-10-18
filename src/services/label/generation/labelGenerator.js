@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
-import { geminiResponseSchema } from "../schema/geminiSchema.js";
 import { buildContext } from "./contextBuilder.js";
 import { resolveGroundedFields } from "./fieldLadder.js";
 import { resolve as resolveKnowledge } from "../knowledge/knowledgeResolver.js";
 import { GROUNDED_CONTENT_FIELDS, NEVER_GUESS_FIELDS, estimateBasisFor } from "./groundingPolicy.js";
+import { rejectUnknownKeys } from "../schema/composer.js";
 
 // NEVER_GUESS_FIELDS scalars that can genuinely be backed by a matched
 // reference or a cited external lookup (Tier 4/5) — batchNo/expiryDate/
@@ -149,8 +149,8 @@ function classifyNeverGuessFields(labelData, { profile, groundedNeverGuessFacts 
  * is forced to labelSchema's shape via responseJsonSchema — no free-text
  * post-processing pass needed to coerce structure.
  */
-export async function generate({ profile, rankedReferences = [], rules = [] }) {
-  const { prompt, stablePrefix } = buildContext({ rules, rankedReferences, profile });
+export async function generate({ profile, rankedReferences = [], rules = [], composedFields = null, discriminants = {} }) {
+  const { prompt, stablePrefix, schema: responseSchema } = buildContext({ rules, rankedReferences, profile, composedFields });
   const { source: targetAnimalsSource, list: resolvedSpeciesList } = await resolveTargetAnimalsSource(profile, rankedReferences);
 
   // §8.2's ladder, run for real, before the model ever sees the prompt — Tier
@@ -215,7 +215,7 @@ ${unresolvedContentFields.length > 0 ? `- ${unresolvedContentFields.join(", ")}:
       temperature: MODELS.LABEL_GENERATE.temperature,
       thinkingConfig: { thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget },
       responseMimeType: "application/json",
-      responseJsonSchema: geminiResponseSchema,
+      responseJsonSchema: responseSchema,
     },
   });
 
@@ -224,6 +224,19 @@ ${unresolvedContentFields.length > 0 ? `- ${unresolvedContentFields.join(", ")}:
     labelData = JSON.parse(response.text);
   } catch (err) {
     throw new Error("Model returned invalid JSON despite a forced schema: " + err.message);
+  }
+
+  // §3's closed-schema guarantee: a key in neither the core schema nor the
+  // composed catalog fields is REJECTED and logged, never silently dropped or
+  // silently kept (Invariant #7) — responseJsonSchema already constrains the
+  // model's output shape, so this only ever fires on a genuinely unexpected
+  // key (a schema/model mismatch bug), but it must still be enforced in code,
+  // not assumed from the schema alone.
+  let rejectedSchemaKeys = [];
+  if (composedFields) {
+    const { cleaned, rejectedKeys } = rejectUnknownKeys(labelData, composedFields);
+    labelData = { ...cleaned };
+    rejectedSchemaKeys = rejectedKeys;
   }
 
   // Amended Invariant #5: classify, never null. Returns which never-guess
@@ -271,6 +284,12 @@ ${unresolvedContentFields.length > 0 ? `- ${unresolvedContentFields.join(", ")}:
       },
       stablePrefixLength: stablePrefix.length,
       estimatedNeverGuessFields,
+      // Recorded so ruleOutcomeTracker's statistical downgrade (§7b) can
+      // bucket this label's outcomes by the SAME discriminant combination the
+      // schema was composed with — see generatedLabelService.js's
+      // discriminants: label.generationMeta?.discriminants reads.
+      discriminants,
+      rejectedSchemaKeys,
     },
     matchTier: rankedReferences[0]?.tier || "none",
     referenceLabelIds: rankedReferences.map((r) => r.reference.id),

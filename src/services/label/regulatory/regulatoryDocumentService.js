@@ -10,10 +10,33 @@ export const sha256 = (text) => crypto.createHash("sha256").update(text || "", "
 // Moved here from generatedLabelService.js (Phase 9) so replayService.js can
 // reconstruct the exact same rule set generation/validation used, without
 // duplicating the query.
-export async function getApprovedRulesForCountry(country) {
-  const documents = await prisma.regulatoryDocument.findMany({ where: { country, status: "approved" }, select: { id: true } });
+//
+// companyId (optional): tenant-scoped per §3's own rule for the schema
+// composer, applied here too — a company-specific regulatory document must
+// never leak its rules into another company's generation/validation. Omitted
+// entirely (undefined), this returns every approved country-wide document's
+// rules regardless of company, same as before this parameter existed —
+// existing callers that don't pass it are unchanged, but every NEW call site
+// should pass the label's companyId (see generatedLabelService.js).
+//
+// "active" replaces the old "approved" per-rule gate (decision: per-rule
+// manual approval is removed) — any rule not explicitly "rejected" is usable.
+// documentActivationMode is denormalized onto each returned rule so
+// ruleValidator's severity ceiling (partial-coverage documents cap FAIL at
+// NEEDS_REVIEW) doesn't need a second query per rule.
+export async function getApprovedRulesForCountry(country, { companyId } = {}) {
+  const documents = await prisma.regulatoryDocument.findMany({
+    where: {
+      country,
+      status: "approved",
+      ...(companyId !== undefined && { OR: [{ companyId }, { companyId: null }] }),
+    },
+    select: { id: true, activationMode: true },
+  });
   if (documents.length === 0) return [];
-  return prisma.regulatoryRule.findMany({ where: { documentId: { in: documents.map((d) => d.id) }, status: "approved" } });
+  const activationModeByDoc = new Map(documents.map((d) => [d.id, d.activationMode]));
+  const rules = await prisma.regulatoryRule.findMany({ where: { documentId: { in: documents.map((d) => d.id) }, status: { not: "rejected" } } });
+  return rules.map((r) => ({ ...r, documentActivationMode: activationModeByDoc.get(r.documentId) || "full" }));
 }
 
 /**
@@ -33,6 +56,7 @@ export const createFromExtraction = async ({
   companyId = null,
   extractedText,
   extractedData = null,
+  labelFieldSchema = null,
 }) => {
   const documentHash = sha256(extractedText);
 
@@ -63,6 +87,7 @@ export const createFromExtraction = async ({
       companyId,
       extractedText,
       extractedData,
+      labelFieldSchema,
     },
   });
 };
@@ -131,7 +156,8 @@ export const compileRulesFor = async (documentId) => {
           constraint: rule.constraint,
           description: rule.description,
           citation: rule.citation,
-          status: "pending_review",
+          confidence: rule.confidence,
+          status: "active", // per-rule manual approval removed — see ruleValidator's severity ceiling for how confidence/coverage still gate FAIL vs NEEDS_REVIEW
         },
       });
       created.push(row);
@@ -148,8 +174,8 @@ export const compileRulesFor = async (documentId) => {
 
 /**
  * Step 4 (§7.4/§7.5): the reverse-pass coverage audit. Persists the numbers
- * onto the document — does NOT gate anything itself; approveDocument enforces
- * the >=95% rule.
+ * onto the document — does NOT gate anything itself; approveDocument reads
+ * them to decide full vs partial activationMode (severity, never access).
  */
 export const auditCoverageFor = async (documentId) => {
   const document = await prisma.regulatoryDocument.findUnique({ where: { id: documentId }, include: { rules: true } });
@@ -171,12 +197,16 @@ export const auditCoverageFor = async (documentId) => {
 };
 
 /**
- * Step 5/6 (§7.4): the mandatory human gate. Refuses below 95% coverage unless
- * every previously-uncovered clause has been explicitly cleared (uncoveredClauses
- * is empty) — a human reviewer clears clauses via markClauseNonNormative, this
- * function never overrides the number itself.
+ * Step 5/6 — activation (§0/§1 of the ingestion overhaul: automated, not a
+ * human gate). Coverage no longer blocks access, only severity: full coverage
+ * (or every uncovered clause cleared) activates the document at full
+ * strength; anything below that still activates — a document is never left
+ * unusable — but every rule it contributes is capped at NEEDS_REVIEW by
+ * ruleValidator's severity ceiling until coverage improves or clauses are
+ * cleared and it's re-activated. `userId` is null for the automatic chain
+ * (ingestAutomatically) and set for a human re-running this endpoint by hand.
  */
-export const approveDocument = async (documentId, userId) => {
+export const approveDocument = async (documentId, userId = null) => {
   const document = await prisma.regulatoryDocument.findUnique({ where: { id: documentId } });
   if (!document) throw new AppError("No regulatory document found with that ID", 404);
 
@@ -184,22 +214,36 @@ export const approveDocument = async (documentId, userId) => {
     throw new AppError("This document has not been coverage-audited yet — POST /regulatory-documents/:id/audit-coverage first.", 400);
   }
   const remainingUncovered = Array.isArray(document.uncoveredClauses) ? document.uncoveredClauses.length : 0;
-  if (document.coveragePercent < MINIMUM_COVERAGE_PERCENT_FOR_APPROVAL && remainingUncovered > 0) {
-    throw new AppError(
-      `Cannot approve: coverage is ${document.coveragePercent.toFixed(1)}% (< ${MINIMUM_COVERAGE_PERCENT_FOR_APPROVAL}%) with ${remainingUncovered} clause(s) still unresolved. Clear them via review first.`,
-      422
-    );
-  }
+  const activationMode = document.coveragePercent >= MINIMUM_COVERAGE_PERCENT_FOR_APPROVAL || remainingUncovered === 0 ? "full" : "partial";
 
   return prisma.regulatoryDocument.update({
     where: { id: documentId },
     data: {
       status: "approved",
-      reviewedByUserId: userId || null,
+      activationMode,
+      reviewedByUserId: userId,
       reviewedAt: new Date(),
       effectiveDate: document.effectiveDate || new Date(),
     },
   });
+};
+
+/**
+ * §0/§2: the one automatic chain. Upload -> extract+catalog already happened
+ * (edaRequirementWorker) by the time this runs. From here, no human action is
+ * required: compile rules -> audit coverage -> activate (severity set by
+ * coverage, never blocking). Each step's own Gemini call keeps its full
+ * context budget (decision: do NOT fold rule compilation into extraction) —
+ * this function just sequences three already-existing steps with no human in
+ * between. A failure at any step propagates (no empty catch — Invariant #7):
+ * the document stays at whatever status the last successful step left it at,
+ * and the existing manual endpoints (compile-rules/audit-coverage/approve)
+ * remain available to resume from there.
+ */
+export const ingestAutomatically = async (documentId) => {
+  await compileRulesFor(documentId);
+  await auditCoverageFor(documentId);
+  return approveDocument(documentId, null);
 };
 
 /**

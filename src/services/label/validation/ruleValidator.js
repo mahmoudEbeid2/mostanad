@@ -21,11 +21,17 @@ const resolvePath = (labelData, path) => {
 const getPlain = (obj, path) =>
   path.split(".").reduce((acc, key) => (acc === null || acc === undefined ? undefined : acc[key]), obj);
 
-// Flattens all text out of a value — a plain string, or a LocalizedText object
-// (translations + primary) — for content/format checks that must scan every language.
+// Flattens all text out of a value — a plain string, a LocalizedText object
+// (translations + primary), or an ARRAY of either (labelSchema.js has several
+// z.array(LocalizedText) fields — excipients, warnings, indications,
+// userSafety, usageDeclaration — a content/format rule targeting one of those
+// must scan every element's every language, not silently see an array and
+// produce zero text to check, which would make forbidden_content a silent
+// no-op on exactly the fields real ingredient/claim restrictions target).
 const extractText = (value) => {
   if (value === null || value === undefined) return [];
   if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(extractText);
   if (typeof value === "object" && value.translations) {
     return Object.values(value.translations).filter((v) => typeof v === "string");
   }
@@ -91,12 +97,34 @@ function evaluateConstraint(labelData, constraint) {
       });
     }
     case "forbidden_content": {
-      const { path, patterns, flags = "i" } = constraint;
+      // §4 (prohibited_phrase): a deny list PLUS an optional allow list of
+      // otherwise-similar accepted terms — a document that rejects "vegetable
+      // oils" but accepts "grains" cannot be expressed by a deny list alone.
+      // A deny-pattern match is only a violation if that SAME matched text
+      // does not also satisfy an allow pattern.
+      const { path, patterns, flags = "i", allow = [] } = constraint;
+      const searchFlags = flags.includes("g") ? flags : `${flags}g`;
+      const allowRegexes = allow.map((p) => new RegExp(p, flags));
       const entries = resolvePath(labelData, path);
       return entries.flatMap(({ path: p, value }) =>
         extractText(value).map((text) => {
-          const hit = patterns.find((pattern) => new RegExp(pattern, flags).test(text));
-          return { path: p, ok: !hit, message: hit ? `"${p}" contains forbidden pattern /${hit}/.` : null };
+          let hitPattern = null;
+          let hitText = null;
+          for (const pattern of patterns) {
+            const re = new RegExp(pattern, searchFlags);
+            let m;
+            while ((m = re.exec(text)) !== null) {
+              const exempt = allowRegexes.some((a) => a.test(m[0]));
+              if (!exempt) { hitPattern = pattern; hitText = m[0]; break; }
+              if (m.index === re.lastIndex) re.lastIndex++; // guard against zero-length matches looping forever
+            }
+            if (hitPattern) break;
+          }
+          return {
+            path: p,
+            ok: !hitPattern,
+            message: hitPattern ? `"${p}" contains forbidden pattern /${hitPattern}/ ("${hitText}"), which is not on the allow-list.` : null,
+          };
         })
       );
     }
@@ -128,6 +156,55 @@ function evaluateConstraint(labelData, constraint) {
         return [{ path: p, ok: missing.length === 0, message: missing.length ? `"${p}" is missing language(s): ${missing.join(", ")}.` : null }];
       });
     }
+    // §4: a numeric value with an operator, a bound, and (in the DB row's
+    // `description`) the stated consequence — the consequence is documentary,
+    // not a code branch, so no new code path per consequence text is needed.
+    case "numeric_threshold": {
+      const { path, operator, bound, unit } = constraint;
+      const entries = resolvePath(labelData, path);
+      return entries.flatMap(({ path: p, value }) => {
+        const texts = extractText(value);
+        if (texts.length === 0) {
+          return [{ path: p, ok: false, message: `"${p}" must state a numeric value (needed to check ${operator} ${bound}${unit ? " " + unit : ""}).` }];
+        }
+        return texts.map((text) => {
+          const match = text.match(/-?\d+(?:\.\d+)?/);
+          if (!match) return { path: p, ok: false, message: `"${p}" ("${text}") does not contain a numeric value.` };
+          const observed = parseFloat(match[0]);
+          const ok = compareNumeric(observed, operator, bound);
+          return {
+            path: p,
+            ok,
+            message: ok ? null : `"${p}" is ${observed}${unit ? " " + unit : ""}, which does not satisfy "${operator} ${bound}${unit ? " " + unit : ""}".`,
+          };
+        });
+      });
+    }
+    // §4: a field's value must be one of a stated set.
+    case "enumerated_values": {
+      const { path, allowed } = constraint;
+      const allowedLower = allowed.map((a) => a.toString().toLowerCase().trim());
+      const entries = resolvePath(labelData, path);
+      return entries.flatMap(({ path: p, value }) => {
+        const texts = extractText(value);
+        const values = texts.length > 0 ? texts : Array.isArray(value) ? value.map(String) : value !== null && value !== undefined ? [String(value)] : [];
+        if (values.length === 0) {
+          return [{ path: p, ok: false, message: `"${p}" must be one of: ${allowed.join(", ")}.` }];
+        }
+        return values.map((v) => {
+          const ok = allowedLower.includes(v.toString().toLowerCase().trim());
+          return { path: p, ok, message: ok ? null : `"${p}" value "${v}" is not one of the allowed values: ${allowed.join(", ")}.` };
+        });
+      });
+    }
+    // §4: the field must match a record in a system this engine cannot query
+    // (e.g. an external e-registration database) — this can NEVER resolve to
+    // PASS or FAIL deterministically, only to a request for human/external
+    // confirmation. Kept distinct from "semantic" (-> UNVERIFIABLE): "please
+    // confirm this matches your registration" is not "we could not verify
+    // this at all".
+    case "external_match":
+      return [{ path: constraint.path || "_external_match", ok: null, needsConfirmation: true, message: null }];
     case "conditional": {
       if (!evaluateWhen(labelData, constraint.when)) return [];
       return evaluateConstraint(labelData, constraint.then);
@@ -138,6 +215,46 @@ function evaluateConstraint(labelData, constraint) {
     default:
       throw new Error(`ruleValidator: unsupported constraint.kind "${constraint.kind}" — refusing to silently ignore it.`);
   }
+}
+
+function compareNumeric(observed, operator, bound) {
+  switch (operator) {
+    case ">": return observed > bound;
+    case ">=": return observed >= bound;
+    case "<": return observed < bound;
+    case "<=": return observed <= bound;
+    case "==": return observed === bound;
+    case "!=": return observed !== bound;
+    default:
+      throw new Error(`ruleValidator: unsupported numeric_threshold operator "${operator}".`);
+  }
+}
+
+// Self-correction ceiling (§7 of the ingestion overhaul): a rule that would
+// otherwise FAIL is capped at NEEDS_REVIEW — never silently passed, never
+// silently dropped — when the system has a documented reason to distrust its
+// own certainty on THIS rule right now:
+//   - the rule's source document activated at partial coverage (decision 1:
+//     coverage sets severity, not access — a document stays usable, but
+//     nothing it contributes can hard-FAIL until a human/re-audit clears it)
+//   - the rule's own extraction confidence is below threshold (§7a)
+//   - the rule has been statistically downgraded for failing too often (§7b)
+// Reasons are cumulative and all recorded, so a verdict never just says
+// "downgraded" without saying why.
+const LOW_CONFIDENCE_THRESHOLD = Number(process.env.RULE_LOW_CONFIDENCE_THRESHOLD) || 0.6;
+
+function severityDowngradeReasons(rule) {
+  const reasons = [];
+  if (rule.documentActivationMode === "partial") {
+    reasons.push("source document activated at partial coverage (below the coverage threshold)");
+  }
+  if (typeof rule.confidence === "number" && rule.confidence < LOW_CONFIDENCE_THRESHOLD) {
+    reasons.push(`low extraction confidence (${rule.confidence.toFixed(2)} < ${LOW_CONFIDENCE_THRESHOLD})`);
+  }
+  if (rule.autoDowngraded) {
+    reasons.push(rule.downgradeReason || "statistically downgraded — fails an abnormally high proportion of labels");
+  }
+  return reasons;
 }
 
 // Best-effort discovery of every LocalizedText-shaped field at the top level,
@@ -194,12 +311,29 @@ export const run = (labelData, rules = []) => {
         });
         continue;
       }
-      const isFail = !r.ok && rule.severity !== "warning";
+      // §4 external_match: never PASS/FAIL — a real "please confirm against
+      // the system we can't query", distinct from semantic's UNVERIFIABLE.
+      if (r.needsConfirmation) {
+        verdicts.push({
+          path: r.path, label: labelFor(r.path), status: "NEEDS_CONFIRMATION", presence: "PRESENT",
+          severity: rule.severity, layer: "regulatory_rule", comparison: "regulatory", ruleKey: rule.ruleKey,
+          message: rule.description || "This value must be confirmed against an external system this engine cannot query.",
+          citation: rule.citation || null, sourceDocumentId: rule.documentId || null, autoFixable: false, suggestion: null,
+          triggeredBy, observed: null, expected: null,
+          remediation: { action: "review", suggested: null, source: "none", sourceRef: { ruleKey: rule.ruleKey, documentId: rule.documentId || null } },
+        });
+        continue;
+      }
+
+      const downgradeReasons = !r.ok ? severityDowngradeReasons(rule) : [];
+      const downgraded = downgradeReasons.length > 0 && rule.severity !== "warning";
+      const isFail = !r.ok && rule.severity !== "warning" && !downgraded;
       const isWarn = !r.ok && rule.severity === "warning";
+      const status = r.ok ? "PASS" : downgraded ? "NEEDS_REVIEW" : isWarn ? "WARN" : "FAIL";
       verdicts.push({
         path: r.path,
         label: labelFor(r.path),
-        status: r.ok ? "PASS" : (isWarn ? "WARN" : "FAIL"),
+        status,
         presence: r.ok ? "PRESENT" : "MISSING",
         severity: rule.severity,
         layer: "regulatory_rule",
@@ -213,7 +347,8 @@ export const run = (labelData, rules = []) => {
         triggeredBy,
         observed: null,
         expected: null,
-        remediation: isFail ? {
+        downgradeReasons: downgraded ? downgradeReasons : null,
+        remediation: (isFail || downgraded) ? {
           action: r.presence === "MISSING" ? "add" : "correct",
           suggested: null,
           source: "rule",

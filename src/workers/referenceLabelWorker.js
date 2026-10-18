@@ -3,6 +3,7 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { io } from "socket.io-client";
 import geminiClient from "../services/ai/geminiClient.js";
+import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
 
 const redisConfig = getRedisConfig();
@@ -179,7 +180,7 @@ const referenceLabelWorker = new Worker(
       throw error;
     }
   },
-  { connection: redisConfig, concurrency: 2 }
+  { connection: redisConfig, concurrency: 2, name: geminiWorkerName("referenceLabelQueue") }
 );
 
 referenceLabelWorker.on("failed", (job, err) => {

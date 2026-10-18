@@ -116,7 +116,9 @@ async function run() {
     }
   });
 
-  // Create a mock PDF buffer (mock catalog logic will execute due to forced mock in tests/MOCK_GEMINI)
+  // Minimal PDF. No mock path exists any more: under `npm run dev:test` the
+  // catalog worker fails the job at the Gemini guard — this test only checks
+  // the queue/socket/task-status plumbing, which is the same either way.
   const mockPdfBuffer = Buffer.from("%PDF-1.4 mock catalog content");
   const form = new FormData();
   form.append("catalog", new Blob([mockPdfBuffer], { type: "application/pdf" }), "test_catalog.pdf");

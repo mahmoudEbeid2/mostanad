@@ -1,6 +1,39 @@
 import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/prisma.js";
+import geminiClient from "../src/services/ai/geminiClient.js";
+import { MODELS } from "../src/services/ai/modelRegistry.js";
+import { verifyProductLabel } from "../src/services/labelService.js";
+
+// Tests never call a paid API. Over HTTP the label worker runs with
+// GEMINI_DISABLED=true, so a queued job must fail loudly at the guard. The
+// extraction → DB match → validation flow is then driven in-process with a
+// fixed extraction injected at the geminiClient seam (test-side only — the
+// product code has no mock mode). Any other Gemini call still hits the guard.
+process.env.GEMINI_DISABLED = "true";
+const FAKE_EXTRACTION = {
+  productName: "H-VIRAL",
+  productType: "feed_additive",
+  activeIngredients: [{ name: "Olive Leaves", concentration: "10%" }, { name: "Sorbitol", concentration: "5%" }],
+  targetAnimalSpeciesList: ["Poultry"],
+  extractionMeta: { targetAnimalSpeciesList: { confidence: 0.9, ambiguous: false } },
+  aimOfUse: "Immune support and stress relief.",
+  directionOfUse: "1-2 ml per Litre",
+  storage: "Store below 25C",
+  netWeight: "1L",
+};
+const fakeCalls = [];
+const realGenerate = geminiClient.generateContentWithRetry.bind(geminiClient);
+Object.assign(geminiClient, {
+  uploadFile: async (_p, o = {}) => (fakeCalls.push("uploadFile"), { name: "files/fake", uri: "fake://label", mimeType: o.mimeType }),
+  getFile: async () => (fakeCalls.push("getFile"), { state: "ACTIVE" }),
+  deleteFile: async () => (fakeCalls.push("deleteFile"), {}),
+  generateContentWithRetry: async (req, ...rest) => {
+    if (req?.model !== MODELS.EXTRACT.id) return realGenerate(req, ...rest);
+    fakeCalls.push("extract");
+    return { text: JSON.stringify(FAKE_EXTRACTION) };
+  },
+});
 
 const BASE_URL = "http://127.0.0.1:3000/api/v1";
 
@@ -44,6 +77,18 @@ async function sendLabelRequest(formData) {
   let data = null;
   try { data = await res.json(); } catch (_) {}
   return { status: res.status, data };
+}
+
+async function pollTask(jobId) {
+  if (!jobId) return null;
+  let task = null;
+  for (let i = 0; i < 20; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, { headers: { "x-test-bypass": "supersecretbypass" } });
+    task = (await checkRes.json())?.data;
+    if (task && (task.status === "completed" || task.status === "failed")) break;
+  }
+  return task;
 }
 
 async function run() {
@@ -117,37 +162,18 @@ async function run() {
   const labelBlob = new Blob([labelBuffer], { type: "application/pdf" });
   const labelName = path.basename(labelPath);
 
-  log("⏳ Sending label to Gemini AI... (10-30 seconds)", "cyan");
-  const t0 = Date.now();
-
   const form3 = new FormData();
   form3.append("label", labelBlob, labelName);
   form3.append("country", "Saudi Arabia");
   const { status: s3, data: d3Raw } = await sendLabelRequest(form3);
-
-  log(`⏱️ Request completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`, "cyan");
-
   assert("Status is 202", s3 === 202, `Got ${s3}. Response: ${JSON.stringify(d3Raw)}`);
-  
-  let d3 = null;
-  if (s3 === 202 && d3Raw?.data?.jobId) {
-    const jobId = d3Raw.data.jobId;
-    log(`   [Test] Polling task status for job: ${jobId}`, "cyan");
-    let task = null;
-    for (let i = 0; i < 20; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
-        headers: { "x-test-bypass": "supersecretbypass" }
-      });
-      const checkData = await checkRes.json();
-      task = checkData?.data;
-      if (task && (task.status === "completed" || task.status === "failed")) {
-        break;
-      }
-    }
-    assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
-    d3 = { status: "success", data: task?.result };
-  }
+  const task3 = await pollTask(d3Raw?.data?.jobId);
+  assert("Queued job fails loudly at the Gemini guard", task3?.status === "failed" && /GEMINI_DISABLED/.test(task3?.error || ""), `Status: ${task3?.status}, Error: ${task3?.error}`);
+  assert("Guarded job has no result", task3?.result == null, JSON.stringify(task3?.result));
+
+  log("   [Test] Running the verify flow in-process with the fixed extraction...", "cyan");
+  const d3 = { status: "success", data: await verifyProductLabel(labelBuffer, labelName, "application/pdf", "Saudi Arabia", null) };
+  assert("Fake extraction was used (no real Gemini call)", fakeCalls.includes("extract"), fakeCalls.join(","));
   // Phase 2: labelService now routes through labelExtractor (extraction only) +
   // validationEngine (deterministic FieldVerdict[]), not an AI-judged
   // category/issue/location/solution array — see API-CHANGES.md.
@@ -209,39 +235,9 @@ async function run() {
   log(`  Created test product in DB: ${testProductId}`, "green");
   log("⏳ Re-sending same label (DB match expected)...", "cyan");
 
-  const t1 = Date.now();
-  const form4 = new FormData();
-  form4.append("label", labelBlob, labelName);
-  form4.append("country", "Saudi Arabia");
-  // §14.5.1: product matching is tenant-scoped. The test-bypass caller here has
-  // no req.company (it's an admin bypass), so — same as every other endpoint in
-  // this codebase (referenceLabelController, regulatoryDocumentController) —
-  // it must state which tenant to match against explicitly.
-  form4.append("companyId", testCompany.id);
-  const { status: s4, data: d4Raw } = await sendLabelRequest(form4);
-  log(`⏱️ Request completed in ${((Date.now() - t1) / 1000).toFixed(1)}s`, "cyan");
-
-  assert("Status is 202", s4 === 202, `Got ${s4}. Response: ${JSON.stringify(d4Raw)}`);
-
-  let d4 = null;
-  if (s4 === 202 && d4Raw?.data?.jobId) {
-    const jobId = d4Raw.data.jobId;
-    log(`   [Test] Polling task status for job: ${jobId}`, "cyan");
-    let task = null;
-    for (let i = 0; i < 20; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const checkRes = await fetch(`${BASE_URL}/background-tasks/${jobId}`, {
-        headers: { "x-test-bypass": "supersecretbypass" }
-      });
-      const checkData = await checkRes.json();
-      task = checkData?.data;
-      if (task && (task.status === "completed" || task.status === "failed")) {
-        break;
-      }
-    }
-    assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
-    d4 = { status: "success", data: task?.result };
-  }
+  // §14.5.1: product matching is tenant-scoped — the caller must state which
+  // tenant to match against (here passed straight to the service).
+  const d4 = { status: "success", data: await verifyProductLabel(labelBuffer, labelName, "application/pdf", "Saudi Arabia", testCompany.id) };
   assert("existsInDb is true", d4?.data?.product?.existsInDb === true, "Expected true");
   assert("isExactMatch in product is true", d4?.data?.product?.isExactMatch === true, "Expected true");
   assert("dbProduct returned", !!d4?.data?.product?.dbProduct, "dbProduct is null");
@@ -281,7 +277,7 @@ async function run() {
   );
   log("═".repeat(62) + "\n", "cyan");
 
-  if (failed > 0) process.exit(1);
+  process.exit(failed > 0 ? 1 : 0);
 }
 
 run().catch((err) => {

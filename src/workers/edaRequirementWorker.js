@@ -2,8 +2,8 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import io from "socket.io-client";
-import geminiClient from "../services/ai/geminiClient.js";
-import { MODELS } from "../services/ai/modelRegistry.js";
+import { geminiWorkerName } from "../services/ai/geminiGuard.js";
+import { extractTextAndCatalog } from "../services/label/regulatory/catalogExtractor.js";
 import * as regulatoryDocumentService from "../services/label/regulatory/regulatoryDocumentService.js";
 import AppError from "../utils/appError.js";
 
@@ -20,12 +20,14 @@ socket.on("connect_error", (err) => {
 
 const connection = getRedisConfig();
 
-// Steps 1-2 of the seven-step ingestion journey (§7.4): upload -> extract full
-// text natively from the PDF (never pdf-parse — it destroys the tables that
-// carry withdrawal periods and species matrices) -> hash -> refuse a duplicate.
-// Steps 3-7 (compile rules, audit coverage, review, approve) are separate
-// endpoints (POST /regulatory-documents/:id/compile-rules etc.) — they happen
-// once per document, not automatically on every upload.
+// §0/§2 of the ingestion overhaul: upload -> extract text+catalog in ONE
+// Gemini call (native PDF, never pdf-parse) -> hash -> refuse a duplicate ->
+// compile rules -> audit coverage -> activate. ALL of it automatic, no human
+// gate on ingestion — see regulatoryDocumentService.ingestAutomatically for
+// why compile/audit stay separate Gemini calls with their own full context
+// budget rather than folded into this one. The existing manual endpoints
+// (POST .../compile-rules, .../audit-coverage, .../approve) remain for
+// re-running a single stage; nothing depends on a human pressing them.
 const worker = new Worker(
   "edaRequirementQueue",
   async (job) => {
@@ -35,32 +37,20 @@ const worker = new Worker(
     console.log(`[EDA Requirement Worker] Starting job ${job.id} (Task ${taskId})`);
 
     await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "processing" } });
-    socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 10, message: "Reading document..." });
+    socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 10, message: "Reading document and building label-field catalog..." });
 
     try {
-      const parts = [
-        { inlineData: { data: fileBufferBase64, mimeType } },
-        { text: "Please carefully read the attached regulatory document and extract the complete, unabridged text exactly as it is written. Preserve headings, lists, and tables as markdown. Do not summarize." },
-      ];
-
-      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 30, message: "Extracting full text..." });
-
-      let fullText = "";
+      let text, catalog;
       try {
-        fullText = await geminiClient.generateText({
-          model: MODELS.EXTRACT.id,
-          contents: parts,
-          config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
-        });
+        ({ text, catalog } = await extractTextAndCatalog(
+          { inlineData: { data: fileBufferBase64, mimeType } },
+          { title, authority, country }
+        ));
       } catch (err) {
-        throw new Error("Failed to extract full text: " + err.message);
+        throw new Error("Failed to extract text/catalog: " + err.message);
       }
 
-      if (!fullText || !fullText.trim()) {
-        throw new Error("Extraction produced no text — refusing to store an empty regulatory document.");
-      }
-
-      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 80, message: "Checking for duplicates and saving..." });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 40, message: "Checking for duplicates and saving..." });
 
       const document = await regulatoryDocumentService.createFromExtraction({
         title: title || null,
@@ -71,14 +61,19 @@ const worker = new Worker(
         sourceUrl: sourceUrl || null,
         documentVersion: documentVersion || null,
         companyId,
-        extractedText: fullText,
+        extractedText: text,
+        labelFieldSchema: catalog,
       });
 
-      await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: document } });
-      socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, message: "Document extracted and stored.", result: document });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 60, message: "Compiling rules, auditing coverage, and activating..." });
 
-      console.log(`[EDA Requirement Worker] Job ${job.id} completed successfully. Document ID: ${document.id}`);
-      return document;
+      const activated = await regulatoryDocumentService.ingestAutomatically(document.id);
+
+      await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: activated } });
+      socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, message: `Document ingested and activated (${activated.activationMode} severity).`, result: activated });
+
+      console.log(`[EDA Requirement Worker] Job ${job.id} completed successfully. Document ID: ${activated.id} (activationMode: ${activated.activationMode})`);
+      return activated;
     } catch (error) {
       console.error(`[EDA Requirement Worker] Error in job ${job.id}:`, error);
 
@@ -94,7 +89,7 @@ const worker = new Worker(
       throw error;
     }
   },
-  { connection, concurrency: 2 }
+  { connection, concurrency: 2, name: geminiWorkerName("edaRequirementQueue") }
 );
 
 worker.on("completed", (job) => {

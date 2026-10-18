@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { GeminiRateLimiter } from "./rateLimiter.js";
 import { parseGeminiError } from "./geminiErrors.js";
 import { recordGeminiCall } from "./generationMetrics.js";
+import { assertGeminiEnabled } from "./geminiGuard.js";
 
 // CLAUDE.md "SHARED RATE LIMITER — the real fix": this is the ONLY place a
 // GoogleGenAI client is constructed in this codebase. Every worker and
@@ -20,9 +21,16 @@ const GEMINI_MAX_CONCURRENT = Number(process.env.GEMINI_MAX_CONCURRENT) || 2;
 
 class GeminiClient {
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this._ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     this.limiter = new GeminiRateLimiter({ requestsPerMinute: GEMINI_RPM, maxConcurrent: GEMINI_MAX_CONCURRENT });
     console.log(`[GeminiClient] Rate limiter active: ${GEMINI_RPM} req/min, ${GEMINI_MAX_CONCURRENT} concurrent (override with GEMINI_RPM / GEMINI_MAX_CONCURRENT).`);
+  }
+
+  // Every SDK access — the methods below and batchClient's ai.batches.* —
+  // goes through this getter, so GEMINI_DISABLED blocks all of them.
+  get ai() {
+    assertGeminiEnabled("geminiClient");
+    return this._ai;
   }
 
   /**
@@ -42,6 +50,8 @@ class GeminiClient {
    */
   async generateContentWithRetry({ model, contents, systemInstruction, config = {} }, retries = 5) {
     let lastParsed = null;
+    // Checked before the limiter so a blocked call never waits for a slot.
+    assertGeminiEnabled(`geminiClient.generateContent(${model})`);
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       await this.limiter.acquire();

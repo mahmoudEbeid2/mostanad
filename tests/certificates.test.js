@@ -191,12 +191,16 @@ async function run() {
   // 2. VALIDATION - Missing transactionType
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 2: POST /companies/:id/certificates/generate — Missing transactionType", "bold");
+  // A missing transactionType defaults to "shipping" (certificateValidator), so
+  // "missing" is a valid request that queues a job. An invalid value is the
+  // validation case — rejected before anything is queued.
+  log("📋 TEST 2: POST /companies/:id/certificates/generate — Invalid transactionType", "bold");
   {
     const form = new FormData();
     const invoiceBuffer = fs.readFileSync(mockInvoicePath);
     const fileBlob = new Blob([invoiceBuffer], { type: "application/pdf" });
     form.append("invoice", fileBlob, "invoice.pdf");
+    form.append("transactionType", "bogus");
 
     const res = await fetch(`${BASE_URL}/companies/${testCompanyId}/certificates/generate`, {
       method: "POST",
@@ -218,8 +222,8 @@ async function run() {
   // 3. SUCCESS PATH - Extract and Populate
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 3: POST /companies/:id/certificates/generate — Success Path (Extraction & Population)", "bold");
-  log("⏳ Sending mock invoice to Gemini AI... (takes 10-20 seconds)", "cyan");
+  log("📋 TEST 3: POST /companies/:id/certificates/generate — Queued job fails loudly (no paid API)", "bold");
+  log("⏳ Queueing generation (worker must stop at the Gemini guard)...", "cyan");
   {
     const form = new FormData();
     const invoiceBuffer = fs.readFileSync(mockInvoicePath);
@@ -260,29 +264,21 @@ async function run() {
           break;
         }
       }
-      assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
-      results = task?.result;
+      // Phase 0: no mock fallbacks. Tests run against `npm run dev:test`
+      // (GEMINI_DISABLED=true), so the worker must fail loudly at the guard —
+      // no Gemini request, no fabricated values, no result.
+      assert("Task failed", task?.status === "failed", `Status: ${task?.status}`);
+      assert("Failed at the Gemini guard (no request sent)", /GEMINI_DISABLED/.test(task?.error || ""), String(task?.error));
+      assert("Failed task has no result", task?.result == null, JSON.stringify(task?.result));
+      results = task?.status === "completed" ? task.result : null;
     }
 
-    assert("Has products array", Array.isArray(results?.products), JSON.stringify(results));
-    assert("Extracted products contains H-VIRAL", results?.products?.some(p => p.name.toUpperCase().includes("H-VIRAL")), JSON.stringify(results?.products));
-    assert("H-VIRAL exists in DB", results?.products?.find(p => p.name.toUpperCase().includes("H-VIRAL"))?.existsInDb === true, JSON.stringify(results?.products));
-
-    assert("Has certificates array", Array.isArray(results?.certificates), JSON.stringify(results));
-    
-    // Check Global template population
-    const globalCert = results?.certificates?.find(c => c.templateId === globalTemplate.id);
-    assert("Global certificate populated", !!globalCert, "Global certificate not found");
-    assert("Global certificate has invoiceNo filled/inferred", !!globalCert?.filledFields?.invoiceNo, JSON.stringify(globalCert?.filledFields));
-
-    // Check Product-scoped template population
-    const productCerts = results?.certificates?.filter(c => c.templateId === productTemplate.id);
-    assert("Product certificates populated", productCerts?.length > 0, "No product certificates found");
-    
-    const hviralCert = productCerts?.find(c => c.productId === testProductId || c.productId?.toUpperCase() === "H-VIRAL");
-    assert("H-VIRAL certificate generated", !!hviralCert, "H-VIRAL certificate not found");
-    assert("H-VIRAL certificate has active ingredients from DB", JSON.stringify(hviralCert?.filledFields?.ingredients).toLowerCase().includes("olive"), JSON.stringify(hviralCert?.filledFields));
-    assert("H-VIRAL certificate HTML contains H-VIRAL", hviralCert?.html?.includes("H-VIRAL"), hviralCert?.html);
+    if (results) {
+      assert("Has products array", Array.isArray(results?.products), JSON.stringify(results));
+      assert("Has certificates array", Array.isArray(results?.certificates), JSON.stringify(results));
+      const allValues = JSON.stringify(results?.certificates?.map((c) => c.filledFields) || []);
+      assert("No mock values in output", !allValues.includes("Mocked Value"), allValues);
+    }
 
     log(`  Response Details: ${JSON.stringify(results, null, 2)}`, "white");
   }

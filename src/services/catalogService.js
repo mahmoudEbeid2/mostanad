@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
+import { assertGeminiEnabled } from "./ai/geminiGuard.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 
@@ -16,9 +17,13 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   };
 
   reportProgress(5, "Initializing AI");
-  if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
+  // No mock mode and no mock fallback (Certificates V2 Phase 0, plan D7): a
+  // missing key or a failed Gemini call fails the task with the real error,
+  // and nothing is written to the catalog.
+  if (!process.env.GEMINI_API_KEY) {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
+  assertGeminiEnabled("catalogService.processCatalogPDF");
 
   // Verify company exists
   const company = await prisma.company.findUnique({ where: { id: companyId } });
@@ -45,12 +50,8 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   fs.writeFileSync(tempFilePath, fileBuffer);
   reportProgress(15, "Uploading catalog");
 
-  let fileManager = null;
-  let genAI = null;
-  if (process.env.GEMINI_API_KEY) {
-    fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  }
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   
   let uploadResult = null;
   let summary = {
@@ -65,10 +66,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   try {
     let extractedProducts = [];
 
-    try {
-      if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-      throw new Error("Forced mock mode activated via environment variables.");
-    }
+    {
 
     // 2. Upload file to Gemini File API
     console.log("[CatalogService] Uploading file to Gemini File API...");
@@ -230,42 +228,6 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
     extractedProducts = JSON.parse(cleanJson);
     reportProgress(80, "Saving to database");
-  } catch (error) {
-    console.warn(`[CatalogService] Falling back to mock catalog products due to Gemini API failure/mock mode: ${error.message}`);
-    reportProgress(80, "Using mock data (Quota Exceeded)");
-    extractedProducts = [
-      {
-        name: "H-VIRAL",
-        category: "Veterinary Products",
-        productCode: "AVHHB18005",
-        description: "Mocked veterinary medicine description",
-        indications: "Immune support",
-        targetSpecies: ["Poultry", "Ruminants"],
-        physicalForm: "Liquid",
-        appearance: "Brown liquid",
-        activeIngredients: [
-          { "name": "Olive Leaves", "concentration": "10%" },
-          { "name": "Sorbitol", "concentration": "5%" }
-        ],
-        dosage: "1-2 ml per Litre",
-        mixingInstructions: "Mix in drinking water",
-        withdrawalPeriod: "None",
-        contraindications: "None",
-        userSafety: ["Wear gloves"],
-        storage: "Store below 25C",
-        packaging: "1L Bottle",
-        registrationNumber: "REG12345",
-        origin: "Egypt",
-        producer: "Addvet Egypt",
-        specifications: {
-          type: "Specification",
-          values: {
-            Moisture: "max 12%",
-            Purity: "min 98.5%"
-          }
-        }
-      }
-    ];
   }
 
   summary.totalProductsExtracted = extractedProducts.length;

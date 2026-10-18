@@ -4,6 +4,7 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import { generateCertificatesAndPopulateTemplates } from "../services/certificateService.js";
 import io from "socket.io-client";
+import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -112,7 +113,7 @@ const worker = new Worker(
       }
     }
   },
-  { connection }
+  { connection, name: geminiWorkerName("certificateQueue") }
 );
 
 worker.on("ready", () => console.log("[Certificate Worker] BullMQ worker is ready."));

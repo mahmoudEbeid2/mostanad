@@ -80,7 +80,16 @@ function checkPrimaryInTranslations(labelData) {
     if (keys.length === 0) return true;
     if (value.primary && value.primary in trans) return false;
 
-    // Auto-heal common model representations
+    // Auto-heal two SPECIFIC, known model quirks only — a full language name
+    // instead of its code, or the translated text itself instead of a key.
+    // These narrow cases are genuinely "the same value, wrong representation".
+    // A `primary` that names neither of those AND isn't a real key is not a
+    // representation quirk, it's a real mismatch — it must fall through to
+    // `return true` (FAIL) below, not be silently reassigned to whatever
+    // language happens to be present. That catch-all used to exist here and
+    // is exactly why a genuinely wrong primary (e.g. "ar" when only "en" is
+    // in translations) reported PASS instead of FAIL — see
+    // tests/label.coherence.test.js's "primary not in translations" case.
     if (value.primary === "English" && "en" in trans) {
       value.primary = "en";
       return false;
@@ -92,14 +101,6 @@ function checkPrimaryInTranslations(labelData) {
     const matchingKey = keys.find((k) => trans[k] === value.primary);
     if (matchingKey) {
       value.primary = matchingKey;
-      return false;
-    }
-    if ("en" in trans) {
-      value.primary = "en";
-      return false;
-    }
-    if (keys.length > 0) {
-      value.primary = keys[0];
       return false;
     }
     return true;

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
+import { assertGeminiEnabled } from "./ai/geminiGuard.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 
@@ -64,47 +65,6 @@ async function callGemini(genAI, modelName, fileData, prompt) {
 /**
  * Extract products from invoice, lookup database, resolve templates, populate fields and HTML using Gemini
  */
-/**
- * Helper to dynamically generate realistic mocked field values for templates when Gemini fails or is in mock mode.
- */
-function getMockFieldValue(fieldName, product) {
-  const nameLower = fieldName.toLowerCase();
-  if (nameLower.includes("no") || nameLower.includes("number")) {
-    return "INV-2026-99182";
-  }
-  if (nameLower.includes("date")) {
-    return new Date().toISOString().split("T")[0];
-  }
-  if (nameLower.includes("sender") || nameLower.includes("company") || nameLower.includes("producer")) {
-    return product ? (product.producer || "Addvet") : "Addvet Egypt";
-  }
-  if (nameLower.includes("product")) {
-    return product ? product.name : "H-VIRAL";
-  }
-  if (nameLower.includes("ingredient")) {
-    if (product && product.activeIngredients) {
-      if (Array.isArray(product.activeIngredients)) {
-        return product.activeIngredients.map(i => `${i.name} (${i.concentration})`).join(", ");
-      }
-      return typeof product.activeIngredients === "string" ? product.activeIngredients : JSON.stringify(product.activeIngredients);
-    }
-    return "Olive Leaves (10%), Sorbitol (5%)";
-  }
-  if (nameLower.includes("dosage") || nameLower.includes("instruction")) {
-    return product ? (product.dosage || "1-2 ml per Litre") : "1-2 ml per Litre";
-  }
-  if (nameLower.includes("expiry") || nameLower.includes("exp")) {
-    return "2028-12-31";
-  }
-  if (nameLower.includes("origin")) {
-    return product ? (product.origin || "Egypt") : "Egypt";
-  }
-  return "Mocked Value";
-}
-
-/**
- * Extract products from invoice, lookup database, resolve templates, populate fields and HTML using Gemini
- */
 export const generateCertificatesAndPopulateTemplates = async (
   companyId,
   brandId,
@@ -113,9 +73,12 @@ export const generateCertificatesAndPopulateTemplates = async (
   fileName,
   mimeType
 ) => {
-  if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
+  // No mock mode and no mock fallbacks (Certificates V2 Phase 0): a missing
+  // key or a failed Gemini call fails the task with the real error.
+  if (!process.env.GEMINI_API_KEY) {
     throw new AppError("Gemini API key is not configured on the server!", 500);
   }
+  assertGeminiEnabled("certificateService.generateCertificatesAndPopulateTemplates");
 
   // 1. Verify company exists
   const company = await prisma.company.findUnique({ where: { id: companyId } });
@@ -131,22 +94,14 @@ export const generateCertificatesAndPopulateTemplates = async (
   console.log(`[CertificateService] Writing temp file to ${tempFilePath}...`);
   fs.writeFileSync(tempFilePath, fileBuffer);
 
-  let fileManager = null;
-  let genAI = null;
-  if (process.env.GEMINI_API_KEY) {
-    fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  }
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
   let uploadResult = null;
   try {
     let extractedProducts = [];
 
-    try {
-      if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-        throw new Error("Mock mode is enabled via environment variables.");
-      }
-
+    {
       // 3. Upload file to Gemini File API
       console.log(`[CertificateService] Uploading file to Gemini File API (MimeType: ${mimeType})...`);
       uploadResult = await fileManager.uploadFile(tempFilePath, {
@@ -192,17 +147,6 @@ export const generateCertificatesAndPopulateTemplates = async (
       const stage1Json = await callGemini(genAI, "gemini-2.5-flash", uploadResult.file, stage1Prompt);
       const stage1Data = JSON.parse(stage1Json);
       extractedProducts = stage1Data.products || [];
-    } catch (err) {
-      console.warn(`[CertificateService] Stage 1 Gemini extraction failed: ${err.message}. Falling back to mock extracted products...`);
-      // Find company products in DB as dynamic fallback
-      const dbProducts = await prisma.product.findMany({ where: { companyId } });
-      extractedProducts = dbProducts.map(p => ({
-        name: p.name,
-        productCode: p.productCode
-      }));
-      if (extractedProducts.length === 0) {
-        extractedProducts.push({ name: "H-VIRAL", productCode: "AVHHB18005" });
-      }
     }
 
     console.log(`[CertificateService] Extracted ${extractedProducts.length} products.`);
@@ -279,11 +223,7 @@ export const generateCertificatesAndPopulateTemplates = async (
     let populatedTemplates = [];
 
     // 7. STAGE 2: Extract & Infer Fields using Product Data and Invoice details
-    try {
-      if (process.env.MOCK_GEMINI === "true" || !process.env.GEMINI_API_KEY) {
-        throw new Error("Mock mode is enabled via environment variables.");
-      }
-
+    {
       console.log("[CertificateService] Stage 2: Populating template fields using Gemini...");
       const stage2Prompt = `
         You are an expert systems integration and document population specialist.
@@ -329,59 +269,6 @@ export const generateCertificatesAndPopulateTemplates = async (
       const stage2Json = await callGemini(genAI, "gemini-2.5-flash", uploadResult.file, stage2Prompt);
       const stage2Data = JSON.parse(stage2Json);
       populatedTemplates = stage2Data.populatedTemplates || [];
-    } catch (err) {
-      console.warn(`[CertificateService] Stage 2 Gemini population failed: ${err.message}. Falling back to mock populated templates...`);
-      for (const t of templatesToPopulate) {
-        if (t.isGlobal) {
-          const filledFields = {};
-          for (const field of Object.keys(t.requiredFields)) {
-            filledFields[field] = getMockFieldValue(field, null);
-          }
-          populatedTemplates.push({
-            templateId: t.templateId,
-            productId: null,
-            filledFields
-          });
-        } else {
-          if (t.productId) {
-            const match = matchedProducts.find(p => p.id === t.productId);
-            if (match) {
-              const filledFields = {};
-              for (const field of Object.keys(t.requiredFields)) {
-                filledFields[field] = getMockFieldValue(field, match);
-              }
-              populatedTemplates.push({
-                templateId: t.templateId,
-                productId: match.id,
-                filledFields
-              });
-            }
-          } else {
-            for (const p of matchedProducts) {
-              const filledFields = {};
-              for (const field of Object.keys(t.requiredFields)) {
-                filledFields[field] = getMockFieldValue(field, p);
-              }
-              populatedTemplates.push({
-                templateId: t.templateId,
-                productId: p.id,
-                filledFields
-              });
-            }
-            for (const p of unmatchedProducts) {
-              const filledFields = {};
-              for (const field of Object.keys(t.requiredFields)) {
-                filledFields[field] = getMockFieldValue(field, p);
-              }
-              populatedTemplates.push({
-                templateId: t.templateId,
-                productId: p.name,
-                filledFields
-              });
-            }
-          }
-        }
-      }
     }
 
     // 8. Replace placeholders in HTML content

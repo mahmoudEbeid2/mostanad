@@ -7,6 +7,7 @@ import { classifyIntent, answerQuestion, proposePatch } from "./editing/chatAgen
 import { dryRunPatch } from "./editing/patchApplier.js";
 import * as versionService from "./versioning/versionService.js";
 import { getApprovedRulesForCountry } from "./regulatory/regulatoryDocumentService.js";
+import { recordOutcomes } from "./regulatory/ruleOutcomeTracker.js";
 
 /**
  * companyId: forced by the controller for a company caller; optional filter
@@ -93,7 +94,7 @@ export const runValidation = async (id, { companyId } = {}) => {
     throw new AppError("No generated label found with that ID", 404);
   }
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   const report = await validate(label.labelData, { rules, extractionMeta: label.extractionMeta });
 
   const saved = await prisma.validationReport.create({
@@ -115,6 +116,8 @@ export const runValidation = async (id, { companyId } = {}) => {
     where: { id },
     data: { status: report.passed ? "validated" : "failed_validation" },
   });
+
+  await recordOutcomes(rules, report.verdicts, { labelId: id, discriminants: label.generationMeta?.discriminants });
 
   return saved;
 };
@@ -160,7 +163,7 @@ export const runAudit = async (id, { companyId } = {}) => {
   const latestReport = await prisma.validationReport.findFirst({ where: { labelId: id }, orderBy: { createdAt: "desc" } });
   if (!latestReport) throw new AppError("This label has not been validated yet — POST /labels/:id/validate first.", 400);
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   let auditorVerdicts;
   try {
     auditorVerdicts = await audit(label.labelData, { rules, confirmedFacts: label.inputPayload });
@@ -264,7 +267,7 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
     throw new AppError(`Version conflict: expected ${expectedVersion}, label is now at ${label.currentVersion}. Reload before editing.`, 409);
   }
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   let intent;
   try {
     intent = await classifyIntent(message);
@@ -336,6 +339,7 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
     },
   });
   await prisma.generatedLabel.update({ where: { id }, data: { status: finalReport.passed ? "validated" : "failed_validation" } });
+  await recordOutcomes(rules, finalReport.verdicts, { labelId: id, discriminants: label.generationMeta?.discriminants });
   await saveMessage({ appliedPatch: patch, resultVersion: newVersion.versionNumber });
 
   return { intent, status: "applied", resultVersion: newVersion.versionNumber, report: finalReport };
@@ -361,7 +365,7 @@ export const applyDirectPatch = async (id, { changes, rationale, expectedVersion
     throw new AppError(`Version conflict: expected ${expectedVersion}, label is now at ${label.currentVersion}. Reload before editing.`, 409);
   }
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   const patch = { rationale: rationale || "Manual edit", changes };
   const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
@@ -399,6 +403,7 @@ export const applyDirectPatch = async (id, { changes, rationale, expectedVersion
     },
   });
   await prisma.generatedLabel.update({ where: { id }, data: { status: dryRun.report.passed ? "validated" : "failed_validation" } });
+  await recordOutcomes(rules, dryRun.report.verdicts, { labelId: id, discriminants: label.generationMeta?.discriminants });
 
   return { status: "applied", resultVersion: newVersion.versionNumber, report: dryRun.report };
 };
@@ -415,7 +420,7 @@ export const restoreVersion = async (id, versionNumber, { companyId } = {}) => {
   }
   const restored = await versionService.restore(id, Number(versionNumber));
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   const report = await validate(restored.labelData, { rules, includePlausibility: false });
   await prisma.validationReport.create({
     data: {
@@ -432,6 +437,7 @@ export const restoreVersion = async (id, versionNumber, { companyId } = {}) => {
     },
   });
   await prisma.generatedLabel.update({ where: { id }, data: { status: report.passed ? "validated" : "failed_validation" } });
+  await recordOutcomes(rules, report.verdicts, { labelId: id, discriminants: label.generationMeta?.discriminants });
 
   return { version: restored, report };
 };
@@ -533,7 +539,7 @@ export const confirmField = async (id, { path, value, expectedVersion, userId, c
     changeSummary: `Confirmed field "${path}"`,
   });
 
-  const rules = await getApprovedRulesForCountry(label.country);
+  const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   const report = await validate(newLabelData, {
     rules,
     extractionMeta: newExtractionMeta,
@@ -562,6 +568,8 @@ export const confirmField = async (id, { path, value, expectedVersion, userId, c
       extractionMeta: newExtractionMeta,
     },
   });
+
+  await recordOutcomes(rules, report.verdicts, { labelId: id, discriminants: label.generationMeta?.discriminants });
 
   return { label: newLabelData, version: newVersion.versionNumber, report, extractionMeta: newExtractionMeta };
 };

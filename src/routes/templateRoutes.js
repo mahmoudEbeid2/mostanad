@@ -9,7 +9,6 @@ import {
 } from "../controllers/templateController.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { restrictToPermission } from "../middleware/authMiddleware.js";
-import { uploadDesign } from "../middleware/uploadMiddleware.js";
 import {
   createTemplateSchema,
   updateTemplateSchema,
@@ -28,10 +27,11 @@ router.post(
 );
 router.get("/companies/:companyId/templates", restrictToPermission("read_templates"), getAllTemplates);
 
+// Disabled in Certificates V2 Phase 0 → 410. No upload middleware: the file
+// is never buffered just to be refused.
 router.post(
   "/companies/:companyId/templates/generate-ai",
   restrictToPermission("create_templates"),
-  uploadDesign.single("file"),
   generateTemplateViaAI
 );
 

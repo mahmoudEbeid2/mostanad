@@ -3,6 +3,7 @@ import AppError from "../utils/appError.js";
 import { prisma } from "../lib/prisma.js";
 import { saveTempFile } from "../utils/fileHelper.js";
 import { addCertificateJob } from "../lib/queue.js";
+import { assertCompanyAccess } from "../utils/tenantScope.js";
 
 /**
  * Endpoint using companyId from URL path parameters
@@ -13,6 +14,8 @@ export const generateCertificates = catchAsync(async (req, res, next) => {
   }
 
   const { companyId } = req.params;
+  // A company caller may only generate for itself — another tenant is a 404.
+  assertCompanyAccess(req, companyId);
   let brandId = req.body.brandId || null;
   if (brandId === "" || brandId === "null" || brandId === "undefined") {
     brandId = null;

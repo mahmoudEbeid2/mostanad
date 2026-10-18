@@ -19,13 +19,27 @@ import generatedLabelRoutes from "./generatedLabelRoutes.js";
 import regulatoryDocumentRoutes from "./regulatoryDocumentRoutes.js";
 import regulatoryRuleRoutes from "./regulatoryRuleRoutes.js";
 import assuranceRoutes from "./assuranceRoutes.js";
+import certificatesV2Routes from "./certificatesV2Routes.js";
 import { getReviewInbox } from "../controllers/assuranceController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
+import { health as converterHealth } from "../services/certificates/conversion/pdf2htmlexClient.js";
 
 const router = express.Router();
 
 // Swagger UI route
 router.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Liveness + dependency reachability (CERTIFICATES_V2_PLAN.md §15). Public:
+// booleans and timings only — no URLs, no tenant data.
+router.get("/health", async (req, res) => {
+  const t0 = Date.now();
+  const c = await converterHealth();
+  res.status(200).json({
+    status: c.ok ? "ok" : "degraded",
+    time: new Date().toISOString(),
+    converter: { reachable: c.ok, ms: Date.now() - t0, ...(c.toolVersion ? { toolVersion: c.toolVersion } : {}) },
+  });
+});
 
 // Mount routes
 router.use("/auth", authRoutes);
@@ -45,6 +59,7 @@ router.use("/regulatory-documents", regulatoryDocumentRoutes); // internal prote
 router.use("/regulatory-rules", regulatoryRuleRoutes); // internal protect applied in regulatoryRuleRoutes.js
 router.use("/assurance", assuranceRoutes); // internal protect applied in assuranceRoutes.js
 router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
+router.use("/", certificatesV2Routes); // Certificates V2 — protect + permission applied per route
 router.use("/", protect, productRoutes);
 router.use("/", protect, templateRoutes);
 router.use("/", protect, certificateRoutes);

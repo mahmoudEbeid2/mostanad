@@ -131,13 +131,14 @@ export const getAllTemplates = async (companyId, queryString) => {
 /**
  * Get a template by ID
  */
-export const getTemplateById = async (id) => {
+export const getTemplateById = async (id, { companyId } = {}) => {
   const template = await prisma.template.findUnique({
     where: { id },
     include: { brand: true },
   });
 
-  if (!template) {
+  // Another tenant's template is a 404, never a 403.
+  if (!template || (companyId && template.companyId !== companyId)) {
     throw new AppError("Template not found!", 404);
   }
 
@@ -147,9 +148,9 @@ export const getTemplateById = async (id) => {
 /**
  * Update a template
  */
-export const updateTemplate = async (id, data) => {
+export const updateTemplate = async (id, data, { companyId: scopeCompanyId } = {}) => {
   const existingTemplate = await prisma.template.findUnique({ where: { id } });
-  if (!existingTemplate) {
+  if (!existingTemplate || (scopeCompanyId && existingTemplate.companyId !== scopeCompanyId)) {
     throw new AppError("Template not found!", 404);
   }
 
@@ -255,9 +256,9 @@ export const updateTemplate = async (id, data) => {
 /**
  * Delete a template
  */
-export const deleteTemplate = async (id) => {
+export const deleteTemplate = async (id, { companyId } = {}) => {
   const existingTemplate = await prisma.template.findUnique({ where: { id } });
-  if (!existingTemplate) {
+  if (!existingTemplate || (companyId && existingTemplate.companyId !== companyId)) {
     throw new AppError("Template not found!", 404);
   }
 

@@ -1,0 +1,5 @@
+{
+  "name": "pdf2htmlex-service",
+  "private": true,
+  "type": "module"
+}

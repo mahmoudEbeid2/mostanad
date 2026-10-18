@@ -171,7 +171,16 @@ async function run() {
         }
       }
 
-      assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+      // No paid API in tests: under `npm run dev:test` the worker must fail
+      // the job at the Gemini guard and write no products. The success path
+      // below only runs against a Gemini-enabled stack (outside npm test).
+      if (process.env.GEMINI_DISABLED === "true") {
+        assert("Task failed at the Gemini guard", task?.status === "failed" && /GEMINI_DISABLED/.test(task?.error || ""), `Status: ${task?.status}, Error: ${task?.error}`);
+        const written = await prisma.product.count({ where: { companyId: testCompanyId } });
+        assert("Guarded job wrote no products", written === 0, `${written} products`);
+      } else {
+        assert("Task completed successfully", task?.status === "completed", `Status: ${task?.status}, Error: ${task?.error}`);
+      }
       
       if (task?.status === "completed" && task.result) {
         const result = task.result;

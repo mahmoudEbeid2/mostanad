@@ -13,6 +13,18 @@ servers:
 security:
   - BearerAuth: []
 tags:
+  - name: Certificate Types
+    description: Certificates V2
+  - name: Certificate Templates
+    description: Certificates V2
+  - name: Template Versions
+    description: Certificates V2
+  - name: Invoices
+    description: Certificates V2
+  - name: Certificate Generation
+    description: Certificates V2
+  - name: Operations
+    description: Certificates V2
   - name: Users
     description: Internal system user management
   - name: Roles
@@ -1451,7 +1463,7 @@ paths:
       tags:
         - Background Tasks
       summary: Poll a background task's status/result
-      description: Every async label-engine operation in this API (label generation, reference-label extraction, regulatory-document extraction, PDF/image label verification) is fronted by a `BackgroundTask` row. Poll this endpoint until `status` is `completed` or `failed`; `result`'s shape depends on which endpoint created the task — see that endpoint's docs. No permission restriction beyond `protect` (any authenticated caller can read any task by id — there is no tenant check here).
+      description: 'Every async label-engine operation in this API (label generation, reference-label extraction, regulatory-document extraction, PDF/image label verification) is fronted by a `BackgroundTask` row. Poll this endpoint until `status` is `completed` or `failed`; `result`''s shape depends on which endpoint created the task — see that endpoint''s docs. No permission restriction beyond `protect`, but tenant-scoped (Certificates V2 Phase 0): a company caller only sees its own tasks — another company''s task is 404.'
       parameters:
         - $ref: '#/components/parameters/BackgroundTaskId'
       responses:
@@ -3861,6 +3873,2121 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/ServerError'
+  /certificate-types:
+    get:
+      tags:
+        - Certificate Types
+      summary: List certificate types
+      description: |-
+        Company-scoped catalogue (COA, Free Sale, …).
+
+        Permission: `read_certificate_types`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Types
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                results: 1
+                data:
+                  types:
+                    - id: uuid
+                      companyId: uuid
+                      name: Certificate of Analysis
+                      code: COA
+                      description: null
+                      isActive: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+    post:
+      tags:
+        - Certificate Types
+      summary: Create a certificate type
+      description: |-
+        `code` is unique per company.
+
+        Permission: `create_certificate_types`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              name: Certificate of Analysis
+              code: COA
+              description: optional
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  type:
+                    id: uuid
+                    companyId: uuid
+                    name: Certificate of Analysis
+                    code: COA
+                    description: null
+                    isActive: true
+        '400':
+          description: 'Coded error: validation'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '409':
+          description: 'Coded error: TYPE_CODE_TAKEN'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificate-types/{id}:
+    patch:
+      tags:
+        - Certificate Types
+      summary: Update a certificate type
+      description: |-
+        name, code, description, isActive.
+
+        Permission: `update_certificate_types`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              name: COA
+              isActive: false
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  type:
+                    id: uuid
+                    companyId: uuid
+                    name: Certificate of Analysis
+                    code: COA
+                    description: null
+                    isActive: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+    delete:
+      tags:
+        - Certificate Types
+      summary: Delete an unused certificate type
+      description: |-
+        Refused (409) while any template uses it — deactivate it instead.
+
+        Permission: `delete_certificate_types`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: TYPE_IN_USE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificate-templates:
+    post:
+      tags:
+        - Certificate Templates
+      summary: Upload a certificate design (new template)
+      description: |-
+        Creates the template and version 1 (`converting`) and queues the `convert` job (pdf2htmlEX at zoom 4/3 → sanitize → analyse → thumbnail → `draft`). Poll `GET /background-tasks/{taskId}`. The type is decided by magic bytes: `.ai`/`.pdf` must start with `%PDF-` (else 422 `NO_PDF_CONTENT`); text converted to outlines fails the version with `NO_LIVE_TEXT`. At most one non-archived template per (type, brand, country, scope).
+
+        Permission: `create_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - name
+                - certificateTypeId
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: .ai / .pdf / .html, ≤ 60 MB
+                name:
+                  type: string
+                certificateTypeId:
+                  type: string
+                  format: uuid
+                brandId:
+                  type: string
+                  format: uuid
+                country:
+                  type: string
+                  example: SA
+                  description: ISO-3166 alpha-2
+                scope:
+                  type: string
+                  enum:
+                    - per_product
+                    - per_invoice
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  templateId: uuid
+                  versionId: uuid
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '409':
+          description: 'Coded error: TEMPLATE_SLOT_TAKEN (+ existingTemplateId)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '413':
+          description: 'Coded error: FILE_TOO_LARGE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '422':
+          description: 'Coded error: NO_PDF_CONTENT, UNSUPPORTED_FORMAT'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+    get:
+      tags:
+        - Certificate Templates
+      summary: List templates
+      description: |-
+        Filters: type, brand, country, scope, status of the latest version, archived.
+
+        Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - name: certificateTypeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: brandId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum:
+              - per_product
+              - per_invoice
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Templates with latestVersion / activeVersion summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                results: 1
+                total: 1
+                data:
+                  templates:
+                    - id: uuid
+                      name: ADDVET COA
+                      scope: per_product
+                      country: null
+                      certificateType:
+                        code: COA
+                      latestVersion:
+                        id: uuid
+                        versionNumber: 1
+                        status: active
+                        hasThumbnail: true
+                      activeVersion:
+                        versionNumber: 1
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-templates/{id}:
+    get:
+      tags:
+        - Certificate Templates
+      summary: Get a template with its versions summary
+      description: 'Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Template
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+    patch:
+      tags:
+        - Certificate Templates
+      summary: Update template settings
+      description: |-
+        name, certificateTypeId, brandId, country, scope — re-checks slot uniqueness. An absent key is left unchanged; `""` or `null` clears brand/country.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              name: ADDVET COA
+              country: SA
+      responses:
+        '200':
+          description: Template
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: TEMPLATE_SLOT_TAKEN'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificate-templates/{id}/versions:
+    post:
+      tags:
+        - Certificate Templates
+      summary: Upload a new design as version N+1
+      description: |-
+        Same pipeline as the first upload.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  templateId: uuid
+                  versionId: uuid
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificate-templates/{id}/archive:
+    post:
+      tags:
+        - Certificate Templates
+      summary: Archive a template
+      description: |-
+        It is no longer used for generation; its slot is freed. Versions stay readable.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Template
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}:
+    get:
+      tags:
+        - Template Versions
+      summary: Get a template version
+      description: |-
+        Lines, pages, fields (with geometry after prepare), prepareReport and `prepareReportStale`.
+
+        Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Version
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  version:
+                    id: uuid
+                    status: ready
+                    versionNumber: 1
+                    pages:
+                      - page: 1
+                        widthPx: 793.69
+                        heightPx: 1122.52
+                    lines:
+                      - id: p1-l11
+                        page: 1
+                        text: 'Batch No.:  AVVS1122005'
+                        box:
+                          x: 409.1
+                          'y': 291.7
+                          w: 140.2
+                          h: 14.8
+                    fields: []
+                    prepareReport:
+                      passed: true
+                      pixelDiffPct: 0.0107
+                    prepareReportStale: false
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}/html:
+    get:
+      tags:
+        - Template Versions
+      summary: The design as HTML
+      description: |-
+        variant=sanitized (as converted), prepared (fields cleared), sample (prepared, refilled with the sample values). Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
+
+        Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: variant
+          in: query
+          schema:
+            type: string
+            enum:
+              - sanitized
+              - prepared
+              - sample
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: NOT_PREPARED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/thumbnail:
+    get:
+      tags:
+        - Template Versions
+      summary: Thumbnail PNG (25 %)
+      description: 'Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: PNG
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}/fields:
+    put:
+      tags:
+        - Template Versions
+      summary: Replace the field list (draft only)
+      description: |-
+        Idempotent. Validates keys (snake_case, unique), line ids, offsets (`line.text.slice(charStart, charEnd) === sampleValue`), overlaps, `source` against the catalogue, `format` against the source type, and the selection against the real layout. Returns server-side suggestions (`align: center`, plan D11).
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              fields:
+                - key: batch_no
+                  label: Batch number
+                  page: 1
+                  lineId: p1-l11
+                  charStart: 12
+                  charEnd: 23
+                  sampleValue: AVVS1122005
+                  source:
+                    kind: item
+                    path: batchNo
+                  format: null
+                  required: true
+                  align: left
+                - key: document_no
+                  label: 'Document #'
+                  page: 1
+                  lineId: p1-l9
+                  charStart: 12
+                  charEnd: 26
+                  sampleValue: COAAVVS1122005
+                  source:
+                    kind: template
+                    template: COA{{item.batchNo}}
+                  required: true
+                  align: left
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  fields: []
+                  suggestions:
+                    expiry:
+                      align: center
+                  fieldsHash: …
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_NOT_DRAFT'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '422':
+          description: 'Coded error: INVALID_FIELDS (+ problems[])'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/fields/confirm:
+    post:
+      tags:
+        - Template Versions
+      summary: Confirm fields (D10)
+      description: |-
+        Marks `ai_suggested` / `detected` fields as confirmed. Allowed on draft and ready (plan §20 I8).
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              keys:
+                - batch_no
+      responses:
+        '200':
+          description: Fields
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}/suggest:
+    post:
+      tags:
+        - Template Versions
+      summary: AI field suggestions (optional)
+      description: |-
+        Sends line TEXT only (never HTML) to `CERT_ASSIST`; returns suggestions to accept/reject one by one. Disabled with `CERT_ASSIST_ENABLED=false` → 403 `ASSIST_DISABLED`.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}/prepare:
+    post:
+      tags:
+        - Template Versions
+      summary: Prepare (clear fields + gate)
+      description: |-
+        Queues `prepare`: clears every field in the real layout engine, calibrates, round-trips and runs the §7.6 gate → `ready`, or back to `draft` with the report.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  versionId: uuid
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_NOT_DRAFT'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '422':
+          description: 'Coded error: NO_FIELDS'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/prepare-diff:
+    get:
+      tags:
+        - Template Versions
+      summary: Round-trip diff image of a page (PNG)
+      description: 'Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: PNG
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /template-versions/{id}/preview:
+    post:
+      tags:
+        - Template Versions
+      summary: Test fill (rendered on the server, not stored)
+      description: |-
+        Values resolve from a product and/or invoice line; explicit `values` override them.
+
+        Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              productId: uuid
+              values:
+                batch_no: AVVS1124011
+      responses:
+        '200':
+          description: Rendered
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  html: <html>…
+                  values:
+                    batch_no:
+                      value: AVVS1124011
+                      flags: []
+                  flags:
+                    ph_result:
+                      - missing
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: NOT_PREPARED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/activate:
+    post:
+      tags:
+        - Template Versions
+      summary: Activate a ready version
+      description: |-
+        Supersedes the previous active version in one transaction. Refused while any field is unconfirmed (D10).
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  versionId: uuid
+                  templateId: uuid
+                  status: active
+                  supersededVersionId: null
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_NOT_READY, FIELDS_UNCONFIRMED, TEMPLATE_SLOT_TAKEN, TEMPLATE_ARCHIVED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/new-version:
+    post:
+      tags:
+        - Template Versions
+      summary: Clone as draft N+1
+      description: |-
+        Same design and fields, geometry recomputed by the next prepare.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Clone
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  templateId: uuid
+                  versionId: uuid
+                  versionNumber: 2
+                  status: draft
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificate-field-sources:
+    get:
+      tags:
+        - Template Versions
+      summary: Field source catalogue
+      description: |-
+        Generated from the Prisma Product model and the invoice schemas (§10.3): kinds item, invoice, product, company, brand, static, manual, today, template.
+
+        Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Catalogue
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-products:
+    get:
+      tags:
+        - Template Versions
+      summary: Tenant-forced product search
+      description: |-
+        Used by the test fill and manual invoice matching (plan §20 I14).
+
+        Permission: `read_products`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /invoices:
+    post:
+      tags:
+        - Invoices
+      summary: Upload an invoice
+      description: |-
+        Stores the file (PDF/PNG/JPEG/WebP by magic bytes, ≤ 15 MB) and queues `extract` (one Gemini call, `INVOICE_EXTRACT`) → automatic matching → `review`. A failure leaves the invoice `failed` with the provider's real message and zero lines.
+
+        Permission: `create_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - invoice
+              properties:
+                invoice:
+                  type: string
+                  format: binary
+                brandId:
+                  type: string
+                  format: uuid
+                country:
+                  type: string
+                  example: SA
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  invoiceId: uuid
+                  taskId: uuid
+        '400':
+          description: 'Coded error: UNSUPPORTED_FORMAT, EMPTY_FILE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '413':
+          description: 'Coded error: FILE_TOO_LARGE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+    get:
+      tags:
+        - Invoices
+      summary: List invoices
+      description: |-
+        Newest first; `certificateCounts` = { total, final } per invoice.
+
+        Permission: `read_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: invoice number or customer, case-insensitive
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /invoices/{id}:
+    get:
+      tags:
+        - Invoices
+      summary: Get an invoice
+      description: |-
+        Header (+ headerExtracted), lines with product, match status and candidates, counts by match status, source file info and batches.
+
+        Permission: `read_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+    patch:
+      tags:
+        - Invoices
+      summary: Edit the header / brand hint / destination country (review)
+      description: |-
+        Only `review`/`ready`; editing a ready invoice sends it back to review. Absent keys are left unchanged.
+
+        Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              header:
+                invoiceNumber: INV-2026-0142
+                invoiceDate: '2026-10-12'
+              country: SA
+      responses:
+        '200':
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_EDITABLE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /invoices/{id}/source:
+    get:
+      tags:
+        - Invoices
+      summary: The original uploaded file
+      description: |-
+        `Content-Security-Policy: sandbox`, `nosniff`.
+
+        Permission: `read_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: File
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /invoices/{id}/items:
+    post:
+      tags:
+        - Invoices
+      summary: Add a line the extraction missed
+      description: 'Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              data:
+                name: ADD-E120
+                batchNo: AVVS1124011
+                expiryDate: 06/2027
+              productId: uuid
+      responses:
+        '201':
+          description: Line
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_EDITABLE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /invoices/{id}/items/{itemId}:
+    patch:
+      tags:
+        - Invoices
+      summary: Edit a line / match it / ignore it
+      description: |-
+        `data` cells (dates re-normalised to ISO only when unambiguous), `productId` (own company only; null = unmatch), `ignored`.
+
+        Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              productId: uuid
+      responses:
+        '200':
+          description: Line
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_EDITABLE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '422':
+          description: 'Coded error: INVALID_VALUE'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+    delete:
+      tags:
+        - Invoices
+      summary: Delete a line
+      description: 'Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /invoices/{id}/rematch:
+    post:
+      tags:
+        - Invoices
+      summary: Re-run product matching
+      description: |-
+        Lines matched or ignored by hand are kept.
+
+        Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  matched: 3
+                  needsMatch: 1
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /invoices/{id}/confirm:
+    post:
+      tags:
+        - Invoices
+      summary: Confirm the review → ready
+      description: |-
+        Refused while any line `needs_match`.
+
+        Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: ITEMS_NEED_MATCH (+ lines[]), NO_MATCHED_ITEMS, INVOICE_NOT_IN_REVIEW'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /invoices/{id}/retry:
+    post:
+      tags:
+        - Invoices
+      summary: Read a failed invoice again
+      description: |-
+        Same model and prompt (plan §20 I17).
+
+        Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  invoiceId: uuid
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_FAILED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /invoices/{id}/generation-plan:
+    get:
+      tags:
+        - Certificate Generation
+      summary: What Generate would produce
+      description: |-
+        Most specific active template per line per (type, scope); `gaps` = (line, type) pairs no template covers (plan §20 I16, I19).
+
+        Permission: `read_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  plan:
+                    entries:
+                      - planKey: versionId:itemId
+                        typeCode: COA
+                        templateId: uuid
+                        templateVersionId: uuid
+                        scope: per_product
+                        productId: uuid
+                        lineNos:
+                          - 1
+                    summary:
+                      - typeCode: COA
+                        scope: per_product
+                        templateName: ADDVET COA
+                        versionNumber: 2
+                        count: 3
+                        lines: 3
+                    unassigned: []
+                    gaps:
+                      - lineNo: 4
+                        typeCode: COA
+                        brandName: Brand C
+                        country: SA
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_REVIEWED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /invoices/{id}/generate:
+    post:
+      tags:
+        - Certificate Generation
+      summary: Generate certificates
+      description: |-
+        Requires `ready` (or `generated` / `partially_failed` to regenerate — a new batch; final certificates are never touched). Creates the batch and its certificates in one transaction and queues `generateBatch`.
+
+        Permission: `create_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  batchId: uuid
+                  taskId: uuid
+                  planned: 6
+                  unassigned: 0
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: INVOICE_NOT_READY, NOTHING_TO_GENERATE (+ unassigned, gaps)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificate-batches/{id}:
+    get:
+      tags:
+        - Certificate Generation
+      summary: Batch progress + certificate cards
+      description: |-
+        `live` counts (planned, pending, rendered, failed, flagged, final), the frozen plan and one card per certificate.
+
+        Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Batch
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificate-batches/{id}/export:
+    post:
+      tags:
+        - Certificate Generation
+      summary: Build the batch ZIP
+      description: |-
+        One PDF per rendered certificate (a final one → its frozen PDF), named `{type}-{product}-{batch}.pdf`.
+
+        Permission: `export_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  batchId: uuid
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: BATCH_RUNNING'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificate-batches/{id}/zip:
+    get:
+      tags:
+        - Certificate Generation
+      summary: Download the batch ZIP
+      description: |-
+        Plan §20 I20. `Content-Disposition` is exposed to the browser.
+
+        Permission: `export_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: ZIP
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          description: 'Coded error: ZIP_NOT_EXPORTED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates:
+    get:
+      tags:
+        - Certificates
+      summary: List generated certificates
+      description: 'Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - name: invoiceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: batchId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - draft
+              - final
+              - failed
+        - name: certificateTypeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: flagged
+          in: query
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: product, batch or invoice number
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Cards
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificates/{id}:
+    get:
+      tags:
+        - Certificates
+      summary: Get a certificate
+      description: |-
+        Current values (§10.4 shape), flags, the template's field definitions and the invoice lines it covers.
+
+        Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  certificate:
+                    id: uuid
+                    status: draft
+                    currentVersion: 3
+                    flagCount: 1
+                    values:
+                      batch_no:
+                        value: AVVS1124011
+                        source:
+                          kind: item
+                          path: batchNo
+                        resolved: AVVS1124011
+                        origin: auto
+                        flags: []
+                        editedByUserId: null
+                        editedAt: null
+                    fields:
+                      - key: batch_no
+                        label: Batch number
+                        required: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificates/{id}/html:
+    get:
+      tags:
+        - Certificates
+      summary: A version's static HTML
+      description: |-
+        Defaults to the current version. Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
+
+        Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: version
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificates/{id}/thumbnail:
+    get:
+      tags:
+        - Certificates
+      summary: Current version thumbnail (PNG)
+      description: 'Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: PNG
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificates/{id}/values:
+    patch:
+      tags:
+        - Certificates
+      summary: Edit values → new version
+      description: |-
+        Optimistic concurrency on `expectedVersion`. The server re-renders and stores version N+1; `changeSummary` = `key: old → new`.
+
+        Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              expectedVersion: 3
+              changes:
+                batch_no: AVVS1124011
+                expiry: 06/2027
+      responses:
+        '200':
+          description: New version
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  version: 4
+                  values: {}
+                  flags:
+                    expiry: []
+                  flagCount: 0
+                  changeSummary: 'batch_no: … → …'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_CONFLICT (+ currentVersion), CERTIFICATE_FINAL, CERTIFICATE_NOT_READY'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+        '422':
+          description: 'Coded error: UNKNOWN_FIELD, VALUE_TOO_LONG'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/fields/{key}/reset:
+    post:
+      tags:
+        - Certificates
+      summary: Reset one field from its source → new version
+      description: |-
+        `changeSource: regenerate_field`.
+
+        Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              expectedVersion: 4
+      responses:
+        '200':
+          description: New version
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_CONFLICT, CERTIFICATE_FINAL'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/versions:
+    get:
+      tags:
+        - Certificates
+      summary: Version history
+      description: |-
+        Newest first: changeSource, changedBy, changeSummary, flagCount, hasPdf.
+
+        Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificates/{id}/versions/{n}/restore:
+    post:
+      tags:
+        - Certificates
+      summary: Restore version n → new version (forward-only)
+      description: 'Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company''s resource is **404**, never 403.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: 'n'
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              expectedVersion: 5
+      responses:
+        '200':
+          description: New version
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: VERSION_CONFLICT, ALREADY_CURRENT, CERTIFICATE_FINAL'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/export-pdf:
+    post:
+      tags:
+        - Certificates
+      summary: Render the current version's PDF
+      description: |-
+        P7/P8: screen media, `@page` = the design's page size, no margin, one design page per PDF page, real text.
+
+        Permission: `export_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  certificateId: uuid
+                  versionNumber: 3
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: CERTIFICATE_NOT_READY'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/pdf:
+    get:
+      tags:
+        - Certificates
+      summary: Download the PDF
+      description: |-
+        A final certificate → its frozen PDF; otherwise the exported PDF of the current (or `?version=`) version. `Content-Disposition: attachment; filename="{type}-{product}-{batch}.pdf"`, exposed to the browser.
+
+        Permission: `export_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: version
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          description: 'Coded error: PDF_NOT_EXPORTED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/finalize:
+    post:
+      tags:
+        - Certificates
+      summary: Finalize (freeze)
+      description: |-
+        Refused while blocking flags remain (`missing` on a required field, `overflow`, `glyph:*`). Exports the PDF if missing and freezes it; who/when recorded. A final certificate rejects edits.
+
+        Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              expectedVersion: 6
+      responses:
+        '200':
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: CERTIFICATE_FLAGGED (+ flags), CERTIFICATE_FINAL, VERSION_CONFLICT'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
+  /certificates/{id}/duplicate:
+    post:
+      tags:
+        - Certificates
+      summary: Duplicate as a new draft
+      description: |-
+        The way to change a final certificate (plan §20 I20).
+
+        Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '201':
+          description: Draft
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: success
+                data:
+                  certificateId: uuid
+                  duplicatedFrom: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+  /certificate-metrics:
+    get:
+      tags:
+        - Operations
+      summary: Operational metrics (§15)
+      description: |-
+        Conversion ms, prepare pass rate, render ms per certificate, flags per batch, extraction failures by reason — for the caller's company.
+
+        Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: Metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /health:
+    get:
+      tags:
+        - Operations
+      summary: Health
+      description: Public. Liveness plus converter (pdf2htmlex) reachability — booleans and timings only.
+      parameters: []
+      responses:
+        '200':
+          description: Health
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: ok
+                time: '2026-10-18T10:00:00.000Z'
+                converter:
+                  reachable: true
+                  ms: 4
+                  toolVersion: 0.18.8.rc1
 components:
   schemas:
     LoginBody:
@@ -6116,6 +8243,18 @@ components:
         createdAt:
           type: string
           format: date-time
+    CertError:
+      type: object
+      properties:
+        status:
+          type: string
+          example: fail
+        code:
+          type: string
+          example: VERSION_CONFLICT
+        message:
+          type: string
+      additionalProperties: true
     PatchConflict:
       type: object
       description: Returned with HTTP 409 when a proposed patch would introduce a NEW validation failure that didn't exist before the patch. The outer response envelope's `status` stays "success" — branch on this object's own `status` field, which is "conflict".
@@ -6818,6 +8957,16 @@ components:
                   taskId:
                     type: string
                     format: uuid
+    E401:
+      description: Not authenticated
+    E403:
+      description: Missing permission
+    E404:
+      description: Not found — also for another company's resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CertError'
   parameters:
     PageParam:
       name: page
@@ -7024,6 +9173,21 @@ components:
         type: string
         format: uuid
       example: 66666666-6666-4666-8666-666666666666
+    CompanyId-2:
+      name: companyId
+      in: query
+      required: false
+      description: 'System users: the company to act for (required). Ignored for a company session.'
+      schema:
+        type: string
+        format: uuid
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     BearerAuth:
       type: http

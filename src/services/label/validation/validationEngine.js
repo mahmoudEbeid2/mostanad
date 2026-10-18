@@ -2,6 +2,7 @@ import * as schemaValidator from "./schemaValidator.js";
 import * as ruleValidator from "./ruleValidator.js";
 import * as coherenceValidator from "./coherenceValidator.js";
 import * as plausibilityValidator from "./plausibilityValidator.js";
+import * as composedFieldValidator from "./composedFieldValidator.js";
 import { resolveApplicability } from "../schema/fieldCatalog.js";
 
 // Bump this whenever layers 1-4's logic changes in a way that could change a
@@ -286,6 +287,7 @@ export const validate = async (
     includePlausibility = true,
     referenceGroundingFailed = false,
     plausibilityDeps = {},
+    composedFields = null, // §5: opt-in — when the caller ran composer.buildLabelSchema, pass its `fields` here so validation follows THAT list instead of only the static core schema
   } = {}
 ) => {
   // 1. Extraction confidence check (§14.5.3)
@@ -296,6 +298,7 @@ export const validate = async (
   let layer12Verdicts = applyApplicabilityLayer(labelData, schemaVerdicts);
   const ruleVerdicts = ruleValidator.run(labelData, rules);
   const coherenceVerdicts = coherenceValidator.run(labelData);
+  const composedFieldVerdicts = composedFields ? composedFieldValidator.run(labelData, composedFields, rules) : [];
 
   // If a field has low extraction confidence, do not fail it at the schema/applicability layer
   if (unconfirmedPaths.size > 0) {
@@ -317,6 +320,7 @@ export const validate = async (
     ...layer12Verdicts,
     ...ruleVerdicts,
     ...coherenceVerdicts,
+    ...composedFieldVerdicts,
     ...groundingVerdicts,
     ...productVerdicts,
     ...plausibilityVerdicts,

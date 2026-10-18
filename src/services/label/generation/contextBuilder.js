@@ -4,17 +4,41 @@
 // changes every call (product data) last. A company generating N labels for
 // the same country pays for the regulatory+schema+reference tokens once.
 import { geminiResponseSchema } from "../schema/geminiSchema.js";
+import { toGeminiSchema } from "../schema/composer.js";
 
-export function buildRegulatoryBlock(rules) {
-  if (!rules || rules.length === 0) {
-    return `<REGULATORY>\nNO_AUTHORITATIVE_REQUIREMENTS — no approved regulatory rules exist yet for this country/product scope. Do not invent one; leave the corresponding fields for the validator to mark UNVERIFIABLE.\n</REGULATORY>`;
+// §6 of the ingestion overhaul: "the catalog contributes which fields are
+// required, under what condition, in what format and in which languages —
+// ZERO values." composedFields (composer.buildLabelSchema's output) carries
+// exactly that metadata for catalog-CONTRIBUTED fields (contributedBy.length
+// > 0 — pure core fields already speak for themselves via labelSchema.js and
+// would just be noise here). `example` never reaches this function at all —
+// composer.js only ever reads catalogs through readCatalogStripped.
+export function buildRegulatoryBlock(rules, composedFields = null) {
+  const ruleLines = !rules || rules.length === 0
+    ? ["NO_AUTHORITATIVE_REQUIREMENTS — no approved regulatory rules exist yet for this country/product scope. Do not invent one; leave the corresponding fields for the validator to mark UNVERIFIABLE."]
+    : rules.map((r) => `- [${r.severity}] ${r.ruleKey} (${r.ruleType}${r.targetPath ? `, targetPath: ${r.targetPath}` : ""}): ${r.description}\n  Citation: "${r.citation}"`);
+
+  const catalogFields = (composedFields || []).filter((f) => f.contributedBy.length > 0);
+  const catalogLines = catalogFields.map((f) => {
+    const langs = f.requiredLanguages.length > 0 ? `, languages: ${f.requiredLanguages.join(",")}` : "";
+    const when = f.appliesWhen.length > 0 ? `, applies when: ${f.appliesWhen.join(" OR ")}` : "";
+    const formats = f.formatSpec.length > 0 ? `, format: ${f.formatSpec.map((s) => s.value).join(" | ")}` : "";
+    return `- [${f.requirement}] "${f.key}"${langs}${when}${formats}`;
+  });
+
+  const sections = [`<REGULATORY_RULES>\n${ruleLines.join("\n")}\n</REGULATORY_RULES>`];
+  if (catalogLines.length > 0) {
+    sections.push(`<CATALOG_FIELD_REQUIREMENTS>\n(from ingested regulatory documents — requirement/language/format only, never a value)\n${catalogLines.join("\n")}\n</CATALOG_FIELD_REQUIREMENTS>`);
   }
-  const lines = rules.map((r) => `- [${r.severity}] ${r.ruleKey} (${r.ruleType}${r.targetPath ? `, targetPath: ${r.targetPath}` : ""}): ${r.description}\n  Citation: "${r.citation}"`);
-  return `<REGULATORY>\n${lines.join("\n")}\n</REGULATORY>`;
+  return sections.join("\n\n");
 }
 
-export function buildSchemaBlock() {
-  return `<OUTPUT_SCHEMA>\nEnforced structurally via responseJsonSchema — this block exists only to name the constraint for the model's own reasoning, not to redefine it in prose.\nSchema: ${JSON.stringify(geminiResponseSchema).slice(0, 200)}... (full schema enforced by the API call, not repeated here to save tokens)\n</OUTPUT_SCHEMA>`;
+// schema: the Gemini JSON schema to describe (composed when composedFields
+// was supplied to buildContext, else the static labelSchema-derived one) —
+// the enforced constraint is always responseJsonSchema on the actual API
+// call; this block only names it for the model's own reasoning.
+export function buildSchemaBlock(schema = geminiResponseSchema) {
+  return `<OUTPUT_SCHEMA>\nEnforced structurally via responseJsonSchema — this block exists only to name the constraint for the model's own reasoning, not to redefine it in prose.\nSchema: ${JSON.stringify(schema).slice(0, 200)}... (full schema enforced by the API call, not repeated here to save tokens)\n</OUTPUT_SCHEMA>`;
 }
 
 export function buildReferenceBlock(rankedReferences) {
@@ -58,8 +82,9 @@ export function buildProductDataBlock(profile) {
  * schema + references) separately from the variable product-data suffix, so
  * generationMeta can record what was actually cached vs. what changes every call.
  */
-export function buildContext({ rules, rankedReferences, profile }) {
-  const stablePrefix = [buildRegulatoryBlock(rules), buildSchemaBlock(), buildReferenceBlock(rankedReferences)].join("\n\n");
+export function buildContext({ rules, rankedReferences, profile, composedFields = null }) {
+  const schema = composedFields ? toGeminiSchema(composedFields) : geminiResponseSchema;
+  const stablePrefix = [buildRegulatoryBlock(rules, composedFields), buildSchemaBlock(schema), buildReferenceBlock(rankedReferences)].join("\n\n");
   const variableSuffix = buildProductDataBlock(profile);
-  return { prompt: `${stablePrefix}\n\n${variableSuffix}`, stablePrefix, variableSuffix };
+  return { prompt: `${stablePrefix}\n\n${variableSuffix}`, stablePrefix, variableSuffix, schema };
 }

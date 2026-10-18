@@ -3,6 +3,7 @@ import path from "path";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 import AppError from "../utils/appError.js";
+import { assertGeminiEnabled } from "./ai/geminiGuard.js";
 
 export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
   if (!process.env.GEMINI_API_KEY && process.env.MOCK_GEMINI !== "true") {
@@ -19,6 +20,7 @@ export const generateHtmlFromDesign = async (filePath, fileName, mimeType) => {
      </div>`;
   }
 
+  assertGeminiEnabled("aiTemplateService.generateHtmlFromDesign");
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 

@@ -87,6 +87,32 @@ export const protect = catchAsync(async (req, res, next) => {
   next();
 });
 
+// Modules a company tenant may act on. Matched against the FULL resource
+// name of a permission slug (see permissionModule) — never just its 2nd word.
+export const COMPANY_ALLOWED_MODULES = [
+  "products",
+  "categories",
+  "templates",
+  "certificates",
+  "labels",
+  "regulatory",
+  "certificate_types",
+  "certificate_templates",
+  "invoices",
+];
+
+/**
+ * The module a permission slug acts on: everything after the action verb.
+ *   "create_certificate_templates" → "certificate_templates"
+ *   "read_products"                → "products"
+ * Taking only split("_")[1] turned every multi-word resource into its first
+ * word ("certificate"), which matched nothing and blocked every company.
+ */
+export const permissionModule = (permissionSlug) => {
+  const idx = permissionSlug.indexOf("_");
+  return idx === -1 ? "" : permissionSlug.slice(idx + 1);
+};
+
 /**
  * Restrict access to users with a specific permission
  */
@@ -108,10 +134,7 @@ export const restrictToPermission = (permissionSlug) => {
     // 2. If authenticated as a company tenant:
     if (req.company) {
       // Company tenants are allowed to perform operations on company-level modules only
-      const companyAllowedModules = ["products", "categories", "templates", "certificates", "labels", "regulatory"];
-      const moduleName = permissionSlug.split("_")[1];
-
-      if (companyAllowedModules.includes(moduleName)) {
+      if (COMPANY_ALLOWED_MODULES.includes(permissionModule(permissionSlug))) {
         return next();
       }
 

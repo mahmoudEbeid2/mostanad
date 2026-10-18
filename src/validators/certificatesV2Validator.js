@@ -1,0 +1,182 @@
+import { z } from "zod";
+
+// Request schemas for the Certificates V2 API (CERTIFICATES_V2_PLAN.md §12).
+// Multipart bodies arrive as strings — empty strings mean "not set".
+// An ABSENT key stays undefined (PATCH = "leave unchanged"); "", "null" and
+// null mean "clear it".
+
+const uuid = z.string().uuid();
+const unset = (v) => v === null || v === "" || v === "null";
+const optionalUuid = z
+  .union([uuid, z.literal(""), z.literal("null")])
+  .optional()
+  .nullable()
+  .transform((v) => (v === undefined ? undefined : unset(v) ? null : v));
+const optionalCountry = z
+  .union([z.string().regex(/^[A-Za-z]{2}$/, "country must be an ISO-3166 alpha-2 code"), z.literal(""), z.literal("null")])
+  .optional()
+  .nullable()
+  .transform((v) => (v === undefined ? undefined : unset(v) ? null : v.toUpperCase()));
+const scope = z.enum(["per_product", "per_invoice"]);
+const companyQuery = z.object({ companyId: uuid.optional() }).passthrough();
+const idParams = z.object({ id: uuid });
+
+export const typeSchemas = {
+  list: { query: companyQuery.extend({ includeInactive: z.enum(["true", "false"]).optional() }) },
+  create: {
+    query: companyQuery,
+    body: z.object({
+      name: z.string().trim().min(2).max(120),
+      code: z.string().trim().min(1).max(20).regex(/^[A-Za-z0-9_-]+$/, "code may contain letters, digits, - and _"),
+      description: z.string().max(500).optional().nullable(),
+      companyId: uuid.optional(),
+    }),
+  },
+  update: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      name: z.string().trim().min(2).max(120).optional(),
+      code: z.string().trim().min(1).max(20).regex(/^[A-Za-z0-9_-]+$/).optional(),
+      description: z.string().max(500).optional().nullable(),
+      isActive: z.boolean().optional(),
+    }),
+  },
+  byId: { params: idParams, query: companyQuery },
+};
+
+export const templateSchemas = {
+  create: {
+    query: companyQuery,
+    body: z.object({
+      name: z.string().trim().min(2).max(160),
+      certificateTypeId: uuid,
+      brandId: optionalUuid,
+      country: optionalCountry,
+      scope: scope.default("per_product"),
+      companyId: uuid.optional(),
+    }),
+  },
+  list: {
+    query: companyQuery.extend({
+      certificateTypeId: uuid.optional(),
+      brandId: uuid.optional(),
+      country: z.string().optional(),
+      scope: scope.optional(),
+      status: z.string().optional(),
+      includeArchived: z.enum(["true", "false"]).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+  },
+  byId: { params: idParams, query: companyQuery },
+  update: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      name: z.string().trim().min(2).max(160).optional(),
+      certificateTypeId: uuid.optional(),
+      brandId: optionalUuid,
+      country: optionalCountry,
+      scope: scope.optional(),
+    }),
+  },
+};
+
+// Field drafts are validated in depth by fieldService (§8.2, against the
+// version's lines and the real layout); this is the structural shape only.
+const fieldDraft = z
+  .object({
+    key: z.string().max(60),
+    label: z.string().max(120),
+    lineId: z.string().max(40),
+    charStart: z.number().int(),
+    charEnd: z.number().int(),
+    sampleValue: z.string().max(500),
+    source: z.object({ kind: z.string().max(20) }).passthrough(),
+    format: z.record(z.string(), z.any()).nullable().optional(),
+    required: z.boolean().optional(),
+    align: z.string().optional(),
+    origin: z.string().optional(),
+    confirmed: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+    page: z.number().int().optional(),
+  })
+  .passthrough();
+
+export const versionSchemas = {
+  byId: { params: idParams, query: companyQuery },
+  html: { params: idParams, query: companyQuery.extend({ variant: z.enum(["sanitized", "prepared", "sample"]).default("sanitized") }) },
+  fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200) }) },
+  confirm: { params: idParams, query: companyQuery, body: z.object({ keys: z.array(z.string().max(60)).min(1).max(200) }) },
+  diff: { params: idParams, query: companyQuery.extend({ page: z.coerce.number().int().min(1).default(1) }) },
+  preview: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      values: z.record(z.string(), z.union([z.string().max(2000), z.number(), z.null()])).optional(),
+      productId: uuid.optional().nullable(),
+      invoiceItemId: uuid.optional().nullable(),
+    }),
+  },
+};
+
+export const productSearchSchema = {
+  query: companyQuery.extend({ q: z.string().max(120).optional(), limit: z.coerce.number().int().min(1).max(50).optional() }),
+};
+
+// ── invoices (§9, §12) ───────────────────────────────────────────────────────
+const cell = z.union([z.string().max(500), z.number(), z.null()]);
+const itemData = z.record(z.string(), cell);
+const itemParams = z.object({ id: uuid, itemId: uuid });
+
+export const invoiceSchemas = {
+  upload: { query: companyQuery, body: z.object({ brandId: optionalUuid, country: optionalCountry, companyId: uuid.optional() }) },
+  list: {
+    query: companyQuery.extend({
+      status: z.string().max(30).optional(),
+      q: z.string().max(100).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+  },
+  byId: { params: idParams, query: companyQuery },
+  update: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({ header: z.record(z.string(), cell).optional(), brandId: optionalUuid, country: optionalCountry }),
+  },
+  addItem: { params: idParams, query: companyQuery, body: z.object({ data: itemData.optional(), productId: uuid.optional().nullable() }) },
+  updateItem: {
+    params: itemParams,
+    query: companyQuery,
+    body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional() }),
+  },
+  itemById: { params: itemParams, query: companyQuery },
+};
+
+export const certificateSchemas = {
+  metrics: { query: companyQuery.extend({ days: z.coerce.number().int().min(1).max(365).optional() }) },
+  byId: { params: idParams, query: companyQuery },
+  html: { params: idParams, query: companyQuery.extend({ version: z.coerce.number().int().min(1).optional() }) },
+  values: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({ expectedVersion: z.number().int().min(1), changes: z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null()])) }),
+  },
+  field: { params: idParams.extend({ key: z.string().regex(/^[a-z][a-z0-9_]{0,59}$/) }), query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
+  restore: { params: idParams.extend({ n: z.coerce.number().int().min(1) }), query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
+  action: { params: idParams, query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
+  list: {
+    query: companyQuery.extend({
+      invoiceId: uuid.optional(),
+      batchId: uuid.optional(),
+      status: z.enum(["pending", "draft", "final", "failed"]).optional(),
+      certificateTypeId: uuid.optional(),
+      flagged: z.enum(["true", "false"]).optional(),
+      q: z.string().max(100).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+  },
+};

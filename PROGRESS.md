@@ -980,3 +980,131 @@ environment to check the server-dependent suites).
    - `tests/verify.engine_parity.test.js` (T23) — PASSED (1/1)
 
 
+
+---
+
+# Certificates V2
+
+Spec: `CERTIFICATES_V2_PLAN.md` (decisions D1–D11, implementation log §20). Tests: `tests/certificates-v2/`, run by `npm test` on the guarded stack (`npm run dev:test`, `GEMINI_DISABLED=true`).
+
+## Phase 0 — Safety ✅ (owner sign-off 2026-10-16)
+Tenant-scoped background tasks + V1 template/certificate ownership (404 cross-tenant), V1 mock fallbacks removed, `generate-ai` → 410, `execFileSync` for Inkscape, permission parsing fixed (`permissionModule`) + 13 V2 permissions seeded, `GEMINI_DISABLED` guard + `npm test` preflight. `brand.test.js` fails pre-existing (brand logos removed in `7a0f57e`).
+
+## Phase 1 — Foundations
+**Plan**
+1. Prisma (additive): `StoredFile`, `CertificateType`, `CertificateTemplate`, `TemplateVersion` + partial unique index on the template slot.
+2. `storage/fileStore` (UUID paths under `uploads/certificates/{companyId}/`, sha256), `conversion/pdf2htmlexClient` (zoom 4/3, error mapping), `sanitize/htmlSanitizer` (allowlist + CSS sanitizer + `data-page`/`data-line`).
+3. `engine/fieldEngine.browser.js` (`analyse`) + `engine/renderer.js` (one browser, page pool, network blocked, recycle at 200) + font coverage via fontkit.
+4. Template service + `certificateTemplateWorker` `convert` job: upload → converting → draft (or failed `NO_PDF_CONTENT`/`NO_LIVE_TEXT`); thumbnail at 25%.
+5. Routes: certificate types CRUD, `POST/GET /certificate-templates`, `GET /certificate-templates/:id`, `GET /template-versions/:id`, `…/html` (CSP + nosniff), `…/thumbnail`.
+6. FE: `CertificateTypes`, `CertificateTemplates`, wizard step 1, `DocumentFrame`, `useTaskProgress`, `useCompanyScope`, Sidebar group "Certificates" (V1 under "Legacy").
+7. Tests: sanitizer malicious corpus, fixtures `no_pdf_content.ai` / `outlined_text.pdf` / `malicious.html`, goldens convert → draft, sanitized-vs-raw pixel diff = 0, tenancy 404s.
+
+**Report (2026-10-17) — ✅ done, awaiting owner sign-off**
+- **Checked every plan item against the code (backend + `mostanad_front`):** all 7 present. Backend: migration `20261016160945_certificates_v2_foundations` (4 tables + partial slot index), `services/certificates/{storage,conversion,sanitize,analysis,engine,templates,types,jobs}`, `certificateTemplateWorker` (convert), `certificatesV2Routes` (types CRUD, templates create/list/get/patch/versions/archive, version get/html/thumbnail), compose + `runDev` entries. FE: `CertificateTypes`, `CertificateTemplates`, `CertificateTemplateWizard` step 1 (`UploadStep`), `DocumentFrame`, `AuthImage`, `CompanyPicker`, `StatusBadge`, `useTaskProgress`, `useCompanyScope`, Sidebar "Certificates" + "Legacy". Nothing was missing; `prepareEngine.js` (Phase 2) left untouched as instructed.
+- **Exit criteria (§17):**
+  - ADDVET + PHARMAVET upload → convert → `draft`; stored sanitized preview vs pdf2htmlEX raw output: **0 differing pixels** on both (`p1.foundations.test.js`). Page 793.69×1122.52 px = 595.27×841.89 pt; ADDVET 33 lines, PHARMAVET 27.
+  - Malicious HTML neutralised: static corpus (45/45, `sanitizer.test.js`), in a real browser nothing runs and nothing is fetched, stored file + `/html` headers (CSP `default-src 'none'`, `nosniff`).
+  - Tenancy: every type/template/version/html/thumbnail/task route → 404 for another company.
+  - UI: `ui-smoke.mjs --phase 1` against Vite + the guarded stack: **13/13**, zero console errors (types empty state → create, upload ADDVET, sandboxed preview `allow-same-origin` only, 33 lines, addressable URL, thumbnail).
+- **Tests:** `npm test` on `npm run dev:test`: **45/46 suites**; the only failure is the pre-existing `brand.test.js` (Phase 0 note). `p1.foundations` 70/70. `oxlint` on all V2 frontend files: clean (remaining warnings are pre-existing in V1/other pages).
+- **Found & fixed (local dev DB only):** the DB had drifted again: `_prisma_migrations` listed all 24 migrations as applied (2026-10-16) but 16 tables were missing (all 4 Certificates V2 tables, `generated_labels`, `regulatory_*`, `label_*`, …) and `companies.logo_url` was gone. `prisma migrate status` only reads the ledger, so it reported "up to date". With owner approval, applied `prisma migrate diff` (live → `schema.prisma`) **minus** its only destructive statement (`DROP TABLE eda_requirements`, not in `schema.prisma`), plus the raw-SQL slot index, in one transaction; then re-ran the idempotent seed. Remaining diff: only that deliberately-skipped drop. `scripts/checkSchemaDrift.sql`'s table list predates Certificates V2 (it reports the V2 migration as a phantom); left as is.
+- **Deferred:** API docs (`src/docs/paths`, FRONTEND-GUIDE, API-CHANGES) — §17 puts docs in Phase 6.
+
+**Re-verified 2026-10-18** (a resume prompt assumed Phase 1 was unfinished; it was not — Phases 1–2 were done and Phase 3 was mid-flight). All 7 plan items present; `npm test` 49/50 (only pre-existing `brand.test.js`); `p1.foundations` 71/71 (both goldens → `draft`, sanitized vs raw **0 differing pixels**; malicious corpus neutralised; every route 404 cross-tenant); UI smoke phase 1 13/13, zero console errors; `oxlint` clean on V2 files.
+- **Bug found & fixed (Phase 1 code):** `optionalUuid`/`optionalCountry` in `certificatesV2Validator.js` turned an *absent* key into `null`, so `PATCH /certificate-templates/:id { name }` silently cleared the template's brand and country (and `PATCH /invoices/:id { header }` the invoice's brand hint and destination country); `"null"` became country `"NULL"`. Absent now stays absent; `""`/`"null"`/`null` clear. Regression assertions in `p1.foundations` and `p3.invoices`.
+- **Root cause of the recurring "DB drift" found:** `scripts/start.sh` runs `prisma db push --accept-data-loss` whenever `NODE_ENV` ≠ production. The `mostanad-app` container (`restart: always`, image with a stale pre-V2 schema) runs it every time Docker Desktop starts → every table/column its old schema lacks is dropped, while `_prisma_migrations` keeps saying "applied". It happened again on 2026-10-18 (17 tables left). With owner approval: restored by the same additive-only `migrate diff` as before (no `DROP`; skips `DROP TABLE eda_requirements`) + the slot index + idempotent seed; the 9 app/worker containers set to `restart=no` locally (reversible: `docker update --restart=always …`). **`start.sh` left unchanged by owner decision — it will wipe the DB again whenever a stale app image starts.**
+
+## Phase 2 — Fields & prepare
+**Plan**
+1. Prisma (additive): `TemplateField` (§6.1 + D10 `origin`/`confirmed`).
+2. Fields API: `PUT /template-versions/:id/fields` (§8.2 validation against lines **and** the real layout), `GET /certificate-field-sources` (generated from the Prisma `Product` model + invoice schema).
+3. Engine: `inspect` (server-side "suggest center", D11), `clear` + gate (§7.3/§7.6, `prepareEngine.js`), `fill`.
+4. `prepare` job → `ready` / back to `draft` with report + diff image; `activate` (D10: refused while a field is unconfirmed), `new-version` clone, `preview` (values / product), `html?variant=sample`; optional `suggest` (CERT_ASSIST).
+5. FE: wizard steps 2–5 — `FieldMarker` (selection → one field per line, Ctrl/⌘ multi-select, Enter/Esc, CSS Custom Highlight API + overlay fallback), `FieldPanel`, `SourcePicker`, `PrepareReport`, test fill, activate.
+6. Tests: §16.2 golden field sets through the engine, Phase 2 API suite, `valueResolver` (§16.3), UI smoke phase 2.
+
+**Report (2026-10-17) — ✅ done, awaiting owner sign-off**
+- **Backend:** migration `20261017120000_certificates_v2_template_fields`; `templates/{sourceCatalogue,fieldService,prepareService,assistService}.js`, `generation/{valueResolver,contextLoader}.js`, `invoices/invoiceSchema.js`; engine `inspect`; worker `prepare` handler; 9 routes; `INVOICE_EXTRACT` + `CERT_ASSIST` in `modelRegistry.js`.
+- **Frontend:** `FieldMarker`, `FieldPanel`, `SourcePicker`, `PrepareReport`, `FlagBadges`, `wizard/{Fields,Settings,Prepare,Activate}Step`, `utils/certificateFieldSources.js`, API functions; `DocumentFrame` got an `overlay(scale)` layer (never touches the document).
+- **Exit criteria (§17):** both golden field sets pass the gate — ADDVET pixel diff **0.0107 %**, PHARMAVET **0.0173 %** (≤ 0.05 %), every field calibration and round-trip ≤ 0.005 px (`engine.golden.test.js` 55/55, `p2.fields_prepare.test.js` 73/73). Anchoring: longer/shorter values move neighbours ≤ 0.011 px; centered fields keep their center ≤ 0.5 px; 3× values beyond limits → `shrunk`/`overflow`, neighbours unmoved; `B`/`X` on ADDVET → `glyph:BX`. UI: `ui-smoke.mjs --phase 2` **32/32**, zero console errors — marks 3 fields on ADDVET in the browser (single, Ctrl-multi, multi-line split, highlights, autosave), prepares (gate passes in the UI), test-fills on the server, activates. *Owner still to do:* mark and activate both templates himself.
+- **Tests:** `npm test` 47/48 suites (only pre-existing `brand.test.js`); `valueResolver.test.js` 39/39; `oxlint` clean on all V2 files; `vite build` OK.
+- **Owner decision taken during the phase:** §7.3 vs §16.2 overflow conflict → **text margins** (plan §20 I10).
+- **Bugs found & fixed:** engine scale was measured via integer `offsetWidth` → up to 0.71 px neighbour drift on long values (I11, now ≤ 0.011 px); "suggest center" never fired on PHARMAVET with the literal 2 px (I7); `valueResolver` could read `constructor`/prototype paths — now own properties only, unmatched `{{…}}` → empty; FE sent `null` JSON bodies that Express rejects (also affected Phase 1's archive call).
+- **Decisions logged:** plan §20 I7–I13 (center heuristic, `fields/confirm` route, `CERT_ASSIST_ENABLED`, text-margin limits, probe scale, diff images + stale report flag, resolver built early).
+- **Deferred:** suggest (CERT_ASSIST) is wired and guarded but untested against the live API (tests never call Gemini). Found: V1 `GET /products` is not tenant-forced (filters by query string only) — outside certificates scope, **not fixed**, flagged for the owner; V2 screens use the new tenant-forced `GET /certificate-products` instead (plan §20 I14).
+
+## Phase 3 — Invoices
+**Plan**
+1. Prisma (additive): `Invoice`, `InvoiceItem` (§6.1).
+2. Upload (`POST /invoices`, magic bytes, ≤ 15 MB) → `extract` job (`INVOICE_EXTRACT`, native file, `responseSchema`, raw output frozen, dates → ISO only when unambiguous) → automatic matching → `review`; failure → `failed` with the real message and zero items.
+3. Matching (§9.2): exact code → exact normalised name → ranked candidates; tenant-scoped; manual matches/ignores survive re-matching.
+4. Review (§9.3): header/item edits, add/remove lines, manual match, ignore, confirm → `ready`; editing a confirmed invoice re-opens it.
+5. FE (§13.5, mockups B1–B3): invoices list + upload, reading loader, review (header card, items table, match select, original side by side).
+6. Tests: extraction failure, matching (§16.3), review flow, tenancy 404s; UI smoke phase 3.
+
+**Report (2026-10-18) — ✅ done, awaiting owner sign-off; one exit-criterion item needs the owner (below)**
+- **Backend** (the previous session wrote most of it; finished and verified here): migration `20261017140000_certificates_v2_invoices`; `invoices/{invoiceService,invoiceExtractor,invoiceSchema,dateNormalizer}.js`, `matching/{productMatcher,productSearch}.js`, `invoiceWorker` (concurrency 1), 11 routes. Added: `POST /invoices/:id/retry` (plan §20 I17) and `GET /invoices?q=` (number/customer, case-insensitive, LIKE wildcards literal) for mockup B1.
+- **Frontend:** `pages/Invoices.jsx` (B1: upload panel + recent invoices, search, per-status action; `/invoices/new` is the same page), `pages/InvoiceReview.jsx` (B2 loader with named stages + failure card with *Try again*; B3 original beside the details card, "edited" markers, needs-match banner, full-width lines), `components/certificates/{InvoiceUploadPanel,InvoiceItemsTable,ProductMatchSelect,InvoiceSourceViewer}.jsx`, `services/apiInvoices.js`, routes + Sidebar "Invoices". Built to the owner's mockups in `mostanad_front/design/certificates/` (found this session).
+- **Exit criteria (§17):**
+  - *Every line resolvable:* exact code / exact name / ranked candidates (brand bonus, reasons) / manual match from the tenant-forced catalogue search / ignore; confirm refused while any line `needs_match` (lists the lines). `p3.invoices` 71/71; UI smoke phase 3 **21/21**, zero console errors.
+  - *Failures are explicit:* upload → `failed` with `EXTRACTION_FAILED: … GEMINI_DISABLED …`, zero items, zero certificates; shown verbatim in the UI; *Try again* re-runs the same extraction and fails the same explicit way.
+  - *Real invoices extracted:* **not verifiable here — owner action.** No real invoice exists on disk (§16.1's `invoice_*.pdf` + `.expected.json` were never provided) and `npm test` is barred from Gemini. Added `tests/live/certificates.invoice_extract.live.mjs` (opt-in `GEMINI_LIVE=1`, never run by `npm test`): drop 2–3 anonymised invoices + expected JSON into `fixtures/certificates/` and run it; it reports every wrong value.
+- **Tests:** `npm test` 49/50 (only pre-existing `brand.test.js`); `oxlint` clean on V2 files; `vite build` OK.
+- **Bugs found & fixed:** the PATCH absent-key bug (see Phase 1 re-verification); Esc in an invoice cell *saved* the value (stale closure) — now reverts; the review table was squeezed into a horizontal scroll beside the original — re-laid out per B3.
+- **Decisions logged:** plan §20 I15 (certificate key by invoice line), I16 (template selection per type *and* scope) — owner decisions taken now for Phase 4; I17 (retry route).
+
+## Phase 4 — Generation
+**Plan**
+1. Prisma (additive): `CertificateBatch`, `Certificate`, `CertificateItem`, `CertificateVersion` (§6.1 + owner decision I15 `planKey`).
+2. `templateSelector` (pure, §10.1 + I16), `valueResolver` (built in Phase 2), engine `fill` (built in Phase 2).
+3. `POST /invoices/:id/generate` → batch + certificates in one transaction → `generateBatch` job (render worker, 2 pages in parallel) → version 1 per certificate, flags, `flagCount`; partial failure; idempotent by `planKey`.
+4. Reads: `GET /certificate-batches/:id`, `GET /certificates`, `GET /certificates/:id`, `…/html`, `…/thumbnail`; plan preview.
+5. FE (mockups B3/B4): plan preview, Generate, batch progress + certificate cards + gaps, generated-certificates list.
+6. Tests: `templateSelector` matrix (§16.3), Phase 4 integration suite, UI smoke phase 4.
+
+**Report (2026-10-18) — ✅ done, awaiting owner sign-off**
+- **Backend:** migration `20261018120000_certificates_v2_generation` (4 tables, additive); `generation/{templateSelector,batchService}.js`, `certificates/certificateService.js`, `certificateRenderWorker` (+ compose ×3, `runDev`, `npm test` preflight), `certificateController`, 7 routes. `renderFilled` can return a page-1 thumbnail from the same render.
+- **Frontend:** `PlanPreview`, `BatchView`, `CertificateCard`, `pages/CertificatesList.jsx` (`/certificates`, Sidebar "Generated certificates"), `services/apiCertificatesV2.js`; `InvoiceReview` gets the plan preview, "Confirm & continue", "Generate N certificates", the batch view (run selector, "Generate again") and "Show invoice & lines".
+- **Exit criterion (invoice → correct certificates, values, flags):** `p4.generation` 54/54 against 4 real templates (both goldens; COA countryless + COA TR, collective FSC, brand-specific HC): 6 certificates for a 4-line invoice (ignored line skipped; same product on 2 lines → 2 COAs; FSC covers lines 1–3; HC only for the brand's lines, the other line reported as a gap); TR invoice picks the TR template. Values checked per source kind (item, product incl. `activeIngredients[1]`, invoice, company, `template` `COA{{item.batchNo}}`), formats (`MM/YYYY` from month and full ISO; ambiguous date → raw kept + `format`), `missing` on empty required values, `glyph:…` on characters absent from the subset font, `flagCount` = blocking flags. Static HTML has the values, not the design's samples, no script. A broken design fails only its own certificates (`partially_failed`, error on each); a retried job duplicates nothing; regenerate = new batch, old untouched; every route 404 cross-tenant. `templateSelector` 21/21. UI smoke phase 4 **13/13** (plan preview → Generate → live batch → 2 cards with server thumbnails → list/search), zero console errors.
+- **Tests:** `npm test` all green except pre-existing `brand.test.js`; `oxlint` clean on V2 files; `vite build` OK.
+- **Decisions logged:** plan §20 I15/I16 (owner), I18 (`pending` status, thumbnails), I19 (plan-preview route).
+- **Note:** a card links to `/certificates/:id` — the editor is Phase 5.
+
+## Phase 5 — Edit, export, finalize
+**Plan**
+1. `PATCH /certificates/:id/values` (optimistic concurrency → 409 `VERSION_CONFLICT`), reset a field from its source, versions list, forward-only restore.
+2. PDF export (P7/P8: `screen` media, `@page` = `.pf` size, no margin, one `.pf` per page) as a job; download with `{type}-{product}-{batch}.pdf`; batch ZIP.
+3. Finalize (refused while blocking flags remain; PDF frozen) / duplicate; a final certificate rejects every change (409 `CERTIFICATE_FINAL`).
+4. FE (§13.6, mockup B5): `CertificateEditor` (server-rendered frame, instant ephemeral preview, 1 s autosave / Ctrl+S, Esc reverts, conflict dialog), `CertificateValuesForm`, `VersionsDrawer`, export, finalize, duplicate; "Download all (ZIP)" on the batch view.
+5. Tests: §16.2 PDF acceptance on both goldens, Phase 5 API suite, UI smoke phase 5.
+
+**Report (2026-10-18) — ✅ done, awaiting owner sign-off**
+- **Backend:** `certificates/editService.js`, `renderer.printPdf`, render-worker jobs `exportPdf` / `exportZip`, 10 routes (`…/values`, `…/fields/:key/reset`, `…/versions`, `…/versions/:n/restore`, `…/export-pdf`, `…/pdf`, `…/finalize`, `…/duplicate`, `certificate-batches/:id/export`, `…/zip`). Downloads expose `Content-Disposition` to the cross-origin app (that response only; the app-wide CORS is unchanged).
+- **Frontend:** `pages/CertificateEditor.jsx` (`/certificates/:id`), `CertificateValuesForm`, `VersionsDrawer`, API functions + `waitForTask`; `BatchView` "Download all (ZIP)".
+- **Exit criteria (§17):**
+  - *Full loop on both goldens:* generate → edit → reset → versions → restore → export → finalize → duplicate, `p5.edit_export` **53/53**; UI smoke phase 5 **22/22** (all phases 87/87, 3 consecutive green runs), zero unexpected console errors (the deliberate 409 is declared by the test).
+  - *PDF acceptance (§16.2), both goldens filled with their own sample values and exported through the API:* 1 page; page size = source **Δ 0.32 × 0.03 pt** (≤ 0.5); text real and extractable; visual diff vs the source at 100 dpi **1.61 % (ADDVET), 1.64 % (PHARMAVET)** (≤ 3 %).
+  - Concurrency: two simultaneous edits of the same version → exactly one 200, one 409; the frozen PDF of a final certificate is byte-identical in `GET …/pdf` and in the ZIP. Every new route 404 cross-tenant.
+- **Tests:** `npm test` 52/53 (only pre-existing `brand.test.js`); `oxlint` clean on V2 files; `vite build` OK.
+- **Bug found & fixed (Phase 1 component):** `DocumentFrame` unmounted its iframe on every reload; Chrome's async `about:blank` navigation of the new sandboxed frame could wipe the freshly written document → an intermittently blank editor frame after a save (reproduced 1 in 2 runs). The iframe now stays mounted and is rewritten once if replaced; 3/3 green after.
+- **Decisions logged:** plan §20 I20–I22.
+
+## Phase 6 — Hardening
+**Plan**
+1. Idempotency audit of every job entry point (convert, prepare, extract, generateBatch, exportPdf, exportZip).
+2. Daily cleanup job: orphan `StoredFile`s > 24 h, stuck tasks > 30 min → failed with a reason (§15).
+3. Metrics (§15) + app health reporting converter reachability.
+4. Load test: 20 templates, a 50-line invoice, < 3 min on free-tier RPM.
+5. Docs: `src/docs/paths`, `FRONTEND-GUIDE.md`, `API-CHANGES.md`, `npm run docs:export`; manual QA script (§16.3).
+6. Zero console errors.
+
+**Report (2026-10-18) — ✅ done, awaiting owner sign-off**
+- **Idempotency audit — 2 real bugs found & fixed:** (1) `convertVersion` skipped a retry only for `draft`: a late retry for an already **active** version re-converted it and reset it to `draft`, silently deactivating a live template — it now runs only from `uploaded`/`converting`. (2) `runPrepareJob` threw for a retry after activation (spurious failed task) — now skipped for `ready`/`active`/`superseded` with the same field hash. Every entry point run twice: no duplicate rows or files (`exportZip` replaces the batch's ZIP; the old one is cleaned as an orphan).
+- **Maintenance:** `maintenance/maintenanceService.js` — orphan files (references gathered from every file column + `prepareReport.diffImages` JSON; > 24 h only, so a file written just before its row is never touched; certificate versions are never orphans) and stuck tasks (task → `failed` "STUCK: …"; its version → `failed`/`draft`, invoice → `failed`, batch → `failed`/`partially_failed` with pending certificates failed and the invoice released). Scheduled with a BullMQ job scheduler on the render queue, daily 03:00 (`CERT_MAINTENANCE_CRON`), verified registered.
+- **Metrics:** `GET /certificate-metrics?days=` — conversion ms (avg/p95), prepare pass rate, render ms per certificate + batch ms (now recorded in `CertificateBatch.counts`), flags per batch, extraction failures by reason. **Health:** `GET /api/v1/health` (public; booleans/timings only).
+- **Load test** (`tests/load/certificates.load.mjs`, not in `npm test`): 20 active templates (4 types × any / brand / country / brand+country / per_invoice), 50-line SA invoice → **204 certificates in 24.9 s** (231 ms/certificate, 0 failed, 0 misrouted by the selector); + 60 s extraction allowance (1 Gemini call per invoice, inside the 8 RPM free tier) = **84.9 s < 180 s**.
+- **Docs:** 46 OpenAPI path files / 53 operations generated into `src/docs/paths/certificates-v2/` (+ `_shared.yaml`), registered in `swagger.yaml` (7 tags); `npm run docs:export` OK, `redocly lint` valid (warnings are the house-wide missing `operationId`s). Fixed the stale `background-tasks` doc ("no tenant check" — tenant-scoped since Phase 0). `API-CHANGES.md` and `FRONTEND-GUIDE.md` Certificates V2 sections; manual QA script in `mostanad_front/FRONTEND-STATUS.md`.
+- **Exit criteria:** load test passes; docs updated; zero console errors (UI smoke 87/87). `p6.hardening` 24/24; `npm test` 53/54 (only pre-existing `brand.test.js`).
+- **Decisions logged:** plan §20 I23.
+- **Deferred / owner:** the generator script for the OpenAPI files lives outside the repo (it was a one-off); the files say "generated" and are plain YAML to edit by hand from now on.

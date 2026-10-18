@@ -72,19 +72,25 @@ model Company {
   email     String?  @unique
   phone     String?
   address   String?
+  logoUrl   String?  @map("logo_url") // every migration already creates this column; schema.prisma didn't declare it, which is the drift task 1 (2026-09-13) found
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Scoped Relations
-  products            Product[]
-  images              CompanyImage[]
-  subscriptions       Subscription[]
-  templates           Template[]
-  brands              Brand[]
-  regulatoryDocuments RegulatoryDocument[]
-  referenceLabels     ReferenceLabel[]
-  generatedLabels     GeneratedLabel[]
+  products             Product[]
+  images               CompanyImage[]
+  subscriptions        Subscription[]
+  templates            Template[]
+  brands               Brand[]
+  regulatoryDocuments  RegulatoryDocument[]
+  referenceLabels      ReferenceLabel[]
+  generatedLabels      GeneratedLabel[]
+  certificateTypes     CertificateType[]
+  certificateTemplates CertificateTemplate[]
+  invoices             Invoice[]
+  certificateBatches   CertificateBatch[]
+  certificates         Certificate[]
 
   @@map("companies")
 }
@@ -158,6 +164,8 @@ model Product {
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   generatedLabels GeneratedLabel[]
+  invoiceItems    InvoiceItem[]
+  certificates    Certificate[]
 
   @@map("products")
 }
@@ -208,9 +216,11 @@ model Brand {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  products        Product[]
-  templates       Template[]
-  referenceLabels ReferenceLabel[]
+  products             Product[]
+  templates            Template[]
+  referenceLabels      ReferenceLabel[]
+  certificateTemplates CertificateTemplate[]
+  invoices             Invoice[]
 
   @@map("brands")
 }
@@ -305,6 +315,20 @@ model RegulatoryDocument {
   uncoveredClauses  Json?     @map("uncovered_clauses")
   coverageAuditedAt DateTime? @map("coverage_audited_at")
 
+  // §0/§1 of the ingestion overhaul: activation is automatic — coverage below
+  // threshold no longer blocks a document from becoming usable, it only caps
+  // the severity of everything it contributes (full -> normal FAIL allowed,
+  // partial -> ruleValidator ceilings every FAIL from this document to
+  // NEEDS_REVIEW). Set once, at activation, alongside `status: "approved"`.
+  activationMode String? @default("full") @map("activation_mode") // full|partial
+
+  // §2's one-pass catalog (discriminants + fields discovered from THIS
+  // document). Null for documents ingested before this column existed, or for
+  // any document whose extraction produced no usable catalog — both are valid
+  // states, not errors: such a document still contributes RegulatoryRule rows,
+  // it just contributes nothing to buildLabelSchema's composed field list.
+  labelFieldSchema Json? @map("label_field_schema")
+
   extractedText String? @db.Text // physical column name unchanged, see file header
   extractedData Json? // physical column name unchanged, see file header
 
@@ -334,8 +358,25 @@ model RegulatoryRule {
 
   description String  @db.Text
   citation    String? @db.Text // verbatim quote from the source document
-  status      String  @default("pending_review") // pending_review|approved|rejected
+  // "pending_review"/"approved" are retained for backward-compat and for the
+  // manual PATCH .../reject escape hatch, but the ingestion overhaul (§0/§1)
+  // no longer requires per-rule human approval before a rule is usable — a
+  // freshly compiled rule is created directly as "active". getApprovedRulesForCountry
+  // (regulatoryDocumentService.js) treats "active" the same as legacy "approved".
+  status      String  @default("active") // active|approved|pending_review|rejected
   autoFixable Boolean @default(false) @map("auto_fixable")
+
+  // §7's self-correction — a rule that would otherwise FAIL is capped by
+  // ruleValidator at NEEDS_REVIEW when the system has a documented reason not
+  // to trust its own certainty (see ruleValidator.js's severityDowngradeReasons).
+  confidence          Float?    @default(1) // the compiler's own per-rule extraction confidence, 0-1 (§7a)
+  autoDowngraded      Boolean   @default(false) @map("auto_downgraded") // §7b: statistically downgraded
+  downgradeReason     String?   @map("downgrade_reason") @db.Text
+  downgradedAt        DateTime? @map("downgraded_at")
+  observedFailureRate Float?    @map("observed_failure_rate")
+  observedSampleSize  Int?      @map("observed_sample_size")
+
+  outcomes RuleEvaluationOutcome[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -343,6 +384,26 @@ model RegulatoryRule {
   @@unique([documentId, ruleKey])
   @@index([ruleType, severity, status])
   @@map("regulatory_rules")
+}
+
+// §7b — raw pass/fail outcomes per (rule, discriminant combination), so a
+// rule that fails an abnormally high proportion of labels of a GIVEN
+// combination (not just overall) can be identified and auto-downgraded. Never
+// deleted/aggregated-away: this table IS the audit trail behind
+// RegulatoryRule.observedFailureRate/observedSampleSize.
+model RuleEvaluationOutcome {
+  id     String         @id @default(uuid())
+  ruleId String         @map("rule_id")
+  rule   RegulatoryRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  labelId         String? @map("label_id") // no FK — outcomes must survive a label being deleted
+  discriminantKey String  @map("discriminant_key") // deterministic serialization of the discriminants map active for this label, "" if none
+  status          String // "pass" | "fail" (raw ruleValidator result, before any downgrade ceiling)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ruleId, discriminantKey])
+  @@map("rule_evaluation_outcomes")
 }
 
 // ==========================================
@@ -660,4 +721,262 @@ model ShadowComparison {
 
   @@index([createdAt])
   @@map("shadow_comparisons")
+}
+
+// ==========================================
+// 16. Certificates V2 (CERTIFICATES_V2_PLAN.md §6) — additive only.
+//     V1 Template/TemplateImage stay untouched. Nothing here cascades from
+//     Company: a company that still owns certificate data cannot be deleted
+//     by accident (onDelete: Restrict).
+// ==========================================
+
+model StoredFile {
+  id           String   @id @default(uuid())
+  companyId    String?  @map("company_id") // null only for system assets
+  kind         String // template_source | template_sanitized | template_prepared | template_thumb | template_diff | invoice_source | certificate_html | certificate_pdf | batch_zip
+  path         String // relative to uploads/, e.g. certificates/{companyId}/{uuid}.html
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  sha256       String
+  originalName String?  @map("original_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, kind])
+  @@map("stored_files")
+}
+
+model CertificateType {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  name        String // "Certificate of Analysis"
+  code        String // "COA" — unique per company
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  templates    CertificateTemplate[]
+  certificates Certificate[]
+
+  @@unique([companyId, code])
+  @@map("certificate_types")
+}
+
+model CertificateTemplate {
+  id                String          @id @default(uuid())
+  companyId         String          @map("company_id")
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  certificateTypeId String          @map("certificate_type_id")
+  certificateType   CertificateType @relation(fields: [certificateTypeId], references: [id], onDelete: Restrict)
+  brandId           String?         @map("brand_id")
+  brand             Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  country           String? // ISO-3166 alpha-2, e.g. "SA", "EG"
+  scope             String          @default("per_product") // per_product | per_invoice
+  name              String
+  activeVersionId   String?         @unique @map("active_version_id")
+  archivedAt        DateTime?       @map("archived_at")
+  createdByUserId   String?         @map("created_by_user_id")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  versions TemplateVersion[]
+
+  // + partial unique index on the template slot (raw SQL in the migration):
+  //   UNIQUE (company_id, certificate_type_id, coalesce(brand_id,''), coalesce(country,''), scope) WHERE archived_at IS NULL
+  @@index([companyId, certificateTypeId])
+  @@map("certificate_templates")
+}
+
+model TemplateVersion {
+  id               String              @id @default(uuid())
+  templateId       String              @map("template_id")
+  template         CertificateTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  versionNumber    Int                 @map("version_number")
+  status           String              @default("uploaded") // uploaded|converting|draft|preparing|ready|active|superseded|failed
+  sourceFormat     String              @map("source_format") // ai | pdf | html
+  sourceFileId     String              @map("source_file_id")
+  sanitizedFileId  String?             @map("sanitized_file_id") // converted + sanitized, fields NOT cleared (kept forever)
+  preparedFileId   String?             @map("prepared_file_id") // fields cleared → what generation renders
+  thumbnailFileId  String?             @map("thumbnail_file_id")
+  pages            Json? // [{ page, widthPx, heightPx, widthPt, heightPt }]
+  lines            Json? // [{ id, page, text, box:{x,y,w,h}, fontClass }]
+  fontCoverage     Json?               @map("font_coverage") // { "ff1": "ACDEF…" }
+  conversion       Json? // { tool, version, zoom, ms, warnings[] }
+  prepareReport    Json?               @map("prepare_report") // §7.6 gate results
+  error            String?
+  basedOnVersionId String?             @map("based_on_version_id")
+  createdByUserId  String?             @map("created_by_user_id")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  fields       TemplateField[]
+  certificates Certificate[]
+
+  @@unique([templateId, versionNumber])
+  @@map("template_versions")
+}
+
+model TemplateField {
+  id            String          @id @default(uuid())
+  versionId     String          @map("version_id")
+  version       TemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  key           String // snake_case, unique per version: "batch_no"
+  label         String // "Batch number"
+  page          Int             @default(1)
+  lineId        String          @map("line_id") // data-line id assigned at sanitize
+  origin        String          @default("manual") // manual | detected | ai_suggested (D10)
+  confirmed     Boolean         @default(true) // activation refused while any field is unconfirmed (D10)
+  charStart     Int             @map("char_start") // offsets in the line's textContent (sanitized HTML)
+  charEnd       Int             @map("char_end")
+  sampleValue   String          @map("sample_value") // exact original text — previews + round-trip gate
+  source        Json // §10.3 — { kind, path?, text?, template? }
+  format        Json? // { date?, case?, number?, prefix?, suffix? }
+  required      Boolean         @default(true)
+  align         String          @default("left") // left | center | right
+  // geometry & calibration, written by prepare (§7.3):
+  box           Json? // { x, y, w, h } CSS px, page-relative
+  limits        Json? // { minX, maxX }
+  letterSpacing Float?          @map("letter_spacing")
+  fontClass     String?         @map("font_class")
+  scale         Float?
+  groupKey      String?         @map("group_key") // repeating group (Phase 7)
+  sortOrder     Int             @default(0) @map("sort_order")
+
+  @@unique([versionId, key])
+  @@map("template_fields")
+}
+
+// ---------- Certificates V2 — invoices (CERTIFICATES_V2_PLAN.md §6.1, §9) ----------
+model Invoice {
+  id               String    @id @default(uuid())
+  companyId        String    @map("company_id")
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  brandId          String?   @map("brand_id") // optional hint chosen at upload
+  brand            Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  country          String? // chosen at upload, else extracted destination (A4)
+  status           String    @default("uploaded") // uploaded|extracting|review|ready|generating|generated|partially_failed|failed
+  sourceFileId     String    @map("source_file_id")
+  header           Json? // reviewed header (what generation uses)
+  headerExtracted  Json?     @map("header_extracted") // raw AI output, never edited (audit)
+  extraction       Json? // { modelId, promptHash, ms, warnings[] }
+  error            String?
+  reviewedAt       DateTime? @map("reviewed_at")
+  reviewedByUserId String?   @map("reviewed_by_user_id")
+  uploadedByUserId String?   @map("uploaded_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  items        InvoiceItem[]
+  batches      CertificateBatch[]
+  certificates Certificate[]
+
+  @@index([companyId, createdAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id              String   @id @default(uuid())
+  invoiceId       String   @map("invoice_id")
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  lineNo          Int      @map("line_no")
+  data            Json // reviewed: { name, code, batchNo, productionDate, expiryDate, quantity, unit, packing, extra }
+  dataExtracted   Json     @map("data_extracted") // raw AI output (audit); {} for lines added by hand
+  productId       String?  @map("product_id")
+  product         Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  matchStatus     String   @default("needs_match") @map("match_status") // matched | needs_match | ignored
+  matchMethod     String?  @map("match_method") // exact_code | exact_name | user
+  matchCandidates Json?    @map("match_candidates") // [{ productId, name, code, score, reasons[] }]
+
+  certificateItems CertificateItem[]
+
+  @@unique([invoiceId, lineNo])
+  @@map("invoice_items")
+}
+
+// ---------- Certificates V2 — generation (CERTIFICATES_V2_PLAN.md §6.1, §10) ----------
+// Certificates and versions are never cascade-deleted (§6.1).
+model CertificateBatch {
+  id              String    @id @default(uuid())
+  companyId       String    @map("company_id")
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  invoiceId       String    @map("invoice_id")
+  invoice         Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  status          String    @default("queued") // queued|running|done|partially_failed|failed
+  plan            Json // templateSelector output, frozen
+  counts          Json? // { planned, rendered, failed, flagged }
+  zipFileId       String?   @map("zip_file_id")
+  startedByUserId String?   @map("started_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  finishedAt      DateTime? @map("finished_at")
+
+  certificates Certificate[]
+
+  @@index([companyId, invoiceId])
+  @@map("certificate_batches")
+}
+
+model Certificate {
+  id                String           @id @default(uuid())
+  companyId         String           @map("company_id")
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  batchId           String           @map("batch_id")
+  batch             CertificateBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  invoiceId         String           @map("invoice_id")
+  invoice           Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  templateVersionId String           @map("template_version_id") // exact design used → reproducible forever
+  templateVersion   TemplateVersion  @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  certificateTypeId String           @map("certificate_type_id")
+  certificateType   CertificateType  @relation(fields: [certificateTypeId], references: [id], onDelete: Restrict)
+  scope             String // copied from the template at generation
+  productId         String?          @map("product_id") // per_product only
+  product           Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  planKey           String           @map("plan_key") // plan §20 I15: "{versionId}:{invoiceItemId}" | "{versionId}:invoice"
+  status            String           @default("pending") // pending | draft | final | failed (pending: plan §20 I18)
+  currentVersion    Int              @default(0) @map("current_version") // 0 until version 1 is rendered
+  flagCount         Int              @default(0) @map("flag_count") // blocking flags, denormalised for badges
+  search            String? // "productName batchNo invoiceNo", lower-case
+  error             String?
+  finalizedAt       DateTime?        @map("finalized_at")
+  finalizedByUserId String?          @map("finalized_by_user_id")
+  finalPdfFileId    String?          @map("final_pdf_file_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  items    CertificateItem[]
+  versions CertificateVersion[]
+
+  @@unique([batchId, planKey])
+  @@index([companyId, invoiceId])
+  @@index([companyId, status])
+  @@map("certificates")
+}
+
+model CertificateItem {
+  certificateId String      @map("certificate_id")
+  certificate   Certificate @relation(fields: [certificateId], references: [id], onDelete: Restrict)
+  invoiceItemId String      @map("invoice_item_id")
+  invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Restrict)
+  position      Int
+
+  @@id([certificateId, invoiceItemId])
+  @@map("certificate_items")
+}
+
+model CertificateVersion {
+  id              String      @id @default(uuid())
+  certificateId   String      @map("certificate_id")
+  certificate     Certificate @relation(fields: [certificateId], references: [id], onDelete: Restrict)
+  versionNumber   Int         @map("version_number")
+  values          Json // { [fieldKey]: { value, source, resolved, origin, flags, editedByUserId, editedAt } } (§10.4)
+  htmlFileId      String?     @map("html_file_id") // rendered static HTML (D9)
+  pdfFileId       String?     @map("pdf_file_id") // created on export; frozen on finalize
+  thumbnailFileId String?     @map("thumbnail_file_id") // page-1 PNG for cards (plan §20 I18)
+  changeSource    String      @map("change_source") // generation | user_edit | restore | regenerate_field
+  changedByUserId String?     @map("changed_by_user_id")
+  changeSummary   String?     @map("change_summary")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@unique([certificateId, versionNumber])
+  @@map("certificate_versions")
 }

@@ -17,6 +17,18 @@ security:
   - BearerAuth: []
 
 tags:
+  - name: Certificate Types
+    description: Certificates V2
+  - name: Certificate Templates
+    description: Certificates V2
+  - name: Template Versions
+    description: Certificates V2
+  - name: Invoices
+    description: Certificates V2
+  - name: Certificate Generation
+    description: Certificates V2
+  - name: Operations
+    description: Certificates V2
   - name: Users
     description: Internal system user management
   - name: Roles
@@ -201,6 +213,101 @@ paths:
     $ref: './paths/reference-labels/reference-labels-retry-taskId.yaml'
   /reference-labels/{id}:
     $ref: './paths/reference-labels/reference-labels-id.yaml'
+
+  # >>> Certificates V2 (generated)
+  /certificate-types:
+    $ref: './paths/certificates-v2/certificate-types.yaml'
+  /certificate-types/{id}:
+    $ref: './paths/certificates-v2/certificate-types-id.yaml'
+  /certificate-templates:
+    $ref: './paths/certificates-v2/certificate-templates.yaml'
+  /certificate-templates/{id}:
+    $ref: './paths/certificates-v2/certificate-templates-id.yaml'
+  /certificate-templates/{id}/versions:
+    $ref: './paths/certificates-v2/certificate-templates-id-versions.yaml'
+  /certificate-templates/{id}/archive:
+    $ref: './paths/certificates-v2/certificate-templates-id-archive.yaml'
+  /template-versions/{id}:
+    $ref: './paths/certificates-v2/template-versions-id.yaml'
+  /template-versions/{id}/html:
+    $ref: './paths/certificates-v2/template-versions-id-html.yaml'
+  /template-versions/{id}/thumbnail:
+    $ref: './paths/certificates-v2/template-versions-id-thumbnail.yaml'
+  /template-versions/{id}/fields:
+    $ref: './paths/certificates-v2/template-versions-id-fields.yaml'
+  /template-versions/{id}/fields/confirm:
+    $ref: './paths/certificates-v2/template-versions-id-fields-confirm.yaml'
+  /template-versions/{id}/suggest:
+    $ref: './paths/certificates-v2/template-versions-id-suggest.yaml'
+  /template-versions/{id}/prepare:
+    $ref: './paths/certificates-v2/template-versions-id-prepare.yaml'
+  /template-versions/{id}/prepare-diff:
+    $ref: './paths/certificates-v2/template-versions-id-prepare-diff.yaml'
+  /template-versions/{id}/preview:
+    $ref: './paths/certificates-v2/template-versions-id-preview.yaml'
+  /template-versions/{id}/activate:
+    $ref: './paths/certificates-v2/template-versions-id-activate.yaml'
+  /template-versions/{id}/new-version:
+    $ref: './paths/certificates-v2/template-versions-id-new-version.yaml'
+  /certificate-field-sources:
+    $ref: './paths/certificates-v2/certificate-field-sources.yaml'
+  /certificate-products:
+    $ref: './paths/certificates-v2/certificate-products.yaml'
+  /invoices:
+    $ref: './paths/certificates-v2/invoices.yaml'
+  /invoices/{id}:
+    $ref: './paths/certificates-v2/invoices-id.yaml'
+  /invoices/{id}/source:
+    $ref: './paths/certificates-v2/invoices-id-source.yaml'
+  /invoices/{id}/items:
+    $ref: './paths/certificates-v2/invoices-id-items.yaml'
+  /invoices/{id}/items/{itemId}:
+    $ref: './paths/certificates-v2/invoices-id-items-itemId.yaml'
+  /invoices/{id}/rematch:
+    $ref: './paths/certificates-v2/invoices-id-rematch.yaml'
+  /invoices/{id}/confirm:
+    $ref: './paths/certificates-v2/invoices-id-confirm.yaml'
+  /invoices/{id}/retry:
+    $ref: './paths/certificates-v2/invoices-id-retry.yaml'
+  /invoices/{id}/generation-plan:
+    $ref: './paths/certificates-v2/invoices-id-generation-plan.yaml'
+  /invoices/{id}/generate:
+    $ref: './paths/certificates-v2/invoices-id-generate.yaml'
+  /certificate-batches/{id}:
+    $ref: './paths/certificates-v2/certificate-batches-id.yaml'
+  /certificate-batches/{id}/export:
+    $ref: './paths/certificates-v2/certificate-batches-id-export.yaml'
+  /certificate-batches/{id}/zip:
+    $ref: './paths/certificates-v2/certificate-batches-id-zip.yaml'
+  /certificates:
+    $ref: './paths/certificates-v2/certificates.yaml'
+  /certificates/{id}:
+    $ref: './paths/certificates-v2/certificates-id.yaml'
+  /certificates/{id}/html:
+    $ref: './paths/certificates-v2/certificates-id-html.yaml'
+  /certificates/{id}/thumbnail:
+    $ref: './paths/certificates-v2/certificates-id-thumbnail.yaml'
+  /certificates/{id}/values:
+    $ref: './paths/certificates-v2/certificates-id-values.yaml'
+  /certificates/{id}/fields/{key}/reset:
+    $ref: './paths/certificates-v2/certificates-id-fields-key-reset.yaml'
+  /certificates/{id}/versions:
+    $ref: './paths/certificates-v2/certificates-id-versions.yaml'
+  /certificates/{id}/versions/{n}/restore:
+    $ref: './paths/certificates-v2/certificates-id-versions-n-restore.yaml'
+  /certificates/{id}/export-pdf:
+    $ref: './paths/certificates-v2/certificates-id-export-pdf.yaml'
+  /certificates/{id}/pdf:
+    $ref: './paths/certificates-v2/certificates-id-pdf.yaml'
+  /certificates/{id}/finalize:
+    $ref: './paths/certificates-v2/certificates-id-finalize.yaml'
+  /certificates/{id}/duplicate:
+    $ref: './paths/certificates-v2/certificates-id-duplicate.yaml'
+  /certificate-metrics:
+    $ref: './paths/certificates-v2/certificate-metrics.yaml'
+  /health:
+    $ref: './paths/certificates-v2/health.yaml'
+  # <<< Certificates V2
 
 components:
   $ref: './components/components.yaml#/components'

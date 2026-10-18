@@ -59,6 +59,34 @@ services:
       - ./src:/app/src
       - ./uploads:/app/uploads
 
+  certificate-template-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  # Certificates V2 (plan §5.2): generation now; PDF/ZIP export in Phase 5.
+  certificate-render-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  invoice-worker:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+
+  # Exposed on the host so `npm run dev:all` (outside Docker) can reach it:
+  # set PDF2HTMLEX_URL=http://localhost:5050 in .env for that mode.
+  pdf2htmlex:
+    ports:
+      - "5050:5000"
+
   postgres:
     ports:
       - "5432:5432"

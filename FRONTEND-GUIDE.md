@@ -535,3 +535,30 @@ library" feature yet.
 When in doubt about a specific endpoint's exact status-code set, check its
 entry in `src/docs/swagger.yaml` (or the rendered `/api/v1/docs` UI) — this
 guide explains the flows; the OpenAPI spec is the byte-for-byte contract.
+
+---
+
+# Certificates V2 — frontend integration (CERTIFICATES_V2_PLAN.md §12–§13)
+
+Already implemented in `mostanad_front` (`src/pages/Certificate*.jsx`, `src/pages/Invoice*.jsx`, `src/components/certificates/`, `src/services/apiCertificate*.js`, `src/services/apiInvoices.js`). This section is the contract those screens rely on.
+
+## C0. Conventions
+- **Scope:** every call takes `?companyId=` for a system user (`useCompanyScope` adds it); a company session is forced to itself. Another tenant's id → **404**.
+- **Errors:** `{ status, code, message, … }`. Show `message`; branch on `code` (`VERSION_CONFLICT`, `CERTIFICATE_FINAL`, `CERTIFICATE_FLAGGED`, `ITEMS_NEED_MATCH`, `NO_PDF_CONTENT`, `NO_LIVE_TEXT`, `TEMPLATE_SLOT_TAKEN`, …).
+- **Long work** returns `202 { …, taskId }`: poll `GET /background-tasks/:taskId` every 2 s (`useTaskProgress`; the socket `job_status` event is only a hint) until `completed` / `failed` — `error` is the real reason, verbatim.
+- **Certificate/template HTML** is shown only in `DocumentFrame` (sandboxed `about:blank` iframe written with `document.write`, `sandbox="allow-same-origin"`, no scripts; plan §20 I5/I22). Never inject it into the app DOM. The frontend never measures or saves geometry (D11).
+
+## C1. Templates (wizard, §13.4)
+`POST /certificate-templates` (multipart) → poll → `GET /template-versions/:id` (lines, pages) → `PUT …/fields` (autosave, 800 ms) → `POST …/prepare` → poll → `prepareReport` (+ `GET …/prepare-diff`) → `POST …/preview` (test fill) → `POST …/activate`. `FIELDS_UNCONFIRMED` blocks activation (D10) — `POST …/fields/confirm`.
+
+## C2. Invoices (§13.5, mockups B1–B3)
+`POST /invoices` → `/invoices/:id?task=` shows the reading loader → status `review`: edit header (`PATCH /invoices/:id`), cells (`PATCH …/items/:itemId { data }`), match (`{ productId }`, candidates in `matchCandidates`, catalogue search `GET /certificate-products?q=`), ignore (`{ ignored: true }`), add/delete lines. Dates come as `{ raw, iso }`; `iso: null` = ambiguous → show amber. `POST …/confirm` (409 `ITEMS_NEED_MATCH` lists the lines). `failed` → `POST …/retry`.
+
+## C3. Generation (§13.5, B3/B4)
+`GET /invoices/:id/generation-plan` → `summary` rows + `gaps` (link to create the missing template) → `POST /invoices/:id/generate` → `GET /certificate-batches/:id` (poll while `queued|running`; `live` counts; `certificates[]` cards: `status` `pending|draft|final|failed`, `flagCount`, `hasThumbnail` → `GET /certificates/:id/thumbnail`). "Download all": `POST /certificate-batches/:id/export` → poll → `GET …/zip`.
+
+## C4. Certificate editor (§13.6, B5)
+`GET /certificates/:id` (values `{ value, source, resolved, origin, flags }`, `fields`) + `GET …/html` in the frame. While typing, set the frame's `[data-field="key"]` `textContent` (ephemeral only). Save after 1 s idle / Ctrl+S: `PATCH …/values { expectedVersion, changes }` → reload the frame from the server. On 409 `VERSION_CONFLICT`: dialog *Reload* vs *Overwrite with mine* (re-PATCH with `currentVersion`). Reset: `POST …/fields/:key/reset`. Versions: `GET …/versions`, view `GET …/html?version=n`, `POST …/versions/:n/restore`. Export: `POST …/export-pdf` → poll → `GET …/pdf`. Finalize: disabled while blocking flags (`missing`, `overflow`, `glyph:*`) — 409 `CERTIFICATE_FLAGGED` lists them. Final → read-only, "Download PDF", "Duplicate as draft" (`POST …/duplicate`).
+
+## C5. Flag copy (§13.7)
+`missing` red "Required value missing" · `overflow` red "Doesn't fit — shorten or change" · `shrunk` amber "Shrunk to fit" · `glyph:BX` amber "Character not in the design font: B, X" · `format` amber "Couldn't format as date".

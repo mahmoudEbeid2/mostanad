@@ -16,6 +16,10 @@ const targets = [
   { name: "ai-template-worker", script: "src/workers/aiTemplateWorker.js" },
   { name: "email-worker", script: "src/workers/emailWorker.js" },
   { name: "label-generator-worker", script: "src/workers/labelGeneratorWorker.js" },
+  // Certificates V2 (CERTIFICATES_V2_PLAN.md §5.2)
+  { name: "cert-template-worker", script: "src/workers/certificateTemplateWorker.js" },
+  { name: "invoice-worker", script: "src/workers/invoiceWorker.js" },
+  { name: "cert-render-worker", script: "src/workers/certificateRenderWorker.js" },
 ];
 
 // Tried Node's built-in --watch here first (no new dependency, matches
@@ -27,6 +31,11 @@ const targets = [
 // actually import. That produced real ECONNREFUSED test failures (the API
 // bounced mid-suite). Plain `node`, no watch: restart `npm run dev:all`
 // yourself after editing worker code.
+// `--no-gemini` (npm run dev:test): every child gets GEMINI_DISABLED=true, so
+// no process can reach the Gemini API. `npm test` refuses to run unless every
+// queue consumer was started this way (tests/runAll.js preflight).
+if (process.argv.includes("--no-gemini")) process.env.GEMINI_DISABLED = "true";
+
 const COLORS = ["\x1b[36m", "\x1b[35m", "\x1b[33m", "\x1b[32m", "\x1b[34m", "\x1b[91m", "\x1b[92m", "\x1b[93m", "\x1b[94m"];
 const RESET = "\x1b[0m";
 
@@ -57,6 +66,7 @@ const children = targets.map(({ name, script }, i) => {
 });
 
 console.log(`Started ${children.length} processes: ${targets.map((t) => t.name).join(", ")}`);
+console.log(`Gemini: ${process.env.GEMINI_DISABLED === "true" ? "DISABLED (GEMINI_DISABLED=true)" : "enabled"}`);
 console.log("Postgres + Redis are NOT started by this script — bring them up first. Press Ctrl+C to stop all.\n");
 
 let shuttingDown = false;

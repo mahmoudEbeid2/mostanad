@@ -76,6 +76,7 @@ async function run() {
     },
     description: "Withdrawal period required for food-producing species.",
     citation: "If the product's target animal species includes Cattle, Sheep, Goat, or Poultry, the label must state a withdrawal period",
+    confidence: 0.95,
   };
   assert("Valid conditional rule (real citation, valid targetPath) is accepted", validateProposedRule(goodConditionalRule, FIXTURE_TEXT).ok === true);
 
@@ -87,8 +88,12 @@ async function run() {
     constraint: { kind: "forbidden_content", path: "aimOfUse", patterns: ["\\bcures?\\b", "\\btreats?\\b", "يعالج"], flags: "i" },
     description: "Feed additives must not claim to cure or treat disease.",
     citation: 'Feed additives and supplements must not use the words "cures", "treats", "heals"',
+    confidence: 0.9,
   };
   assert("Valid forbidden_content rule is accepted", validateProposedRule(goodForbiddenContentRule, FIXTURE_TEXT).ok === true);
+
+  const missingConfidenceRule = { ...goodConditionalRule, ruleKey: "FICT.BAD.NOCONFIDENCE", confidence: undefined };
+  assert("Rule with no confidence is REJECTED", validateProposedRule(missingConfidenceRule, FIXTURE_TEXT).ok === false);
 
   const badCitationRule = { ...goodConditionalRule, ruleKey: "FICT.BAD.CITATION", citation: "This sentence does not appear anywhere in the fixture document." };
   const badCitationResult = validateProposedRule(badCitationRule, FIXTURE_TEXT);
@@ -127,8 +132,8 @@ async function run() {
   const noFireVerdicts = runRules(labelWithDogNoWithdrawal, [{ ...goodConditionalRule, id: "r1" }]);
   assert("Conditional rule does NOT fire for a non-listed species (exempt per clause 2.3)", !noFireVerdicts.some((v) => v.ruleKey === "FICT.VET.WITHDRAWAL.CONDITIONAL"));
 
-  // ── T12: coverage math + approval gate ──────────────────────────────────────
-  log("\n-- Coverage computation + 95% approval gate (§7.5) --", "cyan");
+  // ── T12: coverage math + automatic activation (decision 1) ─────────────────
+  log("\n-- Coverage computation + automatic activation, severity not access (§7.5 + decision 1) --", "cyan");
   const fullCoverage = computeCoverage(14, [
     { reference: "1.1", isNormative: true, coveredByRuleKey: "R1" },
     { reference: "PREAMBLE", isNormative: false, coveredByRuleKey: null },
@@ -146,20 +151,21 @@ async function run() {
   assert(`Below ${MINIMUM_COVERAGE_PERCENT_FOR_APPROVAL}% is correctly identified as below the gate`, partialCoverage.coveragePercent < MINIMUM_COVERAGE_PERCENT_FOR_APPROVAL);
 
   await prisma.regulatoryDocument.update({ where: { id: doc1.id }, data: { clauseTotal: partialCoverage.clauseTotal, clauseCovered: partialCoverage.clauseCovered, coveragePercent: partialCoverage.coveragePercent, uncoveredClauses: partialCoverage.uncoveredClauses, coverageAuditedAt: new Date() } });
-  let blockedByGate = false;
-  try {
-    await regulatoryDocumentService.approveDocument(doc1.id);
-  } catch (err) {
-    blockedByGate = err.statusCode === 422;
-  }
-  assert("approveDocument REFUSES below-95% coverage with unresolved clauses", blockedByGate);
+
+  // Decision 1: no human gate stands — below-threshold coverage still
+  // ACTIVATES the document (status "approved"), it just sets activationMode
+  // to "partial" so ruleValidator ceilings every FAIL from it to NEEDS_REVIEW.
+  const partiallyActivated = await regulatoryDocumentService.approveDocument(doc1.id);
+  assert("approveDocument ACTIVATES below-95%-coverage documents rather than refusing them", partiallyActivated.status === "approved");
+  assert("...but marks activationMode 'partial'", partiallyActivated.activationMode === "partial");
 
   await regulatoryDocumentService.markClauseNonNormative(doc1.id, "2.2");
   const afterClear = await prisma.regulatoryDocument.findUnique({ where: { id: doc1.id } });
   assert("markClauseNonNormative removes the cleared clause from uncoveredClauses", afterClear.uncoveredClauses.length === 0);
 
   const approved = await regulatoryDocumentService.approveDocument(doc1.id, "test-user-id");
-  assert("approveDocument SUCCEEDS once all uncovered clauses are cleared", approved.status === "approved");
+  assert("approveDocument still SUCCEEDS once all uncovered clauses are cleared", approved.status === "approved");
+  assert("...now at full activationMode", approved.activationMode === "full");
   assert("reviewedByUserId recorded", approved.reviewedByUserId === "test-user-id");
 
   let unauditedBlocked = false;

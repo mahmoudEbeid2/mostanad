@@ -5,6 +5,7 @@ import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 // import removed
 import io from "socket.io-client";
+import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -51,27 +52,31 @@ const worker = new Worker(
         throw new Error(`Uploaded design file buffer not found in job data`);
       }
 
-      const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}_${fileName}`;
+      // The uploaded filename never reaches a path or a shell: only a random
+      // name plus a whitelisted extension (Certificates V2 Phase 0).
+      const ext = (path.extname(fileName || "").toLowerCase().match(/^\.(ai|pdf|svg|png|jpe?g|webp)$/) || [""])[0];
+      const tempFileName = `ai_design_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
       tempFilePath = path.join(process.cwd(), tempFileName);
       fs.writeFileSync(tempFilePath, Buffer.from(fileBufferBase64, 'base64'));
 
       let svgFilePath = tempFilePath;
       let cleanupFiles = [tempFilePath];
 
-      const { execSync } = await import("child_process");
+      // execFileSync with an argv array: no shell, so no injection via paths.
+      const { execFileSync } = await import("child_process");
 
-      if (!fileName.toLowerCase().endsWith('.svg')) {
+      if (ext !== '.svg') {
           svgFilePath = `${tempFilePath}.svg`;
           cleanupFiles.push(svgFilePath);
           console.log(`[AI Template Worker] Converting ${fileName} to SVG using Inkscape...`);
-          execSync(`inkscape --export-type=svg --export-text-to-path=false --export-filename="${svgFilePath}" "${tempFilePath}"`);
+          execFileSync("inkscape", ["--export-type=svg", "--export-text-to-path=false", `--export-filename=${svgFilePath}`, tempFilePath]);
       }
 
       // Convert SVG to PNG for AI OCR to avoid 1M token limit crash from large SVGs
       let pngFilePath = `${tempFilePath}.png`;
       cleanupFiles.push(pngFilePath);
       console.log(`[AI Template Worker] Creating PNG preview for AI OCR...`);
-      execSync(`inkscape --export-type=png --export-filename="${pngFilePath}" --export-dpi=150 "${svgFilePath}"`);
+      execFileSync("inkscape", ["--export-type=png", `--export-filename=${pngFilePath}`, "--export-dpi=150", svgFilePath]);
 
       // 2. Run the Multi-Stage AI Pipeline
       const { default: aiTemplatePipeline } = await import('../services/ai/pipeline.js');
@@ -141,7 +146,7 @@ const worker = new Worker(
       }
     }
   },
-  { connection }
+  { connection, name: geminiWorkerName("aiTemplateQueue") }
 );
 
 worker.on("ready", () => console.log("[AI Template Worker] BullMQ worker is ready."));

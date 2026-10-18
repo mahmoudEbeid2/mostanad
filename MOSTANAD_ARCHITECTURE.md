@@ -839,7 +839,14 @@ export const AUTHORITIES = {
 
 ### ٧.٤ رحلة الاستيعاب — من ملف الهيئة لقواعد فعّالة
 
-> بيحصل **مرة لكل مستند**، مش مع كل توليد. **لازم يتنفذ الأول** — من غيره كل توليد هيروح على fallback.
+> **تحديث (ingestion overhaul, بعد كتابة هذا القسم لأول مرة):** الخطوات ٥-٦ تحت
+> كانت بتفترض بوابة بشرية إجبارية قبل ما توثيقة تبقى قابلة للاستخدام. **القرار
+> اتغيّر عمداً:** لا بوابة بشرية على الاستيعاب — لكن البوابة **اتحوّلت لآلية، مش
+> اتلغت**. راجع الصندوق تحت "الحالة الحالية" لتفاصيل الفرق، ولية.
+>
+> بيحصل **مرة لكل مستند**، مش مع كل توليد. **لازم يتنفذ الأول** — من غيره كل
+> توليد هيروح على fallback. من رفع الملف لحد التفعيل: **تلقائي بالكامل، بدون
+> أي إجراء بشري بينهم.**
 
 ```
 [1] رفع المستند
@@ -848,41 +855,99 @@ export const AUTHORITIES = {
     → BackgroundTask + queue  (إعادة استخدام edaRequirementQueue)
     → status = "uploaded"
          │
-[2] استخراج النص  ── worker
-    ✅ إدي الـ PDF للموديل مباشرة (§9.6) — مش pdf-parse
+[2] استخراج النص + الكتالوج (نداء Gemini واحد) ── worker
+    ✅ إدي الـ PDF للموديل مباشرة (§9.6) — مش pdf-parse · thinking عالي · تفاعلي
+    نفس النداء بيرجّع { text, catalog }: catalog = discriminants[] + fields[]
+    اتكتشفوا من صياغة المستند نفسه — مفيش اسم discriminant أو field متسجل
+    في الكود مسبقاً (المخطط الحاكم لكل المهمة دي). كل citation فيه لازم
+    startIndex/endIndex slice من الـ `text` المحفوظ يساوي quote حرفياً —
+    غير كده يترفض الإدخال ده بس، مش الكتالوج كله.
     documentHash = sha256(text)
     ⚠️ الهاش موجود قبل كده → توقف: "المستند مرفوع بالفعل كـ vX"
-    → status = "extracted"
-         │
-[3] تجميع القواعد  ── ruleCompiler · موديل تفكير عالي · responseSchema صارم
+    → status = "extracted" ، labelFieldSchema = catalog
+         │  (تلقائي، بدون أي إجراء بشري من هنا)
+         ▼
+[3] تجميع القواعد (نداء Gemini منفصل — ميزانية سياق كاملة خاصة بيه، مش جزء من
+    نداء الاستخراج)  ── ruleCompiler · موديل تفكير عالي · responseSchema صارم
     ✅ المستند كامل في السياق — ممنوع التقطيع (§9.4)
     المخرج: RegulatoryRule[] وكل قاعدة فيها:
        ruleKey · ruleType · severity · targetPath · appliesWhen · constraint
-       · description · citation ← نص مقتبس حرفياً
+       · description · citation ← نص مقتبس حرفياً · confidence (٧a)
     🚫 قاعدة استشهادها مش متحقق منه حرفياً في النص → REJECT (مش warning)
     🚫 قاعدة targetPath بتاعها مش في labelSchema → REJECT
-    → كل القواعد status = "pending_review"
+    → كل القاعدة المقبولة status = "active" فوراً — **مفيش موافقة بشرية لكل
+      قاعدة** (كانت "pending_review"، اتلغت الخطوة دي عمداً)
+         │  (تلقائي)
+         ▼
+[4] تدقيق التغطية (§7.5)  ── تمريرة عكسية، تلقائي كمان، مش endpoint منفصل بيُستنى
+    coveragePercent + uncoveredClauses بيتسجّلوا على الـ document
+         │  (تلقائي)
+         ▼
+[5] التفعيل — **الجايت الوحيد اللي فاضل، وهو آلي بالكامل**
+    document.status = "approved" **دايماً** (مفيش حالة "الوثيقة مش قابلة
+    للاستخدام" — §0). التغطية بتحدد activationMode بس، مش الإتاحة:
+      coveragePercent >= ٩٥٪ (أو uncoveredClauses فاضية)  → activationMode = "full"
+        → قواعد الوثيقة دي تقدر تدّي FAIL عادي
+      أقل من كده                                          → activationMode = "partial"
+        → ruleValidator بيحط سقف: أي FAIL من قاعدة الوثيقة دي بيتحوّل
+          NEEDS_REVIEW تلقائياً (مش FAIL، ومش PASS كاذبة برضو)
+    ده اللي بيحل التناقض بين "مفيش بوابة بشرية" و"التغطية الناقصة بتاعت
+    §7.5 خطر حقيقي": التغطية بقت بتتحكم في **قد إيه نثق في القاعدة**،
+    مش **هل الوثيقة تتستخدم أصلاً**.
          │
-[4] تدقيق التغطية (§7.5)  ── تمريرة عكسية إلزامية
-         │
-[5] المراجعة البشرية  ← البوابة الإلزامية
-    GET   /regulatory-rules?documentId=…&status=pending_review
-    PATCH /regulatory-rules/:id            تعديل constraint أو severity
-    PATCH /regulatory-rules/:id/approve
-    POST  /regulatory-documents/:id/approve
-    → المراجع بيشوف: القاعدة، الاستشهاد، ومعاينة إيه اللي هتفشل
-         │
-[6] التفعيل
-    document.status = "approved" · effectiveDate · documentVersion
-    → من دلوقتي القواعد دي بتدي PASS/FAIL حقيقية
-         │
-[7] الإصدار الجديد
+[6] الإصدار الجديد
     رفع نسخة أحدث → supersededById على القديمة, status="superseded"
     → الليبلات القديمة تفضل مربوطة بالـ rulesetIds اللي اتحققت بيها فعلاً
     → إعادة التحقق بالقواعد الجديدة قرار صريح، مش تلقائي
+    (ملحوظة: supersededById عمود موجود في الـ schema بس لسه مش مكتوب ولا
+    مقروء في أي كود — راجع سجل الثغرات)
 ```
 
-**الحالة الحالية:** الخطوتين ١ و٢ موجودتين (`edaRequirementWorker`) — بس بتخزن `extractedData: []`، والخطوات ٣–٧ **مش موجودة خالص**. عشان كده مستند الهيئة بيتبعت كنص خام كل مرة.
+> الـ endpoints اليدوية القديمة (`POST .../compile-rules`, `.../audit-coverage`,
+> `.../approve`) **باقية** — لإعادة تشغيل خطوة واحدة بعد تعديل يدوي مثلاً — لكن
+> مفيش حاجة في المسار التلقائي **بتعتمد** عليها حد يضغطها.
+
+**الحالة الحالية:** الخطوات ١-٥ **موجودة وشغالة فعلاً** —
+`catalogExtractor.js` (استخراج + كتالوج بنداء واحد)، `ruleCompiler.js`
+(تجميع، بقواعد ٦ أنواع بدل ١ — راجع §7.3.1)، `coverageAuditor.js` (تدقيق
+التغطية)، و`regulatoryDocumentService.ingestAutomatically` (المنسّق اللي
+بيسلسل ٣-٥ تلقائياً، بينادى عليه `edaRequirementWorker` بعد الاستخراج مباشرة).
+الخطوة ٦ (supersededById) لسه غير مطبّقة — علّمها ولحقتها.
+
+#### ٧.٣.١ الأنواع الستة للقواعد (تحديث لاحق لـ §7.3)
+
+الـ DSL بتاع §7.3 كان بيدعم ٧ أنواع (`required_field`, `forbidden_content`,
+`format`, `conditional`, `value_constraint`, `language_set`, `semantic`).
+اتضاف ٣ أنواع جداد عشان يغطوا الستة المطلوبين في مواصفة الاستيعاب الجديدة،
+والاتنين الباقيين اتربطوا بأسماء موجودة بالفعل. الخريطة الكاملة
+(`RULE_TYPE_TO_CONSTRAINT_KIND` في `ruleCompiler.js` — **المكان الوثائقي
+الوحيد** لهذا الربط):
+
+| الاسم في المواصفة | `constraint.kind` في الكود | ملحوظة |
+|---|---|---|
+| `required_field` | `required_field` | زي ما هو |
+| `prohibited_phrase` | `forbidden_content` | ✅ اتضاف `allow[]` — قائمة استثناءات جنب `patterns[]`؛ تطابق على نفس الجزء النصي اللي طابق `patterns` بيلغي الرفض |
+| `required_languages` | `language_set` | زي ما هو، اسم مختلف بس |
+| `numeric_threshold` | `numeric_threshold` | **جديد** — `{ path, operator, bound, unit }`؛ النتيجة المترتبة (consequence) بتتكتب في `description`، مش في الـ constraint نفسه |
+| `enumerated_values` | `enumerated_values` | **جديد** — `{ path, allowed[] }` |
+| `external_match` | `external_match` | **جديد** — بيرجع `NEEDS_CONFIRMATION` دايماً، مش PASS ولا FAIL أبداً — مختلف عن `semantic` اللي بيرجع `UNVERIFIABLE` |
+
+#### التصحيح الذاتي (§7 من مواصفة الاستيعاب — بديل المراجعة البشرية)
+
+مفيش إنسان في حلقة الاستيعاب، فالنظام لازم يمسك أخطاءه بنفسه:
+
+- **(a) ثقة منخفضة:** قاعدة بثقة استخراج (`confidence`) أقل من حد معيّن
+  (`RULE_LOW_CONFIDENCE_THRESHOLD`, افتراضي ٠.٦) بتتحوّل النتيجة بتاعتها من
+  FAIL لـ NEEDS_REVIEW وقت التشغيل — القاعدة لسه شغالة وظاهرة، مش متعطّلة.
+- **(b) تنزيل إحصائي:** `ruleOutcomeTracker.js` بيسجّل نتيجة كل قاعدة
+  (pass/fail) مع مفتاح discriminants بتاع الليبل. لما قاعدة تفشل نسبة عالية
+  جداً (افتراضي ٧٠٪، حد أدنى للعينة ٢٠، الاتنين قابلين للتعديل عبر env) من
+  labels لنفس تركيبة الـ discriminants، بتتحوّل تلقائياً لـ NEEDS_REVIEW
+  (`RegulatoryRule.autoDowngraded` + `downgradeReason` + `observedFailureRate`
+  + `observedSampleSize`) — قاعدة حقيقية بتفشل بعض المنتجات مش كلها تقريباً.
+- **(c)** الاتنين مسجّلين على صف القاعدة نفسه وقابلين للاستعلام عبر
+  `GET /regulatory-rules` الموجود بالفعل.
+- **(d)** ولا واحدة فيهم بتعطّل قاعدة أو تمسحها — تنزيل بس، مفيش حذف.
 
 ### ٧.٥ مدقق التغطية — يمنع الـ PASS الكاذبة
 

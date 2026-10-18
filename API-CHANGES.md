@@ -251,3 +251,16 @@ Append-only. Newest at the bottom. Each entry: phase, endpoint, change type, not
   `dryRunPatch`'s own internal `status: "invalid"` (patchApplier.js) is
   unchanged — only the two callers that used to throw on it now return it
   as `"refused"`.
+
+## Certificates V2 (CERTIFICATES_V2_PLAN.md — Phases 0–6)
+
+All new routes: `protect` + `restrictToPermission`, tenant-scoped (a system user passes `?companyId=`; another company's resource → **404**). Coded errors: `{ status, code, message, …extra }`. Full reference: Swagger `/api/v1/docs` (tags *Certificate Types … Operations*), files in `src/docs/paths/certificates-v2/`.
+
+- **Phase 0 (safety, existing routes):** `GET /background-tasks/:id` — **breaking-ish**: tenant-scoped (another company's task → 404). V1 template/certificate routes enforce ownership. V1 `POST …/templates/generate-ai` → **410**. V1 mock fallbacks removed (a Gemini failure fails the task).
+- **Phase 1 — new:** `GET/POST /certificate-types`, `PATCH/DELETE /certificate-types/:id`; `POST/GET /certificate-templates`, `GET/PATCH /certificate-templates/:id`, `POST /certificate-templates/:id/versions`, `POST /certificate-templates/:id/archive`; `GET /template-versions/:id`, `…/html?variant=sanitized|prepared|sample` (CSP `default-src 'none'`, nosniff), `…/thumbnail`.
+- **Phase 2 — new:** `PUT /template-versions/:id/fields`, `POST …/fields/confirm`, `POST …/suggest`, `POST …/prepare` (202), `GET …/prepare-diff?page=`, `POST …/preview`, `POST …/activate`, `POST …/new-version`; `GET /certificate-field-sources`; `GET /certificate-products` (tenant-forced product search).
+- **Phase 3 — new:** `POST /invoices` (202), `GET /invoices` (`status`, `q`, paging; rows carry `certificateCounts`), `GET/PATCH /invoices/:id`, `GET /invoices/:id/source`, `POST /invoices/:id/items`, `PATCH/DELETE /invoices/:id/items/:itemId`, `POST /invoices/:id/rematch`, `POST /invoices/:id/confirm`, `POST /invoices/:id/retry` (202).
+- **Phase 4 — new:** `GET /invoices/:id/generation-plan`, `POST /invoices/:id/generate` (202), `GET /certificate-batches/:id`, `GET /certificates` (filters `invoiceId, batchId, status, certificateTypeId, flagged, q`), `GET /certificates/:id`, `…/html?version=`, `…/thumbnail`. `GET /invoices/:id` now includes `batches[]`.
+- **Phase 5 — new:** `PATCH /certificates/:id/values` (`{ expectedVersion, changes }` → 409 `VERSION_CONFLICT {currentVersion}` / `CERTIFICATE_FINAL`), `POST …/fields/:key/reset`, `GET …/versions`, `POST …/versions/:n/restore`, `POST …/export-pdf` (202), `GET …/pdf`, `POST …/finalize`, `POST …/duplicate`, `POST /certificate-batches/:id/export` (202), `GET /certificate-batches/:id/zip`. Downloads expose `Content-Disposition`.
+- **Phase 6 — new:** `GET /certificate-metrics?days=` (`read_certificates`); `GET /health` (public: `{ status, converter: { reachable, ms, toolVersion } }`).
+- **Fixed (Phase 1 code, found 2026-10-18):** `PATCH /certificate-templates/:id` and `PATCH /invoices/:id` no longer clear `brandId`/`country` when those keys are absent from the body.

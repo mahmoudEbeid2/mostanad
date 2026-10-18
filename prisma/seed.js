@@ -1,7 +1,11 @@
 import { prisma } from "../src/lib/prisma.js";
 import bcrypt from "bcryptjs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const permissions = [
+// Exported so tests/permissions.parsing.test.js can check every seeded slug
+// against the middleware without running the seed.
+export const permissions = [
   // Users
   { name: "Create Users", slug: "create_users", module: "users" },
   { name: "Read Users", slug: "read_users", module: "users" },
@@ -81,6 +85,22 @@ const permissions = [
 
   // Assurance (Phase 5, §15) — disagreements, golden runs, shadow, review inbox
   { name: "Read Assurance", slug: "read_assurance", module: "assurance" },
+
+  // Certificates V2 (CERTIFICATES_V2_PLAN.md §12). Multi-word modules — the
+  // middleware must resolve the full name after the action (Phase 0 fix).
+  { name: "Create Certificate Types", slug: "create_certificate_types", module: "certificate_types" },
+  { name: "Read Certificate Types", slug: "read_certificate_types", module: "certificate_types" },
+  { name: "Update Certificate Types", slug: "update_certificate_types", module: "certificate_types" },
+  { name: "Delete Certificate Types", slug: "delete_certificate_types", module: "certificate_types" },
+  { name: "Create Certificate Templates", slug: "create_certificate_templates", module: "certificate_templates" },
+  { name: "Read Certificate Templates", slug: "read_certificate_templates", module: "certificate_templates" },
+  { name: "Update Certificate Templates", slug: "update_certificate_templates", module: "certificate_templates" },
+  { name: "Delete Certificate Templates", slug: "delete_certificate_templates", module: "certificate_templates" },
+  { name: "Create Invoices", slug: "create_invoices", module: "invoices" },
+  { name: "Read Invoices", slug: "read_invoices", module: "invoices" },
+  { name: "Update Invoices", slug: "update_invoices", module: "invoices" },
+  { name: "Delete Invoices", slug: "delete_invoices", module: "invoices" },
+  { name: "Export Certificates", slug: "export_certificates", module: "certificates" },
 ];
 
 async function main() {
@@ -161,7 +181,13 @@ async function main() {
   console.log("🌱 Database seeding completed successfully!");
 }
 
-main()
+// Run only when executed directly (`prisma db seed` / `node prisma/seed.js`),
+// not when a test imports `permissions`. Case-folded for Windows drive letters.
+const isDirectRun =
+  !!process.argv[1] &&
+  path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+
+if (isDirectRun) main()
   .catch((e) => {
     console.error("❌ Error seeding database:", e);
     process.exit(1);

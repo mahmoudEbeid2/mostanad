@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import io from "socket.io-client";
+import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 import geminiClient from "../services/ai/geminiClient.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
 import { withGenerationMetrics, generationMetricsSnapshot } from "../services/ai/generationMetrics.js";
@@ -9,6 +10,10 @@ import * as versionService from "../services/label/versioning/versionService.js"
 import { buildProductProfile } from "../services/label/retrieval/productProfile.js";
 import { selectReferences } from "../services/label/retrieval/referenceSelector.js";
 import { generate as generateLabel } from "../services/label/generation/labelGenerator.js";
+import { getApprovedRulesForCountry } from "../services/label/regulatory/regulatoryDocumentService.js";
+import { recordOutcomes } from "../services/label/regulatory/ruleOutcomeTracker.js";
+import { buildLabelSchema, getKnownDiscriminants } from "../services/label/schema/composer.js";
+import { deriveDiscriminants } from "../services/label/schema/deriveDiscriminants.js";
 import { validate as validateLabel } from "../services/label/validation/validationEngine.js";
 import { riskScore, autonomyTierFor } from "../services/label/assurance/riskScorer.js";
 import { estimateBasisFor, GROUNDED_CONTENT_FIELDS, NEVER_GUESS_FIELDS } from "../services/label/generation/groundingPolicy.js";
@@ -147,22 +152,41 @@ export const labelGeneratorWorker = new Worker(
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 35, message: "Searching for matching reference labels..." });
       const rankedReferences = referenceGroundingFailed ? [] : await selectReferences(profile, { take: 200, topK: 3 });
 
-      // Step 3: Regulatory rules for this country (Phase 3's real output) plus
-      // best-available advisory text (approved > pending_review) for drafting
-      // quality even before rules exist for a country.
+      // Step 3: Regulatory rules for this country (Phase 3's real output).
+      // getApprovedRulesForCountry (not an inline query) so this picks up the
+      // SAME tenant scoping (Invariant #10's spirit) the actual validation
+      // path already uses — the old inline query here had no companyId filter
+      // at all, which meant a private document's rules could leak into a
+      // different company's generation PROMPT, not just its validation.
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 45, message: "Loading regulatory requirements..." });
-      const approvedDocuments = await prisma.regulatoryDocument.findMany({ where: { country: { equals: country, mode: "insensitive" }, status: "approved" }, select: { id: true } });
-      const rules = approvedDocuments.length > 0
-        ? await prisma.regulatoryRule.findMany({ where: { documentId: { in: approvedDocuments.map((d) => d.id) }, status: "approved" } })
-        : [];
+      const rules = await getApprovedRulesForCountry(country, { companyId });
+
+      // Step 3b: compose the label schema (§3) — tenant-scoped catalog fields
+      // from ingested regulatory documents, merged with the static core
+      // schema. Discriminants are auto-derived from the product profile where
+      // the wording resembles it (deriveDiscriminants.js); anything that
+      // can't be matched this way is reported, not guessed — a frontend
+      // change to collect it directly from the user is a separate task.
+      const knownDiscriminants = await getKnownDiscriminants({ countryCode: country, companyId });
+      const { resolved: discriminants, unresolved: unresolvedDiscriminants } = deriveDiscriminants(profile, knownDiscriminants);
+      if (unresolvedDiscriminants.length > 0) {
+        console.log(`[Label Generator] Task ${taskId}: ${unresolvedDiscriminants.length} discriminant(s) could not be derived from product data — composing without them: ${JSON.stringify(unresolvedDiscriminants.map((d) => d.key))}`);
+      }
+      const { fields: composedFields, unrecognizedDiscriminantKeys } = await buildLabelSchema({ countryCode: country, companyId, discriminants });
+      if (unrecognizedDiscriminantKeys.length > 0) {
+        console.warn(`[Label Generator] Task ${taskId}: unrecognized discriminant key(s) reported by composer: ${JSON.stringify(unrecognizedDiscriminantKeys)}`);
+      }
 
       // Step 4: Constrained generation (§9, schema-forced via responseJsonSchema —
       // G6 fixed. No more free-form JSON coerced after the fact).
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 70, message: "Generating label..." });
-      const { labelData, generationMeta, matchTier: generatedTier, referenceLabelIds, targetAnimalsSource, groundedFacts, groundedNeverGuessPaths, unresolvedContentFields } = await generateLabel({ profile, rankedReferences, rules });
+      const { labelData, generationMeta, matchTier: generatedTier, referenceLabelIds, targetAnimalsSource, groundedFacts, groundedNeverGuessPaths, unresolvedContentFields } = await generateLabel({ profile, rankedReferences, rules, composedFields, discriminants });
       const matchTier = referenceGroundingFailed ? "none" : generatedTier;
 
-      console.log(`[Label Generator] Task ${taskId}: cachedTokens=${generationMeta.cachedTokens}, estimatedNeverGuessFields=${JSON.stringify(generationMeta.estimatedNeverGuessFields)}`);
+      if (generationMeta.rejectedSchemaKeys?.length > 0) {
+        console.warn(`[Label Generator] Task ${taskId}: model produced key(s) outside the composed schema — rejected: ${JSON.stringify(generationMeta.rejectedSchemaKeys)}`);
+      }
+      console.log(`[Label Generator] Task ${taskId}: composedFields=${composedFields.length}, cachedTokens=${generationMeta.cachedTokens}, estimatedNeverGuessFields=${JSON.stringify(generationMeta.estimatedNeverGuessFields)}`);
 
       // CLAUDE.md item 5: real per-label cost, not an estimate — every
       // geminiClient call made since withGenerationMetrics() opened this job
@@ -193,8 +217,10 @@ export const labelGeneratorWorker = new Worker(
 
       // Step 6: engine unification closes the loop — a schema-conformant label
       // gets an initial ValidationReport immediately, same validationEngine
-      // labelExtractor's uploaded labels go through (§4.2).
-      const report = await validateLabel(labelData, { rules, referenceGroundingFailed, includePlausibility: false });
+      // labelExtractor's uploaded labels go through (§4.2). §5: composedFields
+      // passed through so validation follows the SAME composed list generation
+      // was constrained to, not a re-derivation.
+      const report = await validateLabel(labelData, { rules, referenceGroundingFailed, includePlausibility: false, composedFields });
       await prisma.validationReport.create({
         data: {
           labelId: label.id,
@@ -209,12 +235,15 @@ export const labelGeneratorWorker = new Worker(
           aiAssisted: report.aiAssisted,
         },
       });
+      await recordOutcomes(rules, report.verdicts, { labelId: label.id, discriminants });
+
       // Step 7 (§14.6): risk score + autonomy tier, computed in code from the
       // label content and this version's validation report. disagreementCount
       // starts at 0 here — the adversarial auditor (Phase 5) runs separately
       // via POST /labels/:id/audit, not on every generation (a second model
       // call on every job would double generation cost for every label).
-      const document = approvedDocuments.length > 0 ? await prisma.regulatoryDocument.findFirst({ where: { id: { in: approvedDocuments.map((d) => d.id) } } }) : null;
+      // Tenant-scoped the same way getApprovedRulesForCountry is now.
+      const document = await prisma.regulatoryDocument.findFirst({ where: { country: { equals: country, mode: "insensitive" }, status: "approved", OR: [{ companyId }, { companyId: null }] } });
       const score = riskScore(labelData, report, { document, disagreementCount: 0, labelProvenance });
       const { tier: autonomyTier } = autonomyTierFor(score);
       await prisma.generatedLabel.update({ where: { id: label.id }, data: { status: report.passed ? "validated" : "failed_validation", riskScore: score, autonomyTier } });
@@ -235,7 +264,7 @@ export const labelGeneratorWorker = new Worker(
       throw error;
     }
   }),
-  { connection, concurrency: 2 }
+  { connection, concurrency: 2, name: geminiWorkerName("labelGeneratorQueue") }
 );
 
 labelGeneratorWorker.on("completed", (job) => {

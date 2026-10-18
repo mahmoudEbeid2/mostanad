@@ -1,0 +1,21 @@
+{
+  "$comment": "Golden field sets (CERTIFICATES_V2_PLAN.md §16.2). Offsets are resolved from each version's analysed line text at test time: `occurrence` picks the first or last match of sampleValue in the line.",
+  "ADDVET_COA.ai": [
+    { "key": "batch_no", "label": "Batch number", "lineId": "p1-l11", "sampleValue": "AVVS1122005", "occurrence": "first", "align": "left", "source": { "kind": "item", "path": "batchNo" } },
+    { "key": "product_name", "label": "Product name", "lineId": "p1-l14", "sampleValue": "ADD-E120", "occurrence": "first", "align": "left", "source": { "kind": "product", "path": "name" } },
+    { "key": "expiry", "label": "Expiry date", "lineId": "p1-l13", "sampleValue": "11/2025", "occurrence": "first", "align": "left", "source": { "kind": "item", "path": "expiryDate" }, "format": { "date": "MM/YYYY" } },
+    { "key": "production", "label": "Production date", "lineId": "p1-l12", "sampleValue": "11/2022", "occurrence": "first", "align": "left", "source": { "kind": "item", "path": "productionDate" }, "format": { "date": "MM/YYYY" } },
+    { "key": "ph_result", "label": "pH result", "lineId": "p1-l21", "sampleValue": "4.0", "occurrence": "last", "align": "left", "source": { "kind": "manual" } },
+    { "key": "constituent_2_name", "label": "Constituent 2", "lineId": "p1-l23", "sampleValue": "Sodium selenite", "occurrence": "first", "align": "left", "source": { "kind": "product", "path": "activeIngredients[1].name" } },
+    { "key": "constituent_2_amount", "label": "Constituent 2 amount", "lineId": "p1-l26", "sampleValue": "60 mg", "occurrence": "first", "align": "left", "source": { "kind": "product", "path": "activeIngredients[1].concentration" } },
+    { "key": "document_no", "label": "Document #", "lineId": "p1-l9", "sampleValue": "COAAVVS1122005", "occurrence": "first", "align": "left", "source": { "kind": "template", "template": "COA{{item.batchNo}}" } }
+  ],
+  "PHARMAVET_COA.pdf": [
+    { "key": "expiry", "label": "Expiration date", "lineId": "p1-l10", "sampleValue": "09/2028", "occurrence": "last", "align": "center", "source": { "kind": "item", "path": "expiryDate" }, "format": { "date": "MM/YYYY" } },
+    { "key": "production", "label": "Manufacturing date", "lineId": "p1-l11", "sampleValue": "09/2025", "occurrence": "first", "align": "center", "source": { "kind": "item", "path": "productionDate" }, "format": { "date": "MM/YYYY" } },
+    { "key": "batch_no", "label": "Batch number", "lineId": "p1-l12", "sampleValue": "HSPhar02509001", "occurrence": "first", "align": "center", "source": { "kind": "item", "path": "batchNo" } },
+    { "key": "ph_result", "label": "pH result", "lineId": "p1-l16", "sampleValue": "2.6", "occurrence": "last", "align": "left", "source": { "kind": "manual" } },
+    { "key": "constituent_amount", "label": "Constituent amount", "lineId": "p1-l17", "sampleValue": "500 mg", "occurrence": "last", "align": "left", "source": { "kind": "product", "path": "activeIngredients[0].concentration" } },
+    { "key": "producer", "label": "Producer", "lineId": "p1-l21", "sampleValue": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ", "occurrence": "first", "align": "left", "source": { "kind": "product", "path": "producer" } }
+  ]
+}

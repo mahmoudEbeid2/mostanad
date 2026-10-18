@@ -1,5 +1,6 @@
 import catchAsync from "../utils/catchAsync.js";
 import * as regulatoryDocumentService from "../services/label/regulatory/regulatoryDocumentService.js";
+import { getApprovedRulesForCountry } from "../services/label/regulatory/regulatoryDocumentService.js";
 import { run as runRules } from "../services/label/validation/ruleValidator.js";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
@@ -34,15 +35,12 @@ export const previewRules = catchAsync(async (req, res, next) => {
   const label = await prisma.generatedLabel.findUnique({ where: { id: labelId } });
   if (!label) return next(new AppError("No generated label found with that ID", 404));
 
-  const { rules } = await regulatoryDocumentService.getRules({ status: "approved", limit: 1000 });
-
-  // Country-scoping happens via the owning document, not the rule itself.
-  const documents = await prisma.regulatoryDocument.findMany({
-    where: { country: label.country, status: "approved" },
-    select: { id: true },
-  });
-  const documentIds = new Set(documents.map((d) => d.id));
-  const scopedRules = rules.filter((r) => documentIds.has(r.documentId));
+  // Reuses the same tenant-scoped, non-"rejected" query the real validation
+  // path uses (getApprovedRulesForCountry) — a preview that used a different
+  // filter (the old hardcoded status:"approved" here missed every rule
+  // created under the ingestion overhaul's "active" default) would show rules
+  // that don't actually run, or hide ones that do.
+  const scopedRules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
 
   const verdicts = runRules(label.labelData, scopedRules);
   res.status(200).json({ status: "success", data: { verdicts, ruleCount: scopedRules.length } });

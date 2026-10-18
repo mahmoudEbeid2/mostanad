@@ -40,6 +40,7 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://localhost:3000
+      - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: always
     depends_on:
       postgres:
@@ -115,6 +116,7 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: always
     depends_on:
       postgres:
@@ -240,6 +242,90 @@ services:
       mostanad-app:
         condition: service_started
     command: node src/workers/labelGeneratorWorker.js
+    networks:
+      - internal
+
+  certificate-template-worker:
+    container_name: certificate-template-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+      - PDF2HTMLEX_URL=http://pdf2htmlex:5000
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+      pdf2htmlex:
+        condition: service_started
+    command: node src/workers/certificateTemplateWorker.js
+    networks:
+      - internal
+    volumes:
+      - app-uploads:/app/uploads
+
+  # Certificates V2 (plan §5.2): generation now; PDF/ZIP export in Phase 5.
+  certificate-render-worker:
+    container_name: certificate-render-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/certificateRenderWorker.js
+    networks:
+      - internal
+    volumes:
+      - app-uploads:/app/uploads
+
+  invoice-worker:
+    container_name: invoice-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/invoiceWorker.js
+    networks:
+      - internal
+    volumes:
+      - app-uploads:/app/uploads
+
+  # Certificates V2: .ai/.pdf -> HTML converter (see CERTIFICATES_V2_PLAN.md §5).
+  # Internal network only — never routed through Traefik.
+  pdf2htmlex:
+    container_name: pdf2htmlex
+    build: ./docker/pdf2htmlex
+    restart: always
+    expose:
+      - "5000"
     networks:
       - internal
 
