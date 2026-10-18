@@ -1108,3 +1108,18 @@ Tenant-scoped background tasks + V1 template/certificate ownership (404 cross-te
 - **Exit criteria:** load test passes; docs updated; zero console errors (UI smoke 87/87). `p6.hardening` 24/24; `npm test` 53/54 (only pre-existing `brand.test.js`).
 - **Decisions logged:** plan §20 I23.
 - **Deferred / owner:** the generator script for the OpenAPI files lives outside the repo (it was a one-off); the files say "generated" and are plain YAML to edit by hand from now on.
+
+## Phase 7 — Repeating groups
+Not started: waits for the owner's collective-certificate sample (§17, A1). Skipped by owner instruction ("Phases 2 → 6 and 8").
+
+## Phase 8 — Retire V1
+**Plan** (§17): remove V1 routes/workers/services/pages, the `aiTemplate*` pipeline and Inkscape from the Dockerfile; remove the Legacy nav. V1 DB tables/columns stay (additive rule). Exit: no V1 code paths remain; tests green.
+
+**Report (2026-10-18) — ✅ done, awaiting owner sign-off**
+- **Safety first (owner decision this session):** everything from Phases 0–6 was still uncommitted, including the Phase 0 fixes to the V1 files this phase deletes. Committed first as a restore point: backend `5d74569`, frontend `5cfc926`. (`uploads/certificates/` — per-tenant runtime files — added to `.gitignore` instead of committed.)
+- **Backend removed:** `routes/{templateRoutes,certificateRoutes}.js`, `controllers/{templateController,certificateController}.js`, `services/{templateService,certificateService,aiTemplateService}.js`, `services/ai/{pipeline,prompts}.js`, `services/render/puppeteerService.js` (only the AI template pipeline used it), `validators/{templateValidator,certificateValidator}.js`, `workers/{certificateWorker,aiTemplateWorker}.js`; `certificateQueue` + `addCertificateJob` (`lib/queue.js`); `TEMPLATE_RECONSTRUCT` (`modelRegistry.js`); the two worker services from all 3 compose files and `runDev.js`; `inkscape` from the Dockerfile; V1 docs (`src/docs/paths/{templates,certificates}`, 2 tags, 7 schemas) → `docs:export` re-bundled, `redocly lint` valid.
+- **Frontend removed:** `pages/{TemplatesList,Certificates,AiTemplateGenerator,CertificateGenerator}.jsx`, `services/{apiTemplates,apiCertificates}.js`, their 4 routes, the Sidebar "Legacy" group.
+- **Kept on purpose:** V1 tables `templates`/`template_images` and old `BackgroundTask` rows (additive rule); V1 permissions in `seed.js` (data, not code paths); `GET /dashboard`'s `certificate_generation` task-type counter (historical tasks, unchanged contract).
+- **Tests:** `templates.test.js` and `certificates.test.js` (V1 suites) deleted; `certificates.phase0_safety` now asserts every former V1 endpoint is a plain 404 for company and system callers and queues nothing (26/26); `gemini.guard` drops the two deleted V1 services; `auth.test.js` TEST 10 proved company-token auth via V1 `POST /certificates/generate` — now via `GET /certificate-types` (28/28); `runAll.js` no longer requires consumers on the two retired queues.
+- **Exit criteria:** no import, route, queue, worker, compose service or doc path of V1 remains (grep over `src`/`tests`/`scripts`/FE `src` clean; `docker compose config` OK for all 3 files). `npm test` on `npm run dev:test`: **51/52** (only pre-existing `brand.test.js`); UI smoke all phases **87/87**, zero console errors; `oxlint` clean on V2 files; `vite build` OK.
+- **Owner / follow-ups:** (1) stopped local containers `certificate-worker` and `ai-template-worker` still exist (exited) — remove with `docker rm certificate-worker ai-template-worker`; their scripts are gone. (2) `ghostscript imagemagick librsvg` in the Dockerfile now have no caller in `src` either — not removed (outside the §17 list). (3) `@google/generative-ai` is still used by `catalogService.js`, so the package stays.

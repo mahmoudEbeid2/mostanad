@@ -227,7 +227,7 @@ async function run() {
   // 10. PROTECT MIDDLEWARE - Company Login & Token-Scoped Route
   // ─────────────────────────────────────────────────────
   separator();
-  log("📋 TEST 10: POST /companies/login & POST /certificates/generate — Company Auth", "bold");
+  log("📋 TEST 10: POST /companies/login & GET /certificate-types — Company Auth", "bold");
   {
     // Create a temporary company
     const compUsername = `comp_auth_${Date.now()}`;
@@ -259,14 +259,14 @@ async function run() {
     const compToken = loginRes.data?.data?.token;
     assert("Company token is returned", !!compToken, JSON.stringify(loginRes.data));
 
-    // Test using company token to access token-scoped certificate generation
-    const certRes = await request("POST", "/certificates/generate", { transactionType: "shipping" }, {
+    // Use the company token on a protected, company-scoped route (Certificates V2
+    // types catalogue): 200 — not 401/403 — proves the token authenticates and
+    // carries the company's permissions.
+    const typesRes = await request("GET", "/certificate-types", null, {
       "Authorization": `Bearer ${compToken}`
     });
-    // Since we don't send a file, it should fail with 400 Bad Request (missing file),
-    // but NOT 401 Unauthorized, proving authentication succeeded!
-    assert("Status is 400 (Validation/file missing)", certRes.status === 400, `Got ${certRes.status}`);
-    assert("Message mentions file", certRes.data?.message?.includes("file") || certRes.data?.message?.toLowerCase().includes("required"), certRes.data?.message);
+    assert("Company token reaches a protected route (200)", typesRes.status === 200, `Got ${typesRes.status}`);
+    assert("Returns the company's certificate types", Array.isArray(typesRes.data?.data?.types), JSON.stringify(typesRes.data));
 
     // Cleanup company
     await prisma.company.delete({ where: { id: createdCompId } });

@@ -17,8 +17,6 @@ const { default: geminiClient } = await import("../src/services/ai/geminiClient.
 const { assertGeminiEnabled, geminiWorkerName } = await import("../src/services/ai/geminiGuard.js");
 const batchClient = await import("../src/services/ai/batchClient.js");
 const { processCatalogPDF } = await import("../src/services/catalogService.js");
-const { generateCertificatesAndPopulateTemplates } = await import("../src/services/certificateService.js");
-const { generateHtmlFromDesign } = await import("../src/services/aiTemplateService.js");
 const labelExtractor = await import("../src/services/label/extraction/labelExtractor.js");
 
 let passed = 0;
@@ -64,10 +62,6 @@ await blocked("batchClient.createBatch", () => batchClient.createBatch({ model: 
 await blocked("batchClient.getBatch", () => batchClient.getBatch("batches/x"));
 await blocked("batchClient.cancelBatch", () => batchClient.cancelBatch("batches/x"));
 await blocked("catalogService.processCatalogPDF", () => processCatalogPDF("00000000-0000-0000-0000-000000000000", pdf));
-await blocked("certificateService (V1)", () =>
-  generateCertificatesAndPopulateTemplates("00000000-0000-0000-0000-000000000000", null, "shipping", pdf, "i.pdf", "application/pdf")
-);
-await blocked("aiTemplateService (dead V1 code)", () => generateHtmlFromDesign("x.pdf", "x.pdf", "application/pdf"));
 await blocked("labelExtractor.extract", () => labelExtractor.extract(pdf, "l.pdf", "application/pdf", "Saudi Arabia", null));
 
 console.log("\n🧪 Worker names carry the guard state");

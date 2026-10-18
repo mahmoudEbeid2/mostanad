@@ -23,13 +23,6 @@ services:
       - ./src:/app/src
       - ./uploads:/app/uploads
 
-  certificate-worker:
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - ./src:/app/src
-      - ./uploads:/app/uploads
-
   eda-worker:
     environment:
       - NODE_ENV=development
@@ -47,14 +40,6 @@ services:
   email-worker:
     environment:
       - NODE_ENV=development
-    volumes:
-      - ./src:/app/src
-      - ./uploads:/app/uploads
-
-  ai-template-worker:
-    environment:
-      - NODE_ENV=development
-      - NODE_OPTIONS=--dns-result-order=ipv4first
     volumes:
       - ./src:/app/src
       - ./uploads:/app/uploads

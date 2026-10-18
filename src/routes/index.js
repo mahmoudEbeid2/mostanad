@@ -7,8 +7,6 @@ import productRoutes from "./productRoutes.js";
 import roleRoutes from "./roleRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
 import categoryRoutes from "./categoryRoutes.js";
-import templateRoutes from "./templateRoutes.js";
-import certificateRoutes from "./certificateRoutes.js";
 import authRoutes from "./authRoutes.js";
 import backgroundTaskRoutes from "./backgroundTaskRoutes.js";
 import brandRoutes from "./brandRoutes.js";
@@ -61,7 +59,5 @@ router.use("/assurance", assuranceRoutes); // internal protect applied in assura
 router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
 router.use("/", certificatesV2Routes); // Certificates V2 — protect + permission applied per route
 router.use("/", protect, productRoutes);
-router.use("/", protect, templateRoutes);
-router.use("/", protect, certificateRoutes);
 
 export default router;

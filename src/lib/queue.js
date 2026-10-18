@@ -6,7 +6,6 @@ const connection = getRedisConfig();
 // Initialize queues with connection options
 export const catalogQueue = new Queue("catalogQueue", { connection });
 export const labelQueue = new Queue("labelQueue", { connection });
-export const certificateQueue = new Queue("certificateQueue", { connection });
 export const emailQueue = new Queue("emailQueue", {
   connection,
   defaultJobOptions: {
@@ -30,13 +29,6 @@ export const addCatalogJob = async (jobId, data) => {
  */
 export const addLabelJob = async (jobId, data) => {
   return labelQueue.add("processLabel", data, { jobId });
-};
-
-/**
- * Add a certificate generation job
- */
-export const addCertificateJob = async (jobId, data) => {
-  return certificateQueue.add("processCertificate", data, { jobId });
 };
 
 /**

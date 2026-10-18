@@ -1,4 +1,5 @@
-// Certificates V2 Phase 0 — tenancy and V1 safety (CERTIFICATES_V2_PLAN.md §17).
+// Certificates V2 Phase 0 — tenancy and V1 safety (CERTIFICATES_V2_PLAN.md §17);
+// since Phase 8, V1 retirement (its routes are 404, its tables remain).
 // Company callers use the dev bypass as a company (x-bypass-type: company), so
 // req.company is set and every scope check runs exactly as for a real token.
 import { prisma } from "../src/lib/prisma.js";
@@ -40,7 +41,7 @@ async function call(method, path, headers, body) {
 }
 
 const ts = Date.now();
-const created = { companies: [], tasks: [], templates: [] };
+const created = { companies: [], tasks: [] };
 
 async function run() {
   console.log("\n🧪 Certificates V2 — Phase 0 safety");
@@ -68,59 +69,39 @@ async function run() {
   r = await call("GET", `/background-tasks/${taskB.id}`, asAdmin);
   assert("system user reads any task → 200", r.status === 200, `got ${r.status}`);
 
-  // ── V1 templates enforce ownership ──────────────────────────────
-  const tplB = await prisma.template.create({
-    data: { name: "B tpl", type: `p0_${ts}`, companyId: coB.id, htmlContent: "<p>B</p>" },
+  // ── V1 is retired (Phase 8): its routes are gone, its tables stay ─
+  // Phase 0 made these routes tenant-safe; Phase 8 removed them. Every former
+  // V1 endpoint must now be a plain 404 — for a company caller and for a
+  // system user alike — and must queue nothing.
+  const fakeId = "00000000-0000-0000-0000-000000000000";
+  const v1Routes = [
+    ["GET", `/templates`],
+    ["POST", `/templates`],
+    ["GET", `/templates/${fakeId}`],
+    ["PATCH", `/templates/${fakeId}`],
+    ["DELETE", `/templates/${fakeId}`],
+    ["GET", `/companies/${coA.id}/templates`],
+    ["POST", `/companies/${coA.id}/templates`],
+    ["POST", `/companies/${coA.id}/templates/generate-ai`],
+    ["POST", `/companies/${coA.id}/certificates/generate`],
+    ["POST", `/certificates/generate`],
+  ];
+  for (const [method, path] of v1Routes) {
+    for (const [who, headers] of [["company", asCompany(coA.id)], ["system", asAdmin]]) {
+      const body = method === "GET" || method === "DELETE" ? undefined : { name: "x" };
+      r = await call(method, path, headers, body);
+      assert(`V1 ${method} ${path.replace(coA.id, ":companyId")} (${who}) → 404`, r.status === 404, `got ${r.status}`);
+    }
+  }
+  const v1Tasks = await prisma.backgroundTask.count({
+    where: { companyId: coA.id, type: { in: ["ai_template_generation", "certificate_generation"] } },
   });
-  created.templates.push(tplB.id);
-
-  r = await call("GET", `/templates/${tplB.id}`, asCompany(coA.id));
-  assert("GET another tenant's V1 template → 404", r.status === 404, `got ${r.status}`);
-  r = await call("PATCH", `/templates/${tplB.id}`, asCompany(coA.id), { name: "hijacked" });
-  assert("PATCH another tenant's V1 template → 404", r.status === 404, `got ${r.status}`);
-  r = await call("DELETE", `/templates/${tplB.id}`, asCompany(coA.id));
-  assert("DELETE another tenant's V1 template → 404", r.status === 404, `got ${r.status}`);
-  const still = await prisma.template.findUnique({ where: { id: tplB.id } });
-  assert("foreign template unchanged", still?.name === "B tpl", still?.name);
-
-  r = await call("GET", `/templates/${tplB.id}`, asCompany(coB.id));
-  assert("owner reads its V1 template → 200", r.status === 200, `got ${r.status}`);
-
-  r = await call("GET", `/companies/${coB.id}/templates`, asCompany(coA.id));
-  assert("list another tenant's templates by path → 404", r.status === 404, `got ${r.status}`);
-  r = await call("GET", `/templates?companyId=${coB.id}`, asCompany(coA.id));
-  const leaked = (r.data?.data?.templates || []).some((t) => t.companyId === coB.id);
-  assert("?companyId= override ignored for company callers", r.status === 200 && !leaked, `got ${r.status}`);
-
-  r = await call("POST", `/companies/${coB.id}/templates`, asCompany(coA.id), {
-    name: "xx",
-    type: `p0b_${ts}`,
-    htmlContent: "<p>x</p>",
-  });
-  assert("create a template in another tenant → 404", r.status === 404, `got ${r.status}`);
-
-  // ── V1 generate-ai is disabled ──────────────────────────────────
-  const form = new FormData();
-  form.append("file", new Blob([Buffer.from("%PDF-1.4")], { type: "application/pdf" }), 'evil"; rm -rf ~; ".ai');
-  r = await call("POST", `/companies/${coA.id}/templates/generate-ai`, asCompany(coA.id), form);
-  assert("generate-ai → 410 Gone", r.status === 410, `got ${r.status}`);
-  const aiTasks = await prisma.backgroundTask.count({
-    where: { companyId: coA.id, type: "ai_template_generation" },
-  });
-  assert("generate-ai queued nothing", aiTasks === 0, `${aiTasks} tasks`);
-
-  // ── V1 certificate generation enforces ownership ────────────────
-  const inv = new FormData();
-  inv.append("invoice", new Blob([Buffer.from("%PDF-1.4\n%%EOF")], { type: "application/pdf" }), "invoice.pdf");
-  inv.append("transactionType", "shipping");
-  r = await call("POST", `/companies/${coB.id}/certificates/generate`, asCompany(coA.id), inv);
-  assert("generate certificates for another tenant → 404", r.status === 404, `got ${r.status}`);
-  const certTasks = await prisma.backgroundTask.count({ where: { companyId: coB.id, type: "certificate_generation" } });
-  assert("no task created for the foreign tenant", certTasks === 0, `${certTasks} tasks`);
+  assert("retired V1 routes queued nothing", v1Tasks === 0, `${v1Tasks} tasks`);
+  const v1Table = await prisma.template.count({ where: { companyId: coA.id } });
+  assert("V1 `templates` table still exists (additive rule)", v1Table === 0, String(v1Table));
 }
 
 async function cleanup() {
-  await prisma.template.deleteMany({ where: { id: { in: created.templates } } });
   await prisma.backgroundTask.deleteMany({ where: { companyId: { in: created.companies } } });
   await prisma.company.deleteMany({ where: { id: { in: created.companies } } });
   await prisma.$disconnect();

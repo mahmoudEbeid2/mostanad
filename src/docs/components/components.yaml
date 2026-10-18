@@ -833,135 +833,6 @@ components:
           maxLength: 50
           example: "VITAMINS"
 
-    Template:
-      type: object
-      required:
-        - id
-        - name
-        - type
-        - htmlContent
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: "f1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        name:
-          type: string
-          example: "Standard Catalog Template"
-        type:
-          type: string
-          example: "catalog"
-        htmlContent:
-          type: string
-          example: "<html><body>...</body></html>"
-        fields:
-          type: object
-          nullable: true
-          example: {"header": {"x": 10, "y": 20}}
-        isGlobal:
-          type: boolean
-          example: true
-        productId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
-        brandId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "d810cf7f-57ce-4d84-b1b1-c3a782893072"
-        companyId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
-        isActive:
-          type: boolean
-          example: true
-        createdAt:
-          type: string
-          format: date-time
-          example: "2026-06-14T10:00:00.000Z"
-        updatedAt:
-          type: string
-          format: date-time
-          example: "2026-06-14T12:00:00.000Z"
-
-    CreateTemplateBody:
-      type: object
-      required:
-        - name
-        - type
-        - htmlContent
-      properties:
-        name:
-          type: string
-          minLength: 2
-          example: "Standard Catalog Template"
-        type:
-          type: string
-          minLength: 2
-          example: "catalog"
-        htmlContent:
-          type: string
-          example: "<html><body>...</body></html>"
-        fields:
-          type: object
-          nullable: true
-          example: {"header": {"x": 10, "y": 20}}
-        isGlobal:
-          type: boolean
-          example: true
-        productId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
-        brandId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "d810cf7f-57ce-4d84-b1b1-c3a782893072"
-        isActive:
-          type: boolean
-          example: true
-
-    UpdateTemplateBody:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 2
-          example: "Updated Template Name"
-        type:
-          type: string
-          minLength: 2
-          example: "manifest"
-        htmlContent:
-          type: string
-          example: "<html><body>Updated content</body></html>"
-        fields:
-          type: object
-          nullable: true
-          example: {"header": {"x": 10, "y": 20}}
-        isGlobal:
-          type: boolean
-          example: true
-        productId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "a810cf7f-57ce-4d84-b1b1-c3a782893072"
-        brandId:
-          type: string
-          format: uuid
-          nullable: true
-          example: "d810cf7f-57ce-4d84-b1b1-c3a782893072"
-        isActive:
-          type: boolean
-          example: false
-
     LoginBody:
       type: object
       required:
@@ -1019,50 +890,6 @@ components:
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
         company:
           $ref: '#/components/schemas/Company'
-
-    GenerateCertificatesResponse:
-      type: object
-      properties:
-        products:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-                nullable: true
-              name:
-                type: string
-              dbName:
-                type: string
-                nullable: true
-              productCode:
-                type: string
-                nullable: true
-              existsInDb:
-                type: boolean
-        certificates:
-          type: array
-          items:
-            type: object
-            properties:
-              templateId:
-                type: string
-                format: uuid
-              templateName:
-                type: string
-              type:
-                type: string
-              isGlobal:
-                type: boolean
-              productId:
-                type: string
-                nullable: true
-              filledFields:
-                type: object
-              html:
-                type: string
 
     Role:
       type: object
@@ -2374,16 +2201,6 @@ components:
         format: uuid
       example: "c2d3e4f5-a6b7-8901-cdef-012345678901"
 
-    TemplateId:
-      name: id
-      in: path
-      required: true
-      description: UUID of the template
-      schema:
-        type: string
-        format: uuid
-      example: "f1b2c3d4-e5f6-7890-abcd-ef1234567890"
-
     LabelId:
       name: id
       in: path
@@ -3000,55 +2817,6 @@ components:
                     type: array
                     items:
                       $ref: '#/components/schemas/Category'
-
-    TemplateResponse:
-      description: Single template response
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: string
-                example: "success"
-              data:
-                type: object
-                properties:
-                  template:
-                    $ref: '#/components/schemas/Template'
-
-    TemplatesListResponse:
-      description: Paginated list of templates
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: string
-                example: "success"
-              meta:
-                type: object
-                properties:
-                  total:
-                    type: integer
-                    example: 5
-                  page:
-                    type: integer
-                    example: 1
-                  limit:
-                    type: integer
-                    example: 10
-                  totalPages:
-                    type: integer
-                    example: 1
-              data:
-                type: object
-                properties:
-                  templates:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Template'
 
     RoleResponse:
       description: Single role response

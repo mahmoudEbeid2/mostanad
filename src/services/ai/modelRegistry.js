@@ -4,10 +4,10 @@
 //
 // Scope note: this covers the label-engine call sites migrated in Phase 0
 // (geminiClient, labelGeneratorWorker, referenceLabelWorker, edaRequirementWorker,
-// productAiWorker, pipeline.js, labelService). certificateService.js,
-// catalogService.js, and aiTemplateService.js are separate subsystems still on
-// the deprecated @google/generative-ai SDK with their own hardcoded model
-// strings — out of scope for this phase, flagged separately.
+// productAiWorker, labelService). catalogService.js is a separate subsystem
+// still on the deprecated @google/generative-ai SDK with its own hardcoded
+// model strings — out of scope for this phase, flagged separately. (The V1
+// certificate/template services were removed in Certificates V2 Phase 8.)
 //
 // DEVIATION FROM MOSTANAD_ARCHITECTURE.md §9.2/§9.3: the doc's registry example
 // sets a qualitative `thinking: "high"` (etc.) and assumes a `thinkingLevel` on
@@ -49,14 +49,6 @@ export const MODELS = {
   // Web-grounded search fallback for country regulatory requirements
   // (labelGeneratorWorker Step 2.6). Simple retrieval + summarization.
   WEB_SEARCH: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
-
-  // AI template reconstruction pipeline (screenshot -> layout/OCR/table analysis
-  // -> HTML/CSS draft -> visual critic loop). Not part of the label engine, but
-  // shares geminiClient and was already routed through it, so it gets a registry
-  // entry too rather than staying hardcoded. Multi-stage visual reasoning, so a
-  // dynamic budget; temperature stays 0 to match this pipeline's pre-existing
-  // behavior (geminiClient.generateJson always forced temperature 0).
-  TEMPLATE_RECONSTRUCT: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
 
   // Phase 4 — regulatory document ingestion's combined text+catalog extraction
   // (MOSTANAD ingestion overhaul §2). Replaces the old plain-text-only EXTRACT

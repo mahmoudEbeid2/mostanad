@@ -20,7 +20,7 @@ Anything the frontend needs is delivered as an **API contract**, never as a UI c
 
 ```bash
 npm run dev            # nodemon, API only
-npm run dev:all         # API + all 8 workers in one command (plain node, no watch — see below)
+npm run dev:all         # API + all 9 workers in one command (plain node, no watch — see below)
 npm test               # node tests/runAll.js  (custom runner — do NOT add Jest)
 npx prisma migrate dev # local only
 npm run eval:golden    # golden-set accuracy (once Phase 0.5 exists)
@@ -37,8 +37,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres re
 
 Tests need both running. `npm run dev:all` (`scripts/runDev.js`) starts the API plus
 every worker `docker-compose.yml` runs as its own container (`catalogWorker`,
-`labelWorker`, `certificateWorker`, `edaRequirementWorker`, `referenceLabelWorker`,
-`aiTemplateWorker`, `emailWorker`, `labelGeneratorWorker`) as plain `node` child
+`labelWorker`, `edaRequirementWorker`, `referenceLabelWorker`, `emailWorker`,
+`labelGeneratorWorker`, and Certificates V2's `certificateTemplateWorker`,
+`invoiceWorker`, `certificateRenderWorker`) as plain `node` child
 processes, each with a colored `[name]` log prefix — no new dependency, just
 `child_process`. It does not use `node --watch`: watch mode was tried and reverted —
 verified live that all 9 processes restarted in lockstep on unrelated filesystem

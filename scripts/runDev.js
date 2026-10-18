@@ -10,10 +10,8 @@ const targets = [
   { name: "api", script: "src/server.js" },
   { name: "catalog-worker", script: "src/workers/catalogWorker.js" },
   { name: "label-worker", script: "src/workers/labelWorker.js" },
-  { name: "certificate-worker", script: "src/workers/certificateWorker.js" },
   { name: "eda-worker", script: "src/workers/edaRequirementWorker.js" },
   { name: "reference-label-worker", script: "src/workers/referenceLabelWorker.js" },
-  { name: "ai-template-worker", script: "src/workers/aiTemplateWorker.js" },
   { name: "email-worker", script: "src/workers/emailWorker.js" },
   { name: "label-generator-worker", script: "src/workers/labelGeneratorWorker.js" },
   // Certificates V2 (CERTIFICATES_V2_PLAN.md §5.2)

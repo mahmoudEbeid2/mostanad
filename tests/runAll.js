@@ -18,11 +18,9 @@ process.env.GEMINI_DISABLED = "true";
 const GEMINI_QUEUES = [
   "catalogQueue",
   "labelQueue",
-  "certificateQueue",
   "edaRequirementQueue",
   "referenceLabelQueue",
   "productAiQueue",
-  "aiTemplateQueue",
   "labelGeneratorQueue",
   // Certificates V2 — also required so the suites have their workers running
   "certificateTemplateQueue",
