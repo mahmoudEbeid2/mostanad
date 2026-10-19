@@ -3892,6 +3892,8 @@ paths:
       description: |-
         Filters: type, brand, country, scope, status of the latest version, archived.
 
+        Each template also carries `fieldCount` and `pixelDiffPct` (the prepare gate's round-trip pixel difference, %) of its active version, else of its latest `ready` version — both `null` when neither exists. Additive; nothing else in the response changed.
+
         Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:
         - name: certificateTypeId
@@ -3940,7 +3942,7 @@ paths:
         - $ref: '#/components/parameters/CompanyId-2'
       responses:
         '200':
-          description: Templates with latestVersion / activeVersion summaries
+          description: Templates with latestVersion / activeVersion summaries, fieldCount and pixelDiffPct
           content:
             application/json:
               schema:
@@ -3958,6 +3960,8 @@ paths:
                       country: null
                       certificateType:
                         code: COA
+                      fieldCount: 3
+                      pixelDiffPct: 0.0107
                       latestVersion:
                         id: uuid
                         versionNumber: 1

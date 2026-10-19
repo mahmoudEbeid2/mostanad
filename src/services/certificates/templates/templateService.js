@@ -241,6 +241,10 @@ const versionSummary = (v) => ({
   hasThumbnail: !!v.thumbnailFileId,
 });
 
+// The list card's "8 fields · round-trip 0.018 %" (mockup A1): the version that
+// passed the gate — the active one, else the latest `ready` one; null if none.
+const gateVersion = (t) => t.versions.find((v) => v.id === t.activeVersionId) || t.versions.find((v) => v.status === "ready") || null;
+
 export async function listTemplates(companyId, { certificateTypeId, brandId, country, scope, status, includeArchived, page = 1, limit = 20 } = {}) {
   const where = {
     companyId,
@@ -263,7 +267,7 @@ export async function listTemplates(companyId, { certificateTypeId, brandId, cou
       include: {
         certificateType: { select: { id: true, name: true, code: true } },
         brand: { select: { id: true, name: true } },
-        versions: { orderBy: { versionNumber: "desc" } },
+        versions: { orderBy: { versionNumber: "desc" }, include: { _count: { select: { fields: true } } } },
       },
     }),
   ]);
@@ -271,6 +275,8 @@ export async function listTemplates(companyId, { certificateTypeId, brandId, cou
     total,
     templates: rows.map((t) => ({
       ...t,
+      fieldCount: gateVersion(t)?._count.fields ?? null,
+      pixelDiffPct: gateVersion(t)?.prepareReport?.pixelDiffPct ?? null,
       versions: t.versions.map(versionSummary),
       latestVersion: t.versions[0] ? versionSummary(t.versions[0]) : null,
       activeVersion: t.versions.find((v) => v.id === t.activeVersionId) ? versionSummary(t.versions.find((v) => v.id === t.activeVersionId)) : null,
