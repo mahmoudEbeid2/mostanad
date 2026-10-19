@@ -75,6 +75,8 @@ tags:
     description: The single risk-sorted human review queue
 
 paths:
+  /auth/me:
+    $ref: './paths/auth/auth-me.yaml'
   /auth/login:
     $ref: './paths/auth/auth.yaml'
   /users:

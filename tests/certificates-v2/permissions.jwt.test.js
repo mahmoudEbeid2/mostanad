@@ -115,6 +115,18 @@ async function run() {
   }
   section(`company token passes protect + permission on all ${routes.length} routes`, before);
 
+  // GET /auth/me reports what the gate actually allows (close-out #4) — the
+  // frontend gates on this list with no company special case
+  before = failed;
+  const me = await call("GET", "/auth/me", companyToken);
+  const mine = me.data?.data?.user?.role?.permissions || [];
+  assert("company /auth/me: every V2 route permission is listed", slugs.every((s) => mine.includes(s)), slugs.filter((s) => !mine.includes(s)));
+  assert("company /auth/me: nothing listed that the gate refuses (except the read_dashboard landing page)", mine.every((s) => s === "read_dashboard" || COMPANY_ALLOWED_MODULES.includes(permissionModule(s))), mine.filter((s) => s !== "read_dashboard" && !COMPANY_ALLOWED_MODULES.includes(permissionModule(s))));
+  assert("company /auth/me: no stale hard-coded slug (manage_company_brands)", !mine.includes("manage_company_brands"), mine);
+  const seeded = (await prisma.permission.findMany({ select: { slug: true } })).map((p) => p.slug);
+  assert("company /auth/me: every listed slug exists in the permissions table", mine.every((s) => seeded.includes(s)), mine.filter((s) => !seeded.includes(s)));
+  section("company /auth/me lists exactly its effective permissions", before);
+
   before = failed;
   for (const r of routes) {
     const res = await call(r.method, r.path, only[r.permission], {});

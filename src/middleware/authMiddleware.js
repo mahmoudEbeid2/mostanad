@@ -111,6 +111,9 @@ export const permissionModule = (permissionSlug) => {
   return idx === -1 ? "" : permissionSlug.slice(idx + 1);
 };
 
+/** True when restrictToPermission(slug) lets a company token through — the one rule both use. */
+export const companyMayUse = (permissionSlug) => COMPANY_ALLOWED_MODULES.includes(permissionModule(permissionSlug));
+
 /**
  * Restrict access to users with a specific permission
  */
@@ -128,7 +131,7 @@ export const restrictToPermission = (permissionSlug) => {
     // 2. If authenticated as a company tenant:
     if (req.company) {
       // Company tenants are allowed to perform operations on company-level modules only
-      if (COMPANY_ALLOWED_MODULES.includes(permissionModule(permissionSlug))) {
+      if (companyMayUse(permissionSlug)) {
         return next();
       }
 

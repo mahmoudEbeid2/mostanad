@@ -70,6 +70,37 @@ tags:
   - name: Review Inbox
     description: The single risk-sorted human review queue
 paths:
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: The signed-in account
+      description: Works for an internal user and for a company account. `role.permissions` is the list of permission slugs the API actually grants this token. For a company account that is every permission on a company-allowed module (products, categories, certificates, certificate_types, certificate_templates, invoices, labels, regulatory), plus `read_dashboard` for the landing page. The frontend can gate on it without special cases.
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              example:
+                status: success
+                data:
+                  user:
+                    id: 3f0c…
+                    name: ADDVET Animal Health
+                    isCompany: true
+                    company:
+                      id: 3f0c…
+                      name: ADDVET Animal Health
+                    role:
+                      name: company
+                      permissions:
+                        - create_certificates
+                        - read_certificates
+                        - read_dashboard
+                        - read_invoices
+                        - read_products
+        '401':
+          description: Not logged in
   /auth/login:
     post:
       tags:

@@ -1,5 +1,5 @@
 import catchAsync from "../utils/catchAsync.js";
-import { loginUser, loginCompany } from "../services/authService.js";
+import { loginUser, loginCompany, companyEffectivePermissions } from "../services/authService.js";
 
 export const getMe = catchAsync(async (req, res, next) => {
   let userData;
@@ -13,7 +13,8 @@ export const getMe = catchAsync(async (req, res, next) => {
       phone: req.company.phone,
       isCompany: true,
       company: { id: req.company.id, name: req.company.name },
-      role: { name: "company", permissions: ["manage_company_brands", "create_certificates", "read_dashboard"] }
+      // what the API actually lets this token do — the frontend needs no company special case
+      role: { name: "company", permissions: await companyEffectivePermissions() },
     };
   } else if (req.user) {
     const permissions = req.user.role?.permissions?.map(rp => rp.permission?.slug) || [];

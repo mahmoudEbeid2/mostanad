@@ -1196,3 +1196,62 @@ Phases 1–2 built the template screens before the owner's mockups (`mostanad_fr
 - **Checks:** `oxlint` clean on all certificates files; `vite build` OK; UI smoke **112/112 three consecutive runs**, zero console errors.
 - **Commits:** frontend `6d9a5e2`; backend `2d6010c` (list fields only).
 - **Left:** nothing open from this list.
+
+## Review fixes (groups 0–4) (2026-10-18 → 2026-10-19)
+Owner's review of Certificates V2, fixed in this order, one commit per group and repo. After each group `npm test` ran on the `npm run dev:test` stack; the only expected failure is the pre-existing `brand.test.js`.
+
+**Group 0 (CRITICAL)**: backend `88276e5`
+- `scripts/start.sh` ran `prisma db push --accept-data-loss` on container start, which is how the local DB lost 16–17 tables twice (a stale image dropped every table its schema lacked). Both branches now run `prisma migrate deploy`.
+- Test `tests/deploy.no_db_push.test.js` fails if `db push` / `accept-data-loss` appears in start.sh, scripts/*.sh, any Dockerfile, the compose files or a package.json script.
+- `eda_requirements` (read-only finding): no code uses it. Migration `20260828030000` renamed it to `regulatory_documents`, and the only remaining "eda_requirements" strings are permission slugs (`*_eda_requirements`, module label). The table in the live DB is an orphan, most likely recreated by an old image's `db push`; `prisma migrate diff` (DB → schema) shows it as the only difference. **Not touched; waits for the owner's decision.**
+- The empty `-- DropTable` / `-- DropForeignKey` headers in `20261018120000` stay: Prisma's checksum covers the whole file.
+
+**Group 1 (HIGH)**: backend `67949fc`
+- #1 Test bypass is opt-in: `ALLOW_TEST_BYPASS=true` + `TEST_BYPASS_SECRET` (≥ 16 chars, from env, none hardcoded). The app refuses to boot with `ALLOW_TEST_BYPASS` + `NODE_ENV=production`. Only `npm run dev:test` enables it (random secret per start in the gitignored `.test-bypass-secret`), and runAll's preflight checks it. `docker-compose.prod.yml` sets `NODE_ENV=production` on the app and all 9 workers.
+- #2 Products are tenant-scoped for company callers (`GET /products`, `GET/PATCH/DELETE /products/:id`, create paths); another tenant → 404.
+- #6 `permissions.jwt.test.js`: real JWTs, no bypass, every V2 route × company token × system users with/without each permission. Also `auth.test_bypass.test.js`, `products.tenancy.test.js`.
+
+**Group 2 (MEDIUM)**: backend `18ccc97`; frontend `9bccfc6`, `7834ca5`
+- #3 Sanitizer decodes CSS letter escapes before checking (`u\72 l()`, `@\69mport`) and neutralises non-`data:` strings in `image-set()`/`image()`/`cross-fade()`/`src()`. SVG presentation attributes keep only `url(#id)`. `@import` is removed entirely. Both `/html` responses carry the CSP as the first `<meta http-equiv>` in `<head>`. Every bypass is in `fixtures/certificates/malicious.html`.
+- #4 `quantityNormalizer`: a lone `.`/`,` + exactly 3 digits → `quantity: null`, `quantityRaw` kept, `quantityAmbiguous: true`, extraction warning. Review edits use the same parser (ambiguous → 422 `AMBIGUOUS_QUANTITY`). The UI shows amber cells + banner. Test `quantityNormalizer.test.js` (US + European formats).
+- #5 Maintenance asks BullMQ first (active/waiting/delayed/prioritized jobs and their entities are skipped). Batches use the new `certificate_batches.updated_at` (migration `20261019120000`, additive). p6 drives a real active job and a real waiting job.
+
+**Group 3 (LOW)**: backend `5edd367`; frontend `b4e4027`
+- #7 non-blocking `glyph_unknown` + `FONT_UNREADABLE:` conversion warning (`isBlocking` matches `glyph:` only; the frontend too).
+- #8 `expectedVersion` required on reset/restore/finalize.
+- #9 CAS activation.
+- #10 PUT /fields can't confirm (or re-label as manual) a suggested field.
+- #12 `templates` out of `COMPANY_ALLOWED_MODULES`.
+- #13 `today` in `CERT_TZ` (default Africa/Cairo, `.env.example`).
+- #14 disk files under `uploads/certificates` without a StoredFile row, > 24 h, deleted.
+- #15 P2002 on the slot index → 409 `TEMPLATE_SLOT_TAKEN`.
+- #16 renderer drains and recycles under load.
+- #17 converter timeout covers the body.
+- #18 no `toolVersion` on `/health`.
+- #21 Dockerfile without ghostscript/imagemagick/librsvg (`docker build` OK, Chromium runs).
+- Tests: `templates.races` (held row lock; the old activation code fails it), `renderer.recycle`, `converter.timeout`, plus cases in engine.golden, p2, p5, p6, valueResolver, permissions.parsing.
+
+**Group 4 (decisions)**: backend `b02cd61`, `ce85b75`; frontend `b5080e4`
+- Plan §20 I24 (#11), I25 (#19). §19: the Chromium `--no-sandbox` risk + recommendation (owner decision pending). Plan-preview copy "recalculated when you click Generate" (I19).
+
+**Breaking API changes**
+- `expectedVersion` is **required** on `POST /certificates/:id/fields/:key/reset`, `POST /certificates/:id/versions/:n/restore`, `POST /certificates/:id/finalize` (missing → 400, stale → 409 `VERSION_CONFLICT`).
+- `GET /health` no longer returns `converter.toolVersion`.
+- (Close-out, below) `GET /auth/me` for a company account returns its effective permissions instead of the fixed `["manage_company_brands", "create_certificates", "read_dashboard"]`.
+
+**Close-out (2026-10-19)**
+- `GET /auth/me` → a company account's `role.permissions` = every seeded slug `restrictToPermission` lets a company through (`companyMayUse`, the same rule as the gate) + `read_dashboard`. `read_dashboard` is kept because it is the app's landing route, and the frontend's permission fallback redirects to it, so dropping it would loop; the stats API itself still refuses companies, as before. This includes products, categories, labels (incl. `approve_labels`) and regulatory (incl. `approve_regulatory`), which the API already allowed companies; the UI now shows what the API allows. `manage_company_brands` (not a seeded permission) is gone.
+- Frontend: `hasPermission()` has no company special case. `CertificateTypes` `|| isCompany` and `ReferenceLabels` delete `|| isCompany` were removed (the latter route needs `delete_eda_requirements`, which the API refuses to companies). Identity-based checks (company picker, role banner, ApprovalTab's "never global for a company", LabelGenerator) stay.
+- Test: `permissions.jwt` asserts the company `/auth/me` list = the V2 route permissions + only gate-allowed slugs. `/auth/me` is now documented (`src/docs/paths/auth/auth-me.yaml`); postman regenerated (includes `fieldCount`/`pixelDiffPct`).
+- Results on a fresh `npm run dev:test`: full `npm test` **60/61** (only the pre-existing `brand.test.js`); UI smoke all phases **112/112**, zero console errors (throwaway local admin, deleted afterwards).
+
+### First production deploy with `migrate deploy` (checklist, not done; no non-local DB was touched)
+1. **Back up first.** `pg_dump -Fc` of the production DB to storage outside the server; check it restores (`pg_restore --list`). Also back up `uploads/`.
+2. **Look at the ledger, read-only:** `SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY started_at;` and compare with `prisma/migrations/` (28 folders as of `20261019120000`). Also `npx prisma migrate status` from a one-off container with the prod `DATABASE_URL` (read-only).
+3. **If `_prisma_migrations` exists and is complete:** `migrate deploy` applies only the missing (additive) migrations. Read their SQL first.
+4. **If the ledger is missing or partial** (the DB was built with `db push`, which writes no ledger): do **not** run `migrate deploy` blind, because it would try to create tables that exist. Baseline instead:
+   1. Diff the live DB against the schema: `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` (read-only). An empty diff means the DB already matches. Anything else means drift: stop and decide per statement (e.g. the orphan `eda_requirements`).
+   2. Mark every migration the DB already contains as applied, without running it: `npx prisma migrate resolve --applied <migration_name>`, one per folder, oldest first.
+   3. `npx prisma migrate status` → "Database schema is up to date"; only then let `start.sh` run `migrate deploy` on the next start.
+5. **Never** `db push`, `migrate dev` or `migrate reset` against production (`tests/deploy.no_db_push.test.js` guards start.sh/compose/package.json).
+6. After deploy: `GET /api/v1/health`, one login per account type, the daily maintenance job registered, the BullMQ queues draining.

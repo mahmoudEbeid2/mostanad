@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
+import { companyMayUse } from "../middleware/authMiddleware.js";
 
 /**
  * Log in a user by username or email and return signed JWT + user metadata
@@ -113,4 +114,15 @@ export const loginCompany = async (usernameOrEmail, password) => {
     token,
     company: companyDetails,
   };
+};
+
+/**
+ * A company account's EFFECTIVE permissions: every seeded permission slug
+ * restrictToPermission lets a company token through (companyMayUse — the same
+ * rule, so /auth/me can't drift from the gate). Plus "read_dashboard", the
+ * app's landing page; the stats API itself is not company-allowed (unchanged).
+ */
+export const companyEffectivePermissions = async () => {
+  const rows = await prisma.permission.findMany({ select: { slug: true } });
+  return [...new Set([...rows.map((r) => r.slug).filter(companyMayUse), "read_dashboard"])].sort();
 };
