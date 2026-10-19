@@ -114,7 +114,7 @@ try {
   r = await api("POST", `/certificates/${add.certId}/fields/product_name/reset`, A, { expectedVersion: 4 });
   c = await getCert(add.certId);
   assert("reset re-resolves from the source (origin auto), v5, issue gone", r.status === 200 && c.currentVersion === 5 && c.values.product_name.value === "ADD-E120" && c.values.product_name.origin === "auto" && c.flagCount === 0, r.data);
-  r = await api("POST", `/certificates/${add.certId}/fields/nope/reset`, A, {});
+  r = await api("POST", `/certificates/${add.certId}/fields/nope/reset`, A, { expectedVersion: 5 });
   assert("reset of an unknown field → 404", r.status === 404);
   r = await api("GET", `/certificates/${add.certId}/versions`, A);
   const versions = r.data?.data?.versions || [];
@@ -124,11 +124,23 @@ try {
   const vRows = await prisma.certificateVersion.findMany({ where: { certificateId: add.certId }, orderBy: { versionNumber: "asc" } });
   assert("restore v1 → v6 (forward-only), its values and its issue are back", r.status === 200 && c.currentVersion === 6 && c.values.ph_result.value === "" && c.values.batch_no.value === "AVVS1124011" && c.flagCount === 1);
   assert("restored values marked origin restored; v1's render reused", c.values.batch_no.origin === "restored" && vRows[5].htmlFileId === vRows[0].htmlFileId && vRows[5].changeSource === "restore");
-  r = await api("POST", `/certificates/${add.certId}/versions/6/restore`, A, {});
+  r = await api("POST", `/certificates/${add.certId}/versions/6/restore`, A, { expectedVersion: 6 });
   assert("restoring the current version → 409", r.status === 409);
 
+  console.log("\n🧪 expectedVersion is required (review #8)");
+  for (const [label, url] of [
+    ["reset", `/certificates/${add.certId}/fields/product_name/reset`],
+    ["restore", `/certificates/${add.certId}/versions/1/restore`],
+    ["finalize", `/certificates/${add.certId}/finalize`],
+  ]) {
+    r = await api("POST", url, A, {});
+    assert(`${label} without expectedVersion → 400, nothing changed`, r.status === 400 && (await getCert(add.certId)).currentVersion === 6, r.status);
+    r = await api("POST", url, A, { expectedVersion: 5 });
+    assert(`${label} on a stale version → 409 VERSION_CONFLICT, nothing changed`, r.status === 409 && r.data?.code === "VERSION_CONFLICT" && (await getCert(add.certId)).currentVersion === 6, r.data);
+  }
+
   console.log("\n🧪 Finalize");
-  r = await api("POST", `/certificates/${add.certId}/finalize`, A, {});
+  r = await api("POST", `/certificates/${add.certId}/finalize`, A, { expectedVersion: 6 });
   assert("finalize with an issue → 409 CERTIFICATE_FLAGGED listing the fields", r.status === 409 && r.data?.code === "CERTIFICATE_FLAGGED" && r.data.flags?.ph_result?.includes("missing"), r.data);
 
   console.log("\n🧪 PDF acceptance (§16.2) on both goldens — every field set back to the design's own sample");
@@ -164,9 +176,9 @@ try {
   r = await api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: final.currentVersion, changes: { ph_result: "4.3" } });
   assert("a final certificate rejects edits → 409 CERTIFICATE_FINAL", r.status === 409 && r.data?.code === "CERTIFICATE_FINAL", r.data);
   for (const [label, url, body] of [
-    ["reset", `/certificates/${add.certId}/fields/ph_result/reset`, {}],
-    ["restore", `/certificates/${add.certId}/versions/1/restore`, {}],
-    ["finalize again", `/certificates/${add.certId}/finalize`, {}],
+    ["reset", `/certificates/${add.certId}/fields/ph_result/reset`, { expectedVersion: final.currentVersion }],
+    ["restore", `/certificates/${add.certId}/versions/1/restore`, { expectedVersion: final.currentVersion }],
+    ["finalize again", `/certificates/${add.certId}/finalize`, { expectedVersion: final.currentVersion }],
   ]) {
     r = await api("POST", url, A, body);
     assert(`${label} on a final certificate → 409 CERTIFICATE_FINAL`, r.status === 409 && r.data?.code === "CERTIFICATE_FINAL", r.data);
@@ -196,12 +208,12 @@ try {
   console.log("\n🧪 Tenancy: every new route is 404 to another company");
   for (const [label, method, url, body] of [
     ["PATCH values", "PATCH", `/certificates/${dupId}/values`, { expectedVersion: 2, changes: { ph_result: "x" } }],
-    ["reset", "POST", `/certificates/${dupId}/fields/ph_result/reset`, {}],
+    ["reset", "POST", `/certificates/${dupId}/fields/ph_result/reset`, { expectedVersion: 2 }],
     ["versions", "GET", `/certificates/${dupId}/versions`],
-    ["restore", "POST", `/certificates/${dupId}/versions/1/restore`, {}],
+    ["restore", "POST", `/certificates/${dupId}/versions/1/restore`, { expectedVersion: 2 }],
     ["export-pdf", "POST", `/certificates/${dupId}/export-pdf`],
     ["pdf", "GET", `/certificates/${add.certId}/pdf`],
-    ["finalize", "POST", `/certificates/${dupId}/finalize`, {}],
+    ["finalize", "POST", `/certificates/${dupId}/finalize`, { expectedVersion: 2 }],
     ["duplicate", "POST", `/certificates/${add.certId}/duplicate`],
     ["batch export", "POST", `/certificate-batches/${add.batchId}/export`],
     ["batch zip", "GET", `/certificate-batches/${add.batchId}/zip`],

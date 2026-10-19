@@ -103,10 +103,15 @@ export async function activateVersion(versionId, companyId) {
       select: { id: true, name: true },
     });
     if (clash) throw new CertError("TEMPLATE_SLOT_TAKEN", `"${clash.name}" already covers this slot`, 409, { existingTemplateId: clash.id });
+    // compare-and-set (review #9): every write is conditioned on the state read
+    // above, so two activations racing (or an archive in between) can't both win
+    // — the loser gets a 409 and the transaction rolls back
     const previous = t.activeVersionId && t.activeVersionId !== versionId ? t.activeVersionId : null;
-    if (previous) await tx.templateVersion.update({ where: { id: previous }, data: { status: "superseded" } });
-    await tx.templateVersion.update({ where: { id: versionId }, data: { status: "active" } });
-    await tx.certificateTemplate.update({ where: { id: t.id }, data: { activeVersionId: versionId } });
+    const slot = await tx.certificateTemplate.updateMany({ where: { id: t.id, activeVersionId: t.activeVersionId, archivedAt: null }, data: { activeVersionId: versionId } });
+    if (slot.count !== 1) throw new CertError("VERSION_CONFLICT", "This template's active version changed meanwhile — reload and try again", 409);
+    const mine = await tx.templateVersion.updateMany({ where: { id: versionId, status: "ready" }, data: { status: "active" } });
+    if (mine.count !== 1) throw new CertError("VERSION_CONFLICT", "This version changed meanwhile (it is no longer ready) — reload and try again", 409);
+    if (previous) await tx.templateVersion.updateMany({ where: { id: previous, status: "active" }, data: { status: "superseded" } });
     return { versionId, templateId: t.id, status: "active", supersededVersionId: previous };
   });
 }

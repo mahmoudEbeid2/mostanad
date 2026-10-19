@@ -28,14 +28,15 @@ const router = express.Router();
 router.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Liveness + dependency reachability (CERTIFICATES_V2_PLAN.md §15). Public:
-// booleans and timings only — no URLs, no tenant data.
+// booleans and timings only — no URLs, no versions, no tenant data.
 router.get("/health", async (req, res) => {
   const t0 = Date.now();
   const c = await converterHealth();
   res.status(200).json({
     status: c.ok ? "ok" : "degraded",
     time: new Date().toISOString(),
-    converter: { reachable: c.ok, ms: Date.now() - t0, ...(c.toolVersion ? { toolVersion: c.toolVersion } : {}) },
+    // no tool version (review #18): a public endpoint shouldn't fingerprint the converter build
+    converter: { reachable: c.ok, ms: Date.now() - t0 },
   });
 });
 

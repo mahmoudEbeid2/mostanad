@@ -9,16 +9,26 @@ const baseUrl = () => (process.env.PDF2HTMLEX_URL || "http://127.0.0.1:5050").re
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The timeout covers the whole exchange — headers AND body (review #17): a
+// converter that sends headers and then stalls mid-body used to hang the job.
 async function post(buffer, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetch(`${baseUrl()}/convert?zoom=${CONVERT_ZOOM}`, {
+    const res = await fetch(`${baseUrl()}/convert?zoom=${CONVERT_ZOOM}`, {
       method: "POST",
       body: buffer,
       headers: { "Content-Type": "application/pdf" },
       signal: ctrl.signal,
     });
+    const text = await res.text(); // still under the same signal
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch (_) {
+      body = null; // not JSON (a proxy error page…): handled by status below
+    }
+    return { res, body };
   } finally {
     clearTimeout(timer);
   }
@@ -33,20 +43,15 @@ async function post(buffer, timeoutMs) {
 export async function convert(buffer, { retries = 3, timeoutMs = 120_000 } = {}) {
   for (let attempt = 1; ; attempt++) {
     let res;
+    let body;
     try {
-      res = await post(buffer, timeoutMs);
+      ({ res, body } = await post(buffer, timeoutMs));
     } catch (err) {
       throw new CertError(
         "CONVERTER_UNREACHABLE",
-        `The pdf2htmlex converter is not reachable at ${baseUrl()}: ${err.name === "AbortError" ? "timed out" : err.message}`,
+        err.name === "AbortError" ? `The pdf2htmlex converter at ${baseUrl()} did not answer within ${timeoutMs} ms` : `The pdf2htmlex converter is not reachable at ${baseUrl()}: ${err.message}`,
         503
       );
-    }
-    let body = null;
-    try {
-      body = await res.json();
-    } catch (_) {
-      body = null;
     }
     if (res.ok && body?.html) return body;
     if (res.status === 422) {

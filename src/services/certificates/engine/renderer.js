@@ -80,8 +80,15 @@ async function newPage() {
   return page;
 }
 
+// A recycle that is due "drains" the pool (review #16): no new page is handed
+// out until the in-flight renders finish, then the browser is replaced. Without
+// it, steady load kept `active` above 0 and the browser was never recycled.
+let draining = false;
+let recycles = 0;
+let maxRendersPerBrowser = 0;
+
 async function acquire() {
-  if (active >= POOL_SIZE) await new Promise((resolve) => waiters.push(resolve));
+  while (active >= POOL_SIZE || draining) await new Promise((resolve) => waiters.push(resolve));
   active++;
   try {
     let page = idlePages.pop();
@@ -89,7 +96,7 @@ async function acquire() {
     return page;
   } catch (err) {
     active--;
-    waiters.shift()?.();
+    await slotFreed(); // a drain may be waiting on exactly this slot
     throw err;
   }
 }
@@ -98,18 +105,34 @@ let recycleRequested = false;
 
 async function release(page, { broken = false, timedOut = false } = {}) {
   rendersSinceLaunch++;
+  maxRendersPerBrowser = Math.max(maxRendersPerBrowser, rendersSinceLaunch);
   // never await closing a broken page — a wedged page can hang close() too
   if (broken || page.isClosed()) page.close().catch(() => {});
   else idlePages.push(page);
   if (timedOut) recycleRequested = true;
   active--;
-  if (active === 0 && (recycleRequested || rendersSinceLaunch >= RECYCLE_AFTER) && browser) {
+  await slotFreed();
+}
+
+/** After `active--`: recycle if one is due and nothing is in flight, else hand the slot on. */
+async function slotFreed() {
+  if (!draining && browser && (recycleRequested || rendersSinceLaunch >= RECYCLE_AFTER)) draining = true;
+  if (draining) {
+    if (active > 0) return; // the last in-flight render does the recycle
     recycleRequested = false;
-    const old = browser;
-    browser = null;
-    idlePages.length = 0;
-    await Promise.race([old.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
-    old.process()?.kill("SIGKILL");
+    if (browser) {
+      const old = browser;
+      browser = null;
+      idlePages.length = 0;
+      rendersSinceLaunch = 0;
+      recycles++;
+      await Promise.race([old.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+      old.process()?.kill("SIGKILL");
+    }
+    draining = false;
+    // every waiter re-checks the pool in acquire(); waking more than POOL_SIZE is harmless
+    for (const wake of waiters.splice(0)) wake();
+    return;
   }
   waiters.shift()?.();
 }
@@ -263,4 +286,4 @@ export async function shutdown() {
   if (b) await b.close().catch(() => {});
 }
 
-export const rendererStats = () => ({ poolSize: POOL_SIZE, active, idle: idlePages.length, rendersSinceLaunch, connected: !!browser?.connected });
+export const rendererStats = () => ({ poolSize: POOL_SIZE, active, idle: idlePages.length, rendersSinceLaunch, connected: !!browser?.connected, draining, recycles, maxRendersPerBrowser, recycleAfter: RECYCLE_AFTER });

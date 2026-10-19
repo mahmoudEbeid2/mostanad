@@ -60,8 +60,10 @@ export function validateFieldList(input, lines) {
     if (!ALIGNS.includes(f.align)) p(`align must be one of ${ALIGNS.join(", ")}`);
     if (!ORIGINS.includes(f.origin)) p(`origin must be one of ${ORIGINS.join(", ")}`);
     // D10: a field marked by hand is confirmed by definition; detected / AI
-    // suggested fields stay unconfirmed until the user confirms them
-    f.confirmed = f.origin === "manual" ? true : f.confirmed === true;
+    // suggested fields stay unconfirmed until POST …/fields/confirm — the
+    // client's `confirmed` is never trusted (review #10; replaceFields keeps
+    // what confirm already stored)
+    f.confirmed = f.origin === "manual";
     const line = byLine.get(f.lineId);
     if (!line) p(`line "${f.lineId}" does not exist in this version`);
     else {
@@ -120,6 +122,16 @@ export async function replaceFields(versionId, companyId, input) {
   }
   const { fields, problems } = validateFieldList(input, version.lines);
   if (problems.length) throw fail(problems);
+  // review #10: a stored suggested/detected field can't become "manual" (and so
+  // confirmed) by re-sending it; its confirmation is the one /fields/confirm stored
+  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true } })).map((s) => [s.key, s]));
+  for (const f of fields) {
+    const s = stored.get(f.key);
+    if (s && s.origin !== "manual") {
+      f.origin = s.origin;
+      f.confirmed = s.confirmed === true;
+    }
+  }
 
   // the analysed text must also hold in the real layout (same browser as prepare)
   const measured = await inspectInLayout(version, fields);

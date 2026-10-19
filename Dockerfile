@@ -4,7 +4,8 @@ FROM node:25-alpine
 WORKDIR /app
 
 # Copy package files and install dependencies
-RUN apk add --no-cache ghostscript imagemagick librsvg fontconfig ttf-dejavu chromium nss freetype harfbuzz ca-certificates ttf-freefont
+# ghostscript, imagemagick and librsvg removed (review #21): no caller since V1 certificates were retired
+RUN apk add --no-cache fontconfig ttf-dejavu chromium nss freetype harfbuzz ca-certificates ttf-freefont
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

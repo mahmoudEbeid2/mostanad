@@ -73,8 +73,8 @@ for (const slug of v2Slugs) {
   assert(`company allowed: ${slug}`, err === null, err?.message);
 }
 
-console.log("\n🧪 Company caller: existing allowed modules unchanged");
-for (const slug of ["read_products", "create_templates", "create_certificates", "update_labels", "read_regulatory"]) {
+console.log("\n🧪 Company caller: remaining allowed modules unchanged");
+for (const slug of ["read_products", "create_certificates", "update_labels", "read_regulatory"]) { // "templates" (V1) removed — review #12, asserted below
   assert(`company allowed: ${slug}`, run(slug, companyReq()) === null);
 }
 
@@ -94,6 +94,9 @@ for (const slug of [
   assert(`company blocked: ${slug}`, err?.statusCode === 403, err ? `${err.statusCode}` : "allowed");
 }
 assert("allowlist has no single-word prefix of a V2 module", !COMPANY_ALLOWED_MODULES.includes("certificate"));
+// review #12: the V1 "templates" module is retired; a leftover *_templates slug must not pass for a company
+assert("V1 'templates' module is not in the company allowlist", !COMPANY_ALLOWED_MODULES.includes("templates"));
+assert("company blocked: read_templates (V1, retired)", run("read_templates", companyReq())?.statusCode === 403);
 
 console.log("\n🧪 System user: exact slug match only");
 assert(

@@ -27,8 +27,14 @@ export function computeFontCoverage(html) {
         .map((cp) => String.fromCodePoint(cp));
       coverage[family] = chars.join("");
     } catch (_) {
-      coverage[family] = null;
+      coverage[family] = null; // reported by fontWarnings(), flagged glyph_unknown at fill time
     }
   }
   return coverage;
 }
+
+/** Conversion warnings for the fonts computeFontCoverage could not parse (review #7). */
+export const fontWarnings = (coverage) =>
+  Object.entries(coverage || {})
+    .filter(([, chars]) => chars === null)
+    .map(([family]) => `FONT_UNREADABLE: the embedded font "${family}" could not be parsed — characters it lacks can't be detected; values in it are flagged glyph_unknown`);

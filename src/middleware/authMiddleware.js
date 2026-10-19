@@ -91,7 +91,6 @@ export const protect = catchAsync(async (req, res, next) => {
 export const COMPANY_ALLOWED_MODULES = [
   "products",
   "categories",
-  "templates",
   "certificates",
   "labels",
   "regulatory",

@@ -57,7 +57,12 @@ function contextFor(kind, ctx) {
   }
 }
 
-const todayIso = (ctx) => (ctx.today instanceof Date ? ctx.today : new Date()).toISOString().slice(0, 10);
+// review #13: "today" is the calendar date where the certificates are issued
+// (CERT_TZ, default Africa/Cairo), not UTC — 00:30 in Cairo is still the
+// previous day in UTC. en-CA formats as YYYY-MM-DD.
+export const CERT_TZ = process.env.CERT_TZ || "Africa/Cairo";
+const todayIso = (ctx) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: ctx.timeZone || CERT_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(ctx.today instanceof Date ? ctx.today : new Date());
 
 function rawValue(source, ctx) {
   switch (source.kind) {

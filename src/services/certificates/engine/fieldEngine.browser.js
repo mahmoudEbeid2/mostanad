@@ -423,6 +423,10 @@
           missing.push(ch);
         }
         if (missing.length) list.push(`glyph:${missing.join("")}`);
+      } else if (value && coverage && def.fontClass && cov === null && Object.prototype.hasOwnProperty.call(coverage, def.fontClass)) {
+        // the design embeds this font but it couldn't be parsed: whether every
+        // character exists is unknown — say so (non-blocking), never guess
+        list.push("glyph_unknown");
       }
       if (!value && def.required) list.push("missing");
       flags[def.key] = list;

@@ -58,6 +58,36 @@ export async function cleanupOrphanFiles({ olderThanHours = 24, now = new Date()
   return { scanned: candidates.length, deleted: orphans.length, bytes };
 }
 
+/**
+ * Files on disk under uploads/certificates with NO StoredFile row (a crash
+ * between write and insert, a deleted row whose unlink failed), older than
+ * `olderThanHours` → deleted (review #14). Young files are kept: putFile writes
+ * the file before its row. → { scanned, deleted, bytes }
+ */
+export async function cleanupOrphanDiskFiles({ olderThanHours = 24, now = new Date(), companyId } = {}) {
+  const cutoff = new Date(now.getTime() - olderThanHours * 3600_000);
+  const old = fileStore.listDiskFiles(companyId ? [companyId] : null).filter((f) => f.mtime < cutoff);
+  const known = new Set();
+  for (let i = 0; i < old.length; i += 500) {
+    const rows = await prisma.storedFile.findMany({ where: { path: { in: old.slice(i, i + 500).map((f) => f.relPath) } }, select: { path: true } });
+    for (const r of rows) known.add(r.path);
+  }
+  let deleted = 0;
+  let bytes = 0;
+  for (const f of old) {
+    if (known.has(f.relPath)) continue;
+    try {
+      fs.unlinkSync(f.abs);
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      continue;
+    }
+    deleted++;
+    bytes += f.size;
+  }
+  return { scanned: old.length, deleted, bytes };
+}
+
 /** Fails Certificates V2 tasks with no progress for `olderThanMinutes` and releases their entities. */
 // `queueNames` is for tests (a private queue); the daily job checks the three real ones.
 export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), companyId, queueNames } = {}) {
@@ -102,7 +132,8 @@ export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), 
 export async function runDailyMaintenance(opts = {}) {
   const stuck = await failStuckTasks(opts);
   const files = await cleanupOrphanFiles(opts);
-  return { stuck, files, at: new Date().toISOString() };
+  const diskFiles = await cleanupOrphanDiskFiles(opts);
+  return { stuck, files, diskFiles, at: new Date().toISOString() };
 }
 
 // ── metrics (§15) ────────────────────────────────────────────────────────────

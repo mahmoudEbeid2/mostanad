@@ -36,6 +36,29 @@ export function absolutePath(row) {
   return resolveInside(row.path);
 }
 
+/**
+ * Every regular file under uploads/certificates/{dir}/ (one level, as putFile
+ * writes them) → [{ relPath, abs, mtime, size }]; `dirs` narrows to some
+ * company directories. For the maintenance sweep (review #14).
+ */
+export function listDiskFiles(dirs = null) {
+  if (!fs.existsSync(CERT_ROOT)) return [];
+  const names = dirs || fs.readdirSync(CERT_ROOT, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const out = [];
+  for (const dir of names) {
+    const absDir = path.join(CERT_ROOT, dir);
+    if (!fs.existsSync(absDir)) continue;
+    for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
+      if (!ent.isFile()) continue;
+      const relPath = path.posix.join("certificates", dir, ent.name);
+      const abs = resolveInside(relPath);
+      const st = fs.statSync(abs);
+      out.push({ relPath, abs, mtime: st.mtime, size: st.size });
+    }
+  }
+  return out;
+}
+
 /** Writes the buffer and creates its StoredFile row. */
 export async function putFile({ companyId = null, kind, buffer, mimeType, originalName = null, ext, tx = prisma }) {
   if (companyId !== null && !UUID_RE.test(companyId)) throw new Error(`Invalid companyId for storage: ${companyId}`);

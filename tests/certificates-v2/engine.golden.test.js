@@ -14,7 +14,8 @@ import { fixture, makeAssert, finish, FIXTURES } from "./helpers.js";
 import * as pdf2htmlex from "../../src/services/certificates/conversion/pdf2htmlexClient.js";
 import { sanitizeTemplateHtml } from "../../src/services/certificates/sanitize/htmlSanitizer.js";
 import * as renderer from "../../src/services/certificates/engine/renderer.js";
-import { computeFontCoverage } from "../../src/services/certificates/analysis/fontCoverage.js";
+import { computeFontCoverage, fontWarnings } from "../../src/services/certificates/analysis/fontCoverage.js";
+import { isBlocking } from "../../src/services/certificates/generation/batchService.js";
 import { runPrepare, renderFilled, fillDef, GATE } from "../../src/services/certificates/templates/prepareEngine.js";
 
 const { assert, counts } = makeAssert();
@@ -131,6 +132,14 @@ try {
     assert("value with B and X → glyph:BX", flags.batch_no.includes("glyph:BX"), flags.batch_no);
     const ok = await renderFilled(preparedHtml, [def], { batch_no: "AVVS1124011" }, { fontCoverage: coverage });
     assert("covered value → no glyph flag", !ok.flags.batch_no.some((x) => x.startsWith("glyph")), ok.flags.batch_no);
+    // review #7: a font that couldn't be parsed → coverage null → glyph_unknown, informational only
+    const unreadable = { ...coverage, ff1: null };
+    const unk = await renderFilled(preparedHtml, [def], { batch_no: "BX-1124" }, { fontCoverage: unreadable });
+    assert("unparseable font → glyph_unknown (not glyph:…, never guessed)", unk.flags.batch_no.includes("glyph_unknown") && !unk.flags.batch_no.some((x) => x.startsWith("glyph:")), unk.flags.batch_no);
+    assert("glyph_unknown does not block finalisation; glyph:… does", !isBlocking("glyph_unknown") && isBlocking("glyph:BX"));
+    assert("…and the conversion gets a FONT_UNREADABLE warning naming the font", fontWarnings(unreadable).length === 1 && /FONT_UNREADABLE: .*"ff1"/.test(fontWarnings(unreadable)[0]) && fontWarnings(coverage).length === 0, fontWarnings(unreadable));
+    const empty = await renderFilled(preparedHtml, [{ ...def, required: false }], { batch_no: "" }, { fontCoverage: unreadable });
+    assert("an empty value is not flagged glyph_unknown", !empty.flags.batch_no.includes("glyph_unknown"), empty.flags.batch_no);
   }
 
   console.log("\n🧪 Gate failures are explicit");

@@ -20,8 +20,9 @@ const RENDER_CONCURRENCY = 2; // pages per worker process (§5.2)
 const THUMB_SCALE = 0.25;
 const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email: true };
 
-/** Flags that block finalisation (§10.4): a required value missing, overflow, a glyph the font lacks. */
-export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || String(flag).startsWith("glyph");
+/** Flags that block finalisation (§10.4): a required value missing, overflow, a glyph the font lacks.
+ *  `glyph_unknown` (the font couldn't be parsed, review #7) is informational — only `glyph:…` blocks. */
+export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || String(flag).startsWith("glyph:");
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
 
 async function planInputs(invoice) {

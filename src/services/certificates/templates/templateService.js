@@ -5,7 +5,7 @@ import * as fileStore from "../storage/fileStore.js";
 import * as pdf2htmlex from "../conversion/pdf2htmlexClient.js";
 import { sanitizeTemplateHtml, describeSanitized } from "../sanitize/htmlSanitizer.js";
 import * as renderer from "../engine/renderer.js";
-import { computeFontCoverage } from "../analysis/fontCoverage.js";
+import { computeFontCoverage, fontWarnings } from "../analysis/fontCoverage.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { listFields, fieldsHash } from "./fieldService.js";
 
@@ -56,6 +56,18 @@ async function assertSlotFree(tx, { companyId, certificateTypeId, brandId, count
       { existingTemplateId: clash.id }
     );
   }
+}
+
+// assertSlotFree is the readable check; the partial unique index
+// certificate_templates_slot_key is the guarantee. Two requests can both pass
+// the check — the loser's write then fails P2002, which is the same answer
+// (review #15): 409 TEMPLATE_SLOT_TAKEN naming the template that won.
+async function rethrowSlotTaken(err, slot, exceptTemplateId = null) {
+  if (err?.code !== "P2002") throw err;
+  const target = `${JSON.stringify(err.meta ?? {})} ${err.message}`;
+  if (!/slot_key|certificate_templates/i.test(target) || /active_version_id|activeVersionId/i.test(target)) throw err;
+  await assertSlotFree(prisma, slot, exceptTemplateId); // throws TEMPLATE_SLOT_TAKEN with existingTemplateId
+  throw new CertError("TEMPLATE_SLOT_TAKEN", "Another template already covers this type, brand, country and scope.", 409);
 }
 
 async function assertRefs(tx, companyId, { certificateTypeId, brandId }) {
@@ -129,15 +141,17 @@ export async function createTemplateFromUpload({ companyId, userId, file, settin
     country: normCountry(settings.country),
     scope: settings.scope || "per_product",
   };
-  const { template, version } = await prisma.$transaction(async (tx) => {
-    await assertRefs(tx, companyId, slot);
-    await assertSlotFree(tx, slot);
-    const template = await tx.certificateTemplate.create({
-      data: { ...slot, name: settings.name.trim(), createdByUserId: userId || null },
-    });
-    const version = await createVersionWithSource(tx, { template, file, format, userId });
-    return { template, version };
-  });
+  const { template, version } = await prisma
+    .$transaction(async (tx) => {
+      await assertRefs(tx, companyId, slot);
+      await assertSlotFree(tx, slot);
+      const template = await tx.certificateTemplate.create({
+        data: { ...slot, name: settings.name.trim(), createdByUserId: userId || null },
+      });
+      const version = await createVersionWithSource(tx, { template, file, format, userId });
+      return { template, version };
+    })
+    .catch((err) => rethrowSlotTaken(err, slot));
   const task = await enqueueConvert(template, version);
   return { templateId: template.id, versionId: version.id, taskId: task.id };
 }
@@ -199,6 +213,7 @@ export async function convertVersion(versionId, ctx = {}) {
       throw new CertError("NO_LIVE_TEXT", "The design has no live text — it was converted to outlines. Export it again with live text.", 422);
     }
     const fontCoverage = computeFontCoverage(html);
+    conversion.warnings = [...(conversion.warnings || []), ...fontWarnings(fontCoverage)]; // review #7
 
     ctx.progress?.(85, "Creating thumbnail");
     const [thumb] = await renderer.screenshotPages(html, { scale: 0.25 });
@@ -336,14 +351,16 @@ export async function updateTemplateSettings(id, companyId, patch) {
     country: patch.country !== undefined ? normCountry(patch.country) : current.country,
     scope: patch.scope ?? current.scope,
   };
-  return prisma.$transaction(async (tx) => {
-    await assertRefs(tx, current.companyId, next);
-    if (!current.archivedAt) await assertSlotFree(tx, next, id);
-    return tx.certificateTemplate.update({
-      where: { id },
-      data: { ...next, companyId: undefined, ...(patch.name !== undefined ? { name: patch.name.trim() } : {}) },
-    });
-  });
+  return prisma
+    .$transaction(async (tx) => {
+      await assertRefs(tx, current.companyId, next);
+      if (!current.archivedAt) await assertSlotFree(tx, next, id);
+      return tx.certificateTemplate.update({
+        where: { id },
+        data: { ...next, companyId: undefined, ...(patch.name !== undefined ? { name: patch.name.trim() } : {}) },
+      });
+    })
+    .catch((err) => rethrowSlotTaken(err, next, id));
 }
 
 export async function archiveTemplate(id, companyId) {

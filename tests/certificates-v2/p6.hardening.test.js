@@ -8,6 +8,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service.
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { Queue, Worker } from "bullmq";
 import { getRedisConfig } from "../../src/lib/redis.js";
 import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, form, fixture, FIXTURES, prisma, BASE_URL } from "./helpers.js";
@@ -16,7 +17,7 @@ import { runPrepareJob } from "../../src/services/certificates/templates/prepare
 import { runExtractJob } from "../../src/services/certificates/invoices/invoiceService.js";
 import { runGenerateBatch } from "../../src/services/certificates/generation/batchService.js";
 import { runExportPdf, runExportZip } from "../../src/services/certificates/certificates/editService.js";
-import { cleanupOrphanFiles, failStuckTasks } from "../../src/services/certificates/maintenance/maintenanceService.js";
+import { cleanupOrphanFiles, cleanupOrphanDiskFiles, failStuckTasks } from "../../src/services/certificates/maintenance/maintenanceService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
 import { shutdown as shutdownRenderer } from "../../src/services/certificates/engine/renderer.js";
 
@@ -33,6 +34,7 @@ try {
   console.log("\n🧪 Health");
   const h = await fetch(`${BASE_URL}/health`).then((r) => r.json());
   assert("GET /health → converter reachable, no internal URL", h.status === "ok" && h.converter?.reachable === true && !JSON.stringify(h).includes("http"), h);
+  assert("GET /health → no tool version (review #18)", !("toolVersion" in (h.converter || {})) && !/version/i.test(JSON.stringify(h)), h);
 
   console.log("\n🧪 Setup: an active template, a generated certificate");
   const typeId = (await api("POST", "/certificate-types", A, { name: "Certificate of Analysis", code: "COA" })).data.data.type.id;
@@ -93,6 +95,20 @@ try {
   const zip = await api("GET", `/certificate-batches/${batchId}/zip`, A);
   const diff = await api("GET", `/template-versions/${v.id}/prepare-diff?page=1`, A);
   assert("certificate HTML, prepared design, current ZIP and diff image still served", [html, tplHtml, zip, diff].every((x) => x.status === 200), [html, tplHtml, zip, diff].map((x) => x.status));
+
+  console.log("\n🧪 Daily cleanup — files on disk with no StoredFile row (review #14)");
+  const companyDir = path.dirname(fileStore.absolutePath(await prisma.storedFile.findUnique({ where: { id: src.id } })));
+  const strayOld = path.join(companyDir, `${crypto.randomUUID()}.html`);
+  const strayYoung = path.join(companyDir, `${crypto.randomUUID()}.html`);
+  fs.writeFileSync(strayOld, "<p>stray</p>");
+  fs.writeFileSync(strayYoung, "<p>stray</p>");
+  const dayAgo = new Date(Date.now() - 25 * HOUR);
+  fs.utimesSync(strayOld, dayAgo, dayAgo);
+  const backed = await prisma.storedFile.findUnique({ where: { id: src.id } });
+  fs.utimesSync(fileStore.absolutePath(backed), dayAgo, dayAgo); // old, but it has its row
+  res = await cleanupOrphanDiskFiles({ companyId: coA.id });
+  assert("an old file with no row is deleted; a young one and a row-backed old one are kept", !fs.existsSync(strayOld) && fs.existsSync(strayYoung) && fs.existsSync(fileStore.absolutePath(backed)) && res.deleted === 1, res);
+  fs.unlinkSync(strayYoung);
 
   console.log("\n🧪 Daily cleanup — stuck tasks");
   const old = new Date(Date.now() - 31 * 60_000);

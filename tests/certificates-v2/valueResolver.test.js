@@ -38,6 +38,11 @@ assert("company", v({ kind: "company", path: "name" }).value === "ADDVET Animal 
 assert("static", v({ kind: "static", text: "JORDAN" }).value === "JORDAN");
 assert("manual → empty at generation", v({ kind: "manual" }).value === "");
 assert("today → generation date", v({ kind: "today" }).value === "2026-10-17");
+// review #13: the date in CERT_TZ (default Africa/Cairo, UTC+3 on this date), not UTC
+const lateUtc = new Date("2026-10-17T22:30:00Z");
+assert("today: 22:30 UTC is already the 18th in Cairo", resolveField({ key: "k", source: { kind: "today" } }, { today: lateUtc }).value === "2026-10-18");
+assert("today: {{today}} in a template uses the same zone", resolveField({ key: "k", source: { kind: "template", template: "{{today}}" } }, { today: lateUtc }).value === "2026-10-18");
+assert("today: the zone can be overridden (UTC → the 17th)", resolveField({ key: "k", source: { kind: "today" } }, { today: lateUtc, timeZone: "UTC" }).value === "2026-10-17");
 
 console.log("\n🧪 Missing values (D7: empty, never invented)");
 assert("missing item path → empty", v({ kind: "item", path: "packing" }).value === "");

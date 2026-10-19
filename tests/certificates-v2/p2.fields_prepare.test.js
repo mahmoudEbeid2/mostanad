@@ -150,8 +150,12 @@ try {
   const aiDrafts = addDrafts.map((f) => (f.key === "ph_result" ? { ...f, origin: "ai_suggested", confirmed: false } : f));
   r = await api("PUT", `/template-versions/${v2}/fields`, A, { fields: aiDrafts });
   assert("ai_suggested field stored unconfirmed", r.data?.data?.fields?.find((f) => f.key === "ph_result")?.confirmed === false);
+  r = await api("PUT", `/template-versions/${v2}/fields`, A, { fields: aiDrafts.map((f) => ({ ...f, confirmed: true })) });
+  assert("PUT can't confirm a suggested field: confirmed:true from the client is ignored (review #10)", r.status === 200 && r.data.data.fields.find((f) => f.key === "ph_result")?.confirmed === false, r.data?.data?.fields?.find((f) => f.key === "ph_result"));
   r = await api("PUT", `/template-versions/${v2}/fields`, A, { fields: addDrafts.map((f) => ({ ...f, origin: "manual", confirmed: false })) });
-  assert("manual fields can't be stored unconfirmed (D10)", r.data?.data?.fields?.every((f) => f.confirmed));
+  const asManual = r.data?.data?.fields || [];
+  assert("manual fields can't be stored unconfirmed (D10)", asManual.filter((f) => f.key !== "ph_result").every((f) => f.origin === "manual" && f.confirmed));
+  assert("…and re-sending a suggested field as origin manual doesn't confirm it (review #10)", asManual.find((f) => f.key === "ph_result")?.origin === "ai_suggested" && asManual.find((f) => f.key === "ph_result")?.confirmed === false, asManual.find((f) => f.key === "ph_result"));
   r = await api("PUT", `/template-versions/${v2}/fields`, A, { fields: aiDrafts });
   const { v: v2ready } = await prepare(v2);
   assert("v2 prepared → ready", v2ready?.status === "ready", v2ready?.status);
@@ -159,6 +163,8 @@ try {
   assert("activate with an unconfirmed field → 409 FIELDS_UNCONFIRMED", r.status === 409 && r.data?.code === "FIELDS_UNCONFIRMED" && r.data.fields?.[0] === "ph_result", r.data);
   r = await api("POST", `/template-versions/${v2}/fields/confirm`, A, { keys: ["ph_result"] });
   assert("confirm → 200", r.status === 200 && r.data.data.fields.every((f) => f.confirmed), r.data);
+  r = await api("GET", `/template-versions/${v2}`, A);
+  assert("…the confirmation stays stored (only /fields/confirm set it)", r.data?.data?.version?.fields?.find((f) => f.key === "ph_result")?.confirmed === true);
   r = await api("POST", `/template-versions/${v2}/activate`, A);
   assert("activate v2 → active, supersedes v1", r.status === 200 && r.data.data.supersededVersionId === av.id, r.data);
   const tpl = (await api("GET", `/certificate-templates/${addvet.data.data.templateId}`, A)).data.data.template;

@@ -24,8 +24,13 @@ function assertEditable(cert) {
   if (cert.status !== "draft") throw new CertError("CERTIFICATE_NOT_READY", `This certificate is ${cert.status} and cannot be edited`, 409);
 }
 
+// review #8: required on every change (edit, reset, restore, finalize) — a
+// change made on a version the user never saw is refused, not applied
 function assertVersion(cert, expectedVersion) {
-  if (expectedVersion !== undefined && expectedVersion !== null && Number(expectedVersion) !== cert.currentVersion) {
+  if (expectedVersion === undefined || expectedVersion === null) {
+    throw new CertError("VERSION_REQUIRED", `expectedVersion is required (the current version is ${cert.currentVersion})`, 400, { currentVersion: cert.currentVersion });
+  }
+  if (Number(expectedVersion) !== cert.currentVersion) {
     throw new CertError("VERSION_CONFLICT", `The certificate changed meanwhile (now version ${cert.currentVersion})`, 409, { currentVersion: cert.currentVersion });
   }
 }

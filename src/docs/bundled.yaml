@@ -5468,7 +5468,13 @@ paths:
           application/json:
             schema:
               type: object
-              additionalProperties: true
+              required:
+                - expectedVersion
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                  description: 'Required (review #8). Missing → 400 VERSION_REQUIRED / validation error; not the current version → 409 VERSION_CONFLICT.'
             example:
               expectedVersion: 4
       responses:
@@ -5538,7 +5544,13 @@ paths:
           application/json:
             schema:
               type: object
-              additionalProperties: true
+              required:
+                - expectedVersion
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                  description: 'Required (review #8). Missing → 400 VERSION_REQUIRED / validation error; not the current version → 409 VERSION_CONFLICT.'
             example:
               expectedVersion: 5
       responses:
@@ -5652,7 +5664,13 @@ paths:
           application/json:
             schema:
               type: object
-              additionalProperties: true
+              required:
+                - expectedVersion
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                  description: 'Required (review #8). Missing → 400 VERSION_REQUIRED / validation error; not the current version → 409 VERSION_CONFLICT.'
             example:
               expectedVersion: 6
       responses:
@@ -5740,7 +5758,7 @@ paths:
       tags:
         - Operations
       summary: Health
-      description: Public. Liveness plus converter (pdf2htmlex) reachability — booleans and timings only.
+      description: Public. Liveness plus converter (pdf2htmlex) reachability — booleans and timings only (no URLs, no versions).
       parameters: []
       responses:
         '200':
@@ -5756,7 +5774,6 @@ paths:
                 converter:
                   reachable: true
                   ms: 4
-                  toolVersion: 0.18.8.rc1
 components:
   schemas:
     LoginBody:

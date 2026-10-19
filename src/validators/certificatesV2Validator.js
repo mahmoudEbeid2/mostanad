@@ -155,6 +155,8 @@ export const invoiceSchemas = {
   itemById: { params: itemParams, query: companyQuery },
 };
 
+const expectedVersionBody = z.object({ expectedVersion: z.number().int().min(1) });
+
 export const certificateSchemas = {
   metrics: { query: companyQuery.extend({ days: z.coerce.number().int().min(1).max(365).optional() }) },
   byId: { params: idParams, query: companyQuery },
@@ -164,9 +166,10 @@ export const certificateSchemas = {
     query: companyQuery,
     body: z.object({ expectedVersion: z.number().int().min(1), changes: z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null()])) }),
   },
-  field: { params: idParams.extend({ key: z.string().regex(/^[a-z][a-z0-9_]{0,59}$/) }), query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
-  restore: { params: idParams.extend({ n: z.coerce.number().int().min(1) }), query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
-  action: { params: idParams, query: companyQuery, body: z.object({ expectedVersion: z.number().int().min(1).optional() }).optional() },
+  // review #8: every state change on a certificate names the version it was made on
+  field: { params: idParams.extend({ key: z.string().regex(/^[a-z][a-z0-9_]{0,59}$/) }), query: companyQuery, body: expectedVersionBody },
+  restore: { params: idParams.extend({ n: z.coerce.number().int().min(1) }), query: companyQuery, body: expectedVersionBody },
+  action: { params: idParams, query: companyQuery, body: expectedVersionBody },
   list: {
     query: companyQuery.extend({
       invoiceId: uuid.optional(),
