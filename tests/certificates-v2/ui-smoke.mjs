@@ -73,8 +73,66 @@ async function clickText(selector, text) {
   if (!ok) throw new Error(`no ${selector} with text "${text}"`);
 }
 
+// Accessibility audit of the page's <main> (no axe dependency): every form
+// control has an accessible name (placeholder alone doesn't count), every
+// button/link has one (icon-only → aria-label), progress bars expose their
+// value, and each Tab stop shows a visible focus indicator.
+async function audit(name) {
+  const problems = await page.evaluate(() => {
+    const main = document.querySelector("main") || document.body;
+    const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+    const text = (el) => (el.innerText || el.textContent || "").trim();
+    const named = (el) => {
+      if (el.getAttribute("aria-label")?.trim()) return true;
+      const by = el.getAttribute("aria-labelledby");
+      if (by && by.split(/\s+/).some((id) => text(document.getElementById(id) || document.createElement("i")))) return true;
+      if (el.closest("label") && text(el.closest("label"))) return true;
+      if (el.id && Array.from(document.querySelectorAll("label")).some((l) => l.htmlFor === el.id && text(l))) return true;
+      return !!el.getAttribute("title")?.trim();
+    };
+    const desc = (el) =>
+      `${el.tagName.toLowerCase()}${el.getAttribute("data-testid") ? `[${el.getAttribute("data-testid")}]` : ""}${el.getAttribute("data-key") ? `[key=${el.getAttribute("data-key")}]` : ""}${el.getAttribute("placeholder") ? `[ph=${el.getAttribute("placeholder")}]` : ""}${el.getAttribute("type") ? `[${el.getAttribute("type")}]` : ""}`;
+    const out = [];
+    for (const el of main.querySelectorAll("input, select, textarea")) {
+      if (el.type === "hidden" || (!visible(el) && el.type !== "file")) continue;
+      if (!named(el)) out.push(`unlabelled ${desc(el)}`);
+    }
+    for (const el of main.querySelectorAll("button, a[href], [role=button]")) {
+      if (!visible(el)) continue;
+      if (!text(el) && !el.getAttribute("aria-label")?.trim()) out.push(`icon-only without aria-label: ${el.outerHTML.slice(0, 100)}`);
+    }
+    for (const el of main.querySelectorAll('[role="progressbar"]')) {
+      if (!el.hasAttribute("aria-valuenow") || !(el.getAttribute("aria-label") || el.getAttribute("aria-labelledby"))) out.push(`progressbar without value/name: ${el.outerHTML.slice(0, 80)}`);
+    }
+    return out;
+  });
+  // focus: Tab through <main>; every stop must show an outline or a box-shadow ring
+  await page.evaluate(() => {
+    document.activeElement?.blur();
+    window.scrollTo(0, 0);
+  });
+  const seen = new Set();
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press("Tab");
+    const r = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body || !el.closest("main")) return null;
+      if (el.tagName === "IFRAME") return { key: "iframe", ok: true };
+      const s = getComputedStyle(el);
+      const ring = (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== "none");
+      return { key: el.outerHTML.slice(0, 100), ok: ring };
+    });
+    if (!r) continue;
+    if (seen.has(r.key)) break;
+    seen.add(r.key);
+    if (!r.ok) problems.push(`no visible focus: ${r.key}`);
+  }
+  await page.evaluate(() => document.activeElement?.blur());
+  assert(`a11y: ${name}`, problems.length === 0, problems.slice(0, 8));
+}
+
 const company = await createCompany("ui");
-export const ctx = { allowConsole: [], page, company, waitForText, clickText, textOf, shot, sleep, assert, FRONT, FIXTURES, api, asAdmin, prisma };
+export const ctx = { allowConsole: [], page, company, waitForText, clickText, textOf, shot, sleep, assert, audit, FRONT, FIXTURES, api, asAdmin, prisma };
 
 try {
   console.log("\n🧪 Login");

@@ -3,7 +3,7 @@
 import path from "path";
 
 async function phase1(ctx) {
-  const { page, FRONT, assert, waitForText, clickText, shot, FIXTURES } = ctx;
+  const { page, FRONT, assert, waitForText, clickText, shot, FIXTURES, api, prisma, company } = ctx;
   ctx.state = {};
 
   // Types page: empty state → create COA
@@ -15,16 +15,19 @@ async function phase1(ctx) {
   await clickText("button", "Save");
   assert("types: created row shows", await waitForText("Certificate of Analysis"));
   await shot("p1-types");
+  await ctx.audit("types page");
 
   // Templates list → wizard upload
   await page.goto(`${FRONT}/certificates/templates`, { waitUntil: "networkidle2" });
   assert("templates: empty state", await waitForText("No templates yet"));
+  const adminView = await page.evaluate(() => ({ banner: document.querySelector('[data-testid="role-banner"]')?.innerText || "", picker: !!document.querySelector('select[aria-label="Company"]') }));
+  assert("templates: system admin banner + company picker (A1)", adminView.banner.includes("System admin") && adminView.picker, adminView);
   await clickText("a, button", "Upload template");
   await page.waitForSelector('input[type="file"]');
   const input = await page.$('input[type="file"]');
   await input.uploadFile(path.join(FIXTURES, "ADDVET_COA.ai"));
   await page.waitForFunction(() => document.body.innerText.includes("ADDVET_COA.ai"));
-  await clickText("button", "Upload and convert");
+  await clickText("button", "Upload & convert");
   assert("wizard: conversion finished", await waitForText("Converted — this is exactly how the design will print", 60_000));
 
   // The preview iframe holds the sanitized document, sandboxed without scripts
@@ -44,6 +47,7 @@ async function phase1(ctx) {
   assert("preview: 1 page, 33 lines, no scripts", frameInfo.pages === 1 && frameInfo.lines === 33 && frameInfo.scripts === 0, frameInfo);
   assert("preview: Batch No. line rendered", frameInfo.batch === "Batch No.:  AVVS1122005", frameInfo.batch);
   await shot("p1-wizard-preview");
+  await ctx.audit("wizard upload + converted preview (A2/A3)");
 
   const m = page.url().match(/templates\/([^/]+)\/versions\/([^/?]+)/);
   ctx.state.addvet = { templateId: m?.[1], versionId: m?.[2] };
@@ -55,6 +59,64 @@ async function phase1(ctx) {
   const thumbs = await page.$$eval("img", (imgs) => imgs.filter((i) => i.src.startsWith("blob:") && i.naturalWidth > 0).length);
   assert("templates list: thumbnail loaded through the API", thumbs >= 1, thumbs);
   await shot("p1-templates");
+  await ctx.audit("templates list (A1)");
+
+  // Company account: no picker — its own name, read-only, where system users pick (A1/A2)
+  const adminSession = await page.evaluate(() => ({ token: localStorage.getItem("token"), user: localStorage.getItem("user") }));
+  const bcrypt = (await import("bcryptjs")).default;
+  const pw = `ui-${Date.now()}`;
+  // The only thing this pass changes on the company is its password hash; the
+  // finally below puts the original back (asserted), whatever happens in between.
+  const { password: originalHash } = await prisma.company.findUnique({ where: { id: company.id }, select: { password: true } });
+  await prisma.company.update({ where: { id: company.id }, data: { password: await bcrypt.hash(pw, 8) } });
+  try {
+    const login = await api("POST", "/companies/login", {}, { username: company.username, password: pw });
+    const token = login.data?.data?.token;
+    const me = await api("GET", "/auth/me", { Authorization: `Bearer ${token}` });
+    await page.evaluate(
+      (t, u) => {
+        localStorage.setItem("token", t);
+        localStorage.setItem("user", JSON.stringify(u));
+      },
+      token,
+      me.data?.data?.user
+    );
+    const companyView = async () => {
+      await page.waitForSelector('[data-testid="company-fixed"]', { timeout: 10000 }).catch(() => {});
+      return page.evaluate(() => ({
+        fixed: document.querySelector('[data-testid="company-fixed"]')?.innerText || "",
+        banner: document.querySelector('[data-testid="role-banner"]')?.innerText || "",
+        picker: !!document.querySelector('select[aria-label="Company"]'),
+      }));
+    };
+    await page.goto(`${FRONT}/certificates/templates`, { waitUntil: "networkidle2" });
+    const listView = await companyView();
+    assert(
+      "company account: name read-only, green banner, no picker (A1)",
+      listView.fixed.includes(company.name) && listView.banner.includes("Company account") && listView.banner.includes(company.name) && !listView.picker && (await waitForText("ADDVET COA", 10000)),
+      listView
+    );
+    await shot("p1-company-templates");
+    await ctx.audit("templates list, company account");
+    await page.goto(`${FRONT}/certificates/templates/new`, { waitUntil: "networkidle2" });
+    const formView = await companyView();
+    assert("company account: upload form shows the company fixed (A2)", formView.fixed.includes(company.name) && formView.fixed.includes("your company") && !formView.picker, formView);
+    const nav = await page.$$eval("aside a", (as) => as.map((a) => a.getAttribute("href")));
+    assert("company account: sidebar lists the four certificates pages", ["/certificates/templates", "/certificates/types", "/invoices", "/certificates"].every((h) => nav.includes(h)), nav);
+    await page.goto(`${FRONT}/invoices`, { waitUntil: "networkidle2" });
+    const invView = await companyView();
+    assert("company account: invoices page, green banner, no picker (B1)", page.url().endsWith("/invoices") && invView.banner.includes("Company account") && !invView.picker && (await waitForText("No invoices yet", 10000)), invView);
+    await shot("p1-company-invoices");
+    await ctx.audit("invoices, company account (B1)");
+  } finally {
+    await page.evaluate((s) => {
+      localStorage.setItem("token", s.token);
+      localStorage.setItem("user", s.user);
+    }, adminSession);
+    await prisma.company.update({ where: { id: company.id }, data: { password: originalHash } });
+  }
+  const restored = await prisma.company.findUnique({ where: { id: company.id }, select: { password: true } });
+  assert("company account: original password hash restored", restored?.password === originalHash);
 }
 
 // Selects [start,end) of a line's text inside the DocumentFrame and fires the
@@ -150,6 +212,7 @@ async function phase2(ctx) {
   const docUntouched = await page.evaluate(() => !document.querySelector("iframe").contentDocument.querySelector("[data-field], mark"));
   assert("nothing is written into the document", docUntouched);
   await shot("p2-fields");
+  await ctx.audit("mark fields (A4)");
 
   // settings → prepare
   console.log("     next button:", await page.evaluate(() => { const b = Array.from(document.querySelectorAll("button")).find((x) => x.innerText.includes("Next: settings")); return b ? `disabled=${b.disabled}` : "none"; }), "url:", page.url());
@@ -159,8 +222,8 @@ async function phase2(ctx) {
   assert("settings step", await waitForText("Save settings"));
   await clickText("button", "Next: prepare & test");
   assert("prepare button enabled", await clickExact(page, "Prepare"));
-  assert("prepare: gate passed in the UI", await waitForText("All checks passed", 90000));
-  assert("prepare: per-field deltas listed", await waitForText("Round-trip Δx / Δw"));
+  assert("prepare: gate passed in the UI", await waitForText("Prepare passed — ready to activate", 90000));
+  assert("prepare: per-check cards + per-field deltas listed", (await page.$$('[data-testid="prepare-report"] [data-check]')).length === 7 && (await waitForText("Position Δ")));
   await shot("p2-prepare");
 
   // test fill rendered on the server
@@ -171,14 +234,21 @@ async function phase2(ctx) {
   assert("test fill: server render shows the typed value", (await frameText()).includes("AVVS1124011"));
   assert("test fill: unresolved required field flagged", await waitForText("Required value missing", 5000));
   await shot("p2-testfill");
+  await ctx.audit("prepare report + test fill (A5)");
 
   // activate
   await clickText("button", "Next: activate");
-  assert("activate button enabled", await clickExact(page, "Activate"));
+  assert("activate button enabled", await clickExact(page, "Activate v1"));
   assert("activate: version is active", await waitForText("This version is active.", 20000));
   const v = await api("GET", `/template-versions/${versionId}?companyId=${company.id}`, asAdmin);
   assert("API: version active, 3 fields", v.data?.data?.version?.status === "active" && v.data.data.version.fields.length === 3, v.data?.data?.version?.status);
   await shot("p2-activate");
+  await ctx.audit("activate step");
+
+  // A1 card: "3 fields · round-trip x %" of the active version
+  await page.goto(`${FRONT}/certificates/templates`, { waitUntil: "networkidle2" });
+  const gate = await page.waitForSelector('[data-testid="template-gate"]', { timeout: 10000 }).then((e) => e.evaluate((x) => x.innerText), () => "");
+  assert("templates list: active card shows field count + round-trip (A1)", /^3 fields · round-trip (< )?\d\.\d{3} %$/.test(gate), gate);
   await sleep(200);
 }
 
@@ -209,6 +279,7 @@ async function phase3(ctx) {
   assert("upload redirects to the review page", /\/invoices\/[0-9a-f-]{36}/.test(page.url()), page.url());
   assert("failed extraction shown with the real reason", await waitForText("Couldn’t read this invoice:", 60000) && (await waitForText("GEMINI_DISABLED", 2000)) && (await waitForText("No certificates were created.", 1000)));
   await shot("p3-failed");
+  await ctx.audit("failed extraction");
   await clickText("button", "Try again");
   assert("Try again re-reads it: the loader, then the same explicit failure", (await page.waitForSelector('[data-testid="extracting"], [data-testid="extraction-failed"]', { timeout: 10000 }).then(() => true, () => false)) && (await waitForText("Couldn’t read this invoice:", 60000)));
 
@@ -273,11 +344,33 @@ async function phase3(ctx) {
   await page.click('tr[data-line="3"] button[title="Ignore this line"]');
   assert("line 3 ignored", await waitForText("no certificate for this line", 10000));
   await shot("p3-review");
+  await ctx.audit("review & match (B3)");
 
   await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Confirm & continue")?.click());
   assert("confirm → ready", await waitForText("Confirmed — editing anything sends it back to review.", 10000));
   const row = await prisma.invoice.findUnique({ where: { id: inv.id }, include: { items: true } });
   assert("DB: ready, header edited, raw extraction untouched", row.status === "ready" && row.header.invoiceNumber === "INV-UI-1A" && row.headerExtracted.invoiceNumber === "INV-UI-1");
+
+  // A5 test fill: "Invoice item (optional)" lists the confirmed invoice's lines
+  const { templateId, versionId } = ctx.state.addvet;
+  const testFrame = () => page.evaluate(() => document.querySelector('[data-testid="test-fill"] iframe')?.contentDocument?.body?.innerText || "");
+  await page.goto(`${FRONT}/certificates/templates/${templateId}/versions/${versionId}?step=prepare`, { waitUntil: "networkidle2" });
+  await page.waitForSelector('[data-testid="test-invoice-item"] input', { timeout: 15000 });
+  await page.click('[data-testid="test-invoice-item"] input');
+  await page.keyboard.type("INV-UI-1A");
+  const listedLine = await page.waitForFunction(() => document.querySelector('[data-testid="test-invoice-item"]')?.innerText.includes("INV-UI-1A · line 1"), { timeout: 15000 }).then(() => true, () => false);
+  const ignoredHidden = !(await page.$eval('[data-testid="test-invoice-item"]', (e) => e.innerText)).includes("line 3");
+  assert("test fill: invoice item picker lists the confirmed lines (ignored line left out)", listedLine && ignoredHidden);
+  await page.keyboard.press("Enter");
+  await clickText("button", "Render preview");
+  await page.waitForFunction(() => document.querySelector('[data-testid="test-fill"] iframe')?.contentDocument?.body?.innerText.includes("AVVS1124011"), { timeout: 20000 }).catch(() => {});
+  assert("test fill: the picked line's batch is rendered", (await testFrame()).includes("AVVS1124011"));
+  await page.click('[data-testid="test-invoice-item"] [class*="indicatorContainer"]'); // react-select clear (×)
+  await clickText("button", "Render preview");
+  await page.waitForFunction(() => !document.querySelector('[data-testid="test-fill"] iframe')?.contentDocument?.body?.innerText.includes("AVVS1124011"), { timeout: 20000 }).catch(() => {});
+  assert("test fill: clearing the line falls back (batch unresolved again)", !(await testFrame()).includes("AVVS1124011") && (await waitForText("Required value missing", 5000)));
+  await shot("p3-testfill-item");
+  await ctx.audit("test fill with invoice item");
 
   // list: search + per-status action (B1)
   await page.goto(`${FRONT}/invoices`, { waitUntil: "networkidle2" });
@@ -286,6 +379,7 @@ async function phase3(ctx) {
   const rows = await page.$$eval('[data-testid="invoices-table"] tbody tr', (trs) => trs.map((t) => t.innerText));
   assert("list search finds the invoice, action says Review", rows.length === 1 && rows[0].includes("INV-UI-1A") && rows[0].includes("Review"), rows);
   await shot("p3-list");
+  await ctx.audit("invoices list (B1)");
   await sleep(200);
 }
 
@@ -317,6 +411,7 @@ async function phase4(ctx) {
   const db = await prisma.certificate.findMany({ where: { invoiceId: inv.id }, include: { versions: true } });
   assert("DB: 2 certificates, version 1 each, values from the lines", db.length === 2 && db.every((c) => c.versions.length === 1) && db.some((c) => c.versions[0].values.batch_no?.value === "AVVS1124011"));
   await shot("p4-batch");
+  await ctx.audit("batch view (B4)");
 
   await page.goto(`${FRONT}/invoices`, { waitUntil: "networkidle2" });
   const row = await page.$$eval('[data-testid="invoices-table"] tbody tr', (trs) => trs.map((t) => t.innerText).find((t) => t.includes("INV-UI-1A")) || "");
@@ -329,6 +424,7 @@ async function phase4(ctx) {
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="certificate-card"]').length === 1, { timeout: 10000 }).catch(() => {});
   assert("search narrows to the batch", (await page.$$('[data-testid="certificate-card"]')).length === 1);
   await shot("p4-list");
+  await ctx.audit("generated certificates list");
   ctx.state.certificateIds = db.map((c) => c.id);
 }
 
@@ -367,6 +463,7 @@ async function phase5(ctx) {
   assert("finalize disabled, issues named under it", issues === "2 issues left" && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled)), issues);
   assert("source chips shown (Invoice line · Batch number)", await waitForText("Invoice line · Batch number", 3000));
   await shot("p5-editor");
+  await ctx.audit("certificate editor (B5)");
 
   // Esc reverts an input — nothing is saved
   const batchInput = await page.$('input[data-key="batch_no"]');

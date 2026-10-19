@@ -1123,3 +1123,76 @@ Not started: waits for the owner's collective-certificate sample (§17, A1). Ski
 - **Tests:** `templates.test.js` and `certificates.test.js` (V1 suites) deleted; `certificates.phase0_safety` now asserts every former V1 endpoint is a plain 404 for company and system callers and queues nothing (26/26); `gemini.guard` drops the two deleted V1 services; `auth.test.js` TEST 10 proved company-token auth via V1 `POST /certificates/generate` — now via `GET /certificate-types` (28/28); `runAll.js` no longer requires consumers on the two retired queues.
 - **Exit criteria:** no import, route, queue, worker, compose service or doc path of V1 remains (grep over `src`/`tests`/`scripts`/FE `src` clean; `docker compose config` OK for all 3 files). `npm test` on `npm run dev:test`: **51/52** (only pre-existing `brand.test.js`); UI smoke all phases **87/87**, zero console errors; `oxlint` clean on V2 files; `vite build` OK.
 - **Owner / follow-ups:** (1) stopped local containers `certificate-worker` and `ai-template-worker` still exist (exited) — remove with `docker rm certificate-worker ai-template-worker`; their scripts are gone. (2) `ghostscript imagemagick librsvg` in the Dockerfile now have no caller in `src` either — not removed (outside the §17 list). (3) `@google/generative-ai` is still used by `catalogService.js`, so the package stays.
+
+## Template screens ↔ mockups A1–A5 (2026-10-18)
+Phases 1–2 built the template screens before the owner's mockups (`mostanad_front/design/certificates/`) were found. Rules: the plan wins over the mockups; app Tailwind + `ui/` components; no behaviour or API changes.
+
+**Differences found (before the fix)**
+
+*All certificates pages (types, templates, wizard, invoices, invoice review, generated certificates, editor)*
+- `CompanyPicker` renders nothing for a company account; the mockups show the company name read-only (gray box) where system users get the picker.
+- Role banner (A1/B1) missing everywhere except `Invoices.jsx` — and there it is always indigo; the mockups use indigo "System admin" vs green "Company account" (+ company name).
+
+*A1 — `CertificateTemplates.jsx`*
+- Filters: bare selects under the header → mockup puts Company · Type · Brand in one filter card, status as pill buttons on the right. No Brand filter at all (the list API already takes `brandId`).
+- Status filter is a `<select>` ("Any status") → pills (All · N / Active / Draft / Failed …).
+- Card: type/scope/brand/country are one dotted gray text line → separate gray pills (type code monospace); no status-specific line (mockup: "Passed the gate — not active yet" for `ready`, the failure reason in red for `failed`, "draft" hint in amber); version line "Active: v1 Latest: v1 (draft)" → "v2 active · v1 superseded"; action is always "Open" → status-specific ("Continue marking", "Activate", "Upload new version", "Open").
+- No dashed "Upload a design" tile at the end of the grid.
+- Header has only "Upload template" → mockup also has a secondary "Certificate types" button.
+- *Not adopted (plan/API):* "8 fields · round-trip 0.018 %" on cards — the list endpoint returns neither field counts nor gate numbers; adding them is an API change. "Converting" status kept in the filter (plan §4 lifecycle). Archive + "Show archived" kept (plan §12 behaviour).
+
+*A2 — wizard step 1 (`UploadStep`)*
+- Two-column layout (drop zone left, form card right) → one card: drop zone on top, the picked file as its own row (format badge · name · size · Replace), a 2-column field grid, scope as two large radio cards, footer Cancel / "Upload & convert →".
+- Company: picker sits in the page header → it is the first field of the form ("· you can create for any company"); company account: read-only "· your company".
+- Type: "+ New type" button above the select → hint "· or create a new type" in the label; Brand/Country hints "· optional" (· this company's brands).
+- Title "Upload a certificate template" → "New certificate template"; back link styled blue "← Templates".
+- Scope copy: "One certificate per… Product / Invoice" → "One certificate for… Each product / The whole invoice". *Plan wins:* the per-invoice hint keeps "invoice-level fields only for now" (repeating groups = Phase 7, not built).
+- Step pills: smaller, bordered → mockup size, completed steps "✓ n Name" in green without border; while converting the first pill reads "1 Upload · converting…".
+
+*A3 — converting state*
+- One spinner + thin bar with the raw task message → card with spinner, "Converting your design" + "Usually under 10 seconds. You can leave — we'll keep going.", current stage + % above a progress bar, and five named stages (uploaded ✓ / converted / cleaned / measuring lines & fonts / thumbnail) with done/active/pending states; the backend reports 15/45/65/85 % per stage, so the stage is derived from progress.
+- No preview aside → thumbnail placeholder "The thumbnail appears when conversion finishes."
+- Failure: a small red text box "Upload a corrected file below as a new version." with the upload form underneath → a failure card with the specific title (NO_PDF_CONTENT / NO_LIVE_TEXT), the human message, the backend message, and an "Upload a new file" button that opens the new-version upload.
+- *Not adopted:* per-stage timings and file size (the version payload has no source size, timings only after the job ends) — no API change.
+
+*A4 — `FieldMarker` + `FieldPanel` (step 2)*
+- Document toolbar: zoom only → instruction "Select the text that changes. **Ctrl** + select to add several." on the left of the zoom controls.
+- Field highlight colour yellow → blue tint (mockup `.f`), active field stronger blue; "Make field" button shows the "Enter" hint.
+- Field rows: chevron + label/sample → blue dot, monospace **key**, “sample” in quotes, source pill, align pill (L/C/R).
+- Header "Fields (n)" + violet full-width AI button inside the list → "Fields · n" with a secondary "✦ Suggest fields (AI)" button in the header.
+- Editor: plain bordered box → blue 2px card titled with the sample; Label/Key side by side; "Anchor" button row → "Align" segmented control; "Required" → "Required — flag the certificate if empty".
+- Save state inside the panel header → page header, next to the status pill (mockup: `draft` · ✓ Saved).
+- "Next: settings" above the panel → panel footer with "Back" + "Next: settings →".
+- *Plan wins:* the mockup's "New field from selection … Cancel / Add field" form would make field creation a two-step confirm; the plan (§13.4) creates one draft per line immediately on "Make field"/Enter and autosaves. Kept; the newly made field opens in the editor card styled as in the mockup.
+
+*A5 — `PrepareReport`, test fill, `ActivateStep` (steps 4–5)*
+- Report: a status line + a list of check labels → a status band (green "Prepare passed — ready to activate" / red failed) with "Run again", then metric cards per check (measured value, limit, ✓ pass / ✗ fail) computed from the stored report.
+- Pixel comparison hidden behind a `<details>` link → visible "Pixel comparison" with the original thumbnail and the diff image per page ("Difference · x %"). *Not adopted:* the "Cleared + refilled" image — no endpoint serves it (API change).
+- Per-field table "Calibration Δx/Δw · Round-trip Δx/Δw · Status" → "Field · Align · Position Δ · Width Δ · Result" (pill). Calibration failures still listed in Result.
+- Layout: report and test fill stacked full width → report left, test fill as an aside on the right ("Rendered on the server — exactly what the PDF will show."); flags explained in sentences under the preview.
+- Aside footer: "Activating replaces vN / no active version in this slot." + the next action. *Plan wins:* activation stays its own confirmation step (§13.4 step 5); the footer button leads to it.
+- Activate step: blue "Activate" → green "Activate vN"; the "replaces" sentence as in the mockup.
+- *Not adopted (plan gap noted):* "Invoice item (optional)" picker in test fill — plan §13.4 mentions it and the API accepts `invoiceItemId`, but the UI never had it; adding it is new behaviour, so it's left for an owner decision.
+
+**Fix (2026-10-18) — done; UI smoke pending (see below)**
+- **Shared:** `CompanyPicker` now shows a company account's own name read-only (`data-testid="company-fixed"`) where system users get the select (`variant="inline"` for headers, `"field"` for filter cards/forms); `useCompanyScope` exposes `companyName` (from `GET /auth/me`'s `company.name`). New `RoleBanner` (indigo "System admin" / green "Company account" + name) on every certificates page: types, templates, wizard, invoices (B1 copy kept), invoice review, generated certificates, editor.
+- **A1** `CertificateTemplates.jsx`: filter card (Company · Type · Brand), status pills (count on the selected pill — the API returns one total per query), show-archived kept; cards with pills, status hint line, version line, status-specific action; dashed "Upload a design" tile; "Certificate types" button.
+- **A2** `UploadStep`: one card — drop zone, file row with Replace, 2-col grid incl. Company field, "or create a new type" hint, scope radio cards, Cancel / "Upload & convert →". New-version upload = file only.
+- **A3** wizard converting state: `ConvertingCard` (5 named stages derived from the job's 15/45/65/85 % progress, % + progress bar, "You can leave", thumbnail placeholder); `FailureCard` with the specific title for `NO_PDF_CONTENT`/`NO_LIVE_TEXT`, the human + backend message, "Upload a new file" (opens the new-version file input below). Step pills restyled; "1 Upload · converting…".
+- **A4** `FieldPanel`/`FieldMarker`/`FieldsStep`: rows (dot · key · “sample” · source pill · L/C/R), editor card (Label/Key, Value comes from, Format, Align segmented, "Required — flag the certificate if empty"), "Fields · n" header with "Suggest fields (AI)", footer Back / "Next: settings →"; save state moved to the page header beside the status pill; blue highlights + "Make field Enter"; toolbar instruction via a new optional `DocumentFrame` `hint` prop.
+- **A5** `PrepareReport`/`PrepareStep`/`ActivateStep`: status band with actions, 7 metric cards (value vs limit, pass/fail) computed from the stored report, visible pixel comparison (original thumbnail + diff per page), Field/Align/Position Δ/Width Δ/Result table; test fill as the right-hand aside with the server-rendered frame and the "Activating replaces …" footer; green "Activate vN".
+- No API, route, payload or behaviour changes (same calls, same autosave/prepare/activate flow).
+- **Smoke updated** (`tests/certificates-v2/ui-smoke.phases.mjs`): new copy ("Upload & convert", "Prepare passed — ready to activate", "Position Δ", "Activate v1"); phase 1 now also asserts the system-admin banner + picker, then logs in as the throwaway **company account** (sets a bcrypt password on it, real `POST /companies/login`) and asserts the read-only name, green banner and no picker on the list and the upload form (A1/A2), then restores the admin session; phase 2 asserts the 7 check cards.
+- **Checks:** `oxlint` on every V2 file: clean (0 warnings/errors); `vite build` OK.
+- **UI smoke:** run 2026-10-19 — see below.
+
+**Finish (2026-10-19) — smoke, owner decisions, B-screens, accessibility**
+- **Stack:** fresh `npm run dev:test` (then one shared restart with the backend review session to load both sessions' code); login = throwaway local Admin `qa_ui_smoke` (random password kept only in the session scratchpad), deleted afterwards — 0 users left, password file gone, 0 smoke companies left. The e9 test bypass is an API header, not a browser session, so it couldn't be used for the UI login.
+- **Found by the smoke:** a **company account** was redirected to the dashboard from every certificates page and had no Certificates menu: `GET /auth/me` gives a company session a fixed slug list (`manage_company_brands`, `create_certificates`, `read_dashboard`) while the API lets company tokens through every V2 route (`COMPANY_ALLOWED_MODULES`). Fixed in the frontend only: `hasPermission()` grants the four V2 modules (certificates, certificate_types, certificate_templates, invoices) to an `isCompany` session; the sidebar now uses `hasPermission()`.
+- **Company-account pass:** changes only the throwaway company's password hash; the original hash is read first and written back in a `finally`, asserted ("original password hash restored"). It now also checks the sidebar and the invoices page (B1).
+- **Owner decisions:** (1) A5 test fill **"Invoice item (optional)"** added — lines of the company's confirmed invoices (ready / generating / generated / partially_failed), grouped by invoice, ignored lines left out, sent as `invoiceItemId`; clearing it falls back to product / typed values. (2) A1 **"N fields · round-trip x %"** added: `GET /certificate-templates` gains additive `fieldCount` + `pixelDiffPct` per template (active version, else latest `ready`; null otherwise) — OpenAPI path file + bundle, `tests/certificates-v2/templates.list_gate.test.js` (9/9); the card shows it on active cards (in place of the hint) and under "Passed the gate" on ready ones. (3) "Cleared + refilled" image: skipped.
+- **B1–B5 + company variants:** B1 — Company is the upload form's first field ("· you can upload for any company"; read-only name for a company account), header picker only when there's no form, 3:2 grid; B2 — "Review screen loading…" skeleton; B4/B5/A1 — status pills lowercase as in every mockup; B5 — flags as code pill ("missing") + the plan's sentence; A1 company — filter shows the name only, 40px like its selects. *Kept on purpose:* the company picker in detail-page headers (review, editor — removing it would strand a system user on another company's link), role banners on B3–B5 (added in A1–A5 for every page), B2's "When done → Review" button (the page switches by itself; a button would be new behaviour), B4's "← INV-…" back link (target change).
+- **Accessibility:** every control labelled (search fields, list filters, source picker + its fixed-text/combination inputs, invoice cells "Line n · Column", test-fill selects); icon-only buttons have `aria-label` (invoice line change/ignore/delete, AI chip accept/reject, value reset, thumbnail link); `role="progressbar"` with value + name on convert, invoice reading, prepare and generation; stage lists use `aria-current="step"` + "done / in progress / not started" in text; live regions narrowed to the stage name / batch heading / save state. The smoke now runs a DOM audit on 15 screens (labels, icon-only names, progressbars, a visible focus ring on every Tab stop).
+- **Checks:** `oxlint` clean on all certificates files; `vite build` OK; UI smoke **112/112 three consecutive runs**, zero console errors.
+- **Commits:** frontend `6d9a5e2`; backend `2d6010c` (list fields only).
+- **Left:** nothing open from this list.
