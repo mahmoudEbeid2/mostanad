@@ -908,6 +908,7 @@ model CertificateBatch {
   zipFileId       String?   @map("zip_file_id")
   startedByUserId String?   @map("started_by_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") // last progress — the stuck-batch cutoff (review #5)
   finishedAt      DateTime? @map("finished_at")
 
   certificates Certificate[]

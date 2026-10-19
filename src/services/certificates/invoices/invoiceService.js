@@ -4,6 +4,7 @@ import * as fileStore from "../storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { extractInvoice } from "./invoiceExtractor.js";
 import { dateValue } from "./dateNormalizer.js";
+import { normalizeQuantity } from "./quantityNormalizer.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
 import { matchInvoice } from "../matching/productMatcher.js";
 
@@ -191,10 +192,16 @@ function mergeFields(current, patch, defs) {
     const v = patch[f.path];
     if (f.type === "date") next[f.path] = dateValue(v);
     else if (f.type === "number") {
-      const n = v === null || v === "" ? null : Number(v);
-      if (n !== null && !Number.isFinite(n)) throw new CertError("INVALID_VALUE", `${f.label} must be a number`, 422);
+      // the same reading as extraction: "1.250,5" is accepted, "1.250" is refused, never silently 1.25 (review #4)
+      const q = v === null || v === "" ? { value: null } : normalizeQuantity(v);
+      if (q.ambiguous) throw new CertError("AMBIGUOUS_QUANTITY", `${f.label} "${v}" could be thousands or a decimal — write it without the separator (e.g. 1250) or with a decimal part (e.g. 1.25 or 1.250,00)`, 422);
+      const n = q.value;
+      if (n === null && v !== null && v !== "") throw new CertError("INVALID_VALUE", `${f.label} must be a number`, 422);
       next[f.path] = n;
-      if (f.path === "quantity") next.quantityRaw = v === null || v === "" ? null : String(v);
+      if (f.path === "quantity") {
+        next.quantityRaw = v === null || v === "" ? null : String(v);
+        delete next.quantityAmbiguous; // the reviewer typed the number (review #4)
+      }
     } else next[f.path] = v === null ? null : String(v).trim() || null;
   }
   return next;

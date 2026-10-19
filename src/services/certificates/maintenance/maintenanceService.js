@@ -1,6 +1,7 @@
 import fs from "fs";
 import { prisma } from "../../../lib/prisma.js";
 import * as fileStore from "../storage/fileStore.js";
+import { liveJobRefs } from "../jobs/queues.js";
 
 // Operations (CERTIFICATES_V2_PLAN.md §15): the daily cleanup and the metrics.
 //  - orphan StoredFiles: no row references them and they are older than 24 h
@@ -8,7 +9,7 @@ import * as fileStore from "../storage/fileStore.js";
 //    never touched). Old certificate versions are never orphans — they are the
 //    audit trail.
 //  - stuck tasks: a Certificates V2 BackgroundTask pending/processing for more
-//    than 30 min → failed with a reason, and its entity is put back into a state
+//    than 30 min, whose BullMQ job is no longer active/waiting/delayed, → failed with a reason, and its entity is put back into a state
 //    the user can act on (never left "converting"/"generating" forever).
 
 export const CERT_TASK_TYPES = [
@@ -58,19 +59,31 @@ export async function cleanupOrphanFiles({ olderThanHours = 24, now = new Date()
 }
 
 /** Fails Certificates V2 tasks with no progress for `olderThanMinutes` and releases their entities. */
-export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), companyId } = {}) {
+// `queueNames` is for tests (a private queue); the daily job checks the three real ones.
+export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), companyId, queueNames } = {}) {
   const cutoff = new Date(now.getTime() - olderThanMinutes * 60_000);
   const own = companyId ? { companyId } : {};
   const reason = `STUCK: no progress for ${olderThanMinutes} min — the worker probably stopped. Try again.`;
-  const tasks = await prisma.backgroundTask.updateMany({
-    where: { ...own, type: { in: CERT_TASK_TYPES }, status: { in: ["pending", "processing"] }, updatedAt: { lt: cutoff } },
-    data: { status: "failed", error: reason },
-  });
-  const converting = await prisma.templateVersion.updateMany({ where: { ...(companyId ? { template: { companyId } } : {}), status: { in: ["uploaded", "converting"] }, updatedAt: { lt: cutoff } }, data: { status: "failed", error: reason } });
-  const preparing = await prisma.templateVersion.updateMany({ where: { ...(companyId ? { template: { companyId } } : {}), status: "preparing", updatedAt: { lt: cutoff } }, data: { status: "draft", error: reason } });
-  const extracting = await prisma.invoice.updateMany({ where: { ...own, status: { in: ["uploaded", "extracting"] }, updatedAt: { lt: cutoff } }, data: { status: "failed", error: reason } });
+  // A long or queued job is not stuck: anything BullMQ still holds as
+  // active/waiting/delayed is skipped, whatever its timestamps say (review #5).
+  const live = await liveJobRefs(queueNames);
+  const idsNotLive = (rows, set) => rows.map((r) => r.id).filter((id) => !set.has(id));
+  const stuckTaskIds = idsNotLive(
+    await prisma.backgroundTask.findMany({ where: { ...own, type: { in: CERT_TASK_TYPES }, status: { in: ["pending", "processing"] }, updatedAt: { lt: cutoff } }, select: { id: true } }),
+    live.jobIds
+  );
+  const tasks = await prisma.backgroundTask.updateMany({ where: { id: { in: stuckTaskIds } }, data: { status: "failed", error: reason } });
+  const versionScope = companyId ? { template: { companyId } } : {};
+  const stuckVersions = async (status) =>
+    idsNotLive(await prisma.templateVersion.findMany({ where: { ...versionScope, status, updatedAt: { lt: cutoff } }, select: { id: true } }), live.entityIds);
+  const converting = await prisma.templateVersion.updateMany({ where: { id: { in: await stuckVersions({ in: ["uploaded", "converting"] }) } }, data: { status: "failed", error: reason } });
+  const preparing = await prisma.templateVersion.updateMany({ where: { id: { in: await stuckVersions("preparing") } }, data: { status: "draft", error: reason } });
+  const stuckInvoiceIds = idsNotLive(await prisma.invoice.findMany({ where: { ...own, status: { in: ["uploaded", "extracting"] }, updatedAt: { lt: cutoff } }, select: { id: true } }), live.entityIds);
+  const extracting = await prisma.invoice.updateMany({ where: { id: { in: stuckInvoiceIds } }, data: { status: "failed", error: reason } });
   // a batch that never finished: its unrendered certificates fail, the invoice can be generated again
-  const batches = await prisma.certificateBatch.findMany({ where: { ...own, status: { in: ["queued", "running"] }, createdAt: { lt: cutoff } }, select: { id: true, invoiceId: true } });
+  const batches = (await prisma.certificateBatch.findMany({ where: { ...own, status: { in: ["queued", "running"] }, updatedAt: { lt: cutoff } }, select: { id: true, invoiceId: true } })).filter(
+    (b) => !live.entityIds.has(b.id)
+  );
   for (const b of batches) {
     await prisma.certificate.updateMany({ where: { batchId: b.id, status: "pending" }, data: { status: "failed", error: reason } });
     const certs = await prisma.certificate.findMany({ where: { batchId: b.id }, select: { status: true, flagCount: true } });

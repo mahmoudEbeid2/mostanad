@@ -593,7 +593,7 @@ The report is stored in `TemplateVersion.prepareReport` and shown in the UI with
 **Extractor** (`INVOICE_EXTRACT`, native file input like `labelExtractor.js`, `responseSchema`)
 - **header:** `{ invoiceNumber, invoiceDate, supplierName, customerName, customerCountry, currency }`
 - **items[]:** `{ lineNo, name, code, batchNo, productionDate, expiryDate, quantity, unit, packing, extra{} }`
-- Every field is nullable. Each value keeps a raw string; dates are additionally normalised to ISO only when unambiguous.
+- Every field is nullable. Each value keeps a raw string; dates are additionally normalised to ISO only when unambiguous. Quantities likewise (review #4): a lone `.` or `,` followed by exactly three digits ("1.250", "1,250") is 1250 or 1.25 → `quantity: null`, `quantityRaw` kept, `quantityAmbiguous: true` and an extraction warning; the reviewer types the number (which clears the flag). Two separators, a repeated separator, or a group that cannot be thousands ("0,250", "1250.500") are decided.
 
 **Failure → `failed`** with Google's real message. No retry with a different model, no fallback.
 

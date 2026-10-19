@@ -5,7 +5,7 @@ import * as prepareService from "../../services/certificates/templates/prepareSe
 import * as assistService from "../../services/certificates/templates/assistService.js";
 import { getSourceCatalogue } from "../../services/certificates/templates/sourceCatalogue.js";
 import { searchProducts } from "../../services/certificates/matching/productSearch.js";
-import { companyFor, scopeOf, actorId, CERT_HTML_HEADERS } from "./requestScope.js";
+import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
 
 export const createTemplate = catchAsync(async (req, res) => {
   const data = await templateService.createTemplateFromUpload({
@@ -61,7 +61,7 @@ export const getVersionHtml = catchAsync(async (req, res) => {
     variant === "sample"
       ? await prepareService.renderSample(req.params.id, scopeOf(req))
       : (await templateService.getVersionHtml(req.params.id, scopeOf(req), variant)).html;
-  res.set(CERT_HTML_HEADERS).status(200).send(html);
+  sendCertHtml(res, html);
 });
 
 // ── Phase 2: fields, prepare, activate ───────────────────────────────────────

@@ -3,7 +3,7 @@ import * as batchService from "../../services/certificates/generation/batchServi
 import * as certificateService from "../../services/certificates/certificates/certificateService.js";
 import * as editService from "../../services/certificates/certificates/editService.js";
 import { getMetrics } from "../../services/certificates/maintenance/maintenanceService.js";
-import { companyFor, scopeOf, actorId, CERT_HTML_HEADERS } from "./requestScope.js";
+import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
 
 // Generation + generated certificates (CERTIFICATES_V2_PLAN.md §10–§12). Thin.
 
@@ -34,7 +34,7 @@ export const getCertificate = catchAsync(async (req, res) => {
 
 export const getCertificateHtml = catchAsync(async (req, res) => {
   const html = await certificateService.getCertificateHtml(req.params.id, scopeOf(req), req.validatedQuery?.version);
-  res.set(CERT_HTML_HEADERS).status(200).send(html);
+  sendCertHtml(res, html);
 });
 
 export const getCertificateThumbnail = catchAsync(async (req, res) => {

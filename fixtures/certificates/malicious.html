@@ -9,8 +9,16 @@
 <style>
 @import url("https://evil.example/imported.css");
 @import 'https://evil.example/imported2.css';
+@\69mport "https://evil.example/escaped-import.css";
 @font-face { font-family: remote; src: url(https://evil.example/font.woff) format("woff"); }
 body { background: url('https://evil.example/bg.png'); width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#x); }
+/* review #3 - escaped url(), image-set()/image()/cross-fade()/src() strings */
+.e1 { background: u\72 l(https://evil.example/escaped-url.png); }
+.e2 { background-image: image-set("https://evil.example/image-set.png" 1x); }
+.e3 { background-image: -webkit-image-set(url(https://evil.example/webkit-set.png) 1x, "https://evil.example/webkit-set2.png" 2x); }
+.e4 { background: \75\72\6c(https://evil.example/all-escaped.png); }
+.e5 { background-image: image("https://evil.example/image-fn.png"); }
+.e6 { background-image: cross-fade(url(data:image/png;base64,AA), "https://evil.example/cross-fade.png", 50%); }
 .ok { color: #222; background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==); }
 </style>
 <script>window.__pwned = "head-script";</script>
@@ -27,6 +35,8 @@ body { background: url('https://evil.example/bg.png'); width: expression(alert(1
 <a href="javascript:window.__pwned='a-href'">click me</a>
 <a href="https://evil.example/">external link</a>
 <div style="background:url(https://evil.example/inline.png); color: red">Inline remote url</div>
+<div class="e1 e2 e3 e4 e5 e6" style="width:20px;height:20px">escaped CSS urls</div>
+<div style="background:u\72 l(https://evil.example/inline-escaped.png); width:20px; height:20px">Inline escaped url</div>
 <div style="width: expression(alert(1))">Inline expression</div>
 <iframe src="https://evil.example/frame"></iframe>
 <object data="https://evil.example/x.swf"></object>
@@ -41,6 +51,8 @@ body { background: url('https://evil.example/bg.png'); width: expression(alert(1
   <a href="javascript:alert(1)"><rect width="10" height="10" fill="red"></rect></a>
   <animate onbegin="alert(1)" attributeName="x"></animate>
   <rect x="5" y="5" width="30" height="30" fill="#2a6" onload="alert(1)"></rect>
+  <rect width="5" height="5" fill="url(https://evil.example/paint.svg#p)" stroke="u\72 l(https://evil.example/stroke.svg#s)" mask="url(https://evil.example/mask.svg#m)" clip-path="url(https://evil.example/clip.svg#c)" filter="url(https://evil.example/filter.svg#f)"></rect>
+  <rect width="4" height="4" fill="url(#local-gradient)"></rect>
   <style><img src=x onerror="window.__pwned='svg-style-mxss'"></style>
 </svg>
 <math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></table></mtext></math>

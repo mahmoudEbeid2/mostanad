@@ -111,6 +111,8 @@ try {
   const malHtml = mal.buffer.toString("utf8").toLowerCase();
   assert("stored malicious HTML: no script/iframe/form/on*/javascript:/remote URL",
     !/<script|<iframe|<form|<object|<embed|<base|javascript:|evil\.example/.test(malHtml) && !/<[^>]*\son[a-z]+\s*=/.test(malHtml));
+  const cspMeta = /<head[^>]*>\s*<meta http-equiv="content-security-policy" content="([^"]+)">/.exec(malHtml);
+  assert("HTML response carries the CSP as <meta>, first in <head>, same policy as the header (review #3)", cspMeta?.[1] === mal.headers.get("content-security-policy")?.toLowerCase(), malHtml.slice(0, 300));
 
   console.log("\n🧪 Slot uniqueness and new versions");
   const pharmaTpl = goldens["PHARMAVET_COA.pdf"].up.data.data.templateId;

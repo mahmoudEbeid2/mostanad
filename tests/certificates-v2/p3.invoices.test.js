@@ -51,7 +51,9 @@ try {
   const shaped = shapeExtraction(modelOut);
   assert("header trimmed, date as { raw, iso }", shaped.header.invoiceNumber === "INV-2026-0042" && shaped.header.invoiceDate.raw === "15/04/2026" && shaped.header.invoiceDate.iso === "2026-04-15");
   assert("item dates keep raw + unambiguous iso", shaped.items[0].data.expiryDate.iso === "2027-06" && shaped.items[1].data.productionDate.iso === null && shaped.items[1].data.productionDate.raw === "03/04/2025");
-  assert("quantity parsed, raw kept", shaped.items[0].data.quantity === 1200 && shaped.items[0].data.quantityRaw === "1,200" && shaped.items[3].data.quantity === null && shaped.items[3].data.quantityRaw === "abc");
+  assert("quantity: ambiguous \"1,200\" → null + raw kept + flagged; \"50\" parsed; unreadable → null (review #4)",
+    shaped.items[0].data.quantity === null && shaped.items[0].data.quantityRaw === "1,200" && shaped.items[0].data.quantityAmbiguous === true &&
+    shaped.items[1].data.quantity === 50 && !shaped.items[1].data.quantityAmbiguous && shaped.items[3].data.quantity === null && shaped.items[3].data.quantityRaw === "abc");
   assert("extra columns kept", shaped.items[0].data.extra["Reg. No"] === "J-77");
   assert("duplicate line numbers made unique", new Set(shaped.items.map((i) => i.lineNo)).size === 4, shaped.items.map((i) => i.lineNo));
 
@@ -127,8 +129,13 @@ try {
   assert("ignore a line", r.data?.data?.item?.matchStatus === "ignored");
   r = await api("PATCH", `/invoices/${inv.id}/items/${line(1).id}`, A, { data: { batchNo: " AVVS1124099 ", expiryDate: "07/2027", quantity: "10" } });
   const d1 = r.data?.data?.item?.data;
-  assert("edit item cells (trim, date re-normalised, number)", d1?.batchNo === "AVVS1124099" && d1.expiryDate.iso === "2027-07" && d1.quantity === 10, d1);
+  assert("edit item cells (trim, date re-normalised, number; the ambiguous-quantity flag is cleared)", d1?.batchNo === "AVVS1124099" && d1.expiryDate.iso === "2027-07" && d1.quantity === 10 && !("quantityAmbiguous" in d1), d1);
   assert("raw extraction is never edited", (await prisma.invoiceItem.findUnique({ where: { id: line(1).id } })).dataExtracted.batchNo === "AVVS1124011");
+  r = await api("PATCH", `/invoices/${inv.id}/items/${line(1).id}`, A, { data: { quantity: "1.250" } });
+  assert("review edit: an ambiguous quantity is refused (422 AMBIGUOUS_QUANTITY), not stored as 1.25", r.status === 422 && r.data?.code === "AMBIGUOUS_QUANTITY", r.data);
+  r = await api("PATCH", `/invoices/${inv.id}/items/${line(1).id}`, A, { data: { quantity: "1.250,00" } });
+  assert("review edit: European \"1.250,00\" → 1250", r.data?.data?.item?.data?.quantity === 1250, r.data?.data?.item?.data);
+  r = await api("PATCH", `/invoices/${inv.id}/items/${line(1).id}`, A, { data: { quantity: "10" } });
   r = await api("PATCH", `/invoices/${inv.id}/items/${line(1).id}`, A, { data: { quantity: "lots" } });
   assert("non-number quantity → 422", r.status === 422, r.status);
   r = await api("PATCH", `/invoices/${inv.id}`, A, { header: { invoiceNumber: "INV-2026-0042-A", invoiceDate: "2026-04-16" }, country: "ae" });

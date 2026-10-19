@@ -18,9 +18,29 @@ export const scopeOf = (req) => scopeFor(req);
 
 export const actorId = (req) => req.user?.id || null;
 
+export const CERT_HTML_CSP = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
+
 export const CERT_HTML_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
-  "Content-Security-Policy": "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'",
+  "Content-Security-Policy": CERT_HTML_CSP,
   "X-Content-Type-Options": "nosniff",
   "Cache-Control": "private, no-store",
 };
+
+// The header does not reach a frame the UI fills via srcdoc / document.write
+// (about:blank), so the same policy also travels inside the document (review
+// #3) — first thing in <head>, before anything it has to govern. Added on the
+// way out only; the stored file is untouched.
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CERT_HTML_CSP}">`;
+
+export function withCspMeta(html) {
+  const s = String(html ?? "");
+  const head = /<head(?=[\s>])[^>]*>/i;
+  const root = /<html(?=[\s>])[^>]*>/i;
+  if (head.test(s)) return s.replace(head, (m) => m + CSP_META);
+  if (root.test(s)) return s.replace(root, (m) => `${m}<head>${CSP_META}</head>`);
+  const doctype = s.match(/^\s*<!doctype[^>]*>/i)?.[0] || "";
+  return `${doctype}<head>${CSP_META}</head>${s.slice(doctype.length)}`;
+}
+
+export const sendCertHtml = (res, html) => res.set(CERT_HTML_HEADERS).status(200).send(withCspMeta(html));

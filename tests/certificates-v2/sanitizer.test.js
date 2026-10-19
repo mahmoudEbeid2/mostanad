@@ -66,6 +66,32 @@ assert("quoted remote url → data:,", sanitizeCss("a{b:url('//x/y.png')}") === 
 assert("data url untouched", sanitizeCss("a{b:url('data:font/woff;base64,AAA')}") === "a{b:url('data:font/woff;base64,AAA')}");
 assert("@import removed", !sanitizeCss('@import "x.css"; a{}').includes("@import"));
 
+// review #3 — CSS escapes and URL-taking functions (each was a live bypass)
+const BS = "\\";
+const cssCases = [
+  ["escaped url()  u\\72 l(…)", `a{b:u${BS}72 l(https://evil.example/a.png)}`],
+  ["fully escaped \\75\\72\\6c(…)", `a{b:${BS}75${BS}72${BS}6c(https://evil.example/a.png)}`],
+  ["escaped @import", `@${BS}69mport "https://evil.example/c.css"; a{}`],
+  ["image-set() string", `a{b:image-set("https://evil.example/b.png" 1x)}`],
+  ["-webkit-image-set() string", `a{b:-webkit-image-set('https://evil.example/b.png' 1x)}`],
+  ["image() string", `a{b:image("https://evil.example/b.png")}`],
+  ["cross-fade() string", `a{b:cross-fade(url(data:,), "https://evil.example/b.png", 50%)}`],
+  ["src() string", `@font-face{src:src("https://evil.example/f.woff")}`],
+  ["escaped url inside url()", `a{b:url(h${BS}74tps://evil.example/x)}`],
+];
+for (const [label, css] of cssCases) {
+  const outCss = sanitizeCss(css);
+  assert(`CSS bypass neutralised: ${label}`, !outCss.includes("evil.example") && !/@import/i.test(outCss), outCss);
+}
+assert("data: strings in image-set() are kept", sanitizeCss('a{b:image-set("data:image/png;base64,AA" 1x)}').includes("data:image/png;base64,AA"));
+assert("escapes that are not letters stay as written (quote, digit)", sanitizeCss(`.c${BS}31 23{content:"${BS}22"}`) === `.c${BS}31 23{content:"${BS}22"}`, sanitizeCss(`.c${BS}31 23{content:"${BS}22"}`));
+assert("letter escapes are decoded to the same text", sanitizeCss(`a{font-family:"Ar${BS}69 al"}`) === 'a{font-family:"Arial"}');
+const svgOut = sanitizeTemplateHtml(
+  `<svg><rect width="5" height="5" fill="url(https://evil.example/p.svg#p)" stroke="u${BS}72 l(https://evil.example/s#s)" clip-path="url(#local)"></rect></svg>`
+);
+assert("SVG presentation attributes: remote url() → none", /fill="none"/.test(svgOut) && /stroke="none"/.test(svgOut) && !svgOut.includes("evil.example"), svgOut);
+assert("SVG presentation attributes: same-document url(#id) kept", /clip-path="url\(#local\)"/.test(svgOut), svgOut);
+
 console.log("\n🧪 Line and page ids (§7.1)");
 const pdfLike = sanitizeTemplateHtml(
   '<div class="pf w0" data-page-no="1"><div class="t m0 ff1">A</div><div class="t m0 ff1">B</div></div><div class="pf w0"><div class="t ff2">C</div></div>'

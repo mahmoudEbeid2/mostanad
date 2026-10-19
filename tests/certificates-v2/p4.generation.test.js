@@ -169,6 +169,7 @@ try {
 
   r = await api("GET", `/certificates/${c1.id}/html`, A);
   assert("HTML: static, CSP default-src 'none', nosniff", r.status === 200 && /default-src 'none'/.test(r.headers.get("content-security-policy")) && r.headers.get("x-content-type-options") === "nosniff");
+  assert("HTML: the same CSP also as <meta> inside the document (about:blank frames)", r.buffer.toString("utf8").includes(`<meta http-equiv="Content-Security-Policy" content="${r.headers.get("content-security-policy")}">`));
   assert("HTML: contains the values, not the design's sample batch", r.buffer.toString("utf8").includes("AVVS1124011") && r.buffer.toString("utf8").includes("COAAVVS1124011") && !r.buffer.toString("utf8").includes("AVVS1122005"));
   assert("HTML: no script, no contenteditable", !/<script/i.test(r.buffer.toString("utf8")) && !/contenteditable/i.test(r.buffer.toString("utf8")));
   r = await api("GET", `/certificates/${c1.id}/html?version=2`, A);

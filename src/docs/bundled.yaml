@@ -4160,7 +4160,7 @@ paths:
         - Template Versions
       summary: The design as HTML
       description: |-
-        variant=sanitized (as converted), prepared (fields cleared), sample (prepared, refilled with the sample values). Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
+        variant=sanitized (as converted), prepared (fields cleared), sample (prepared, refilled with the sample values). Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`; the same policy is also the first element of `<head>` as `<meta http-equiv="Content-Security-Policy">`, so a frame filled via srcdoc (about:blank) is covered too. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
 
         Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:
@@ -5335,7 +5335,7 @@ paths:
         - Certificates
       summary: A version's static HTML
       description: |-
-        Defaults to the current version. Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
+        Defaults to the current version. Served as `text/html` with `Content-Security-Policy: default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'` and `X-Content-Type-Options: nosniff`; the same policy is also the first element of `<head>` as `<meta http-equiv="Content-Security-Policy">`, so a frame filled via srcdoc (about:blank) is covered too. Show it only inside the sandboxed `DocumentFrame` (plan §13.3).
 
         Permission: `read_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:

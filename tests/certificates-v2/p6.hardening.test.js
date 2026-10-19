@@ -8,6 +8,8 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service.
 import fs from "fs";
 import path from "path";
+import { Queue, Worker } from "bullmq";
+import { getRedisConfig } from "../../src/lib/redis.js";
 import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, form, fixture, FIXTURES, prisma, BASE_URL } from "./helpers.js";
 import { convertVersion } from "../../src/services/certificates/templates/templateService.js";
 import { runPrepareJob } from "../../src/services/certificates/templates/prepareService.js";
@@ -102,13 +104,55 @@ try {
   await prisma.invoice.update({ where: { id: inv.id }, data: { status: "generating" } });
   await prisma.$executeRaw`UPDATE background_tasks SET updated_at = ${old} WHERE id = ${stuckTask.id}`;
   await prisma.$executeRaw`UPDATE invoices SET updated_at = ${old} WHERE id = ${stuckInv.id}`;
-  await prisma.$executeRaw`UPDATE certificate_batches SET created_at = ${old} WHERE id = ${stuckBatch.id}`;
+  await prisma.$executeRaw`UPDATE certificate_batches SET updated_at = ${old} WHERE id = ${stuckBatch.id}`;
+  const longBatch = await prisma.certificateBatch.create({ data: { companyId: coA.id, invoiceId: inv.id, status: "running", plan: {} } });
+  await prisma.$executeRaw`UPDATE certificate_batches SET created_at = ${old} WHERE id = ${longBatch.id}`; // started long ago, progress just now
   res = await failStuckTasks({ companyId: coA.id });
   const t1 = await prisma.backgroundTask.findUnique({ where: { id: stuckTask.id } });
   const t2 = await prisma.backgroundTask.findUnique({ where: { id: freshTask.id } });
   assert("a task with no progress for 30 min → failed with a reason; a fresh one untouched", t1.status === "failed" && /STUCK/.test(t1.error) && t2.status === "processing", res);
   assert("its stuck invoice → failed (can be retried)", (await prisma.invoice.findUnique({ where: { id: stuckInv.id } })).status === "failed");
   assert("its stuck batch → failed, pending certificates failed, invoice released", (await prisma.certificateBatch.findUnique({ where: { id: stuckBatch.id } })).status === "failed" && (await prisma.certificate.findUnique({ where: { id: stuckCert.id } })).status === "failed" && (await prisma.invoice.findUnique({ where: { id: inv.id } })).status === "partially_failed");
+  assert("a batch created > 30 min ago but with recent progress (updatedAt) is left running", (await prisma.certificateBatch.findUnique({ where: { id: longBatch.id } })).status === "running");
+  await prisma.certificateBatch.update({ where: { id: longBatch.id }, data: { status: "failed" } });
+
+  console.log("\n🧪 Daily cleanup — BullMQ still holds the job (review #5)");
+  // A private queue so the running workers can't take the jobs; one job made
+  // ACTIVE for real (a manual worker holds its lock), one left WAITING.
+  const qName = `maintenanceTest_${Date.now()}`;
+  const testQueue = new Queue(qName, { connection: getRedisConfig() });
+  const holder = new Worker(qName, null, { connection: getRedisConfig(), autorun: false });
+  const runTask = await prisma.backgroundTask.create({ data: { type: "certificate_generate_batch", status: "processing", companyId: coA.id } });
+  const runBatch = await prisma.certificateBatch.create({ data: { companyId: coA.id, invoiceId: inv.id, status: "running", plan: {} } });
+  const queuedTask = await prisma.backgroundTask.create({ data: { type: "invoice_extract", status: "pending", companyId: coA.id } });
+  const queuedInv = await prisma.invoice.create({ data: { companyId: coA.id, status: "uploaded", sourceFileId: src.id } });
+  try {
+    await testQueue.add("generateBatch", { entity: "certificate_batch", entityId: runBatch.id, batchId: runBatch.id }, { jobId: runTask.id });
+    const activeJob = await holder.getNextJob("maintenance-test");
+    await testQueue.add("extract", { entity: "invoice", entityId: queuedInv.id, invoiceId: queuedInv.id }, { jobId: queuedTask.id });
+    assert("job states: one active, one waiting", activeJob?.id === runTask.id && (await testQueue.getJobState(runTask.id)) === "active" && (await testQueue.getJobState(queuedTask.id)) === "waiting");
+    await prisma.$executeRaw`UPDATE background_tasks SET updated_at = ${old} WHERE id IN (${runTask.id}, ${queuedTask.id})`;
+    await prisma.$executeRaw`UPDATE certificate_batches SET updated_at = ${old} WHERE id = ${runBatch.id}`;
+    await prisma.$executeRaw`UPDATE invoices SET updated_at = ${old} WHERE id = ${queuedInv.id}`;
+    res = await failStuckTasks({ companyId: coA.id, queueNames: [qName] });
+    const st = async () => ({
+      runTask: (await prisma.backgroundTask.findUnique({ where: { id: runTask.id } })).status,
+      runBatch: (await prisma.certificateBatch.findUnique({ where: { id: runBatch.id } })).status,
+      queuedTask: (await prisma.backgroundTask.findUnique({ where: { id: queuedTask.id } })).status,
+      queuedInv: (await prisma.invoice.findUnique({ where: { id: queuedInv.id } })).status,
+    });
+    let s = await st();
+    assert("running job (active in BullMQ): task + batch untouched despite 31 min without progress", s.runTask === "processing" && s.runBatch === "running", { s, res });
+    assert("queued job (waiting in BullMQ): task + invoice untouched", s.queuedTask === "pending" && s.queuedInv === "uploaded", { s, res });
+    await testQueue.obliterate({ force: true }); // the jobs are gone from Redis — now they really are stuck
+    res = await failStuckTasks({ companyId: coA.id, queueNames: [qName] });
+    s = await st();
+    assert("once BullMQ no longer holds them: all four failed/released", s.runTask === "failed" && s.runBatch === "failed" && s.queuedTask === "failed" && s.queuedInv === "failed", { s, res });
+  } finally {
+    await holder.close();
+    await testQueue.obliterate({ force: true }).catch((err) => console.warn("obliterate test queue:", err.message));
+    await testQueue.close();
+  }
 
   console.log("\n🧪 Metrics (§15)");
   await api("POST", "/invoices", A, form({}, { field: "invoice", buffer: fixture("outlined_text.pdf"), name: "i.pdf", type: "application/pdf" })).then((x) => pollTask(x.data.data.taskId, A));

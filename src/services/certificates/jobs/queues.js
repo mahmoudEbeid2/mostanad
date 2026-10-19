@@ -43,6 +43,27 @@ export async function scheduleRepeating(queueName, schedulerId, pattern, jobName
   return queueFor(queueName).upsertJobScheduler(schedulerId, { pattern }, { name: jobName, data, opts: { removeOnComplete: 30, removeOnFail: 100 } });
 }
 
+/** BullMQ states in which a job is still going to run (or is running). */
+export const LIVE_JOB_STATES = ["active", "waiting", "delayed", "prioritized", "waiting-children"];
+
+/**
+ * Every live job on the three queues → { jobIds, entityIds } (jobId = task id,
+ * entityId from the job data). The daily cleanup asks BullMQ before it fails
+ * anything (review #5); a Redis error propagates — never "assume nothing runs".
+ */
+export async function liveJobRefs(queueNames = Object.values(QUEUES)) {
+  const jobIds = new Set();
+  const entityIds = new Set();
+  for (const name of queueNames) {
+    for (const job of await queueFor(name).getJobs(LIVE_JOB_STATES)) {
+      if (!job) continue;
+      jobIds.add(String(job.id));
+      if (job.data?.entityId) entityIds.add(String(job.data.entityId));
+    }
+  }
+  return { jobIds, entityIds };
+}
+
 export async function closeQueues() {
   await Promise.all(Object.values(queues).map((q) => q.close()));
 }

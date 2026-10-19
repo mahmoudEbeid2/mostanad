@@ -4,6 +4,7 @@ import { MODELS } from "../../ai/modelRegistry.js";
 import { CertError } from "../errors.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
 import { dateValue } from "./dateNormalizer.js";
+import { normalizeQuantity } from "./quantityNormalizer.js";
 
 // Invoice extraction (CERTIFICATES_V2_PLAN.md §9.1) — the ONLY AI call in the
 // certificate pipeline. The invoice file goes to Gemini natively (inline data;
@@ -54,12 +55,6 @@ const PROMPT = [
 export const PROMPT_HASH = crypto.createHash("sha256").update(PROMPT + JSON.stringify(RESPONSE_SCHEMA)).digest("hex").slice(0, 16);
 
 const clean = (v) => (v === null || v === undefined ? null : String(v).trim() || null);
-const toNumber = (v) => {
-  const s = clean(v);
-  if (!s) return null;
-  const n = Number(s.replace(/[\s,](?=\d{3}\b)/g, "").replace(/,/g, "."));
-  return Number.isFinite(n) ? n : null;
-};
 
 /** Model output → { header, items[] } in the stored shape (dates as { raw, iso }). */
 export function shapeExtraction(out) {
@@ -72,8 +67,11 @@ export function shapeExtraction(out) {
       if (f.path === "lineNo") continue;
       if (f.type === "date") data[f.path] = dateValue(it[f.path]);
       else if (f.path === "quantity") {
-        data.quantity = toNumber(it.quantity);
+        // "1.250" is 1250 or 1.25 → null, raw kept, flagged (review #4)
+        const q = normalizeQuantity(clean(it.quantity));
+        data.quantity = q.value;
         data.quantityRaw = clean(it.quantity);
+        if (q.ambiguous) data.quantityAmbiguous = true;
       } else data[f.path] = clean(it[f.path]);
     }
     data.extra = Object.fromEntries((it.extra || []).filter((e) => e?.label).map((e) => [String(e.label).trim(), clean(e.value)]));
@@ -118,7 +116,10 @@ export async function extractInvoice(buffer, mimeType) {
       promptHash: PROMPT_HASH,
       ms: Date.now() - t0,
       at: new Date().toISOString(),
-      warnings: Array.isArray(out.warnings) ? out.warnings.map(String) : [],
+      warnings: [
+        ...(Array.isArray(out.warnings) ? out.warnings.map(String) : []),
+        ...shaped.items.filter((x) => x.data.quantityAmbiguous).map((x) => `Line ${x.lineNo}: quantity "${x.data.quantityRaw}" is ambiguous (thousands or decimal separator) — enter the number in review`),
+      ],
     },
   };
 }
