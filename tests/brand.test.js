@@ -103,7 +103,8 @@ async function run() {
     assert("Status is success", data?.status === "success", JSON.stringify(data));
     assert("Brand has name", data?.data?.brand?.name === "Araby Feed Brand");
     assert("Brand has companyId", data?.data?.brand?.companyId === testCompanyId);
-    assert("Brand has logoUrl", !!data?.data?.brand?.logoUrl, JSON.stringify(data?.data));
+    // Brand logos were removed in 7a0f57e — an uploaded "logo" part is ignored, not persisted.
+    assert("Brand has no logoUrl (brand logos removed)", data?.data?.brand?.logoUrl === undefined, JSON.stringify(data?.data));
 
     if (data?.data?.brand) {
       testBrandId = data.data.brand.id;
@@ -166,7 +167,7 @@ async function run() {
 
     assert("Status is 200", status === 200, `Got ${status}`);
     assert("Name updated successfully", data?.data?.brand?.name === "Araby Feed Updated");
-    assert("Logo path updated", data?.data?.brand?.logoUrl !== uploadedLogoPath);
+    assert("Update ignores logo part (brand logos removed)", data?.data?.brand?.logoUrl === undefined);
 
     // Verify old file was deleted from disk
     if (uploadedLogoPath) {

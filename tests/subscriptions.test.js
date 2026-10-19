@@ -136,7 +136,7 @@ async function run() {
       const start = new Date(sub.startDate);
       const end = new Date(sub.endDate);
       const expectedEnd = new Date(start);
-      expectedEnd.setMonth(expectedEnd.getMonth() + 1);
+      expectedEnd.setUTCMonth(expectedEnd.getUTCMonth() + 1);
 
       // Compare ISO date strings without milliseconds
       const expectedStr = expectedEnd.toISOString().split(":")[0];

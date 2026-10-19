@@ -26,13 +26,14 @@ export const createSubscription = async (data) => {
   if (inputEndDate) {
     endDate = new Date(inputEndDate);
   } else {
-    // Auto calculate endDate based on plan interval
+    // Auto calculate endDate based on plan interval. UTC arithmetic so the
+    // result doesn't depend on the server's timezone or shift across DST.
     endDate = new Date(startDate);
     if (plan.interval === "year") {
-      endDate.setFullYear(endDate.getFullYear() + 1);
+      endDate.setUTCFullYear(endDate.getUTCFullYear() + 1);
     } else {
       // default to month
-      endDate.setMonth(endDate.getMonth() + 1);
+      endDate.setUTCMonth(endDate.getUTCMonth() + 1);
     }
   }
 
