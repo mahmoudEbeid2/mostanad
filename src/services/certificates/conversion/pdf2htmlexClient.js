@@ -11,11 +11,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The timeout covers the whole exchange — headers AND body (review #17): a
 // converter that sends headers and then stalls mid-body used to hang the job.
-async function post(buffer, timeoutMs) {
+async function post(buffer, timeoutMs, bg) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${baseUrl()}/convert?zoom=${CONVERT_ZOOM}`, {
+    const res = await fetch(`${baseUrl()}/convert?zoom=${CONVERT_ZOOM}&bg=${bg}`, {
       method: "POST",
       body: buffer,
       headers: { "Content-Type": "application/pdf" },
@@ -36,16 +36,19 @@ async function post(buffer, timeoutMs) {
 
 /**
  * Converts PDF bytes (an Illustrator .ai with PDF content is a PDF) to HTML.
- * → { html, ms, toolVersion, textLines, warnings[] }
+ * `background`: "png" (default) or "svg" — svg only for templates with a
+ * repeating group (plan §7.8, owner decision 2026-10-20).
+ * → { html, ms, toolVersion, textLines, warnings[], bg }
  * Errors: 422 NO_PDF_CONTENT · 503 CONVERTER_BUSY (after retries) ·
- * 503 CONVERTER_UNREACHABLE · 502 CONVERSION_FAILED.
+ * 503 CONVERTER_UNREACHABLE · 502 CONVERSION_FAILED · 502 CONVERTER_OUTDATED.
  */
-export async function convert(buffer, { retries = 3, timeoutMs = 120_000 } = {}) {
+export async function convert(buffer, { retries = 3, timeoutMs = 120_000, background = "png" } = {}) {
+  const bg = background === "svg" ? "svg" : "png";
   for (let attempt = 1; ; attempt++) {
     let res;
     let body;
     try {
-      ({ res, body } = await post(buffer, timeoutMs));
+      ({ res, body } = await post(buffer, timeoutMs, bg));
     } catch (err) {
       throw new CertError(
         "CONVERTER_UNREACHABLE",
@@ -53,7 +56,11 @@ export async function convert(buffer, { retries = 3, timeoutMs = 120_000 } = {})
         503
       );
     }
-    if (res.ok && body?.html) return body;
+    if (res.ok && body?.html) {
+      // a converter image older than the bg parameter silently returns PNG
+      if (bg === "svg" && body.bg !== "svg") throw new CertError("CONVERTER_OUTDATED", "The pdf2htmlex converter does not support SVG backgrounds — rebuild its image (docker compose build pdf2htmlex)", 502);
+      return body;
+    }
     if (res.status === 422) {
       throw new CertError("NO_PDF_CONTENT", body?.error || "The file has no PDF content.", 422);
     }

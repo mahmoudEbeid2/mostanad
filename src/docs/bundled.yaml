@@ -4259,6 +4259,8 @@ paths:
       description: |-
         Idempotent. Validates keys (snake_case, unique), line ids, offsets (`line.text.slice(charStart, charEnd) === sampleValue`), overlaps, `source` against the catalogue, `format` against the source type, and the selection against the real layout. Returns server-side suggestions (`align: center`, plan D11).
 
+        **Repeating groups (plan §7.8, §8.2):** optional `groups` replaces the group list (omitted = stored groups kept, `[]` removes them). A group cell is a field with `groupKey` whose `source` is `{ kind: "row", path }`, `static` or `manual`. Needs an SVG-background version (409 `GROUP_NEEDS_SVG` → `POST …/enable-groups`). `invoice_lines` only on per_invoice templates, `product_list` only on per_product. The response adds `groups` and `groupDetection` (shape, band, frame, footer line proposal, capacity) per group; a group the engine can't take apart → 422 with `code` `GROUP_RULES_COMBINED` / `GROUP_TABLE_RASTER` / `GROUP_RULES_NOT_FOUND`, `problems[]` and `fallback: "fixed_rows"`.
+
         Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -4297,6 +4299,42 @@ paths:
                     template: COA{{item.batchNo}}
                   required: true
                   align: left
+                - key: name
+                  label: Name
+                  page: 1
+                  lineId: p1-l22
+                  charStart: 0
+                  charEnd: 9
+                  sampleValue: Vitamin E
+                  source:
+                    kind: row
+                    path: name
+                  required: true
+                  align: left
+                  groupKey: constituents
+                - key: amount
+                  label: Amount
+                  page: 1
+                  lineId: p1-l25
+                  charStart: 0
+                  charEnd: 9
+                  sampleValue: 120000 mg
+                  source:
+                    kind: row
+                    path: concentration
+                  required: true
+                  align: left
+                  groupKey: constituents
+              groups:
+                - key: constituents
+                  label: Constituents
+                  mode: repeat
+                  source:
+                    kind: product_list
+                    path: activeIngredients
+                  whenEmpty: dash
+                  required: true
+                  footerY: null
       responses:
         '200':
           description: Saved
@@ -4313,6 +4351,33 @@ paths:
                     expiry:
                       align: center
                   fieldsHash: …
+                  groups:
+                    - key: constituents
+                      label: Constituents
+                      mode: repeat
+                      whenEmpty: dash
+                      required: true
+                      footerY: null
+                      minPitchRatio: 0.85
+                      geometry: null
+                  groupDetection:
+                    constituents:
+                      ok: true
+                      shape: cell_list
+                      sampleRowCount: 3
+                      pitch: 16
+                      band:
+                        y0: 487.881
+                        y1: 541.973
+                      frame:
+                        x0: 68.698
+                        x1: 725.572
+                      footerY: 802.827
+                      footerProposal: 802.827
+                      capacity:
+                        full: 10
+                        min: 12
+                      page: 1
         '401':
           $ref: '#/components/responses/E401'
         '403':
@@ -4320,13 +4385,13 @@ paths:
         '404':
           $ref: '#/components/responses/E404'
         '409':
-          description: 'Coded error: VERSION_NOT_DRAFT'
+          description: 'Coded error: VERSION_NOT_DRAFT · GROUP_NEEDS_SVG'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CertError'
         '422':
-          description: 'Coded error: INVALID_FIELDS (+ problems[])'
+          description: 'Coded error: INVALID_FIELDS (+ problems[]) · GROUP_RULES_COMBINED / GROUP_TABLE_RASTER / GROUP_RULES_NOT_FOUND (+ problems[], fallback)'
           content:
             application/json:
               schema:
@@ -4590,6 +4655,45 @@ paths:
           $ref: '#/components/responses/E403'
         '404':
           $ref: '#/components/responses/E404'
+  /template-versions/{id}/enable-groups:
+    post:
+      tags:
+        - Template Versions
+      summary: New SVG-background version for repeating groups
+      description: |-
+        Re-converts the version's source design with a vector (SVG) background into a NEW draft version (fields copied, its own prepare gate and baseline) and queues the conversion; mark the group on that version (plan §7.8, owner decision 3). Versions without groups stay PNG.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '202':
+          description: Conversion queued — poll the task
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                status: accepted
+                data:
+                  templateId: uuid
+                  versionId: uuid
+                  versionNumber: 2
+                  taskId: uuid
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: 'Coded error: ALREADY_SVG · GROUPS_NEED_PDF (an .html upload) · TEMPLATE_ARCHIVED · VERSION_NOT_CONVERTED'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertError'
   /certificate-field-sources:
     get:
       tags:
@@ -5424,6 +5528,8 @@ paths:
       summary: Edit values → new version
       description: |-
         Optimistic concurrency on `expectedVersion`. The server re-renders and stores version N+1; `changeSummary` = `key: old → new`.
+
+        **Repeating groups (§7.8, §11):** a group's change is its full list of rows `[{ cellKey: text }]` (≤ 200): add / remove / reorder / edit = one new version. Rows for a plain field → 422 `INVALID_VALUE`; text for a group → 422 `INVALID_ROWS`; an unknown cell → 422 `UNKNOWN_FIELD`. The stored group value carries `rows`, `flags` (`missing`, `overflow`, `shrunk`, `glyph:…`) and `rowsFit`.
 
         Permission: `update_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:

@@ -86,7 +86,7 @@ Every number below was measured. Do not "re-discover" these; build on them.
 - Characters are separated by kerning spans `<span class="_ _N">` with **uneven negative `margin-left`** values.
 - Spacer spans (`._`) are `color: transparent`. Some lines carry a negative `word-spacing` class.
 - Fonts are embedded **subset** WOFF data URIs; they contain only the glyphs the design used. The ADDVET regular font lacks `B X j x`.
-- Table rules, logo, signature, stamp and watermark are a single background image.
+- Table rules, logo, signature, stamp and watermark are a single background image **with the default `--bg-format png`**. *(Corrected 2026-10-20, Phase 7 spike.)* With `--bg-format svg` they are separate vector elements of one SVG, which pdf2htmlEX embeds as a base64 `<img>` (`.bi`/`.bf`) — this is what makes repeating groups possible (§7.8). Two cairo artefacts come with it and are normalised at convert time (§20 I26): the page is drawn inside ONE page-wide filter (a blend layer emulated with `feImage`/`feBlend`/`feComposite`), which Chrome prints as a raster with a **hairline box** around the blended stamp/signature; and a constant alpha (a 8–10 % watermark) is written as a full-page luminance mask. Very thin strokes (PHARMAVET's 0.25 pt header brackets) look faint on screen but print at the viewer's 1-device-pixel minimum — exactly like the original PDF does, so that is not a defect.
 - `--embed-javascript 0` still leaves `<script src>` references, which must be stripped.
 
 ### 3.3 Pitfalls (all reproduced)
@@ -289,11 +289,13 @@ model TemplateVersion {
   pages            Json?                            // [{ page, widthPx, heightPx, widthPt, heightPt }]
   lines            Json?                            // [{ id, page, text, box:{x,y,w,h}, fontClass }]  (CSS px, page-relative)
   fontCoverage     Json?    @map("font_coverage")   // { "ff1": "ACDEF…0123…", "ff2": "…" }
-  conversion       Json?                            // { tool:"pdf2htmlEX", version, zoom, ms, warnings[] }
+  conversion       Json?                            // { tool:"pdf2htmlEX", version, zoom, background, ms, warnings[], svg? }
+  backgroundFormat String   @default("png") @map("background_format") // png | svg — svg only for versions with a repeating group (§7.8)
   prepareReport    Json?    @map("prepare_report")  // §7.6 gate results per field + round-trip diff %
   error            String?
   basedOnVersionId String?  @map("based_on_version_id") // "new version from this one"
   fields           TemplateField[]
+  groups           TemplateGroup[]                  // repeating groups (§7.8)
   createdByUserId  String?  @map("created_by_user_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -323,10 +325,28 @@ model TemplateField {
   letterSpacing Float?  @map("letter_spacing") // calibrated CSS px
   fontClass     String? @map("font_class")
   scale         Float?                       // line transform scale (screen px per CSS px)
-  groupKey      String? @map("group_key")    // repeating group (Phase 7)
+  groupKey      String? @map("group_key")    // a cell of this repeating group's sample row (§7.8); its source is a cell source (§10.3)
   sortOrder     Int     @default(0) @map("sort_order")
   @@unique([versionId, key])
   @@map("template_fields")
+}
+
+model TemplateGroup {                           // §7.8 — draft-only, like fields
+  id            String  @id @default(uuid())
+  versionId     String  @map("version_id")      // cascade with the version
+  key           String                          // snake_case, unique per version, never a field key
+  label         String
+  mode          String  @default("repeat")      // repeat | fixed_rows
+  source        Json                            // { kind: "product_list", path } | { kind: "invoice_lines" } | { kind: "manual" }
+  whenEmpty     String  @default("dash") @map("when_empty") // dash | hide
+  required      Boolean @default(true)          // 0 rows → `missing`
+  sampleRows    Int?    @map("sample_rows")     // full table rows: how many rows the design shows (default 1)
+  footerY       Float?  @map("footer_y")        // CSS px from the page top; null = the engine's proposal
+  minPitchRatio Float   @default(0.85) @map("min_pitch_ratio")
+  geometry      Json?                           // written by prepare: shape, band, pitch, frame, footer, capacity, sample rows…
+  sortOrder     Int     @default(0) @map("sort_order")
+  @@unique([versionId, key])
+  @@map("template_groups")
 }
 
 // ---------- invoices ----------
@@ -536,6 +556,36 @@ The report is stored in `TemplateVersion.prepareReport` and shown in the UI with
 - The engine never touches anything outside the field spans. The only exception is during `clear`, which modifies characters inside a field's own range.
 - No `innerHTML` is ever written with a value; values only ever go through `textContent`.
 - Output HTML contains **no** `<script>`, **no** `contenteditable`, and **no** editor classes.
+- Exception for repeating groups (§7.8): `fill` also edits the SVG background of a version with a group — row rules are cloned or stretched, and content between the group and the footer line moves. Text outside the group still only moves as a whole line.
+
+### 7.8 Repeating groups (Phase 7; owner decisions 2026-10-20)
+
+A **group** is one sample row of the design whose cells are ordinary fields (character ranges within a line, §7.1) with `groupKey`. At fill time the row is repeated once per item of a list (`values[groupKey] = [{ cellKey: text }]`) and the content below moves. The engine functions are `inspectGroups` (detection, no mutation), `removeGroupPlaceholders` (prepare) and `fill(…, groups)`.
+
+**Background (decision 3, 8).** Groups need the table rules as separate shapes, so only versions with a group use `--bg-format svg` (`TemplateVersion.backgroundFormat`). Defining the first group on a PNG version is refused (`409 GROUP_NEEDS_SVG`); `POST /template-versions/:id/enable-groups` re-converts the same source file into a **new draft version** (fields copied, its own prepare gate and baseline; a `LINES_CHANGED` warning if the text layer differs). The SVG stays a base64 `<img>` — never inlined — and the engine decodes, edits and re-encodes it. At convert time it is normalised (§20 I26): defence-in-depth cleaning (no script/foreignObject/handlers, only `#id`/`data:image` references), cairo's page-wide blend filter → the destination drawn, then the source with `mix-blend-mode` (removes the printed hairline box, decision 8), constant luminance masks → `opacity`.
+
+**Detection (`inspectGroups`).** From the cells' boxes: the row's columns; text rows below at a regular pitch inside those columns; horizontal rule *levels* covering ≥ 50 % of the columns. Two shapes (decision 6):
+- `cell_list` — the list sits inside one table cell (ADDVET): the band runs from the rule above the sample row to the next rule; the further text rows in it are placeholder rows (2..k) and are removed by prepare; the pitch is the text pitch; `pad` is the band height not taken by rows.
+- `table_rows` — every item is a full table row with its own rule segments (PHARMAVET): the band is k rows (`sampleRows`, default 1) between rule levels; the pitch is the row height.
+The table's **frame** is the horizontal extent of the rule above the band (segments chained to the columns). Every background element is classified once — `above`, `faint` (watermark: low opacity or a mask whose content is < 50 %), `margin` (entirely outside the frame, e.g. a vertical side band drawn letter by letter), `pinned` (starts below the footer line), `below` (between band and footer — moves), `band` (inside the band), `crosser` (crosses the band — never touched). A crossing group is opened only when it is a page-sized/compositing layer or covers the table's columns.
+
+**Refusals (decision 7).** No vector background → `GROUP_NEEDS_SVG`; a raster image behind the row → `GROUP_TABLE_RASTER`; no rules above/below → `GROUP_RULES_NOT_FOUND`; a rule that belongs to the table and crosses the band (one combined path, e.g. a single vertical stroke through every row) → `GROUP_RULES_COMBINED`. `PUT …/fields` answers 422 with `{ problems, fallback: "fixed_rows" }` and the UI offers the fallback.
+
+**Fixed rows (`mode: "fixed_rows"`, decision 7).** For designs whose rules can't be told apart, the designer draws the **maximum** number of rows; the engine needs no rules (it works on PNG backgrounds too, but a group still needs an SVG version — decision 3). Unused rows are hidden and the gap is closed: text below moves up by `(k − N) × pitch` and the background is cut inside the frame (`clip-path` on the background `<img>` plus a shifted copy for the part below the cut). More rows than drawn → `overflow`, `rowsFit = k`.
+
+**Footer line (decision 1).** The engine proposes the line: the start of the largest vertical whitespace (≥ 24 px) below the group, measured over text and moving drawings inside the frame; if the page bottom is the largest gap, the page bottom. Everything starting below it is pinned and never moves. The user confirms it or drags it (`TemplateGroup.footerY`); only content between the band and the line moves.
+
+**Fill (decisions 2, 4, 5).**
+- *Rows:* row 1 is the cells themselves; rows 2..N are clones of row 1's lines with only the cell spans kept, shifted by `i × pitch`. Each cell goes through §7.4 (anchoring, shrink/overflow per value, glyph check). `glyph:` flags of all cells merge into one flag on the group.
+- *Height:* `cell_list` — `max(minRowHeight, pad + N × pitch)`, where `minRowHeight` is a normal one-line row of the same table, so **N = 1 looks exactly like one normal row** (height and text offset); `table_rows` — `N × pitch`. Never smaller than the sample row.
+- *Fit:* the free space is `footerY − 8 px − bottom of the movable content`. Full pitch first; if N rows don't fit, the pitch shrinks to what fits but never below `minPitchRatio` (85 %) → `shrunk`; still too long → `overflow` (blocks finalize) and `rowsFit` = how many rows fit at 85 %. The rows are still drawn (the preview shows the problem); continuation pages are a follow-up (§17).
+- *Background:* `below` elements move by Δ; `cell_list` — vertical rules (and tall cell fills) inside the band are **stretched** by Δ; `table_rows` — row 1's elements are **cloned** per row (its vertical segments stretched/shrunk with the pitch), the band's bottom rule is repeated per row, placeholder rows' drawings are removed. `above`, `faint`, `pinned`, `margin`, `crosser` are never touched (decision 6).
+- *Empty (decision 2):* `whenEmpty: "dash"` keeps one row at the sample row's height showing "—"; `"hide"` removes the whole row including its label and closes the gap (band drawings and its bottom rule removed, content below moves up by the band height). A required group with 0 rows is flagged `missing` either way.
+`fill` returns `geometry[groupKey] = { rows, rendered, pitch, delta, rowsFit }`.
+
+**Prepare gate.** Groups are detected on the untouched document, every field (cells included) is cleared, placeholder rows are removed, and the round trip refills the group with its **original rows** (row 1 = the cells' samples; rows 2..k read from the placeholder text, split per column). Extra check `groups`: every group detected and all its cells cleared. The round-trip pixel diff (≤ 0.05 %) therefore covers the group. The detected geometry is stored in `TemplateGroup.geometry`.
+
+**Measured (2026-10-21, `p7.groups.golden.test.js`, 136 checks).** ADDVET (`cell_list`, 3 sample rows, pitch 16 px, footer proposed at 802.8 px, 10 rows at full pitch / 12 at 85 %) and PHARMAVET (`table_rows`, 1 sample row, pitch 23.6 px, 12 rows): gate passes, round-trip 0 % / ≤ 0.01 %; N = 0 (dash, hide), 1, sample count, 2×, overflow: rows in order at the expected pitch, content below moved by exactly Δ, text below the footer line and the watermark / footer drawings / side band unmoved, N = 1 = a normal row (ADDVET), the original rows render like the design (0 %), PDF 1 page A4 with the row text extractable and no hairline in Chrome's PDF viewer.
 
 ---
 
@@ -569,7 +619,16 @@ The report is stored in `TemplateVersion.prepareReport` and shown in the UI with
   - No overlapping ranges.
   - `source` is valid against the source catalogue (§10.3).
   - `format` is valid for the source type.
-- `GET /certificate-field-sources` returns the catalogue the UI uses for its source picker. It is generated from the Prisma `Product` model plus the invoice header/item schemas, so it never drifts.
+- `GET /certificate-field-sources` returns the catalogue the UI uses for its source picker. It is generated from the Prisma `Product` model plus the invoice header/item schemas, so it never drifts. Its `groups` part lists the group sources (with each product list's and the invoice lines' row paths), the cell source kinds, the modes and the `whenEmpty` options.
+
+**Repeating groups (§7.8).** The same `PUT` takes `groups: [{ key, label, mode, source, whenEmpty, required, sampleRows?, footerY?, minPitchRatio? }]` (omitted = the stored groups are kept; `[]` removes them). Validation, on top of the field rules:
+- the version has an SVG background (`409 GROUP_NEEDS_SVG` otherwise — create one with `POST …/enable-groups`);
+- group keys are snake_case, unique, and never a field key; every group has at least one cell (a field with its `groupKey`), and every `groupKey` names a group; a group's cells are on one page, one group per page;
+- `source`: `product_list` (a list on the product, e.g. `activeIngredients`) only on `per_product` templates; `invoice_lines` only on `per_invoice` templates; `manual` on both;
+- a cell's source is `{ kind: "row", path }` (a path of its group's row), `static` or `manual`; `format` is checked against that path's type;
+- `mode` ∈ `repeat | fixed_rows`, `whenEmpty` ∈ `dash | hide`, `sampleRows` 1–50, `footerY` > 0, `minPitchRatio` 0.85–1 (decision 4: 85 % is the floor; a group may only shrink less);
+- the group is found in the real layout (§7.8 detection) — otherwise 422 with the reason and `fallback: "fixed_rows"`.
+The response adds `groups` and `groupDetection: { [key]: { ok, shape, sampleRowCount, sampleRows, pitch, band, frame, footerY, footerProposal, capacity: { full, min }, page } | { ok: false, error, message } }` — the UI draws the band and the footer line from it. Group settings that change the prepared document (key, mode, sample rows, footer line, pitch ratio) are part of `fieldsHash`; label/source/whenEmpty/required are not.
 
 ### 8.3 Optional AI assistance (never writes HTML; can be disabled per company)
 `POST /template-versions/:id/suggest` (`CERT_ASSIST`). It receives the **line texts only** and returns suggestions the user accepts or rejects one by one:
@@ -647,7 +706,7 @@ The user can:
 | kind | Shape | Resolves from |
 |---|---|---|
 | `invoice` | `{ kind, path }` e.g. `invoiceNumber` | `Invoice.header` |
-| `item` | `{ kind, path }` e.g. `batchNo`, `expiryDate` | the certificate's item (`per_product`) / group (Phase 7) |
+| `item` | `{ kind, path }` e.g. `batchNo`, `expiryDate` | the certificate's item (`per_product`) |
 | `product` | `{ kind, path }` e.g. `name`, `origin`, `packaging`, `category.name`, `activeIngredients[0].concentration` | matched `Product` (+ relations) |
 | `company` | `{ kind, path }` e.g. `name`, `address`, `phone` | `Company` |
 | `brand` | `{ kind, path }` e.g. `name` | the product's brand |
@@ -655,6 +714,22 @@ The user can:
 | `manual` | `{ kind }` | empty at generation; filled in the editor |
 | `today` | `{ kind }` | generation date |
 | `template` | `{ kind, template: "COA{{item.batchNo}}" }` | mustache-style interpolation of the other kinds — **no expressions, no code** |
+
+**Repeating groups (§7.8).** A group's `source` says where its rows come from; each cell's `source` reads its own row:
+
+| Group `source` | Rows | Template scope |
+|---|---|---|
+| `{ kind: "product_list", path: "activeIngredients" }` | one row per entry of that list on the matched product, in order (e.g. `[{ name, concentration }]`) | `per_product` |
+| `{ kind: "invoice_lines" }` | one row per invoice line of the certificate, in line order; each row is the line's data plus its matched product as `product` (tenant-scoped) | `per_invoice` |
+| `{ kind: "manual" }` | none at generation; typed in the editor | both |
+
+| Cell `source` | Value |
+|---|---|
+| `{ kind: "row", path }` e.g. `name`, `concentration`, `batchNo`, `product.name` | that path of the row (row paths are listed per group source in the catalogue) |
+| `{ kind: "static", text }` | the same text in every row |
+| `{ kind: "manual" }` | empty; typed in the editor |
+
+Values only ever come from the declared list (D7); at most 200 rows. A collective certificate's `brand` stays as in I25 — rows never change it.
 
 `format` is applied after resolution:
 - `date` uses tokens `DD MM MMM YYYY YY`; the input must be a date or an ISO string, otherwise the raw value is kept and flagged `format`.
@@ -679,6 +754,24 @@ The user can:
 - `origin` is one of `auto`, `manual` or `restored`.
 - `flags` may contain `missing`, `overflow`, `shrunk`, `glyph:BX` or `format`.
 
+A repeating group's value (§7.8):
+
+```json
+{
+  "kind": "group",
+  "rows": [{ "name": "Vitamin E", "amount": "120000 mg" }],
+  "resolvedRows": [{ "name": "Vitamin E", "amount": "120000 mg" }],
+  "source": { "kind": "product_list", "path": "activeIngredients" },
+  "origin": "auto",
+  "flags": ["shrunk", "glyph:B"],
+  "rowsFit": 12,
+  "editedByUserId": null,
+  "editedAt": null
+}
+```
+
+`flags` on a group: `missing` (required and 0 rows), `overflow` (more rows than fit; `rowsFit` says how many fit), `shrunk` (pitch reduced, ≥ 85 %), one merged `glyph:` for all cells, `format`.
+
 `Certificate.flagCount` = the number of values with blocking flags (`missing` on a required field, `overflow`, `glyph`).
 
 ---
@@ -686,7 +779,7 @@ The user can:
 ## 11. Editing, versions, export, finalize
 
 **Edit**
-- `PATCH /certificates/:id/values` with `{ expectedVersion, changes: { key: value } }`.
+- `PATCH /certificates/:id/values` with `{ expectedVersion, changes: { key: value } }`. For a repeating group the value is its **full list of rows** (`[{ cellKey: text }]`): adding, removing, reordering and editing rows are all one change → a new version, summarised as "rows: 5 rows → 6 rows" / "rows reordered" / "1 row edited". A group sent as text → 422 `INVALID_ROWS`, an unknown cell → 422 `UNKNOWN_FIELD`, rows sent for a plain field → 422 `INVALID_VALUE`. `POST …/fields/:groupKey/reset` puts back the rows of the declared list.
 - A `409` is returned if the version is stale.
 - Otherwise it creates version N+1 by re-running `fill` and storing the new static HTML. `changeSummary` is generated as `key: old → new`.
 
@@ -724,7 +817,8 @@ All routes use `protect` + `restrictToPermission` and are tenant-scoped via `sco
 | GET | `/template-versions/:id` | read | lines, pages, fields, prepareReport |
 | GET | `/template-versions/:id/html?variant=sanitized\|prepared\|sample` | read | `text/html`, CSP `script-src 'none'`, `X-Content-Type-Options: nosniff` |
 | GET | `/template-versions/:id/thumbnail` | read | PNG |
-| PUT | `/template-versions/:id/fields` | update | draft only |
+| PUT | `/template-versions/:id/fields` | update | draft only; `groups` optional (§8.2) |
+| POST | `/template-versions/:id/enable-groups` | update | 202 → a new SVG-background draft version (§7.8) |
 | POST | `/template-versions/:id/suggest` | update | optional AI |
 | POST | `/template-versions/:id/prepare` | update | 202 |
 | POST | `/template-versions/:id/preview` | read | body `{ values }` or `{ invoiceItemId }` → rendered HTML (not stored) |
@@ -968,6 +1062,7 @@ For each set:
 - **Concurrency:** a stale `expectedVersion` → 409; a final certificate → 409.
 - **Idempotency:** re-running `generateBatch` for the same batch creates no duplicates.
 - **Frontend:** a manual QA script per screen (in `mostanad_front/FRONTEND-STATUS.md`), plus a Playwright smoke run of the wizard and the editor against the dev stack (optional, recommended).
+- Repeating groups (Phase 7): `p7.groups.golden.test.js` — both goldens, N = 0 (dash, hide), 1, sample count, 2×, overflow; round trip with the original rows ≤ 0.05 %; PDF 1 page / A4 / extractable text / **no hairline** (Chrome's PDF viewer, PDFium, compared with the original PDF; the un-normalised SVG export is the negative control); fixed rows on SVG and PNG; refusals. `p7.groups.api.test.js` — enable-groups, validation, footer line, prepare/activate, generation from a product list and from invoice lines, row edits as versions, overflow blocks finalize, tenancy. UI smoke phase 7 — marking a group, choosing the source, the footer line, editing rows.
 
 ---
 
@@ -982,7 +1077,8 @@ For each set:
 | **4 · Generation** | `templateSelector`, `valueResolver`, `fieldEngine.fill`; `CertificateBatch`, `Certificate`, `CertificateItem`, `CertificateVersion`; batch job; flags. **FE:** generate plan preview, batch grid | invoice → correct set of certificates with correct values and flags |
 | **5 · Edit, export, finalize** | values PATCH + versions + restore + reset-field; PDF export (P7/P8 rules); ZIP; finalize/duplicate. **FE:** `CertificateEditor`, VersionsDrawer, export, finalize | full loop on both goldens; PDF acceptance (§16.2) passes |
 | **6 · Hardening** | idempotency audit, cleanup job, metrics, load test (20 templates, invoice with 50 items < 3 min on free-tier RPM), docs | load test passes; docs updated; zero console errors |
-| **7 · Repeating groups** (needs owner sample) | `per_invoice` product rows and variable constituent lists: mark a row as a group; clone per item with row pitch; shift content below; continuation pages | owner's collective certificate renders N = 1…max items correctly |
+| **7 · Repeating groups** | Spike (2026-10-20) → Step 2 (owner decisions 2026-10-20, §7.8): SVG background for versions with a group (`enable-groups`), detection of both row shapes, footer line, fill with pitch down to 85 %, `whenEmpty`, overflow, fixed rows fallback, hairline fix; sources product list / invoice lines / manual; row editing in the editor. **FE:** group card + footer line on the marking screen, rows table in the editor | both goldens render N = 0…overflow correctly with the PDF checks; owner marks a group and edits rows in the UI |
+| **7b · Continuation pages** (follow-up, not built) | a group longer than the free space continues on extra pages: page template = the design with the group region cleared, header/footer repeated, "continued" marker, page numbering; `overflow` then no longer blocks for lists that fit on N pages | owner decides the continuation layout (which parts repeat, max pages) |
 | **8 · Retire V1** | remove V1 routes/workers/services/pages, the `aiTemplate*` pipeline and Inkscape from the Dockerfile; remove Legacy nav. V1 DB tables/columns stay (additive rule) | no V1 code paths remain; tests green |
 | **9 · Field detection** (last; not built) | automatic detection of variable values → fields with `origin: "detected"`, `confirmed: false` (D10); never activatable until a human confirms each one | detected fields never reach an active version unconfirmed |
 
@@ -992,11 +1088,11 @@ For each set:
 
 | # | Question | Assumption |
 |---|---|---|
-| A1 | What does a collective (per-invoice) certificate look like? How many items per page? | Phase 7 waits for a sample; until then `per_invoice` has invoice-level fields only |
+| A1 | What does a collective (per-invoice) certificate look like? How many items per page? | **Answered by the Phase 7 decisions (2026-10-20):** a `per_invoice` template may have an `invoice_lines` group; as many lines as fit above the footer line (pitch down to 85 %), beyond that `overflow`. Continuation pages: §17 7b |
 | A2 | An invoice with several brands → one collective certificate, or one per brand/template? | One per resolved template version (i.e. per brand when brand templates exist) |
 | A3 | Who finalizes? Is a second person required? | Any user with `update_certificates`; no dual control yet |
 | A4 | Invoice country: chosen or extracted? | Chosen at upload if given, else the extracted `customerCountry` |
-| A5 | Missing glyphs: will designers provide full font files? | Flag only (`glyph` flag per field). Full-font upload is **out of scope** for this build (owner, 2026-10-16) |
+| A5 | Missing glyphs: will designers provide full font files? | Flag only (`glyph` flag per field; one merged flag per group). Full-font upload is **out of scope** for this build (owner, 2026-10-16). Lists hit it more often ("B" in Biotin on ADDVET; "F", "4", "Z" on PHARMAVET); estimate in `PROGRESS.md` (Phase 7) for scheduling next |
 | A6 | Retention of invoices and PDFs? | Keep everything; policy later |
 | A7 | Arabic/RTL certificate designs? | Out of scope; pdf2htmlEX positions LTR |
 | A8 | Should D4 (code clears, not AI) stand? | Yes — §2 explains why; the owner confirms |
@@ -1015,7 +1111,9 @@ For each set:
 | Chromium runs with `--no-sandbox` (review #16; not changed yet) | Today the renderer's own isolation is: sanitized HTML only (no scripts of its own — the only JavaScript that runs is the injected field engine), every non-data:/about: request blocked, a pooled browser recycled after N renders, per-page timeouts — but a Chromium exploit would land as root in the `certificate-render-worker` container. **Recommendation:** run that worker as a non-root user (`USER node` in the Dockerfile, `uploads/` owned by it), drop `--no-sandbox`/`--disable-setuid-sandbox` and give the container Chromium's seccomp profile (or `cap_add: SYS_ADMIN` only on that service if user namespaces are unavailable); verify with the golden + render tests in the container before enabling in production. Owner decision pending. |
 | Template drift (re-uploaded design breaks fields) | immutable versions; certificates pin a version; new design = new version with its own gate |
 | GPL (pdf2htmlEX) | separate program over HTTP, never linked; confirm with counsel if distributing |
-| Collective `per_invoice` certificates with variable product rows (Phase 7) | not built; waits for the owner's sample (A1). Until then `per_invoice` templates carry invoice-level fields only |
+| Repeating groups on designs other than the two goldens (Phase 7) | detection is geometric (rule levels, text pitch, frame) and was proven on ADDVET and PHARMAVET only. A design it can't read is refused with the reason (never guessed) and offered fixed rows; the prepare gate's round trip with the original rows catches a wrong detection before activation |
+| SVG backgrounds are bigger and slower than PNG | only versions with a group use them (decision 3); ADDVET 0.95 MB / PHARMAVET 1.5 MB base64; a filled render edits the SVG in the browser (~0.5–1 s) |
+| A list longer than the free space | `overflow` (blocks finalize) with `rowsFit`; continuation pages are §17 7b |
 | Arabic / RTL designs (A7) | not built; pdf2htmlEX positions glyphs LTR. A later phase |
 | Automatic field detection (Phase 9) | not built; manual marking only (D10) |
 
@@ -1052,3 +1150,7 @@ Decisions taken while implementing, where the plan was silent or had to bend. Ea
 | I23 | `GET /certificate-metrics` (`read_certificates`, company-scoped) serves the §15 metrics; `GET /api/v1/health` is public and reports converter reachability (no URLs). The daily maintenance is a BullMQ job scheduler on the render queue (`CERT_MAINTENANCE_CRON`, default `0 3 * * *`); maintenance functions accept an optional `companyId` (tests) and run unscoped in production. | §15 names the metrics, the health report and the job but no routes or scheduling mechanism. |
 | I24 | A **system user may open any company's resource by id** without `?companyId=` (`scopeFor` → unscoped `findFirst({ id })`); **lists** still require `?companyId=` (400 without it). A company caller is always forced to its own company (another tenant's id → 404). | **Owner decision 2026-10-19** (review #11): kept as built. System users already have the cross-tenant view by role; a list without a company would mix tenants, a by-id call names exactly one resource. |
 | I25 | A collective (`per_invoice`) certificate takes `brand` from the **template's brand**, else the **invoice's brand hint** (`Invoice.brandId`), else empty (a required brand field is then flagged `missing`). There is no per-line product brand on a collective certificate. | **Owner decision 2026-10-19** (review #19): kept as built (`batchService`, per_invoice context). Logged so Phase 7 (repeating product rows) does not change it silently. |
+| I26 | SVG backgrounds are normalised once at convert time (`fieldEngine.normalizeBackground`, after sanitizing, then sanitized again): (1) defence in depth — `script`, `foreignObject`, `iframe`, `object`, `embed`, `a` removed, `on*` attributes removed, `href` only `#id` or `data:image/`; (2) cairo's page-wide arithmetic `feComposite` over an `feBlend` (`k2 = k3 = 1`) → a group drawing the destination, then the source with `mix-blend-mode`; (3) a mask that is one page-covering white rect (directly or through the "remove color" filter) → `opacity` on the masked element. | Verified 2026-10-21 in Chrome's PDF viewer (PDFium): the raw SVG export prints the page as a raster with a **hairline box** around ADDVET's signature block and PHARMAVET's stamp; after (2) the box is gone and the PDF is vector. (3) because some viewers draw a printed soft mask at full strength. A mask-filter rewrite for PHARMAVET's faint header brackets was tried and dropped: they are 0.25 pt strokes that print at the 1-device-pixel minimum in the **original** PDF too. |
+| I27 | The "no hairline" check rasterises the exported PDF **and the original PDF** in Chrome's own viewer (PDFium, headless Chrome at 100 %) and counts ink the export adds on paper that is blank in the original (luminance ≥ 230 within 1 px, darker by > 12); a straight run ≥ 30 px is a hairline. | pdf.js does not show the box at all, so it can't be the reference; comparing with the screen render flags every rule antialiased differently. Calibrated: raw SVG exports 244 px (ADDVET) / 46 px (PHARMAVET), normalised ≤ 23 px. |
+| I28 | A group's list must exist for the template's certificates: `invoice_lines` only on `per_invoice`, `product_list` only on `per_product` (`manual` on both). Fixed rows need an SVG version like every group, although the engine itself could cut a PNG. | A collective certificate has no single product; a per-product certificate has one line. Decision 3 keeps groups and PNG apart. |
+| I29 | The combined-rule refusal tests a crossing element's horizontal extent **inclusively**. | A perfectly vertical stroke has a zero-width box; the old `overlap > 0` test never refused one, so a single stroke through every row was accepted and would not have been stretched. |

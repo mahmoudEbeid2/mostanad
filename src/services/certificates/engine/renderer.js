@@ -267,6 +267,17 @@ export const analyse = (html) => withDocument(html, (page) => engine(page, "anal
 export const screenshotPages = (html, opts) =>
   withDocument(html, (page) => screenshotPagesOf(page, opts), { label: "screenshot" });
 
+/** SVG-background conversion (§7.8, plan §20 I26): cleans the SVG and rewrites cairo's blend filters → { html, stats }. */
+export const normalizeBackground = (html, opts) =>
+  withDocument(
+    html,
+    async (page) => {
+      const stats = await engine(page, "normalizeBackground", opts || {});
+      return { stats, html: stats.images ? await serialize(page) : html };
+    },
+    { label: "normalizeBackground" }
+  );
+
 /** For non-pdf2htmlEX HTML: marks body as page 1 and own-text elements as lines. */
 export const markGenericLines = (html) =>
   withDocument(

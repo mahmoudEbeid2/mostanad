@@ -101,20 +101,40 @@ const fieldDraft = z
     confirmed: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
     page: z.number().int().optional(),
+    groupKey: z.string().max(60).nullable().optional(),
   })
   .passthrough();
+
+// Repeating groups (§7.8): structural shape; fieldService validates in depth
+const groupDraft = z
+  .object({
+    key: z.string().max(60),
+    label: z.string().max(120),
+    mode: z.string().max(20).optional(),
+    source: z.object({ kind: z.string().max(20) }).passthrough(),
+    whenEmpty: z.string().max(10).optional(),
+    required: z.boolean().optional(),
+    sampleRows: z.number().int().nullable().optional(),
+    footerY: z.number().nullable().optional(),
+    minPitchRatio: z.number().nullable().optional(),
+    sortOrder: z.number().int().optional(),
+  })
+  .passthrough();
+
+const rowCells = z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null()]));
+const groupRows = z.array(rowCells).max(200);
 
 export const versionSchemas = {
   byId: { params: idParams, query: companyQuery },
   html: { params: idParams, query: companyQuery.extend({ variant: z.enum(["sanitized", "prepared", "sample"]).default("sanitized") }) },
-  fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200) }) },
+  fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200), groups: z.array(groupDraft).max(20).optional() }) },
   confirm: { params: idParams, query: companyQuery, body: z.object({ keys: z.array(z.string().max(60)).min(1).max(200) }) },
   diff: { params: idParams, query: companyQuery.extend({ page: z.coerce.number().int().min(1).default(1) }) },
   preview: {
     params: idParams,
     query: companyQuery,
     body: z.object({
-      values: z.record(z.string(), z.union([z.string().max(2000), z.number(), z.null()])).optional(),
+      values: z.record(z.string(), z.union([z.string().max(2000), z.number(), z.null(), groupRows])).optional(),
       productId: uuid.optional().nullable(),
       invoiceItemId: uuid.optional().nullable(),
     }),
@@ -164,7 +184,8 @@ export const certificateSchemas = {
   values: {
     params: idParams,
     query: companyQuery,
-    body: z.object({ expectedVersion: z.number().int().min(1), changes: z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null()])) }),
+    // a repeating group's change is its full list of rows (add / remove / reorder / edit, §7.8)
+    body: z.object({ expectedVersion: z.number().int().min(1), changes: z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null(), groupRows])) }),
   },
   // review #8: every state change on a certificate names the version it was made on
   field: { params: idParams.extend({ key: z.string().regex(/^[a-z][a-z0-9_]{0,59}$/) }), query: companyQuery, body: expectedVersionBody },

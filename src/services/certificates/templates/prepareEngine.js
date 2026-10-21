@@ -34,36 +34,69 @@ export const fillDef = (f) => ({
   fontClass: f.fontClass,
 });
 
+/** A group's cells (fields with groupKey) for the engine's inspectGroups(). */
+export const inspectDef = (g, fields) => ({
+  key: g.key,
+  mode: g.mode || "repeat",
+  sampleRows: g.sampleRows ?? null,
+  footerY: g.footerY ?? null,
+  minPitchRatio: g.minPitchRatio ?? 0.85,
+  cells: fields.filter((f) => f.groupKey === g.key).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue })),
+});
+
+/** Group definition as the engine's fill() needs it (§7.8). `fields` carry prepare geometry. */
+export const groupFillDef = (g, fields) => ({
+  key: g.key,
+  mode: g.mode || "repeat",
+  whenEmpty: g.whenEmpty || "dash",
+  required: g.required !== false,
+  footerY: g.footerY ?? g.geometry?.footerY ?? null,
+  minPitchRatio: g.minPitchRatio ?? 0.85,
+  geometry: g.geometry,
+  cells: fields.filter((f) => f.groupKey === g.key).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map(fillDef),
+});
+
 /**
- * fields: [{ key, page, lineId, charStart, charEnd, sampleValue, align }]
- * → { preparedHtml, geometry: { [key]: {...} }, report, diffImages: [{ page, png }] }
+ * fields: [{ key, page, lineId, charStart, charEnd, sampleValue, align, groupKey? }]
+ * groups: [{ key, mode, whenEmpty, required, footerY, minPitchRatio, sampleRows }] (§7.8)
+ * → { preparedHtml, geometry: { [key]: {...} }, groupGeometry: { [key]: {...} }, report, diffImages: [{ page, png }] }
  * `report.passed` is the gate verdict. Throws only on infrastructure errors.
  */
-export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null } = {}) {
+export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, groups = [] } = {}) {
   const t0 = Date.now();
 
-  // 1) clear — on a copy of the sanitized document (§7.3)
+  // 1) detect groups on the untouched document, clear every field (group
+  //    cells included), then remove the groups' placeholder rows (§7.3, §7.8)
   const cleared = await renderer.withDocument(
     sanitizedHtml,
     async (page) => {
+      const detected = groups.length ? await renderer.engine(page, "inspectGroups", groups.map((g) => inspectDef(g, fields))) : {};
       const { results } = await renderer.engine(page, "clear", fields.map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue, align: f.align })));
+      const okGeo = Object.fromEntries(Object.entries(detected).filter(([, g]) => g.ok));
+      if (Object.keys(okGeo).length) await renderer.engine(page, "removeGroupPlaceholders", okGeo);
       const html = await renderer.serialize(page);
-      return { results, html };
+      return { results, detected, html };
     },
     { label: "prepare:clear" }
   );
   const tClear = Date.now();
 
   const okFields = fields.filter((f) => cleared.results[f.key]?.ok);
-  const defs = okFields.map((f) => fillDef({ ...f, ...cleared.results[f.key] }));
-  const samples = Object.fromEntries(okFields.map((f) => [f.key, f.sampleValue]));
+  const plainFields = okFields.filter((f) => !f.groupKey);
+  const defs = plainFields.map((f) => fillDef({ ...f, ...cleared.results[f.key] }));
+  const samples = Object.fromEntries(plainFields.map((f) => [f.key, f.sampleValue]));
+  const withGeometry = okFields.map((f) => ({ ...f, ...cleared.results[f.key] }));
+  const okGroups = groups.filter((g) => cleared.detected[g.key]?.ok && inspectDef(g, fields).cells.every((c) => cleared.results[c.key]?.ok));
+  const groupDefs = okGroups.map((g) => groupFillDef({ ...g, geometry: cleared.detected[g.key], footerY: g.footerY ?? cleared.detected[g.key].footerY }, withGeometry));
+  for (const g of okGroups) samples[g.key] = cleared.detected[g.key].sampleRows;
 
-  // 2) round-trip — refill every field with its own sample value (§7.5)
+  // 2) round-trip — refill every field with its own sample value, every group
+  //    with its sample rows (§7.5)
   const roundTrip = await renderer.withDocument(
     cleared.html,
     async (page) => {
-      const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage);
-      const rects = await renderer.engine(page, "measure", okFields.map((f) => f.key));
+      const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage, groupDefs);
+      const rects = await renderer.engine(page, "measure", plainFields.map((f) => f.key).concat(okGroups.length ? okFields.filter((f) => f.groupKey).map((f) => f.key) : []));
       const shots = await renderer.screenshotPagesOf(page);
       return { fill, rects, shots };
     },
@@ -96,7 +129,7 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null } 
       entry.calibration = r.calibration;
       entry.roundTrip = rect ? { dx: +Math.abs(rect.x - r.box.x).toFixed(3), dw: +Math.abs(rect.w - r.box.w).toFixed(3) } : null;
       entry.transparent = r.transparent;
-      entry.flags = roundTrip.fill.flags[f.key] || [];
+      entry.flags = roundTrip.fill.flags[f.groupKey || f.key] || [];
       entry.overlapsWith = [];
     } else if (r.found !== undefined) {
       entry.found = r.found;
@@ -125,6 +158,9 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null } 
     { id: "pixel_diff", label: `Round-trip page pixel diff ≤ ${GATE.pixelDiffPct} %`, failing: pages.filter((p) => !(p.pixelDiffPct <= GATE.pixelDiffPct)).map((p) => `page ${p.page}`) },
     { id: "transparent", label: "No field inside a transparent ancestor", failing: list((e) => e.ok && e.transparent) },
     { id: "overlap", label: "No two fields overlapping", failing: list((e) => e.ok && e.overlapsWith.length > 0) },
+    ...(groups.length
+      ? [{ id: "groups", label: "Every repeating group found in the design (rows, rules, footer line)", failing: groups.filter((g) => !okGroups.includes(g)).map((g) => `${g.key}: ${cleared.detected[g.key]?.error || "a cell was not cleared"}`) }]
+      : []),
   ].map((c) => ({ ...c, passed: c.passed ?? c.failing.length === 0 }));
 
   const geometry = Object.fromEntries(
@@ -134,28 +170,38 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null } 
     })
   );
 
+  const groupGeometry = Object.fromEntries(okGroups.map((g) => [g.key, cleared.detected[g.key]]));
+  const groupReport = Object.fromEntries(
+    groups.map((g) => {
+      const d = cleared.detected[g.key] || {};
+      return [g.key, d.ok ? { ok: true, shape: d.shape, sampleRowCount: d.sampleRowCount, pitch: d.pitch, footerY: d.footerY, footerProposal: d.footerProposal, capacity: d.capacity, flags: roundTrip.fill.flags[g.key] || [] } : { ok: false, error: d.error || "NOT_PROCESSED", message: d.message || null }];
+    })
+  );
+
   const report = {
     passed: checks.every((c) => c.passed),
     checks,
     fields: fieldReport,
+    groups: groupReport,
     pages,
     pixelDiffPct: pages.length ? Math.max(...pages.map((p) => p.pixelDiffPct)) : null,
     thresholds: GATE,
     ms: { clear: tClear - t0, render: tRender - tClear, total: Date.now() - t0 },
     preparedAt: new Date().toISOString(),
   };
-  return { preparedHtml: cleared.html, geometry, report, diffImages };
+  return { preparedHtml: cleared.html, geometry, groupGeometry, report, diffImages };
 }
 
 /**
  * Renders a prepared document with `values` → { html, flags, geometry, thumbnail? } (static HTML, D9).
+ * `groups` are group fill defs (groupFillDef); values[groupKey] is the list of rows.
  * `thumbnailScale` (e.g. 0.25) also returns a PNG of page 1 from the same render.
  */
-export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, label = "fill", thumbnailScale = null } = {}) {
+export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, label = "fill", thumbnailScale = null, groups = [] } = {}) {
   return renderer.withDocument(
     preparedHtml,
     async (page) => {
-      const res = await renderer.engine(page, "fill", values, defs, fontCoverage);
+      const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups);
       const html = await renderer.serialize(page);
       const thumbnail = thumbnailScale ? (await renderer.screenshotPagesOf(page, { scale: thumbnailScale }))[0]?.png || null : null;
       return { html, flags: res.flags, geometry: res.geometry, thumbnail };

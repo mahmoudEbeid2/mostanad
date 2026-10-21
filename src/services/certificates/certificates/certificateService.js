@@ -1,7 +1,7 @@
 import { prisma } from "../../../lib/prisma.js";
 import { notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
-import { listFields } from "../templates/fieldService.js";
+import { listFields, listGroups } from "../templates/fieldService.js";
 import { loadBatch } from "../generation/batchService.js";
 
 // Generated certificates — reads (CERTIFICATES_V2_PLAN.md §11, §12). Every
@@ -75,12 +75,23 @@ export async function listCertificates(companyId, { invoiceId, batchId, status, 
 export async function getCertificate(id, companyId) {
   await loadCertificate(id, companyId);
   const c = await prisma.certificate.findUnique({ where: { id }, include: CARD_INCLUDE });
-  const fields = await listFields(c.templateVersionId);
+  const [fields, groups] = await Promise.all([listFields(c.templateVersionId), listGroups(c.templateVersionId)]);
   const current = c.versions[0] || null;
   return {
     ...toCard(c),
     values: current?.values || {},
-    fields: fields.map((f) => ({ key: f.key, label: f.label, required: f.required, source: f.source, format: f.format, align: f.align, page: f.page, sortOrder: f.sortOrder })),
+    fields: fields.map((f) => ({ key: f.key, label: f.label, required: f.required, source: f.source, format: f.format, align: f.align, page: f.page, sortOrder: f.sortOrder, groupKey: f.groupKey || null })),
+    // repeating groups (§7.8): values[group.key] = { kind: "group", rows: [{ cellKey: text }], … }
+    groups: groups.map((g) => ({
+      key: g.key,
+      label: g.label,
+      mode: g.mode,
+      source: g.source,
+      whenEmpty: g.whenEmpty,
+      required: g.required,
+      cells: fields.filter((f) => f.groupKey === g.key).map((f) => ({ key: f.key, label: f.label, align: f.align })),
+      capacity: g.geometry?.capacity || null,
+    })),
     lines: c.items.map((i) => i.invoiceItem),
     finalizedByUserId: c.finalizedByUserId,
     finalPdfFileId: c.finalPdfFileId,

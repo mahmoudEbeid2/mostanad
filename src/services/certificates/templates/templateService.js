@@ -7,7 +7,7 @@ import { sanitizeTemplateHtml, describeSanitized } from "../sanitize/htmlSanitiz
 import * as renderer from "../engine/renderer.js";
 import { computeFontCoverage, fontWarnings } from "../analysis/fontCoverage.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
-import { listFields, fieldsHash } from "./fieldService.js";
+import { listFields, listGroups, fieldsHash } from "./fieldService.js";
 
 // Templates and their immutable versions (CERTIFICATES_V2_PLAN.md §4, §8).
 
@@ -188,9 +188,10 @@ export async function convertVersion(versionId, ctx = {}) {
       raw = buffer.toString("utf8");
     } else {
       ctx.progress?.(15, "Converting design");
-      const out = await pdf2htmlex.convert(buffer);
+      const background = version.backgroundFormat === "svg" ? "svg" : "png";
+      const out = await pdf2htmlex.convert(buffer, { background });
       raw = out.html;
-      conversion = { tool: "pdf2htmlEX", version: out.toolVersion, zoom: Number(pdf2htmlex.CONVERT_ZOOM), ms: out.ms, warnings: out.warnings || [] };
+      conversion = { tool: "pdf2htmlEX", version: out.toolVersion, zoom: Number(pdf2htmlex.CONVERT_ZOOM), background, ms: out.ms, warnings: out.warnings || [] };
       if (!out.textLines) {
         throw new CertError("NO_LIVE_TEXT", "The design has no live text — it was converted to outlines. Export it again with live text.", 422);
       }
@@ -203,6 +204,12 @@ export async function convertVersion(versionId, ctx = {}) {
       const marked = await renderer.markGenericLines(html);
       html = sanitizeTemplateHtml(marked.html); // re-check what the browser serialised
     }
+    if (conversion.background === "svg") {
+      // §7.8 / plan §20 I26: clean the SVG and draw cairo's blend layers natively
+      const norm = await renderer.normalizeBackground(html);
+      html = sanitizeTemplateHtml(norm.html);
+      conversion.svg = norm.stats;
+    }
     conversion.sanitizeMs = Date.now() - s0;
 
     ctx.progress?.(65, "Analysing layout");
@@ -214,6 +221,15 @@ export async function convertVersion(versionId, ctx = {}) {
     }
     const fontCoverage = computeFontCoverage(html);
     conversion.warnings = [...(conversion.warnings || []), ...fontWarnings(fontCoverage)]; // review #7
+    // a re-conversion of the same design (enable-groups) must keep the text layer: fields reference it
+    if (version.basedOnVersionId && version.sourceFileId) {
+      const base = await prisma.templateVersion.findUnique({ where: { id: version.basedOnVersionId }, select: { lines: true, sourceFileId: true } });
+      if (base?.sourceFileId === version.sourceFileId && Array.isArray(base.lines)) {
+        const before = new Map(base.lines.map((l) => [l.id, l.text]));
+        const changed = lines.filter((l) => before.has(l.id) && before.get(l.id) !== l.text).length + [...before.keys()].filter((id) => !lines.some((l) => l.id === id)).length;
+        if (changed) conversion.warnings.push(`LINES_CHANGED: ${changed} text line(s) differ from version ${version.basedOnVersionId}; check the copied fields`);
+      }
+    }
 
     ctx.progress?.(85, "Creating thumbnail");
     const [thumb] = await renderer.screenshotPages(html, { scale: 0.25 });
@@ -245,12 +261,53 @@ export async function convertVersion(versionId, ctx = {}) {
   }
 }
 
+/**
+ * POST /template-versions/:id/enable-groups (§7.8, owner decision 2026-10-20):
+ * the first repeating group needs the design re-converted with a vector (SVG)
+ * background. Creates a NEW draft version from the same source file — fields
+ * copied, own prepare gate and baseline — and queues its conversion.
+ * → { templateId, versionId, versionNumber, taskId }
+ */
+export async function enableGroups(versionId, companyId, userId) {
+  const v = await loadVersion(versionId, companyId);
+  if (v.template.archivedAt) throw new CertError("TEMPLATE_ARCHIVED", "This template is archived", 409);
+  if (v.backgroundFormat === "svg") throw new CertError("ALREADY_SVG", "This version already has a vector background — mark the group on it", 409);
+  if (v.sourceFormat === "html") throw new CertError("GROUPS_NEED_PDF", "Repeating groups need an .ai or .pdf design (an .html upload has no separate drawing layer)", 409);
+  if (!["draft", "ready", "active", "superseded"].includes(v.status)) throw new CertError("VERSION_NOT_CONVERTED", `This version is ${v.status}`, 409);
+  const fields = await listFields(versionId);
+  const version = await prisma.$transaction(async (tx) => {
+    const last = await tx.templateVersion.findFirst({ where: { templateId: v.templateId }, orderBy: { versionNumber: "desc" } });
+    const copy = await tx.templateVersion.create({
+      data: {
+        templateId: v.templateId,
+        versionNumber: last.versionNumber + 1,
+        status: "converting",
+        sourceFormat: v.sourceFormat,
+        sourceFileId: v.sourceFileId,
+        backgroundFormat: "svg",
+        basedOnVersionId: v.id,
+        createdByUserId: userId || null,
+      },
+    });
+    if (fields.length) {
+      await tx.templateField.createMany({
+        // geometry is recomputed by the next prepare
+        data: fields.map(({ id, box, limits, letterSpacing, fontClass, scale, ...f }) => ({ ...f, format: f.format ?? undefined, versionId: copy.id })),
+      });
+    }
+    return copy;
+  });
+  const task = await enqueueConvert(v.template, version);
+  return { templateId: v.templateId, versionId: version.id, versionNumber: version.versionNumber, taskId: task.id };
+}
+
 // ── reads ────────────────────────────────────────────────────────────────────
 const versionSummary = (v) => ({
   id: v.id,
   versionNumber: v.versionNumber,
   status: v.status,
   sourceFormat: v.sourceFormat,
+  backgroundFormat: v.backgroundFormat,
   error: v.error,
   createdAt: v.createdAt,
   hasThumbnail: !!v.thumbnailFileId,
@@ -314,13 +371,14 @@ export async function getTemplate(id, companyId) {
 
 export async function getVersionDetail(id, companyId) {
   const v = await loadVersion(id, companyId);
-  const fields = await listFields(id);
+  const [fields, groups] = await Promise.all([listFields(id), listGroups(id)]);
   const { template, ...rest } = v;
-  const hash = fieldsHash(fields);
+  const hash = fieldsHash(fields, groups);
   return {
     ...rest,
     template: { id: template.id, name: template.name, companyId: template.companyId, scope: template.scope, activeVersionId: template.activeVersionId, archivedAt: template.archivedAt },
     fields,
+    groups,
     fieldsHash: hash,
     // a report made for a different field list no longer describes this version
     prepareReportStale: !!v.prepareReport && v.prepareReport.fieldsHash !== hash,

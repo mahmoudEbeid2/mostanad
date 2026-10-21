@@ -1,7 +1,7 @@
 // pdf2htmlex-service — internal conversion service for Mostanad (Certificates V2).
 // POST /convert   body: raw PDF bytes (an Illustrator .ai saved with PDF content is a PDF)
-//                 query: ?zoom=1 (0.5..4)
-//                 → 200 { html, ms, toolVersion, textLines, warnings[] }
+//                 query: ?zoom=1 (0.5..4) &bg=png|svg (background format, default png)
+//                 → 200 { html, ms, toolVersion, textLines, warnings[], bg }
 // GET  /health    → 200 { ok: true, toolVersion }
 //
 // Zero dependencies. pdf2htmlEX runs through execFile with an args array (no shell).
@@ -74,6 +74,9 @@ async function convert(req, res, url) {
   }
 
   const zoom = Math.min(Math.max(Number(url.searchParams.get("zoom")) || 1, 0.5), 4);
+  // png (default) | svg — svg keeps table rules, logo, stamp and watermark as
+  // separate vector elements (repeating groups, CERTIFICATES_V2_PLAN.md §7.8)
+  const bg = url.searchParams.get("bg") === "svg" ? "svg" : "png";
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p2h-"));
   const input = path.join(dir, "input.pdf");
   fs.writeFileSync(input, buf);
@@ -88,6 +91,7 @@ async function convert(req, res, url) {
       "--embed-font", "1",
       "--embed-image", "1",
       "--embed-javascript", "0",
+      "--bg-format", bg,
       "--dest-dir", dir,
       input,
       "output.html",
@@ -106,7 +110,7 @@ async function convert(req, res, url) {
       });
     }
 
-    json(res, 200, { html, ms: Date.now() - started, toolVersion, textLines, warnings });
+    json(res, 200, { html, ms: Date.now() - started, toolVersion, textLines, warnings, bg });
   } catch (err) {
     console.error("[pdf2htmlex] conversion failed:", err.message, err.details || "");
     json(res, 500, { error: `Conversion failed: ${err.message}`, details: err.details });

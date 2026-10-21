@@ -295,7 +295,7 @@ export async function rematch(invoiceId, companyId) {
 export async function confirmInvoice(invoiceId, companyId, userId) {
   const inv = await loadInvoice(invoiceId, companyId);
   if (inv.status !== "review") throw new CertError("INVOICE_NOT_IN_REVIEW", `Only an invoice under review can be confirmed (this one is ${inv.status})`, 409);
-  const items = await prisma.invoiceItem.findMany({ where: { invoiceId }, select: { lineNo: true, matchStatus: true } });
+  const items = await prisma.invoiceItem.findMany({ where: { invoiceId }, orderBy: { lineNo: "asc" }, select: { lineNo: true, matchStatus: true } });
   const open = items.filter((i) => i.matchStatus === "needs_match").map((i) => i.lineNo);
   if (open.length) throw new CertError("ITEMS_NEED_MATCH", `Match or ignore every line first (lines ${open.join(", ")})`, 409, { lines: open });
   if (!items.some((i) => i.matchStatus === "matched")) throw new CertError("NO_MATCHED_ITEMS", "At least one line must be matched to a product", 409);

@@ -29,6 +29,13 @@ export async function loadProductContext(companyId, { productId = null, invoiceI
     ctx.item = item.data || {};
     ctx.invoice = item.invoice.header || {};
     if (!productId && item.productId) productId = item.productId;
+    // an invoice_lines group (§7.8) previews with every line of that invoice, as a collective certificate would
+    const lines = await prisma.invoiceItem.findMany({
+      where: { invoiceId: item.invoiceId, matchStatus: { not: "ignored" } },
+      orderBy: { lineNo: "asc" },
+      include: { product: { include: { category: { select: { id: true, name: true } }, brand: { select: { id: true, name: true } } } } },
+    });
+    ctx.lines = lines.map((l) => ({ ...(l.data || {}), product: l.product && l.product.companyId === companyId ? l.product : {} }));
   }
   if (productId) {
     ctx.product = await loadProduct(companyId, productId);

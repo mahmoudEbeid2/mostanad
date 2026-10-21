@@ -802,7 +802,8 @@ model TemplateVersion {
   pages            Json? // [{ page, widthPx, heightPx, widthPt, heightPt }]
   lines            Json? // [{ id, page, text, box:{x,y,w,h}, fontClass }]
   fontCoverage     Json?               @map("font_coverage") // { "ff1": "ACDEF…" }
-  conversion       Json? // { tool, version, zoom, ms, warnings[] }
+  conversion       Json? // { tool, version, zoom, ms, warnings[], background }
+  backgroundFormat String              @default("png") @map("background_format") // png | svg — svg only when the version defines a repeating group (§7.8)
   prepareReport    Json?               @map("prepare_report") // §7.6 gate results
   error            String?
   basedOnVersionId String?             @map("based_on_version_id")
@@ -811,6 +812,7 @@ model TemplateVersion {
   updatedAt        DateTime            @updatedAt @map("updated_at")
 
   fields       TemplateField[]
+  groups       TemplateGroup[]
   certificates Certificate[]
 
   @@unique([templateId, versionNumber])
@@ -845,6 +847,28 @@ model TemplateField {
 
   @@unique([versionId, key])
   @@map("template_fields")
+}
+
+// A repeating group (Phase 7, CERTIFICATES_V2_PLAN.md §7.8): one sample row
+// whose cells are TemplateFields with groupKey = key. Draft-only, like fields.
+model TemplateGroup {
+  id            String          @id @default(uuid())
+  versionId     String          @map("version_id")
+  version       TemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  key           String // snake_case, unique per version, never a field key: "constituents"
+  label         String
+  mode          String          @default("repeat") // repeat | fixed_rows
+  source        Json // { kind: "product_list", path } | { kind: "invoice_lines" } | { kind: "manual" }
+  whenEmpty     String          @default("dash") @map("when_empty") // dash | hide
+  required      Boolean         @default(true)
+  sampleRows    Int?            @map("sample_rows") // full table rows only: how many sample rows the design shows (default 1)
+  footerY       Float?          @map("footer_y") // CSS px; null = the engine's proposal
+  minPitchRatio Float           @default(0.85) @map("min_pitch_ratio")
+  geometry      Json? // written by prepare (§7.8): band, pitch, shape, columns, capacity…
+  sortOrder     Int             @default(0) @map("sort_order")
+
+  @@unique([versionId, key])
+  @@map("template_groups")
 }
 
 // ---------- Certificates V2 — invoices (CERTIFICATES_V2_PLAN.md §6.1, §9) ----------

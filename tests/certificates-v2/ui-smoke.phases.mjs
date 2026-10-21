@@ -1,6 +1,7 @@
 // Per-phase steps for ui-smoke.mjs. Each phase leaves state the next one uses
 // (ctx.state), mirroring the owner's demo flow.
 import path from "path";
+import { fixture, form, pollTask } from "./helpers.js";
 
 async function phase1(ctx) {
   const { page, FRONT, assert, waitForText, clickText, shot, FIXTURES, api, prisma, company } = ctx;
@@ -550,10 +551,148 @@ async function phase5(ctx) {
   fsMod.rmSync(downloads, { recursive: true, force: true });
 }
 
+// Phase 7 — repeating groups (plan §7.8, §13.4, §13.6). Needs only phase 1's
+// company + COA type: its own ADDVET template (country JO, a free slot) is
+// uploaded through the API, then everything is done in the UI — enable
+// groups, mark the row's cells, add the group, choose its source, the footer
+// line, prepare/activate, and editing rows in the certificate editor.
+async function phase7(ctx) {
+  const { page, FRONT, assert, waitForText, clickText, shot, sleep, api, asAdmin, company, prisma } = ctx;
+  const q = `companyId=${company.id}`;
+  const saved = () => page.waitForFunction(() => document.querySelector('[data-testid="save-state"]')?.innerText.includes("All changes saved"), { timeout: 30000 }).then(() => true, () => false);
+  const types = (await api("GET", `/certificate-types?${q}`, asAdmin)).data?.data?.types || [];
+  const coa = types.find((t) => t.code === "COA");
+  const up = await api("POST", `/certificate-templates?${q}`, asAdmin, form({ name: "ADDVET constituents", certificateTypeId: coa?.id, country: "JO", scope: "per_product" }, { buffer: fixture("ADDVET_COA.ai"), name: "ADDVET_COA.ai" }));
+  await pollTask(up.data?.data?.taskId, asAdmin, { timeoutMs: 90_000 });
+  const { templateId, versionId: v1 } = up.data?.data || {};
+  assert("setup: a PNG draft of ADDVET (country JO)", !!v1);
+
+  // 1) a PNG version offers to enable groups → a new SVG draft version
+  await page.goto(`${FRONT}/certificates/templates/${templateId}/versions/${v1}?step=fields`, { waitUntil: "networkidle2" });
+  await page.waitForSelector('[data-testid="group-panel"]', { timeout: 20000 });
+  assert("group panel explains the new version and offers it", (await waitForText("needs this design converted")) && !!(await page.$('[data-testid="enable-groups"]')));
+  await page.click('[data-testid="enable-groups"]');
+  await page.waitForFunction((v) => /\/versions\/[0-9a-f-]{36}/.test(location.pathname) && !location.pathname.includes(v), { timeout: 15000 }, v1).catch(() => {});
+  const v2 = page.url().match(/versions\/([0-9a-f-]{36})/)?.[1];
+  assert("enable → the wizard opens the new version", !!v2 && v2 !== v1, page.url());
+  assert("header shows v2", await waitForText("· v2", 15000));
+  // v2's own state (the page isn't remounted: v1's "Converted" may still show for a moment)
+  const converted = await page.waitForFunction(() => document.querySelector("h1")?.innerText.includes("v2") && document.body.innerText.includes("Converted — this is exactly how the design will print") && Array.from(document.querySelectorAll("button")).some((b) => b.innerText.includes("Next: mark the fields")), { timeout: 90000 }).then(() => true, () => false);
+  assert("new version converted", converted);
+  await clickText("button", "Next: mark the fields");
+  await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.querySelector('[data-line="p1-l22"]'), { timeout: 20000 });
+  assert("SVG version: Add group is offered", !!(await page.waitForSelector('[data-testid="add-group"]', { timeout: 10000 }).catch(() => null)));
+
+  // 2) the sample row's two cells, a group, its source
+  const makeCell = async (lineId, value, label) => {
+    await selectInFrame(page, lineId, value);
+    await page.waitForSelector('[data-testid="make-field"]', { timeout: 5000 });
+    await page.click('[data-testid="make-field"]');
+    await page.waitForSelector('[data-testid="field-label"]');
+    await page.focus('[data-testid="field-label"]');
+    await page.type('[data-testid="field-label"]', label);
+  };
+  await makeCell("p1-l22", "Vitamin E", "Name");
+  await makeCell("p1-l25", "120000 mg", "Amount");
+  await page.click('[data-testid="add-group"]');
+  await page.waitForSelector('[data-testid="group-rows"]', { timeout: 5000 });
+  await page.select('[data-testid="group-rows"] [data-testid="group-source"]', "product_list");
+  assert("source: a list on the product → Active ingredients", (await page.$eval('[data-testid="group-rows"] [data-testid="group-list"]', (s) => s.value).catch(() => "")) === "activeIngredients");
+  await page.select('[data-testid="group-rows"] [data-testid="group-when-empty"]', "hide");
+  // each cell: Row of group + a path of the row
+  for (const [key, path] of [["name", "Name"], ["amount", "Concentration"]]) {
+    await page.evaluate((k) => document.querySelector(`[data-testid="field-${k}"] button`)?.click(), key);
+    const open = await page.waitForSelector(`[data-testid="field-${key}"] [data-testid="field-group"]`, { timeout: 5000 }).catch(() => null);
+    if (!open) await page.evaluate((k) => document.querySelector(`[data-testid="field-${k}"] button`)?.click(), key);
+    await page.select(`[data-testid="field-${key}"] [data-testid="field-group"]`, "rows");
+    const src = await page.$(`[data-testid="field-${key}"] input[id^="react-select"]`);
+    await src.type(path);
+    await page.keyboard.press("Enter");
+    assert(`cell ${key}: source chip reads Row · ${path}`, await waitForText(`Row · ${path}`, 5000));
+  }
+  assert("autosave → saved", await saved());
+  assert("detection shown: a list inside one cell, 3 sample rows, how many fit", await waitForText("a list inside one table cell · 3 sample rows", 20000));
+  assert("group band + footer line drawn on the design", !!(await page.$('[data-testid="group-band"]')) && !!(await page.$('[data-testid="footer-handle"]')));
+  const proposal = await page.$eval('[data-testid="footer-handle"]', (h) => Number(h.getAttribute("aria-valuenow")));
+  assert("footer line at the engine's proposal (above the signature)", proposal > 780 && proposal < 815, proposal);
+  await shot("p7-group-marked");
+  await ctx.audit("mark a repeating group");
+
+  // 3) drag the footer line up → the user's line, fewer rows fit; then back to the proposal
+  const fitText = () => page.$eval('[data-testid="group-detected"]', (e) => e.innerText).catch(() => "");
+  const before = await fitText();
+  const box = await (await page.$('[data-testid="footer-handle"]')).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 8);
+  await page.mouse.up();
+  assert("drag → saved with the user's footer line", (await waitForText("Yours at", 10000)) && (await saved()));
+  await page.waitForFunction((b) => (document.querySelector('[data-testid="group-detected"]')?.innerText || b) !== b, { timeout: 15000 }, before).catch(() => {});
+  const after = await fitText();
+  const rowsOf = (t) => Number((t.match(/up to (\d+) rows/) || [])[1]);
+  assert(`fewer rows fit above the higher line (${rowsOf(before)} → ${rowsOf(after)})`, rowsOf(after) < rowsOf(before), { before, after });
+  const dbGroup = await prisma.templateGroup.findFirst({ where: { versionId: v2 } });
+  assert("DB: footerY stored", typeof dbGroup?.footerY === "number" && dbGroup.footerY < proposal, dbGroup?.footerY);
+  await clickText("button", "Use the proposal");
+  assert("back to the proposal, saved", (await waitForText("Proposed by the engine", 10000)) && (await saved()));
+  await shot("p7-footer");
+
+  // 4) prepare + activate
+  await clickText("button", "Next: settings");
+  assert("settings step", await waitForText("Save settings"));
+  await clickText("button", "Next: prepare & test");
+  assert("prepare button enabled", await clickExact(page, "Prepare"));
+  assert("prepare passes with the group", await waitForText("Prepare passed — ready to activate", 120000));
+  await clickText("button", "Next: activate");
+  assert("activate v2", await clickExact(page, "Activate v2"));
+  assert("v2 active", await waitForText("This version is active.", 20000));
+
+  // 5) a certificate: rows from the product, edited in the editor
+  const product = await prisma.product.create({ data: { companyId: company.id, name: "ADD-E120 JO", activeIngredients: [{ name: "Vitamin E", concentration: "120000 mg" }, { name: "Sodium selenite", concentration: "60 mg" }, { name: "Folic acid", concentration: "300 mg" }] } });
+  const src = await prisma.storedFile.findFirst({ where: { companyId: company.id } });
+  const inv = await prisma.invoice.create({ data: { companyId: company.id, country: "JO", status: "ready", sourceFileId: src.id, header: { invoiceNo: "INV-UI-P7" }, headerExtracted: {}, extraction: { modelId: "test", promptHash: "test" } } });
+  await prisma.invoiceItem.create({ data: { invoiceId: inv.id, lineNo: 1, data: { name: "ADD-E120", batchNo: "AVVS7" }, dataExtracted: {}, productId: product.id, matchStatus: "matched", matchMethod: "user" } });
+  const gen = await api("POST", `/invoices/${inv.id}/generate?${q}`, asAdmin);
+  await pollTask(gen.data?.data?.taskId, asAdmin, { timeoutMs: 120_000 });
+  const cert = await prisma.certificate.findFirst({ where: { invoiceId: inv.id, templateVersionId: v2 } });
+  assert("setup: a certificate from the group template", !!cert);
+  await page.goto(`${FRONT}/certificates/${cert.id}`, { waitUntil: "networkidle2" });
+  await page.waitForSelector('[data-group-rows="rows"]', { timeout: 20000 });
+  const rowInputs = () => page.$$eval('[data-group-rows="rows"] tbody tr', (trs) => trs.map((tr) => Array.from(tr.querySelectorAll("input")).map((i) => i.value).join("|")));
+  assert("editor: the group as a table of 3 rows from the product", JSON.stringify(await rowInputs()) === JSON.stringify(["Vitamin E|120000 mg", "Sodium selenite|60 mg", "Folic acid|300 mg"]), await rowInputs());
+  assert("the cells are not listed as single fields", !(await page.$('input[data-key="name"]')) && !(await page.$('input[data-key="amount"]')));
+  const version = () => page.$eval('[data-testid="editor-title"]', (e) => Number((e.innerText.match(/v(\d+)/) || [])[1]));
+  const waitVersion = (n) => page.waitForFunction((n) => Number((document.querySelector('[data-testid="editor-title"]')?.innerText.match(/v(\d+)/) || [])[1]) >= n, { timeout: 20000 }, n).then(() => true, () => false);
+  const frameText = () => page.evaluate(() => document.querySelector("iframe")?.contentDocument?.body?.innerText || "");
+  const v0 = await version();
+
+  await page.click('[data-testid="add-row-rows"]');
+  const last = await page.$$('[data-group-rows="rows"] tbody tr:last-child input');
+  await last[0].type("Biotin");
+  await last[1].type("50 mg");
+  assert("add a row → autosaved as a new version", await waitVersion(v0 + 1));
+  await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.body?.innerText.includes("Biotin"), { timeout: 20000 }).catch(() => {});
+  assert("the server render shows the new row", (await frameText()).includes("Biotin"));
+
+  await page.click('[data-group-rows="rows"] button[aria-label="Move row up 4"]');
+  assert("move a row up → new version", await waitVersion(v0 + 2));
+  await page.click('[data-group-rows="rows"] button[aria-label="Delete row 1"]');
+  assert("delete a row → new version", await waitVersion(v0 + 3));
+  await page.waitForFunction(() => document.querySelectorAll('[data-group-rows="rows"] tbody tr').length === 3, { timeout: 10000 }).catch(() => {});
+  assert("rows now: Sodium selenite, Biotin, Folic acid", JSON.stringify(await rowInputs()) === JSON.stringify(["Sodium selenite|60 mg", "Biotin|50 mg", "Folic acid|300 mg"]), await rowInputs());
+  const db = await prisma.certificate.findUnique({ where: { id: cert.id }, include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } } });
+  assert("DB: the rows and origin manual", db.versions[0].values.rows.rows.map((r) => r.name).join(",") === "Sodium selenite,Biotin,Folic acid" && db.versions[0].values.rows.origin === "manual", db.versions[0].values.rows);
+  assert("the glyph B (not in the design font) is flagged on the group", await waitForText("Character not in the design font: B", 5000));
+  await shot("p7-editor-rows");
+  await ctx.audit("certificate editor — group rows");
+  await sleep(200);
+}
+
 export default [
   [1, phase1],
   [2, phase2],
   [3, phase3],
   [4, phase4],
   [5, phase5],
+  [7, phase7],
 ];

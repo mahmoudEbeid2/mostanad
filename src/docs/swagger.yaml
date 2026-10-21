@@ -239,6 +239,8 @@ paths:
     $ref: './paths/certificates-v2/template-versions-id-activate.yaml'
   /template-versions/{id}/new-version:
     $ref: './paths/certificates-v2/template-versions-id-new-version.yaml'
+  /template-versions/{id}/enable-groups:
+    $ref: './paths/certificates-v2/template-versions-id-enable-groups.yaml'
   /certificate-field-sources:
     $ref: './paths/certificates-v2/certificate-field-sources.yaml'
   /certificate-products:

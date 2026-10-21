@@ -5,9 +5,9 @@ import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import * as renderer from "../engine/renderer.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
-import { renderFilled, fillDef } from "../templates/prepareEngine.js";
-import { resolveField } from "../generation/valueResolver.js";
-import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch } from "../generation/batchService.js";
+import { resolveField, resolveGroup } from "../generation/valueResolver.js";
+import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch, renderDesign, plainFields, groupValue } from "../generation/batchService.js";
+import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
 
 // Edit, versions, export, finalize (CERTIFICATES_V2_PLAN.md §11). Every
@@ -49,19 +49,50 @@ const short = (s) => {
 /** values → re-rendered static HTML + thumbnail, flags merged (resolver flags kept only for auto values). */
 async function renderValues(cert, values) {
   const design = await loadDesign(new Map(), cert.templateVersionId);
-  const out = await renderFilled(
-    design.html,
-    design.fields.map(fillDef),
-    Object.fromEntries(design.fields.map((f) => [f.key, values[f.key]?.value ?? ""])),
-    { fontCoverage: design.version.fontCoverage, label: "certificate", thumbnailScale: THUMB_SCALE }
-  );
+  const out = await renderDesign(design, values, { label: "certificate", thumbnailScale: THUMB_SCALE });
   const merged = {};
-  for (const f of design.fields) {
+  for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
     const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format");
     merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || [])])] };
   }
+  for (const g of design.groups) {
+    const v = values[g.key] || groupValue(g, { rows: [], flags: [] }, { flags: {} });
+    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format");
+    merged[g.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[g.key] || [])])], rowsFit: out.geometry?.[g.key]?.rowsFit ?? null };
+  }
   return { values: merged, html: out.html, thumbnail: out.thumbnail };
+}
+
+/** A group's new row list from the client: an array of { cellKey: text } objects (§7.8). */
+function normaliseRows(key, raw, cellKeys) {
+  if (!Array.isArray(raw)) throw new CertError("INVALID_ROWS", `"${key}" is a repeating group: send its full list of rows (an array)`, 422, { field: key });
+  if (raw.length > MAX_GROUP_ROWS) throw new CertError("TOO_MANY_ROWS", `"${key}" has more than ${MAX_GROUP_ROWS} rows`, 422, { field: key });
+  return raw.map((row, i) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new CertError("INVALID_ROWS", `"${key}" row ${i + 1} must be an object of cells`, 422, { field: key });
+    const unknown = Object.keys(row).filter((k) => !cellKeys.includes(k));
+    if (unknown.length) throw new CertError("UNKNOWN_FIELD", `"${key}" row ${i + 1}: unknown cell ${unknown.join(", ")}`, 422, { field: key });
+    return Object.fromEntries(
+      cellKeys.map((c) => {
+        const v = row[c] === null || row[c] === undefined ? "" : String(row[c]);
+        if (v.length > MAX_VALUE) throw new CertError("VALUE_TOO_LONG", `"${key}" row ${i + 1} ${c} is longer than ${MAX_VALUE} characters`, 422, { field: key });
+        return [c, v];
+      })
+    );
+  });
+}
+
+const sameRows = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+
+function rowsSummary(key, before, after) {
+  const a = before || [];
+  const b = after || [];
+  if (a.length !== b.length) return `${key}: ${a.length} row${a.length === 1 ? "" : "s"} → ${b.length} row${b.length === 1 ? "" : "s"}`;
+  const sa = a.map((r) => JSON.stringify(r)).sort().join("|");
+  const sb = b.map((r) => JSON.stringify(r)).sort().join("|");
+  if (sa === sb) return `${key}: rows reordered`;
+  const changed = b.filter((r, i) => JSON.stringify(r) !== JSON.stringify(a[i])).length;
+  return `${key}: ${changed} row${changed === 1 ? "" : "s"} edited`;
 }
 
 /**
@@ -100,8 +131,19 @@ export async function editValues(id, companyId, userId, { expectedVersion, chang
   const values = structuredClone(current.values || {});
   const now = new Date().toISOString();
   const summary = [];
+  const design = Object.values(values).some((v) => v?.kind === "group") ? await loadDesign(new Map(), cert.templateVersionId) : null;
   for (const [key, raw] of Object.entries(changes)) {
     if (!Object.prototype.hasOwnProperty.call(values, key)) throw new CertError("UNKNOWN_FIELD", `"${key}" is not a field of this certificate`, 422, { field: key });
+    if (values[key]?.kind === "group") {
+      // add / remove / reorder / edit rows: the client sends the full list (§7.8, §11)
+      const cellKeys = design.fields.filter((f) => f.groupKey === key).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((f) => f.key);
+      const rows = normaliseRows(key, raw, cellKeys);
+      if (sameRows(rows, values[key].rows)) continue;
+      summary.push(rowsSummary(key, values[key].rows, rows));
+      values[key] = { ...values[key], rows, origin: "manual", editedByUserId: userId || null, editedAt: now };
+      continue;
+    }
+    if (Array.isArray(raw)) throw new CertError("INVALID_VALUE", `"${key}" is a single value, not a list of rows`, 422, { field: key });
     const value = raw === null || raw === undefined ? "" : String(raw);
     if (value.length > MAX_VALUE) throw new CertError("VALUE_TOO_LONG", `"${key}" is longer than ${MAX_VALUE} characters`, 422, { field: key });
     if (value === values[key].value) continue;
@@ -131,16 +173,27 @@ export async function resetField(id, companyId, userId, key, { expectedVersion }
   assertVersion(cert, expectedVersion);
   const current = await currentVersionRow(cert);
   const { design, ctx } = await resolverContext(cert);
-  const field = design.fields.find((f) => f.key === key);
-  if (!field || !Object.prototype.hasOwnProperty.call(current.values || {}, key)) throw notFound("Field");
-  const r = resolveField(field, ctx);
+  const group = design.groups.find((g) => g.key === key);
+  const field = group ? null : plainFields(design).find((f) => f.key === key);
+  if ((!field && !group) || !Object.prototype.hasOwnProperty.call(current.values || {}, key)) throw notFound("Field");
   const values = structuredClone(current.values);
-  values[key] = { value: r.value, source: field.source, resolved: r.resolved, origin: "auto", flags: r.flags, editedByUserId: null, editedAt: null };
+  let summary;
+  if (group) {
+    // a group goes back to the rows of its declared list
+    const cells = design.fields.filter((f) => f.groupKey === key).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const r = resolveGroup(group, cells, ctx);
+    values[key] = groupValue(group, r, { flags: {} });
+    summary = `${key} reset to its source (${(current.values[key].rows || []).length} → ${r.rows.length} rows)`;
+  } else {
+    const r = resolveField(field, ctx);
+    values[key] = { value: r.value, source: field.source, resolved: r.resolved, origin: "auto", flags: r.flags, editedByUserId: null, editedAt: null };
+    summary = `${key} reset to source value (${short(current.values[key].value)} → ${short(r.value)})`;
+  }
   const rendered = await renderValues(cert, values);
   return commitVersion(cert, rendered.values, {
     changeSource: "regenerate_field",
     userId,
-    summary: `${key} reset to source value (${short(current.values[key].value)} → ${short(r.value)})`,
+    summary,
     files: { html: rendered.html, thumbnail: rendered.thumbnail },
   });
 }

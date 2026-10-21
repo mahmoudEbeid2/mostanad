@@ -2,10 +2,10 @@ import { prisma } from "../../../lib/prisma.js";
 import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
-import { runPrepare, renderFilled, fillDef } from "./prepareEngine.js";
+import { runPrepare, renderFilled, fillDef, groupFillDef } from "./prepareEngine.js";
 import { loadVersion } from "./templateService.js";
-import { listFields, fieldsHash } from "./fieldService.js";
-import { resolveAll } from "../generation/valueResolver.js";
+import { listFields, listGroups, fieldsHash } from "./fieldService.js";
+import { resolveAll, resolveGroups } from "../generation/valueResolver.js";
 import { loadProductContext } from "../generation/contextLoader.js";
 
 // Prepare → ready → activate, new version, previews (CERTIFICATES_V2_PLAN.md
@@ -42,8 +42,8 @@ export async function startPrepare(versionId, companyId) {
 export async function runPrepareJob(versionId, ctx = {}) {
   const version = await prisma.templateVersion.findUnique({ where: { id: versionId }, include: { template: true } });
   if (!version) throw notFound("Template version");
-  const fields = await listFields(versionId);
-  const hash = fieldsHash(fields);
+  const [fields, groups] = await Promise.all([listFields(versionId), listGroups(versionId)]);
+  const hash = fieldsHash(fields, groups);
   // idempotent retry — also when the version was activated (or superseded) since
   if (["ready", "active", "superseded"].includes(version.status) && version.prepareReport?.fieldsHash === hash) return { versionId, status: version.status, skipped: true };
   if (version.status !== "preparing") throw new CertError("VERSION_NOT_PREPARING", `Version is ${version.status}, not preparing`, 409);
@@ -51,7 +51,7 @@ export async function runPrepareJob(versionId, ctx = {}) {
   try {
     ctx.progress?.(10, "Clearing fields");
     const sanitized = await fileStore.readText(version.sanitizedFileId);
-    const { preparedHtml, geometry, report, diffImages } = await runPrepare(sanitized, fields, { fontCoverage: version.fontCoverage });
+    const { preparedHtml, geometry, groupGeometry, report, diffImages } = await runPrepare(sanitized, fields, { fontCoverage: version.fontCoverage, groups });
     ctx.progress?.(80, "Saving the report");
 
     const diffs = [];
@@ -74,6 +74,7 @@ export async function runPrepareJob(versionId, ctx = {}) {
           data: geometry[f.key],
         })
       ),
+      ...groups.map((g) => prisma.templateGroup.update({ where: { versionId_key: { versionId, key: g.key } }, data: { geometry: groupGeometry[g.key] } })),
       prisma.templateVersion.update({ where: { id: versionId }, data: { status: "ready", preparedFileId: prepared.id, prepareReport: fullReport, error: null } }),
     ]);
     return { versionId, status: "ready", passed: true, pixelDiffPct: report.pixelDiffPct };
@@ -121,7 +122,7 @@ export async function cloneVersion(versionId, companyId, userId) {
   const v = await loadVersion(versionId, companyId);
   if (!v.sanitizedFileId) throw new CertError("VERSION_NOT_CONVERTED", "This version has no converted design to copy", 409);
   if (v.template.archivedAt) throw new CertError("TEMPLATE_ARCHIVED", "This template is archived", 409);
-  const fields = await listFields(versionId);
+  const [fields, groups] = await Promise.all([listFields(versionId), listGroups(versionId)]);
   return prisma.$transaction(async (tx) => {
     const last = await tx.templateVersion.findFirst({ where: { templateId: v.templateId }, orderBy: { versionNumber: "desc" } });
     const copy = await tx.templateVersion.create({
@@ -130,6 +131,7 @@ export async function cloneVersion(versionId, companyId, userId) {
         versionNumber: last.versionNumber + 1,
         status: "draft",
         sourceFormat: v.sourceFormat,
+        backgroundFormat: v.backgroundFormat,
         sourceFileId: v.sourceFileId,
         sanitizedFileId: v.sanitizedFileId,
         thumbnailFileId: v.thumbnailFileId,
@@ -147,6 +149,10 @@ export async function cloneVersion(versionId, companyId, userId) {
         data: fields.map(({ id, box, limits, letterSpacing, fontClass, scale, ...f }) => ({ ...f, format: f.format ?? undefined, versionId: copy.id })),
       });
     }
+    if (groups.length) {
+      // group geometry too is recomputed by the next prepare
+      await tx.templateGroup.createMany({ data: groups.map(({ id, geometry, ...g }) => ({ ...g, versionId: copy.id })) });
+    }
     return { templateId: v.templateId, versionId: copy.id, versionNumber: copy.versionNumber, status: "draft" };
   });
 }
@@ -154,16 +160,17 @@ export async function cloneVersion(versionId, companyId, userId) {
 // ── previews (never stored) ──────────────────────────────────────────────────
 async function preparedDoc(version) {
   if (!version.preparedFileId) throw new CertError("NOT_PREPARED", `Prepare the version first (it is ${version.status})`, 409);
-  const [html, fields] = await Promise.all([fileStore.readText(version.preparedFileId), listFields(version.id)]);
-  return { html, fields };
+  const [html, fields, groups] = await Promise.all([fileStore.readText(version.preparedFileId), listFields(version.id), listGroups(version.id)]);
+  return { html, fields, groups, plain: fields.filter((f) => !f.groupKey), groupDefs: groups.filter((g) => g.geometry).map((g) => groupFillDef(g, fields)) };
 }
 
-/** GET /template-versions/:id/html?variant=sample — the prepared design refilled with its own sample values. */
+/** GET /template-versions/:id/html?variant=sample — the prepared design refilled with its own sample values (groups: their sample rows). */
 export async function renderSample(versionId, companyId) {
   const version = await loadVersion(versionId, companyId);
-  const { html, fields } = await preparedDoc(version);
-  const values = Object.fromEntries(fields.map((f) => [f.key, f.sampleValue]));
-  return (await renderFilled(html, fields.map(fillDef), values, { fontCoverage: version.fontCoverage, label: "sample" })).html;
+  const { html, plain, groups, groupDefs } = await preparedDoc(version);
+  const values = Object.fromEntries(plain.map((f) => [f.key, f.sampleValue]));
+  for (const g of groups) values[g.key] = g.geometry?.sampleRows || [];
+  return (await renderFilled(html, plain.map(fillDef), values, { fontCoverage: version.fontCoverage, label: "sample", groups: groupDefs })).html;
 }
 
 /**
@@ -173,21 +180,25 @@ export async function renderSample(versionId, companyId) {
  */
 export async function preview(versionId, companyId, { values = {}, productId = null, invoiceItemId = null } = {}) {
   const version = await loadVersion(versionId, companyId);
-  const { html, fields } = await preparedDoc(version);
+  const { html, fields, plain, groups, groupDefs } = await preparedDoc(version);
   const ctx = await loadProductContext(version.template.companyId, { productId, invoiceItemId });
   const resolved = resolveAll(fields, ctx);
+  const resolvedGroups = resolveGroups(groups, fields, ctx);
   const final = {};
-  for (const f of fields) {
+  for (const f of plain) {
     const explicit = Object.prototype.hasOwnProperty.call(values, f.key);
     final[f.key] = explicit ? { value: String(values[f.key] ?? ""), flags: [], origin: "manual" } : { ...resolved[f.key], origin: "auto" };
   }
-  const out = await renderFilled(
-    html,
-    fields.map(fillDef),
-    Object.fromEntries(Object.entries(final).map(([k, v]) => [k, v.value])),
-    { fontCoverage: version.fontCoverage, label: "preview" }
-  );
-  const flags = Object.fromEntries(fields.map((f) => [f.key, [...new Set([...(final[f.key].flags || []), ...(out.flags[f.key] || [])])]]));
+  for (const g of groups) {
+    const explicit = Array.isArray(values[g.key]);
+    final[g.key] = explicit
+      ? { kind: "group", rows: values[g.key].map((r) => Object.fromEntries(Object.entries(r || {}).map(([k, v]) => [k, String(v ?? "")]))), flags: [], origin: "manual" }
+      : { kind: "group", rows: resolvedGroups[g.key].rows, flags: resolvedGroups[g.key].flags, origin: "auto" };
+  }
+  const flat = Object.fromEntries(Object.entries(final).map(([k, v]) => [k, v.kind === "group" ? v.rows : v.value]));
+  const out = await renderFilled(html, plain.map(fillDef), flat, { fontCoverage: version.fontCoverage, label: "preview", groups: groupDefs });
+  const flags = Object.fromEntries([...plain, ...groups].map((f) => [f.key, [...new Set([...(final[f.key].flags || []), ...(out.flags[f.key] || [])])]]));
+  for (const g of groups) final[g.key].rowsFit = out.geometry?.[g.key]?.rowsFit ?? null;
   return { html: out.html, values: final, flags };
 }
 

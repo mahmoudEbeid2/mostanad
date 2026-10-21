@@ -160,7 +160,52 @@ export function resolveField(field, ctx = {}) {
   return { value, resolved, flags };
 }
 
-/** All fields → { [key]: { value, resolved, flags } }. */
+/** All plain fields (group cells excluded) → { [key]: { value, resolved, flags } }. */
 export function resolveAll(fields, ctx = {}) {
-  return Object.fromEntries(fields.map((f) => [f.key, resolveField(f, ctx)]));
+  return Object.fromEntries(fields.filter((f) => !f.groupKey).map((f) => [f.key, resolveField(f, ctx)]));
+}
+
+export const MAX_RESOLVED_ROWS = 200;
+
+/** The list a group's rows come from (§7.8, §10.3). Manual → []. */
+function groupList(group, ctx) {
+  const src = group.source || {};
+  if (src.kind === "product_list") {
+    const list = readPath(ctx.product, src.path);
+    return Array.isArray(list) ? list : [];
+  }
+  if (src.kind === "invoice_lines") return Array.isArray(ctx.lines) ? ctx.lines : [];
+  return [];
+}
+
+/**
+ * One group → { rows: [{ cellKey: value }], resolvedRows, flags }. Each cell
+ * reads its own row ({ kind: "row", path }), a fixed text, or stays empty
+ * (manual). Values only ever come from the declared list (D7).
+ */
+export function resolveGroup(group, cells, ctx = {}) {
+  const list = groupList(group, ctx).slice(0, MAX_RESOLVED_ROWS);
+  const flags = new Set();
+  const rows = [];
+  const resolvedRows = [];
+  for (const item of list) {
+    const row = {};
+    const raw = {};
+    for (const c of cells) {
+      const s = c.source || { kind: "manual" };
+      const resolved = s.kind === "row" ? asText(readPath(item, s.path)) : s.kind === "static" ? s.text ?? "" : "";
+      const { value, flags: f } = applyFormat(resolved, c.format);
+      f.forEach((x) => flags.add(x));
+      row[c.key] = value;
+      raw[c.key] = resolved;
+    }
+    rows.push(row);
+    resolvedRows.push(raw);
+  }
+  return { rows, resolvedRows, flags: [...flags] };
+}
+
+/** All groups → { [groupKey]: { rows, resolvedRows, flags } }. */
+export function resolveGroups(groups, fields, ctx = {}) {
+  return Object.fromEntries((groups || []).map((g) => [g.key, resolveGroup(g, fields.filter((f) => f.groupKey === g.key).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)), ctx)]));
 }

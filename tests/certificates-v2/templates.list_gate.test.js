@@ -50,7 +50,8 @@ try {
   assert("active without a pixel number → count, null", by["D no report"].fieldCount === 1 && by["D no report"].pixelDiffPct === null, by["D no report"]);
 
   console.log("\n🧪 Additive: the existing shape is unchanged");
-  const summaryKeys = ["createdAt", "error", "hasThumbnail", "id", "sourceFormat", "status", "versionNumber"].join();
+  // backgroundFormat: added in Phase 7 (png | svg), documented in API-CHANGES
+  const summaryKeys = ["backgroundFormat", "createdAt", "error", "hasThumbnail", "id", "sourceFormat", "status", "versionNumber"].join();
   assert("versions[] summaries keep exactly their keys (no _count leaked)", by["B ready"].versions.every((v) => Object.keys(v).sort().join() === summaryKeys), by["B ready"].versions[0]);
   assert("latestVersion / activeVersion unchanged", by["B ready"].latestVersion.versionNumber === 3 && by["B ready"].activeVersion === null && by["A active"].activeVersion.versionNumber === 1);
   assert("type + brand includes unchanged", by["A active"].certificateType.code === "COA" && by["A active"].brand === null);

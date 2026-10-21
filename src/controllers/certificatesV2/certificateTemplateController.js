@@ -70,8 +70,14 @@ export const getFieldSources = catchAsync(async (req, res) => {
 });
 
 export const putFields = catchAsync(async (req, res) => {
-  const data = await fieldService.replaceFields(req.params.id, scopeOf(req), req.body.fields);
+  const data = await fieldService.replaceFields(req.params.id, scopeOf(req), req.body.fields, req.body.groups);
   res.status(200).json({ status: "success", data });
+});
+
+// §7.8: a new draft version of the same design with a vector background, fields copied
+export const enableGroups = catchAsync(async (req, res) => {
+  const data = await templateService.enableGroups(req.params.id, scopeOf(req), actorId(req));
+  res.status(202).json({ status: "accepted", data });
 });
 
 export const confirmFields = catchAsync(async (req, res) => {

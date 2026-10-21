@@ -3,10 +3,10 @@ import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { loadInvoice } from "../invoices/invoiceService.js";
-import { listFields } from "../templates/fieldService.js";
-import { renderFilled, fillDef } from "../templates/prepareEngine.js";
+import { listFields, listGroups } from "../templates/fieldService.js";
+import { renderFilled, fillDef, groupFillDef } from "../templates/prepareEngine.js";
 import { selectTemplates } from "./templateSelector.js";
-import { resolveAll } from "./valueResolver.js";
+import { resolveAll, resolveGroups } from "./valueResolver.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -126,13 +126,42 @@ export async function loadDesign(cache, templateVersionId) {
       (async () => {
         const v = await prisma.templateVersion.findUnique({ where: { id: templateVersionId }, include: { template: { include: { brand: { select: { id: true, name: true } } } } } });
         if (!v?.preparedFileId) throw new CertError("NOT_PREPARED", `Template version ${templateVersionId} has no prepared design`, 409);
-        const [html, fields] = await Promise.all([fileStore.readText(v.preparedFileId), listFields(v.id)]);
-        return { version: v, html, fields };
+        const [html, fields, groups] = await Promise.all([fileStore.readText(v.preparedFileId), listFields(v.id), listGroups(v.id)]);
+        return { version: v, html, fields, groups };
       })()
     );
   }
   return cache.get(templateVersionId);
 }
+
+/** A design's plain fields (group cells excluded). */
+export const plainFields = (design) => design.fields.filter((f) => !f.groupKey);
+
+/**
+ * Renders `values` (CertificateVersion.values shape) with a design → { html, flags, geometry, thumbnail }.
+ * values[groupKey].rows are the group's rows (§7.8).
+ */
+export function renderDesign(design, values, { label, thumbnailScale = null } = {}) {
+  const fields = plainFields(design);
+  const groups = (design.groups || []).filter((g) => g.geometry).map((g) => groupFillDef(g, design.fields));
+  const flat = Object.fromEntries(fields.map((f) => [f.key, values[f.key]?.value ?? ""]));
+  for (const g of design.groups || []) flat[g.key] = values[g.key]?.rows ?? [];
+  return renderFilled(design.html, fields.map(fillDef), flat, { fontCoverage: design.version.fontCoverage, label, thumbnailScale, groups });
+}
+
+/** A stored group value (§10.4). */
+export const groupValue = (g, resolved, out, extra = {}) => ({
+  kind: "group",
+  rows: resolved.rows,
+  resolvedRows: resolved.resolvedRows ?? resolved.rows,
+  source: g.source,
+  origin: "auto",
+  flags: [...new Set([...(resolved.flags || []), ...(out.flags[g.key] || [])])],
+  rowsFit: out.geometry?.[g.key]?.rowsFit ?? null,
+  editedByUserId: null,
+  editedAt: null,
+  ...extra,
+});
 
 async function loadProductCtx(cache, companyId, productId) {
   if (!productId) return null;
@@ -149,10 +178,19 @@ async function loadProductCtx(cache, companyId, productId) {
  * Resolver context for one certificate (§10.3):
  *  per_product — its invoice line, the matched product (+ brand), invoice header, company;
  *  per_invoice — invoice header, company and the template's brand (else the invoice's); item/product
- *                sources stay empty until repeating groups exist (Phase 7, assumption A1).
+ *                sources stay empty; a repeating group reads the lines (Phase 7).
+ *  lines — every invoice line of the certificate, in order, each with its matched product
+ *          (tenant-scoped) as `product`: the rows of an `invoice_lines` group (§7.8).
  */
 export async function certificateContext(cert, base, caches, design) {
   const ctx = { invoice: base.invoice.header || {}, company: base.company, today: base.today };
+  ctx.lines = [];
+  for (const ci of cert.items || []) {
+    const line = ci.invoiceItem;
+    if (!line) continue;
+    const product = line.productId ? await loadProductCtx(caches.products, cert.companyId, line.productId) : null;
+    ctx.lines.push({ ...(line.data || {}), product: product || {} });
+  }
   if (cert.scope === "per_product") {
     const line = cert.items[0]?.invoiceItem;
     ctx.item = line?.data || {};
@@ -175,14 +213,12 @@ export async function renderInitialVersion(cert, base, caches) {
   const design = await loadDesign(caches.designs, cert.templateVersionId);
   const ctx = await certificateContext(cert, base, caches, design);
   const resolved = resolveAll(design.fields, ctx);
-  const out = await renderFilled(
-    design.html,
-    design.fields.map(fillDef),
-    Object.fromEntries(design.fields.map((f) => [f.key, resolved[f.key].value])),
-    { fontCoverage: design.version.fontCoverage, label: "generate", thumbnailScale: THUMB_SCALE }
-  );
+  const resolvedGroups = resolveGroups(design.groups, design.fields, ctx);
+  const draft = Object.fromEntries(plainFields(design).map((f) => [f.key, { value: resolved[f.key].value }]));
+  for (const g of design.groups) draft[g.key] = { rows: resolvedGroups[g.key].rows };
+  const out = await renderDesign(design, draft, { label: "generate", thumbnailScale: THUMB_SCALE });
   const values = Object.fromEntries(
-    design.fields.map((f) => [
+    plainFields(design).map((f) => [
       f.key,
       {
         value: resolved[f.key].value,
@@ -195,6 +231,7 @@ export async function renderInitialVersion(cert, base, caches) {
       },
     ])
   );
+  for (const g of design.groups) values[g.key] = groupValue(g, resolvedGroups[g.key], out);
   const html = await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_html", buffer: Buffer.from(out.html, "utf8"), mimeType: "text/html" });
   const thumb = out.thumbnail ? await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_thumb", buffer: out.thumbnail, mimeType: "image/png" }) : null;
   const [, updated] = await prisma.$transaction([

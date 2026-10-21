@@ -39,6 +39,93 @@ const COMPANY_PATHS = [
 ];
 const BRAND_PATHS = [{ path: "name", label: "Brand name", type: "string" }];
 
+// ── repeating groups (§7.8, §10.3) ───────────────────────────────────────────
+// A group's rows come from a list on the product, from the certificate's
+// invoice lines (per_invoice), or are typed in the editor. Each cell then
+// reads a path of ITS row: { kind: "row", path }.
+const PRODUCT_LISTS = [
+  {
+    path: "activeIngredients",
+    label: "Active ingredients",
+    rowPaths: [
+      { path: "name", label: "Name", type: "string" },
+      { path: "concentration", label: "Concentration", type: "string" },
+    ],
+  },
+];
+
+function invoiceLineRowPaths() {
+  const product = productPaths()
+    .filter((p) => !p.path.includes("["))
+    .map((p) => ({ path: `product.${p.path}`, label: `Product · ${p.label}`, type: p.type }));
+  return [...INVOICE_ITEM_FIELDS.map((p) => ({ ...p })), ...product];
+}
+
+export const GROUP_SOURCE_KINDS = ["product_list", "invoice_lines", "manual"];
+export const CELL_SOURCE_KINDS = ["row", "static", "manual"];
+export const GROUP_MODES = ["repeat", "fixed_rows"];
+export const WHEN_EMPTY = ["dash", "hide"];
+
+let groupCached = null;
+export function groupSourceCatalogue() {
+  if (groupCached) return groupCached;
+  groupCached = {
+    kinds: [
+      { kind: "product_list", label: "A list on the product", description: "One row per entry, e.g. each active ingredient", lists: PRODUCT_LISTS },
+      { kind: "invoice_lines", label: "The invoice lines", description: "One row per invoice line of a collective (per invoice) certificate", rowPaths: invoiceLineRowPaths() },
+      { kind: "manual", label: "Typed in the editor", description: "Rows are added, removed and reordered by hand" },
+    ],
+    cellKinds: [
+      { kind: "row", label: "From the row", needs: "path" },
+      { kind: "static", label: "Fixed text", needs: "text" },
+      { kind: "manual", label: "Typed in the editor" },
+    ],
+    modes: [
+      { mode: "repeat", label: "Add rows as needed", description: "Rows are copied from the sample row; the content below moves down" },
+      { mode: "fixed_rows", label: "Fixed rows", description: "The design draws the maximum number of rows; unused rows are hidden and the gap closed" },
+    ],
+    whenEmpty: [
+      { value: "dash", label: "Show one row with “—”" },
+      { value: "hide", label: "Remove the row (label included)" },
+    ],
+  };
+  return groupCached;
+}
+
+/** The row paths a cell may read for a group source, or null when cells can't read the row. */
+export function rowPathsFor(groupSource) {
+  if (!groupSource) return null;
+  if (groupSource.kind === "product_list") return PRODUCT_LISTS.find((l) => l.path === groupSource.path)?.rowPaths || null;
+  if (groupSource.kind === "invoice_lines") return invoiceLineRowPaths();
+  return null;
+}
+
+export function validateGroupSource(source) {
+  if (!source || typeof source !== "object") return ["source is required"];
+  if (!GROUP_SOURCE_KINDS.includes(source.kind)) return [`unknown group source "${source.kind}" (use ${GROUP_SOURCE_KINDS.join(", ")})`];
+  if (source.kind === "product_list" && !PRODUCT_LISTS.some((l) => l.path === source.path)) return [`unknown product list "${source.path}" (use ${PRODUCT_LISTS.map((l) => l.path).join(", ")})`];
+  return [];
+}
+
+/** Problems with a group cell's source, given its group's source. */
+export function validateCellSource(source, groupSource) {
+  if (!source || typeof source !== "object") return ["source is required"];
+  if (!CELL_SOURCE_KINDS.includes(source.kind)) return [`a group cell's source must be one of ${CELL_SOURCE_KINDS.join(", ")}`];
+  if (source.kind === "static" && (typeof source.text !== "string" || !source.text.length)) return ["source.text is required for fixed text"];
+  if (source.kind === "row") {
+    const paths = rowPathsFor(groupSource);
+    if (!paths) return ["this group's rows are typed by hand — its cells can't read a row path (use manual or static)"];
+    if (!paths.some((p) => p.path === source.path)) return [`unknown row path "${source.path}"`];
+  }
+  return [];
+}
+
+/** The type a cell source yields (formats). */
+export function cellSourceType(source, groupSource) {
+  if (source?.kind !== "row") return "string";
+  return rowPathsFor(groupSource)?.find((p) => p.path === source.path)?.type || "string";
+}
+
 export const DATE_TOKENS = ["DD", "MM", "MMM", "YYYY", "YY"];
 export const CASES = ["upper", "lower", "title"];
 
@@ -71,6 +158,7 @@ export function getSourceCatalogue() {
       prefix: "text added before",
       suffix: "text added after",
     },
+    groups: groupSourceCatalogue(),
   };
   return cached;
 }
@@ -130,12 +218,12 @@ export function validateSource(source) {
 
 const DATE_FORMAT_RE = new RegExp(`^(?:${["YYYY", "MMM", "DD", "MM", "YY"].join("|")}|[\\s./\\-,])+$`);
 
-/** → problems with `format` for a source (empty when valid or absent). */
-export function validateFormat(format, source) {
+/** → problems with `format` for a source (empty when valid or absent). `groupSource` for group cells. */
+export function validateFormat(format, source, groupSource = undefined) {
   if (format === null || format === undefined) return [];
   if (typeof format !== "object") return ["format must be an object"];
   const problems = [];
-  const type = sourceType(source);
+  const type = groupSource !== undefined ? cellSourceType(source, groupSource) : sourceType(source);
   for (const key of Object.keys(format)) {
     if (!["date", "case", "number", "prefix", "suffix"].includes(key)) problems.push(`unknown format option "${key}"`);
   }

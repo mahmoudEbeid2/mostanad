@@ -3,7 +3,7 @@
 // Drives the real mostanad_front pages in headless Chromium. NOT part of
 // `npm test` (needs the Vite dev server): run it by hand.
 //
-//   node tests/certificates-v2/ui-smoke.mjs --user <username> --password-file <file> [--phase 1..6] [--shots <dir>]
+//   node tests/certificates-v2/ui-smoke.mjs --user <username> --password-file <file> [--phase 1..7] [--shots <dir>]
 //
 // Needs: npm run dev:test (API + workers), pdf2htmlex, and `npx vite` in
 // mostanad_front on :5173. The login is a local QA user (Admin role); the
