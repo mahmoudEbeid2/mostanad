@@ -30,6 +30,16 @@ services:
       - internal
     restart: always
 
+  # mem_limit (2026-10-21; idle numbers = PSS on the 2-CPU / 7.8 GiB host, peaks measured locally):
+  #  - Chromium renderers (app, template worker, render worker): node ~120 MiB +
+  #    an idle Chromium ~290 MiB; a render with an SVG background adds a few
+  #    hundred MiB on top: the full convert/analyse/screenshot/print path on the
+  #    SVG goldens peaked at ~1.0 GiB (node 120 + Chromium 895 MiB) → 1536m.
+  #    The browser now closes after CERT_BROWSER_IDLE_MS (default 5 min).
+  #  - plain node workers: 25–52 MiB → 384m is 7× headroom.
+  #  - pdf2htmlex: 40 MiB idle, ~115 MiB converting the goldens (png or svg) → 768m leaves room for bigger designs.
+  # A container over its limit is OOM-killed and restarted (unless-stopped)
+  # instead of starving the other services on the host.
   mostanad-app:
     container_name: mostanad-app
     build: .
@@ -41,7 +51,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://localhost:3000
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 1536m
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +82,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,7 +107,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,7 +132,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,7 +157,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,7 +182,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -191,7 +207,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -214,7 +231,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 1536m
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,7 +259,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 1536m
     depends_on:
       postgres:
         condition: service_healthy
@@ -265,7 +284,8 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
-    restart: always
+    restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       postgres:
         condition: service_healthy
@@ -284,7 +304,8 @@ services:
   pdf2htmlex:
     container_name: pdf2htmlex
     build: ./docker/pdf2htmlex
-    restart: always
+    restart: unless-stopped
+    mem_limit: 768m
     expose:
       - "5000"
     networks:

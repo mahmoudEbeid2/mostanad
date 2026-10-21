@@ -14,6 +14,6 @@ const handlers = {
 export const certificateTemplateWorker = startWorker({
   queueName: QUEUES.template,
   label: "Certificate Template Worker",
-  concurrency: 2,
+  concurrency: Number(process.env.CERT_TEMPLATE_CONCURRENCY) || 2,
   handlers,
 });

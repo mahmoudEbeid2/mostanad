@@ -18,7 +18,7 @@ const handlers = {
 export const certificateRenderWorker = startWorker({
   queueName: QUEUES.render,
   label: "Certificate Render Worker",
-  concurrency: 1,
+  concurrency: Number(process.env.CERT_RENDER_CONCURRENCY) || 1,
   handlers,
 });
 

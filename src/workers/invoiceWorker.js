@@ -13,6 +13,6 @@ const handlers = {
 export const invoiceWorker = startWorker({
   queueName: QUEUES.invoice,
   label: "Invoice Worker",
-  concurrency: 1,
+  concurrency: Number(process.env.INVOICE_CONCURRENCY) || 1,
   handlers,
 });

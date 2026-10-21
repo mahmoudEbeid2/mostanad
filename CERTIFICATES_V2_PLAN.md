@@ -204,7 +204,7 @@ Add them to `scripts/runDev.js` too. The app image already ships Chromium (`PUPP
 - Every job is **idempotent by entity id**. A retried job never creates duplicate rows; use upserts keyed by `(batchId, templateVersionId, productId)`.
 
 ### 5.3 Renderer (Puppeteer) — non-negotiables
-- One browser per worker process with a page pool; restart the browser after N=200 renders or on crash. Do not use the current `puppeteerService` pattern of launching a browser per call.
+- One browser per worker process with a page pool; restart the browser after N=200 renders or on crash. Do not use the current `puppeteerService` pattern of launching a browser per call. The browser is launched on the first render and closed after `CERT_BROWSER_IDLE_MS` (default 5 min) without one — an idle Chromium holds ~290 MB; pool size `CERT_RENDER_PAGES` (1 in production, 2 elsewhere). Worker concurrency: `CERT_TEMPLATE_CONCURRENCY` (2), `CERT_RENDER_CONCURRENCY` (1), `INVOICE_CONCURRENCY` (1).
 - Before loading **any** template or certificate HTML:
   - `page.setRequestInterception(true)` and **abort every request** except `data:`/`about:`.
   - `page.setJavaScriptEnabled(true)` is allowed **only** because sanitized HTML contains no scripts. Only `fieldEngine` is injected.

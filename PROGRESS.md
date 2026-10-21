@@ -1279,3 +1279,11 @@ Owner's review of Certificates V2, fixed in this order, one commit per group and
    3. `npx prisma migrate status` → "Database schema is up to date"; only then let `start.sh` run `migrate deploy` on the next start.
 5. **Never** `db push`, `migrate dev` or `migrate reset` against production (`tests/deploy.no_db_push.test.js` guards start.sh/compose/package.json).
 6. After deploy: `GET /api/v1/health`, one login per account type, the daily maintenance job registered, the BullMQ queues draining.
+
+## Ops 2026-10-21 — "production feels slow" after the Certificates V2 deploy
+**Measured (before):** 2 CPUs, load 0.11; RAM 2.6 / 7.8 GiB used, 5.1 GiB available, no swap, no OOM kills, 0 restarts. Server-side response: `/api/v1/health` ~30 ms, login page 25–50 ms. From the client: TCP connect ~230 ms with 1–6 s spikes, the 507 KB gzip bundle at 14–29 KB/s (~35 s), while the same client gets 131 KB/s from a CDN and the server gets 2.7 MB/s outbound. **The slowness is the network path client ↔ Hostinger Frankfurt, not the server** (TCP congestion control is `cubic`; bundle grew only 1.4 % in the deploy). `mostanad_front_dev` does not exist on the server; nothing on :5173.
+**Memory fix anyway** (idle Chromium was the stack's largest consumer: ~290 MiB PSS in `mostanad-app` and in `certificate-template-worker`):
+- `renderer.js`: browser still launched on the first render, now closed after `CERT_BROWSER_IDLE_MS` (default 5 min) without one; the next render relaunches it; recycle-after-200 unchanged (the idle close restarts its count). Pool size `CERT_RENDER_PAGES` (1 in production, 2 elsewhere; `RENDER_POOL_SIZE` still read).
+- Worker concurrency from env with today's defaults: `CERT_TEMPLATE_CONCURRENCY` 2, `CERT_RENDER_CONCURRENCY` 1, `INVOICE_CONCURRENCY` 1.
+- `docker-compose.prod.yml`: `restart: unless-stopped` + `mem_limit` for the app, 9 workers and pdf2htmlex (1536m for the three Chromium users — the full SVG convert/analyse/screenshot/print path peaked at ~1.0 GiB locally; 512m invoice; 384m plain workers at 25–52 MiB; 768m pdf2htmlex at ~115 MiB peak). traefik/postgres/redis untouched.
+- Test `renderer.idle.test.js` (11 checks): lazy launch, timer re-armed by a render, a render longer than the timeout is not cut off, closed after the timeout (process gone), relaunch on the next render. `npm test` 64/64.

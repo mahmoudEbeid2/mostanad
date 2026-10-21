@@ -3,16 +3,20 @@ import puppeteer from "puppeteer";
 
 // Puppeteer renderer (CERTIFICATES_V2_PLAN.md §5.3) — the ONE place template
 // and certificate HTML is laid out, measured, screenshotted and printed (D11).
-//  - one browser per process, a small page pool, browser recycled after
-//    RECYCLE_AFTER renders or on crash
+//  - one browser per process, launched on the first render, a small page
+//    pool, browser recycled after RECYCLE_AFTER renders or on crash, and
+//    closed after IDLE_MS without a render (an idle Chromium holds ~290 MB)
 //  - every request except data:/about: is aborted (no network, no file://)
 //  - 30 s per operation
 //  - the field engine is injected with page.evaluate(source) (plan §20 I4)
 
 const ENGINE_SOURCE = fs.readFileSync(new URL("./fieldEngine.browser.js", import.meta.url), "utf8");
-const POOL_SIZE = Number(process.env.RENDER_POOL_SIZE) || 2;
+// pages per browser: 1 in production (memory), 2 elsewhere; RENDER_POOL_SIZE is the old name
+const POOL_SIZE =
+  Number(process.env.CERT_RENDER_PAGES) || Number(process.env.RENDER_POOL_SIZE) || (process.env.NODE_ENV === "production" ? 1 : 2);
 const RECYCLE_AFTER = Number(process.env.RENDER_RECYCLE_AFTER) || 200;
 const OP_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 30_000;
+const IDLE_MS = Number(process.env.CERT_BROWSER_IDLE_MS) || 5 * 60_000;
 
 // Viewer-only reset (page container static, no margins/shadows). Injected for
 // every operation and removed by serialize() — the stored document is never
@@ -87,7 +91,31 @@ let draining = false;
 let recycles = 0;
 let maxRendersPerBrowser = 0;
 
+// Idle close: armed whenever the pool goes quiet, cleared by the next acquire().
+let idleTimer = null;
+let idleCloses = 0;
+
+function armIdleClose() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(closeIfIdle, IDLE_MS);
+  idleTimer.unref?.(); // never keeps a process (or a test) alive
+}
+
+async function closeIfIdle() {
+  idleTimer = null;
+  if (active > 0 || draining || launching || waiters.length || !browser) return;
+  const old = browser;
+  browser = null; // the next acquire() launches a fresh one
+  idlePages.length = 0;
+  rendersSinceLaunch = 0;
+  idleCloses++;
+  await Promise.race([old.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  old.process()?.kill("SIGKILL");
+}
+
 async function acquire() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
   while (active >= POOL_SIZE || draining) await new Promise((resolve) => waiters.push(resolve));
   active++;
   try {
@@ -134,7 +162,9 @@ async function slotFreed() {
     for (const wake of waiters.splice(0)) wake();
     return;
   }
-  waiters.shift()?.();
+  const next = waiters.shift();
+  if (next) next();
+  else if (active === 0) armIdleClose();
 }
 
 function withTimeout(promise, label) {
@@ -291,10 +321,25 @@ export const markGenericLines = (html) =>
 
 /** Closes the browser (tests, graceful worker shutdown). */
 export async function shutdown() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
   const b = browser;
   browser = null;
   idlePages.length = 0;
   if (b) await b.close().catch(() => {});
 }
 
-export const rendererStats = () => ({ poolSize: POOL_SIZE, active, idle: idlePages.length, rendersSinceLaunch, connected: !!browser?.connected, draining, recycles, maxRendersPerBrowser, recycleAfter: RECYCLE_AFTER });
+export const rendererStats = () => ({
+  poolSize: POOL_SIZE,
+  active,
+  idle: idlePages.length,
+  rendersSinceLaunch,
+  connected: !!browser?.connected,
+  draining,
+  recycles,
+  maxRendersPerBrowser,
+  recycleAfter: RECYCLE_AFTER,
+  idleMs: IDLE_MS,
+  idleCloses,
+  idleCloseArmed: !!idleTimer,
+});
