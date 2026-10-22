@@ -1,0 +1,484 @@
+# Certificates — AI Layers Plan (v1)
+
+> **Status:** DRAFT for owner review · 2026-10-22 · Owner: Mahmoud Ebeid **Builds on:**`CERTIFICATES_V2_PLAN.md` (rev 2), now fully implemented (phases 0–8, single renderer service). Read `CLAUDE.md` first. Every invariant there applies, in particular: provenance on every value; no invented values; model IDs only in `modelRegistry.js`; every Gemini call through `geminiClient`; tenant-scoped queries. **Before coding:** verify every file/function name cited here against the real code. V2 was implemented by several sessions, so names may differ slightly from the V2 plan. Record any difference in PROGRESS.md, not by silently renaming things.
+
+---
+
+## ملخص للمالك (Arabic summary)
+
+**الهدف:** نضيف طبقتين AI عشان الشغل اليدوي يقل جداً، من غير ما نكسر قاعدة "مفيش قيمة متألّفة".
+
+**الطبقة الأولى — مع التمبليت:**
+
+- إنت تحدد النص في الشهادة، وتكتب **اسم الحقل بس**، زي "Expiry date". ولو مكتبتش، الـ AI يقترحه من السطر نفسه، مثلاً من كلمة "Expiry Date:" اللي قبل القيمة.
+- الـ AI يكتشف **مصدر البيانات** من schema المنتج كله، **ومعاه اللي جوه حقول الـ JSON**، زي `specifications` و`activeIngredients`. ويكتشف **الـ format** كمان، زي `MM/YYYY` من شكل القيمة.
+- الـ AI **بيختار مسار بس، مبيكتبش أي قيمة.** الكود هو اللي بيجيب القيمة من المسار، فمستحيل يألّف رقم.
+- أي اختيار تأكّده أو تصلّحه **بيتحفظ كذاكرة للشركة**. المرة الجاية نفس الاسم يتربط على طول من غير AI.
+
+**الطبقة التانية — مع الفاتورة:**
+
+- بعد ما الفاتورة تتقري والمنتجات تتطابق، السيستم يعرف **الشهادات اللي هتطلع وكل حقل محتاجينه فيها**، ويقول بالظبط إيه موجود وإيه ناقص.
+- **الناقص** الـ AI يدوّر عليه في نص الفاتورة نفسها وفي بيانات المنتج. أي قيمة يلاقيها لازم يجيب **الدليل**، والكود يتأكد إن القيمة مكتوبة فعلاً في الدليل ده **حرف بحرف**. ولو ملقاش، الحقل يتعرض عليك تملاه قبل التوليد.
+- **مطابقة المنتجات بقت أذكى:** الـ AI بيساعد في الأسماء اللي مش متطابقة بالظبط، زي "Doxypharma 1kg" و "DOXYPHARMA". وأي مطابقة تأكّدها **بتتحفظ كاسم بديل**، فالمرة الجاية تتطابق لوحدها.
+
+**الـ AI بيقرا الـ JSON نفسه في حالتين:** لما المفتاح يبقى مكتوب بشكل مختلف (`"PH value"` بدل `"pH"`)، ولما القيمة تبقى جوه نص طويل (`"pH 3.0-5.0, assay..."`). في الحالتين لازم يرجّع الجملة اللي لقى فيها القيمة، والكود يتأكد إنها مكتوبة فعلاً في الـ JSON بتاع المنتج.
+
+**مشكلة الـ JSON:** أول حاجة هنعملها "قاموس بيانات" لكل شركة، الكود بيبنيه أوتوماتيك من منتجاتها. بيقول جوه كل حقل JSON إيه المفاتيح اللي فيه، وكل مفتاح موجود في كام منتج بالنسبة، ومعاه أمثلة. وده الأساس اللي الطبقتين بيشتغلوا عليه.
+
+**حماية إضافية:** القيمة اللي الـ AI بيلاقيها لأي منتج في الفاتورة لازم تكون من **سطر المنتج ده نفسه**، مش من سطر منتج تاني. كده لو الفاتورة فيها تاريخين، ميجيبش التاريخ الغلط.
+
+**العلاج الحقيقي لمشكلة الـ JSON** (في المرحلة A4، ومتتأجلش كتير): فورم المنتج يبقى فيه خانات ثابتة للحاجات المهمة، زي مواصفة pH وAssay والمكوّنات كقايمة، بدل JSON حر. ساعتها الـ AI مش هيحتاج يقرا الـ JSON غير للمنتجات القديمة.
+
+**الترتيب:**
+
+1. الأساس: القاموس + طريقة كتابة المسارات + تسجيل كل طلب AI.
+2. الطبقة الأولى.
+3. الطبقة التانية.
+4. المطابقة الذكية.
+5. التحسينات المتقدمة.
+
+**القرارات المحتاجة منك في §12.**
+
+---
+
+## 1. Goals & non-goals
+
+**Goals**
+
+1. **Template mapping by label.** The user selects the value text and types (or accepts) a label; the system proposes key, source, format, required and align. Target: ≥ 90 % of fields need no manual source editing on the golden templates.
+2. **Invoice intelligence.** After extraction and matching, the system computes the complete _data needs_ of the certificates about to be generated and resolves as many as possible with **verifiable evidence**. It asks the user only for what is genuinely missing, before generation.
+3. **Make JSON product data usable** (`specifications`, `activeIngredients`, arrays): discoverable, addressable and explainable without anyone reading raw JSON.
+4. **Learn from confirmations**, so the AI is called less over time and results become deterministic.
+
+**Non-goals (this plan)**
+
+- The AI never writes template HTML, never decides which fields exist (V2 D3), and never generates a value that cannot be traced to a stored source.
+- No rewriting of product data. JSON normalisation is suggest-only (§9, A-4).
+- No autonomous generation without a human confirming the invoice review.
+
+---
+
+## 2. Principles (non-negotiable)
+
+| #   | Principle                                                                                                                        | How it's enforced                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| P1  | **AI chooses, code fetches.**For DB-backed values the model returns a*path*; it never returns the value.                         | `valueResolver`reads the value with the path; a model-supplied value for a DB source is discarded               |
+| P2  | **Evidence or nothing.**Every AI-found value for a non-DB source (invoice text) carries evidence that code verifies**verbatim**. | `evidenceVerifier`: normalised substring check against the stored invoice text; failure → reject the suggestion |
+| P3  | **Deterministic before AI.**Order: company mapping memory → dictionary synonyms → AI.                                            | resolvers short-circuit; AI calls are logged with a reason                                                      |
+| P4  | **Human confirms below threshold.**                                                                                              | per-company`autoAcceptThreshold`(default 0.90)**and**P2 verified; otherwise "needs confirmation"                |
+| P5  | **Schema-constrained output only.**                                                                                              | `geminiClient.generateJson`+`responseSchema`; any field outside the schema is dropped                           |
+| P6  | **Tenant isolation.**Dictionaries, memory, aliases and prompts include only the caller's company data.                           | a test sends company A's request and asserts no company B data in the prompt payload                            |
+| P7  | **Full provenance.**Each stored suggestion records`modelId, promptHash, inputHash, confidence, evidence, decidedBy, decidedAt`.  | `AiSuggestion`table (§4)                                                                                        |
+| P8  | **Graceful degradation.**Gemini down or over quota → everything still works manually, with a visible "AI unavailable" note.      | no blocking dependency on the AI path; tests run with the AI stubbed to fail                                    |
+
+---
+
+## 3. Foundations (Phase A0)
+
+### 3.1 Source path language (`sourcePath`)
+
+Current sources (`product.name`, `item.batchNo` …) cannot address values _inside_ JSON. Define a small, safe path grammar. No evaluation, no code, and parsed by our own parser.
+
+```
+path      := root ("." key | "[" index "]" | "[" filter "]" | "[" quoted "]")*
+root      := product | item | invoice | company | brand
+key       := identifier                         e.g. specifications
+quoted    := "\"" any-text "\""                 e.g. values["Assay %"]
+index     := integer                            e.g. activeIngredients[1]
+filter    := key "=" quoted                     e.g. activeIngredients[name="Vitamin E"]
+```
+
+**Examples**
+
+- `product.name`
+- `product.specifications.values["pH"]`
+- `product.activeIngredients[name="Sodium selenite"].concentration`
+- `product.activeIngredients[0].name`
+- `item.batchNo`
+- `invoice.header.invoiceDate`
+
+**Rules**
+
+- Matching for `filter` is **case- and space-insensitive**.
+- The resolver returns `{ found, value, type }`, never throws, and records the concrete path it hit.
+- It is backward compatible: existing `{ kind, path }` sources map 1:1 (`kind` = root).
+- **Migration:** a read-time adapter, not a data migration.
+
+**Implementation:**`src/services/certificates/paths/sourcePath.js` (`parse`, `resolve`, `toLabel`), with exhaustive unit tests (malformed input, deep arrays, missing keys, unicode keys).
+
+### 3.2 Company data dictionary (the fix for "unclear JSON")
+
+`src/services/certificates/dictionary/dataDictionary.js` builds, **per company**, a catalogue of every addressable path and what it actually contains:
+
+```json
+{
+  "path": "product.specifications.values[\"pH\"]",
+  "root": "product",
+  "type": "string",
+  "coverage": 0.83,
+  "distinct": 41,
+  "examples": ["3.0-5.0", "2.0 – 3.0", "6.5-7.5"],
+  "labels": ["pH", "PH", "ph value"],
+  "synonyms": ["acidity"],
+  "source": "observed"
+}
+```
+
+| Field      | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `coverage` | share of the company's products that have this path (0.83 = 83 %) |
+| `distinct` | number of distinct values seen                                    |
+| `examples` | up to 5, truncated to 60 characters each                          |
+| `labels`   | key spellings seen across products                                |
+| `synonyms` | added by the AI or the user (`source`:`observed`or`ai_synonym`)   |
+
+**How it is built**
+
+- **Static schema:** the Prisma `Product` model plus relations (`category.name`, `brand.name`), and the invoice header/item schemas.
+- **Observed JSON shapes:** scan the company's products and walk the JSON columns (`specifications`, `activeIngredients`, any `Json` field). Collect key paths, types, coverage and up to 5 examples. Arrays of objects become a _collection_ path (`activeIngredients[]`) with child keys.
+- **Key variants:** different spellings of the same key across products (`pH`, `PH`, `ph`) are grouped into one entry, with every spelling kept in `labels`.
+- **Synonyms (AI, optional, cached):** one `CERT_DICTIONARY` call per rebuild proposes human labels/synonyms for opaque keys (`ws_period` → "Withdrawal period"). These are stored as `ai_synonym` and shown in the UI as suggestions.
+
+**When it is rebuilt**
+
+- Lazily on first use.
+- After a catalog upload or product create/update, debounced to one rebuild per company per 10 min.
+- Nightly.
+
+It is stored in `DataDictionary` (§4). The source picker in the UI reads it, so JSON keys become pickable like normal columns ("Product › Specifications › pH").
+
+**This alone fixes most of the JSON problem, without any AI at fill time.**
+
+### 3.3 AI infrastructure
+
+- **`modelRegistry.js` new entries:**
+  - `CERT_FIELD_MAP`: thinkingBudget 1024, temperature 0
+  - `CERT_INVOICE_GAPS`: 1024, 0
+  - `CERT_PRODUCT_MATCH`: 0, 0
+  - `CERT_DICTIONARY`: 0, 0
+  - (Use `gemini-2.5-flash` unless a better model is verified reachable on the key; follow the registry's comment convention.)
+- **`aiRunLog`:** every call records kind, companyId, entity, `inputHash`, `promptHash`, modelId, tokens, ms, outcome, through `generationMetrics`.
+- **Per-company settings** (`Company.aiSettings` Json, nullable):
+  - `{ enabled, autoAcceptThreshold, allowSynonyms, allowInvoiceGapFill, allowAiMatching }`
+  - Defaults: all on, threshold 0.90.
+- **Prompt hygiene:** prompts are built from structured data only (dictionary entries, line text, invoice text). Template HTML, other tenants' data and personal data beyond what the invoice contains are never sent.
+
+---
+
+## 4. Data model (additive migrations only)
+
+```prisma
+model DataDictionary {
+  id          String   @id @default(uuid())
+  companyId   String   @unique @map("company_id")
+  entries     Json                               // [DictionaryEntry] (§3.2)
+  productCount Int     @map("product_count")
+  builtAt     DateTime @map("built_at")
+  version     Int      @default(1)               // bumps on every rebuild; suggestions record the version they used
+  @@map("data_dictionaries")
+}
+
+model FieldMappingMemory {                       // learned label → source, per company
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  labelNorm   String   @map("label_norm")        // normalised label: lowercase, no punctuation, collapsed spaces
+  certificateTypeId String? @map("certificate_type_id") // null = applies to all types
+  source      Json                               // { kind/path… } as stored on TemplateField
+  format      Json?
+  timesUsed   Int      @default(1) @map("times_used")
+  lastUsedAt  DateTime @map("last_used_at")
+  createdByUserId String? @map("created_by_user_id")
+  @@unique([companyId, labelNorm, certificateTypeId])
+  @@map("field_mapping_memory")
+}
+
+model ProductAlias {                             // learned invoice-name → product
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  aliasNorm   String   @map("alias_norm")        // normalised invoice text
+  productId   String   @map("product_id")
+  origin      String                             // user_confirmed | ai_confirmed
+  timesUsed   Int      @default(1) @map("times_used")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@unique([companyId, aliasNorm])
+  @@map("product_aliases")
+}
+
+model AiSuggestion {                             // every AI proposal, accepted or not (audit + evaluation)
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  kind        String                             // field_map | field_label | invoice_gap | product_match | dictionary_synonym | group_binding
+  entityType  String   @map("entity_type")       // template_field | invoice_item | certificate_field | product
+  entityId    String   @map("entity_id")
+  proposal    Json                               // schema-validated model output
+  evidence    Json?                              // [{ type: invoice_text|product_path, ref, quote, page? }]
+  evidenceVerified Boolean? @map("evidence_verified")
+  confidence  Float
+  status      String   @default("pending")       // pending | auto_accepted | accepted | edited | rejected | expired
+  decidedByUserId String? @map("decided_by_user_id")
+  decidedAt   DateTime? @map("decided_at")
+  finalValue  Json?    @map("final_value")       // what was actually stored after accept/edit
+  modelId     String   @map("model_id")
+  promptHash  String   @map("prompt_hash")
+  inputHash   String   @map("input_hash")
+  dictionaryVersion Int? @map("dictionary_version")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@index([companyId, kind, status])
+  @@index([entityType, entityId])
+  @@map("ai_suggestions")
+}
+
+model CertificateDataNeed {                      // per planned certificate × field, computed before generation
+  id            String  @id @default(uuid())
+  companyId     String  @map("company_id")
+  invoiceId     String  @map("invoice_id")
+  planKey       String  @map("plan_key")         // stable key of the plan entry (templateVersionId + item ids)
+  fieldKey      String  @map("field_key")
+  required      Boolean
+  status        String                          // resolved | resolved_ai | needs_confirmation | missing | provided | not_applicable
+  value         String?
+  provenance    Json?                           // { kind: path|invoice_text|manual, path?, quote?, page?, suggestionId? }
+  decidedByUserId String? @map("decided_by_user_id")
+  @@unique([invoiceId, planKey, fieldKey])
+  @@map("certificate_data_needs")
+}
+```
+
+**Changes to existing models**
+
+- `TemplateField`: add `mappingOrigin` (`manual | memory | dictionary | ai`) and `mappingSuggestionId?`.
+- `InvoiceItem.matchMethod`: add the values `alias`, `ai_confirmed`.
+- `Company`: add `aiSettings Json?`.
+
+**Generation:**`valueResolver` must consult `CertificateDataNeed` first for `provided` / `resolved_ai` values, so what the user confirmed is exactly what gets rendered. Store that provenance in `CertificateVersion.values[key].source`.
+
+---
+
+## 5. Layer 1 — Template field mapping (Phase A1)
+
+### 5.1 User flow (wizard step "Mark fields")
+
+1. The user selects the value text (unchanged).
+2. **Label:**
+   - The label box is pre-filled with a **label proposal**. Code takes it from the text left of the value on the same line, with trailing `:`/`#` stripped (`"Batch No.:"` → `"Batch No."`).
+   - If the line has no such text, the label comes from the column header above it (geometry: the nearest line above whose x-range overlaps). This is the PHARMAVET case: header "EXPIRATION DATE" above "09/2028".
+   - **AI is used only if both fail.**
+3. **Key:** auto-slug from the label (`batch_no`), editable. This is code, not AI.
+4. **Mapping runs automatically** on label blur, or "Map all" in bulk, using the chain in §5.2. It fills:
+   - **Value comes from:** source path.
+   - **Format:** e.g. a date pattern inferred from the sample (`11/2025` → `MM/YYYY`, `05/02/2023` → `DD/MM/YYYY` vs `MM/DD/YYYY` disambiguated by values > 12, otherwise flagged as ambiguous for the user), plus letter case from the sample (`SUPPLEMENT` → upper).
+   - **Required:** default true; false for fields whose source coverage is < 50 % in the dictionary.
+   - **Align:** from geometry (V2 rule), not AI.
+5. **Each field card shows the mapping origin:**`Memory ✓`, `Dictionary ✓`, `AI 0.94 ✓` (auto-accepted) or `AI 0.71 — confirm`.
+   - A "Why?" link shows the evidence: the dictionary entry with its examples, and the match rationale.
+   - Below-threshold suggestions keep the card amber until confirmed or edited.
+6. **Unmappable fields** (e.g. lab results such as `pH: 4.0`, `Assay: 102.7 %`, which are per-batch values not stored anywhere today) are classified as **`batch_data`**. They default to `manual`, with a note: "This value changes per batch and isn't in your data. It will be asked during invoice review."
+7. On save, every confirmed mapping is written to `FieldMappingMemory` (label → source/format).
+
+### 5.2 Resolution chain (per field)
+
+1. **Memory:**`FieldMappingMemory` hit for (company, labelNorm, type) → use it (`mappingOrigin=memory`). No AI.
+2. **Dictionary match (code):** normalised label equals a dictionary `labels`/`synonyms` entry, or a key segment, with a single best hit **and** the sample value is plausible for that entry (type check; date-like for date paths; and when the template's sample product is known, its value equals the sample). Then use it (`dictionary`).
+3. **AI (`CERT_FIELD_MAP`), batched:** one call per template for all still-unmapped fields.
+   - **Input:** for each field, `{ key, label, sampleValue, lineText, neighbourLabels }`, plus the dictionary entries (paths, types, coverage, examples, labels; trimmed to the top 200 by coverage) and the allowed roots (`product`, `item`, `invoice`, `company`, `brand`, `static`, `manual`, `today`, `template`).
+   - **Raw JSON samples:** the call also receives the **raw JSON** of up to 5 of the company's products (`specifications`, `activeIngredients`, and any other `Json` column, each truncated to 4 KB). This lets the model understand keys whose meaning isn't clear from their name, and values buried inside free-text strings.
+   - **Text-extract sources:** when the value lives inside a longer string (e.g. `description: "pH 3.0-5.0, assay not less than 98%"`), the model may return `sourceKind: "product_text"` with `{ path, extract: { label: "pH" } }`. At fill time the value is extracted per product (§6.1, product JSON reading) and verified verbatim against that string.
+   - **Output schema per field:**
+     - `{ sourceKind, path?, template?, format?, category: product_data|invoice_line|invoice_header|company|constant|batch_data|unknown, confidence, rationale }`
+     - `path` must be chosen **from the provided dictionary paths**; a free-text path is rejected by validation.
+4. **Code validation** of each AI answer:
+   - the path parses and exists in the dictionary;
+   - the format is compatible with the type;
+   - for `template` kind, every placeholder is a valid path;
+   - `confidence` is clamped to [0,1].
+   - An invalid answer becomes an `unknown` suggestion with the reason shown.
+5. **Plausibility boost/penalty (code):** if a reference product is known (optional "sample product" picker in the wizard), resolve the path on it and compare with `sampleValue`.
+   - Exact match: confidence := max(confidence, 0.97) and evidence = "matches sample product".
+   - Mismatch: confidence × 0.6.
+6. Store an `AiSuggestion` for every AI result. Auto-accept iff `confidence ≥ threshold`.
+
+### 5.3 Repeating groups (V2 phase 7) — binding suggestion
+
+When the user marks a repeating group (e.g. the constituents rows), the AI (same call, `group_binding`) proposes:
+
+- the **collection path** (`product.activeIngredients[]`),
+- the child path for each row field (`name`, `concentration`).
+
+Code validates that the collection exists and that its children cover the row fields. This removes positional hacks like `activeIngredients[1].name`.
+
+### 5.4 Acceptance (Phase A1)
+
+- **Golden mapping sets.** Commit the expected mappings for ADDVET (8 fields) and PHARMAVET (6 fields) to `fixtures/certificates/mapping/*.json`. Run against a seeded company whose products include the fixture products with realistic JSON.
+  - ≥ 90 % exact source match.
+  - 100 % of `batch_data` fields classified correctly (pH result, Assay result).
+  - 0 invalid paths reaching the DB.
+- **Memory:** on a second template with the same labels, 0 AI calls.
+- **AI disabled:** the wizard still works; the label proposal and dictionary matching still run (code).
+- **Cost:** one AI call per template regardless of field count (batched).
+
+---
+
+## 6. Layer 2 — Invoice intelligence (Phase A2)
+
+### 6.1 Flow
+
+```
+upload → extract (existing) → match (§7) → PLAN (templateSelector) → DATA NEEDS → resolve → REVIEW (user) → generate
+```
+
+- **Data needs (code).** For each plan entry (certificate) and each template field, `valueResolver` attempts resolution with the field's source → a `CertificateDataNeed` row: `resolved` (value + path provenance), `missing`, or `not_applicable` (optional + empty).
+- **Gap resolution (AI, `CERT_INVOICE_GAPS`).** One call per invoice, for all `missing` needs.
+  - **Input:**
+    - the stored **invoice text**: the extraction step must now also persist `Invoice.textContent`, the full text Gemini read, with page markers;
+    - the extracted header/items;
+    - for each gap: `{ planKey, fieldKey, label, category, expectedType/format, itemLineNo? }`;
+    - the matched products' dictionary paths that have **no value** for this product, plus near-miss keys (e.g. the product has `specifications.values["PH value"]` but the template maps `["pH"]`);
+    - **the matched product's full raw JSON columns** (truncated to 8 KB per product). The model can then point to a differently named key, or to a value inside a free-text string.
+  - **Output per gap:**
+    - `{ found: bool, value?, evidence: [{ type: "invoice_text", quote, page } | { type: "product_path", path } | { type: "product_json_text", path, quote }], confidence, note }`
+- **Evidence verification (code, P2).**
+  - `invoice_text`: the normalised `quote` must appear in `Invoice.textContent`, **and** the normalised `value` must appear inside `quote`.
+  - **Row scope (prevents a real value from the wrong line):** for item-level fields (`item.*`, `batch_data`), the quote must also lie inside **that item's row** of the invoice text. The extractor must therefore persist each item's text span (`InvoiceItem.textSpan`: page + start/end offsets in `textContent`); a quote found only in another item's row is rejected. Header-level fields may come from anywhere outside the item rows.
+  - `product_path`: code resolves the path on the matched product. The value must be non-empty, and the code's value **replaces** whatever the model said.
+  - `product_json_text`: code resolves `path` to a string on the matched product. The normalised `quote` must be a substring of that string, and the normalised `value` must be inside `quote`.
+  - Anything unverified → rejected (the suggestion is logged with `evidenceVerified=false`).
+- **Status assignment:**
+  - verified and ≥ threshold → `resolved_ai`;
+  - verified but below threshold → `needs_confirmation`;
+  - not found → stays `missing`.
+- **Near-miss learning:** when a product-path near-miss is accepted (`["PH value"]` used for `["pH"]`), offer **"Add as synonym for all products"**, which writes a dictionary synonym and, from then on, the resolver tries synonyms too. Product data itself is never changed.
+
+### 6.2 Review UI (new panel in `InvoiceReview`: "Certificate data check")
+
+- **Summary bar:** "12 certificates · 140 values · 131 ready · 6 need confirmation · 3 missing".
+- **Grouped by certificate:** a row per field with value, a source chip, and evidence:
+  - `Product · Specifications · pH`;
+  - `Invoice p.1: "Batch: HSPhar02509001"`, with the quote highlighted in the side-by-side invoice viewer;
+  - `Manual`.
+- **Actions per row:**
+  - accept;
+  - edit, which becomes `provided` with manual provenance;
+  - "use for all certificates of this product", for batch data shared across certificate types.
+- **Missing `batch_data` fields** (lab results) are presented as a compact **form per product/batch**, so the user types pH/Assay once per batch even if three certificate types need them.
+- **Generate:** disabled while required needs are `missing` or `needs_confirmation`. An explicit "Generate anyway (leave empty, flagged)" exists for users with `update_certificates`.
+- **Re-runs:** editing an invoice line or match recomputes the affected needs, without calling the AI again unless new gaps appear.
+
+### 6.3 Extraction improvements (same phase)
+
+- **Persist `Invoice.textContent`** (needed for P2), plus per-item `extra` columns that the model saw but couldn't map (e.g. "Lot", "Mfg", "Exp", "Analysis No").
+- **Teach the extractor the company's data needs:** pass the union of the active templates' `item.*` / `invoice.*` paths, so it looks specifically for those columns (e.g. if a template needs `item.productionDate`, it searches for Mfg/Prod/Manufacture date). This is still a single extraction call.
+
+### 6.4 Acceptance (Phase A2)
+
+- **Golden invoices:** 3 anonymised invoices with expected needs/resolutions (`fixtures/certificates/invoices/*.expected.json`).
+- **Gap fill:** ≥ 80 % of invoice-resolvable gaps filled with verified evidence; **0 unverified values** ever reach `resolved_ai`.
+- **Adversarial tests:**
+  - a model stub that returns a plausible value not present in the text → rejected;
+  - a quote present but the value absent from it → rejected;
+  - a product-path value differing from the DB → the DB value wins;
+  - a `product_json_text` quote that isn't in the product's string → rejected;
+  - an invoice with two items: a batch number quoted from item 2's row for item 1 → rejected.
+- **AI disabled:** needs are still computed (code); gaps are just all `missing`.
+- **Cost:** ≤ 1 gap call per invoice; 0 when there are no gaps.
+
+---
+
+## 7. Product matching upgrade (Phase A3)
+
+**Order (each step stops on a single confident hit)**
+
+1. `ProductAlias` exact (normalised).
+2. Exact code.
+3. Exact normalised name.
+4. Existing ranked candidates (trigram/code/brand).
+5. **AI (`CERT_PRODUCT_MATCH`), only for items still ambiguous.** One call per invoice.
+   - **Input:** the item `{ name, code, packing, extra }` + the top 10 candidates `{ id, name, code, packaging, brand, keyFacts }` (from the dictionary: form, strength, species).
+   - **Output:**`{ productId | null, confidence, reasons[] }`, and `productId` must be one of the given candidates.
+
+**Code checks**
+
+- The id is in the candidate list.
+- The candidate belongs to the tenant.
+- The packing/strength mentioned in the invoice is not contradicted by the product (e.g. invoice "1KG" vs product packaging "500 G" → penalty).
+
+**Confirmation and learning**
+
+- Below threshold → "AI suggests X (0.78) — confirm".
+- Every confirmation (user, or auto ≥ threshold) writes a `ProductAlias`, so the next invoice matches at step 1.
+
+**Acceptance**
+
+- On the golden invoices: ≥ 95 % of items correctly matched or correctly left for the user.
+- 0 cross-tenant candidates.
+- The second upload of the same supplier's invoice → 0 AI match calls.
+
+---
+
+## 8. Frontend changes (summary)
+
+| Screen                              | Change                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wizard · Mark fields (`FieldPanel`) | Label proposal pre-filled; key auto-slug; origin badge + confidence; "Why?" popover; "Map all";`batch_data`explanation; optional "sample product" picker for plausibility |
+| Source picker (`SourcePicker`)      | Reads the dictionary: JSON keys appear as nested options ("Product › Specifications › pH", with coverage % and examples); collection paths for groups                     |
+| Invoice review                      | New "Certificate data check" panel (§6.2); evidence chips that highlight the quote in the invoice viewer; batch-data form; AI match suggestions in the match column       |
+| Settings (company)                  | AI settings: enable/disable each layer, auto-accept threshold                                                                                                             |
+| Products (optional, A4)             | "Data dictionary" view: what keys exist across products, coverage, synonyms; accept/reject AI synonyms                                                                    |
+
+All AI UI states must handle: loading, unavailable (quota/outage → "Continue manually"), and low confidence.
+
+---
+
+## 9. Phase A4 — Advanced (after A1–A3 are measured)
+
+- **Dictionary health report:** keys with low coverage, conflicting types and near-duplicates. It suggests merges as synonyms; it **never rewrites products**.
+- **Template-driven product completeness:** "these 14 products are missing `specifications.pH`, which 3 active templates need", with a link to the products. This prevents gaps before invoices arrive.
+- **Evaluation dashboard:** per kind, suggestion acceptance rate, edit rate, average confidence vs. correctness (calibration), AI calls per template/invoice over time (should fall as memory grows), cost.
+- **Structured product data entry (the real cure for messy JSON):** the product form gets fixed inputs for the keys the active templates need (taken from the dictionary and the templates' sources, e.g. pH spec, Assay spec, constituents as a proper list of name + amount), instead of free JSON. Old products are untouched; the completeness view lists what each product is missing. Once this exists, the AI reading raw JSON (§5.2, §6.1) becomes a fallback for legacy products only. **Do not postpone this long after A2.**
+- **Batch data store (optional):** if lab results (pH, Assay…) are entered repeatedly, add a `Batch` entity (product, batchNo, values Json) so they're entered once per batch and reused across invoices. Decide after A2 shows how often this happens.
+
+---
+
+## 10. Testing strategy (additions)
+
+- **Unit:**`sourcePath` (parser + resolver), `dataDictionary` (shapes, coverage, key-variant grouping), the label proposal (same-line and column-header cases from both goldens), date-format inference, `evidenceVerifier` (normalisation: whitespace, case, unicode dashes `–` vs `-`, Turkish `İ`).
+- **AI tests with stubs** (deterministic, run in `npm test`): valid answers, invalid paths, out-of-candidate ids, fabricated values, timeouts, quota errors (P8).
+- **Live evals (opt-in `RUN_LIVE_GEMINI=1`)** against the golden sets, with a scorecard written to `golden/ai-eval-<date>.json`. A drop of > 2 % on any metric blocks the change (matches the `CLAUDE.md` invariant 11 spirit).
+- **Tenant isolation:** assert the prompt payloads contain only the caller company's dictionary/products/aliases.
+
+---
+
+## 11. Phases
+
+| Phase                         | Content                                                                                                                                                                                                   | Exit criteria                                                                                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A0 · Foundations**          | `sourcePath`,`DataDictionary`+ builder + rebuild triggers, the source picker reading the dictionary, model registry entries,`AiSuggestion`,`aiRunLog`,`Company.aiSettings`,`Invoice.textContent`persisted | the owner can pick`Specifications › pH`and`Active ingredients › [Vitamin E] › concentration`in the wizard by hand, and the render shows the right values |
+| **A1 · Template mapping**     | label proposal, memory, dictionary match,`CERT_FIELD_MAP`, plausibility, group binding, UI badges/"Why?"                                                                                                  | §5.4 met on both goldens                                                                                                                                 |
+| **A2 · Invoice intelligence** | data needs, gap resolution with evidence, review panel, batch-data form, extractor guided by data needs, synonym learning                                                                                 | §6.4 met on 3 golden invoices                                                                                                                            |
+| **A3 · Matching**             | aliases, AI matching for ambiguous items, contradiction checks, UI                                                                                                                                        | §7 acceptance met                                                                                                                                        |
+| **A4 · Advanced**             | dictionary health, completeness,**structured product data entry**, eval dashboard, optional`Batch`entity                                                                                                  | owner sign-off per item                                                                                                                                  |
+
+Each phase: backend + frontend + tests + PROGRESS.md entry + demo. **Do not start a phase before the previous is approved.**
+
+---
+
+## 12. Decisions needed from the owner
+
+| #   | Question                                                                                                   | Default if unanswered                                                                       |
+| --- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Q1  | Auto-accept threshold — 0.90, or require confirmation for every AI suggestion at first?                    | **Confirm everything for the first 2 weeks**, then 0.90                                     |
+| Q2  | Lab results (pH, Assay, …): enter per invoice review (A2), or build the`Batch`entity now?                  | Per invoice review now; decide on`Batch`after A2                                            |
+| Q3  | May the AI propose synonyms that then apply company-wide automatically, or only after a user accepts each? | User accepts each                                                                           |
+| Q4  | Can the invoice text (supplier/customer names, prices) be sent to Gemini? (It already is for extraction.)  | Yes, same as today                                                                          |
+| Q5  | Gemini billing: the free tier (8 RPM, daily caps) will limit A1–A3. Enable billing?                        | Plan works on the free tier through batching, but enabling billing is recommended before A2 |
+
+---
+
+## 13. Risks
+
+| Risk                                              | Mitigation                                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| The model "finds" a value that isn't really there | P1 (paths only for DB data) + P2 (verbatim evidence) + adversarial tests                              |
+| Dictionary too large for the prompt               | trim by coverage, send only roots relevant to the field category; cache by`inputHash`                 |
+| Wrong mapping auto-accepted silently              | Q1 default (confirm all initially), plausibility check against a sample product, evaluation dashboard |
+| Quota / outage                                    | P8: everything degrades to manual; no hard dependency                                                 |
+| Messy product JSON keeps growing                  | dictionary synonyms + health report (A4) + completeness view; never mutate data automatically         |

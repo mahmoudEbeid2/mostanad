@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
+import { scheduleDictionaryRebuild } from "./certificates/dictionary/rebuildScheduler.js";
 
 /**
  * Create a new product scoped to a company
@@ -45,6 +46,7 @@ export const createProduct = async (companyId, data) => {
     },
   });
 
+  await scheduleDictionaryRebuild(companyId); // certificate data dictionary (plan.md §3.2)
   return product;
 };
 
@@ -139,6 +141,7 @@ export const updateProduct = async (id, data, scopeCompanyId) => {
     include: { category: true, brand: true },
   });
 
+  await scheduleDictionaryRebuild(existingProduct.companyId);
   return updatedProduct;
 };
 
@@ -152,5 +155,6 @@ export const deleteProduct = async (id, scopeCompanyId) => {
   }
 
   await prisma.product.delete({ where: { id } });
+  await scheduleDictionaryRebuild(existingProduct.companyId);
   return null;
 };

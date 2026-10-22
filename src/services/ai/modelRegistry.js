@@ -120,4 +120,20 @@ export const MODELS = {
   // Optional field suggestions (§8.3): receives template line TEXT only (never
   // HTML) and proposes values/names/sources the user accepts one by one.
   CERT_ASSIST: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+
+  // Certificate AI layers (plan.md §3.3). gemini-2.5-flash: the only model
+  // verified end-to-end on this key (see EXTRACT_WITH_CATALOG above).
+  // Every one of these returns a CHOICE (a path, a candidate id) or a value
+  // with verbatim evidence that code checks — never free data (plan.md P1/P2).
+  // Template field → source path mapping, batched per template (A1): picks
+  // from the company's data dictionary, so a little reasoning room.
+  CERT_FIELD_MAP: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  // Missing certificate values found in the invoice text / product JSON, with
+  // quotes (A2): one call per invoice.
+  CERT_INVOICE_GAPS: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  // Invoice line → one of ≤ 10 given candidates (A3): a ranking, thinking off.
+  CERT_PRODUCT_MATCH: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  // Human labels/synonyms for opaque JSON keys (ws_period → "Withdrawal
+  // period"), one call per dictionary rebuild; suggestions only.
+  CERT_DICTIONARY: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
 };

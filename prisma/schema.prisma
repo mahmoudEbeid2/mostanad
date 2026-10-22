@@ -65,17 +65,18 @@ model RolePermission {
 // 2. Client Companies (Tenants)
 // ==========================================
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  username  String   @unique
-  password  String
-  email     String?  @unique
-  phone     String?
-  address   String?
-  logoUrl   String?  @map("logo_url") // every migration already creates this column; schema.prisma didn't declare it, which is the drift task 1 (2026-09-13) found
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  name       String
+  username   String   @unique
+  password   String
+  email      String?  @unique
+  phone      String?
+  address    String?
+  logoUrl    String?  @map("logo_url") // every migration already creates this column; schema.prisma didn't declare it, which is the drift task 1 (2026-09-13) found
+  aiSettings Json?    @map("ai_settings") // certificate AI layers (plan.md §3.3): { enabled, autoAcceptThreshold, … }; null = defaults
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Scoped Relations
   products             Product[]
@@ -91,6 +92,9 @@ model Company {
   invoices             Invoice[]
   certificateBatches   CertificateBatch[]
   certificates         Certificate[]
+  dataDictionary       DataDictionary?
+  aiSuggestions        AiSuggestion[]
+  aiRuns               AiRun[]
 
   @@map("companies")
 }
@@ -884,6 +888,7 @@ model Invoice {
   header           Json? // reviewed header (what generation uses)
   headerExtracted  Json?     @map("header_extracted") // raw AI output, never edited (audit)
   extraction       Json? // { modelId, promptHash, ms, warnings[] }
+  textContent      String?   @map("text_content") @db.Text // the full text the extractor read, "=== Page N ===" markers (plan.md §6.1, P2 evidence)
   error            String?
   reviewedAt       DateTime? @map("reviewed_at")
   reviewedByUserId String?   @map("reviewed_by_user_id")
@@ -1004,4 +1009,77 @@ model CertificateVersion {
 
   @@unique([certificateId, versionNumber])
   @@map("certificate_versions")
+}
+
+// ---------- Certificate AI layers — foundations (plan.md §3, §4; Phase A0) ----------
+// A company's catalogue of every addressable source path, observed from its
+// products (dataDictionary.js). Derived data: rebuilt, never edited by hand —
+// except `synonyms`, which survive rebuilds.
+model DataDictionary {
+  id           String   @id @default(uuid())
+  companyId    String   @unique @map("company_id")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries      Json // [DictionaryEntry] (plan.md §3.2)
+  productCount Int      @map("product_count")
+  builtAt      DateTime @map("built_at")
+  version      Int      @default(1) // bumps on every rebuild; suggestions record the version they used
+
+  @@map("data_dictionaries")
+}
+
+// Every AI proposal, accepted or not (audit + evaluation, plan.md P7).
+model AiSuggestion {
+  id                String    @id @default(uuid())
+  companyId         String    @map("company_id")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  kind              String // field_map | field_label | invoice_gap | product_match | dictionary_synonym | group_binding
+  entityType        String    @map("entity_type") // template_field | invoice_item | certificate_field | product
+  entityId          String    @map("entity_id")
+  proposal          Json // schema-validated model output
+  evidence          Json? // [{ type: invoice_text|product_path|product_json_text, ref, quote, page? }]
+  evidenceVerified  Boolean?  @map("evidence_verified")
+  confidence        Float
+  status            String    @default("pending") // pending | auto_accepted | accepted | edited | rejected | expired
+  decidedByUserId   String?   @map("decided_by_user_id")
+  decidedAt         DateTime? @map("decided_at")
+  finalValue        Json?     @map("final_value") // what was actually stored after accept/edit
+  modelId           String    @map("model_id")
+  promptHash        String    @map("prompt_hash")
+  inputHash         String    @map("input_hash")
+  dictionaryVersion Int?      @map("dictionary_version")
+  aiRunId           String?   @map("ai_run_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId, kind, status])
+  @@index([entityType, entityId])
+  @@map("ai_suggestions")
+}
+
+// One row per certificate-AI model call, whatever its outcome (plan.md §3.3
+// "aiRunLog"). Not in the plan's §4 model list — added so failures, skips and
+// cost are queryable (A4 evaluation dashboard); see PROGRESS.md.
+model AiRun {
+  id             String   @id @default(uuid())
+  companyId      String   @map("company_id")
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  kind           String // INVOICE_EXTRACT | CERT_ASSIST | CERT_FIELD_MAP | CERT_INVOICE_GAPS | CERT_PRODUCT_MATCH | CERT_DICTIONARY
+  entityType     String?  @map("entity_type")
+  entityId       String?  @map("entity_id")
+  modelId        String   @map("model_id")
+  promptHash     String   @map("prompt_hash")
+  inputHash      String?  @map("input_hash")
+  outcome        String // ok | failed | disabled (company setting off) | skipped (nothing to ask)
+  reason         String? // why the AI was called / why it wasn't
+  error          String?
+  calls          Int      @default(0)
+  inputTokens    Int      @default(0) @map("input_tokens")
+  outputTokens   Int      @default(0) @map("output_tokens")
+  thinkingTokens Int      @default(0) @map("thinking_tokens")
+  cachedTokens   Int      @default(0) @map("cached_tokens")
+  ms             Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, kind, createdAt])
+  @@index([entityType, entityId])
+  @@map("ai_runs")
 }

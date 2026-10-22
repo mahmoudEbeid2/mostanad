@@ -1,0 +1,19 @@
+# /certificate-data-dictionary/rebuild — certificate AI layers A0 (plan.md §3.2).
+post:
+  tags: ["Template Versions"]
+  summary: Rebuild the company data dictionary now
+  description: |
+    Synchronous rebuild (the source picker's "Refresh"). `version` increments; synonyms survive the rebuild.
+
+    Permission: `update_certificate_templates`. A system user passes `?companyId=`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200":
+      description: "`{ dictionary }` — same shape as GET /certificate-data-dictionary"
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "400": { description: System user without companyId }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

@@ -4702,6 +4702,8 @@ paths:
       description: |-
         Generated from the Prisma Product model and the invoice schemas (§10.3): kinds item, invoice, product, company, brand, static, manual, today, template.
 
+        **With a company** (a company caller, or a system user's `?companyId=`), the `product` kind's `paths` also list every value that company's products hold inside their JSON columns, taken from its data dictionary (plan.md §3.2) and written in the source-path grammar (plan.md §3.1), e.g. `specifications.values.pH` ("Specifications › pH"), `specifications.values["Assay %"]`, `activeIngredients[name="Vitamin E"].concentration`. These carry `coverage` (0–1), `examples` (≤ 5) and `fromDictionary: true`; product columns carry `coverage`/`examples` too, and the response adds `dictionary: { version, builtAt, productCount }`. Without a company you get the static catalogue, unchanged. Unknown company → 404.
+
         Permission: `read_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:
         - $ref: '#/components/parameters/CompanyId-2'
@@ -4745,6 +4747,130 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-data-dictionary:
+    get:
+      tags:
+        - Template Versions
+      summary: Company data dictionary
+      description: |
+        Every addressable source path for the company and what its products actually contain. Built by code (no AI) on first use, after product changes (at most once per 10 minutes per company) and nightly.
+
+        Entry: `{ path, root, type (string|number|boolean|list|collection), coverage (0–1; null for invoice/company paths), distinct, examples (≤ 5, ≤ 60 chars), labels (key spellings seen), synonyms, source (schema|observed), label, pickable }`.
+        Spellings of the same key (`pH`, `PH`) are one entry. A list of objects is a `collection` entry (`product.activeIngredients[]`, with `keyField` and `keyValues`) plus pickable `[name="…"]` paths. Never contains another company's data.
+
+        Permission: `read_certificate_templates`. A system user passes `?companyId=` (required).
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ dictionary: { version, builtAt, productCount, entries[] } }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: System user without companyId
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-data-dictionary/rebuild:
+    post:
+      tags:
+        - Template Versions
+      summary: Rebuild the company data dictionary now
+      description: |
+        Synchronous rebuild (the source picker's "Refresh"). `version` increments; synonyms survive the rebuild.
+
+        Permission: `update_certificate_templates`. A system user passes `?companyId=`.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ dictionary }` — same shape as GET /certificate-data-dictionary'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: System user without companyId
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-ai-settings:
+    get:
+      tags:
+        - Template Versions
+      summary: Certificate AI settings
+      description: |
+        `{ enabled, autoAccept, autoAcceptThreshold, allowSynonyms, allowInvoiceGapFill, allowAiMatching }`.
+        Defaults: everything on, `autoAcceptThreshold` 0.9, **`autoAccept` false** (plan.md §12 Q1: every AI suggestion is confirmed by a person until the owner turns auto-accept on).
+        With `enabled: false` no AI layer calls the model; everything works by hand.
+
+        Permission: `read_certificate_templates`. A system user passes `?companyId=`.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ settings }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+    patch:
+      tags:
+        - Template Versions
+      summary: Change certificate AI settings
+      description: |
+        Only the given keys change. `autoAcceptThreshold` 0.5–1; any other key → 400.
+
+        Permission: `update_certificate_templates`. A system user passes `?companyId=`.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                enabled:
+                  type: boolean
+                autoAccept:
+                  type: boolean
+                autoAcceptThreshold:
+                  type: number
+                  minimum: 0.5
+                  maximum: 1
+                allowSynonyms:
+                  type: boolean
+                allowInvoiceGapFill:
+                  type: boolean
+                allowAiMatching:
+                  type: boolean
+      responses:
+        '200':
+          description: '`{ settings }` — the complete settings'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid or unknown setting
         '401':
           $ref: '#/components/responses/E401'
         '403':

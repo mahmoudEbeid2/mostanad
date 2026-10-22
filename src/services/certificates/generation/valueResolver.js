@@ -1,4 +1,5 @@
 import { TEMPLATE_TOKEN_RE } from "../templates/sourceCatalogue.js";
+import { resolveRelative } from "../paths/sourcePath.js";
 
 // Pure value resolution (CERTIFICATES_V2_PLAN.md §10.3, §10.4, D7). No I/O,
 // no model inference, no fallbacks: a value comes from its declared source or
@@ -10,21 +11,13 @@ import { TEMPLATE_TOKEN_RE } from "../templates/sourceCatalogue.js";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const own = (o, k) => o !== null && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);
-
-/** Reads `a.b[0].c` from an object — own data properties only (no prototype,
- *  no `constructor`, no functions). Never evaluates anything. */
+/** Reads a relative source path (plan.md §3.1 grammar: `a.b[0].c`,
+ *  `values["Assay %"]`, `list[name="Vitamin E"].x`) — own data properties
+ *  only (no prototype, no `constructor`, no functions). Never evaluates
+ *  anything; undefined when absent or invalid. */
 export function readPath(obj, path) {
   if (obj === null || obj === undefined || !path) return undefined;
-  let cur = obj;
-  for (const part of String(path).split(".")) {
-    const m = part.match(/^([^[\]]+)((?:\[\d+\])*)$/);
-    if (!m) return undefined;
-    cur = own(cur, m[1]) ? cur[m[1]] : undefined;
-    for (const idx of m[2].match(/\d+/g) || []) cur = Array.isArray(cur) && own(cur, idx) ? cur[Number(idx)] : undefined;
-    if (cur === null || cur === undefined) return undefined;
-  }
-  return cur;
+  return resolveRelative(obj, path).value;
 }
 
 /** A source value as text, or "" when absent / not representable. */

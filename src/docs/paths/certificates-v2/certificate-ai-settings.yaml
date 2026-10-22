@@ -1,0 +1,52 @@
+# /certificate-ai-settings — certificate AI layers A0 (plan.md §3.3, §12 Q1).
+get:
+  tags: ["Template Versions"]
+  summary: Certificate AI settings
+  description: |
+    `{ enabled, autoAccept, autoAcceptThreshold, allowSynonyms, allowInvoiceGapFill, allowAiMatching }`.
+    Defaults: everything on, `autoAcceptThreshold` 0.9, **`autoAccept` false** (plan.md §12 Q1: every AI suggestion is confirmed by a person until the owner turns auto-accept on).
+    With `enabled: false` no AI layer calls the model; everything works by hand.
+
+    Permission: `read_certificate_templates`. A system user passes `?companyId=`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200":
+      description: "`{ settings }`"
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }
+patch:
+  tags: ["Template Versions"]
+  summary: Change certificate AI settings
+  description: |
+    Only the given keys change. `autoAcceptThreshold` 0.5–1; any other key → 400.
+
+    Permission: `update_certificate_templates`. A system user passes `?companyId=`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled: { type: boolean }
+            autoAccept: { type: boolean }
+            autoAcceptThreshold: { type: number, minimum: 0.5, maximum: 1 }
+            allowSynonyms: { type: boolean }
+            allowInvoiceGapFill: { type: boolean }
+            allowAiMatching: { type: boolean }
+  responses:
+    "200":
+      description: "`{ settings }` — the complete settings"
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "400": { description: Invalid or unknown setting }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

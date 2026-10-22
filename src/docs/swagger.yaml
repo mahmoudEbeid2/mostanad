@@ -245,6 +245,12 @@ paths:
     $ref: './paths/certificates-v2/certificate-field-sources.yaml'
   /certificate-products:
     $ref: './paths/certificates-v2/certificate-products.yaml'
+  /certificate-data-dictionary:
+    $ref: './paths/certificates-v2/certificate-data-dictionary.yaml'
+  /certificate-data-dictionary/rebuild:
+    $ref: './paths/certificates-v2/certificate-data-dictionary-rebuild.yaml'
+  /certificate-ai-settings:
+    $ref: './paths/certificates-v2/certificate-ai-settings.yaml'
   /invoices:
     $ref: './paths/certificates-v2/invoices.yaml'
   /invoices/{id}:

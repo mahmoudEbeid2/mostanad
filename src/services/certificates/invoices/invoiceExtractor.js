@@ -5,6 +5,7 @@ import { CertError } from "../errors.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
 import { dateValue } from "./dateNormalizer.js";
 import { normalizeQuantity } from "./quantityNormalizer.js";
+import { runLogged } from "../ai/aiRunLog.js";
 
 // Invoice extraction (CERTIFICATES_V2_PLAN.md §9.1) — the ONLY AI call in the
 // certificate pipeline. The invoice file goes to Gemini natively (inline data;
@@ -17,6 +18,12 @@ const str = { type: "string", nullable: true };
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
+    // plan.md §6.1: the full text the model read, so later AI answers can be
+    // checked verbatim against it (P2). First, so the fields below are copied from it.
+    textContent: {
+      type: "string",
+      description: "every piece of text printed on the invoice, in reading order, page by page; each page starts with a line '=== Page N ==='",
+    },
     header: {
       type: "object",
       properties: Object.fromEntries(INVOICE_HEADER_FIELDS.map((f) => [f.path, str])),
@@ -37,7 +44,8 @@ const RESPONSE_SCHEMA = {
     },
     warnings: { type: "array", items: { type: "string" }, description: "anything unreadable or ambiguous" },
   },
-  required: ["header", "items"],
+  required: ["textContent", "header", "items"],
+  propertyOrdering: ["textContent", "header", "items", "warnings"],
 };
 
 const PROMPT = [
@@ -50,6 +58,8 @@ const PROMPT = [
   "- quantity: the number as printed; unit: its unit (KG, L, PCS…); packing: the pack size/description (e.g. '25KG BAG').",
   "- customerCountry: the destination/consignee country as printed.",
   "- Put anything unreadable or ambiguous in warnings.",
+  "- textContent: transcribe ALL printed text exactly as printed (headers, every table row, footers), in reading order;",
+  "  start each page with a line '=== Page N ===' (N = 1, 2, …). The cells of one table row stay on one line, separated by ' | '.",
 ].join("\n");
 
 export const PROMPT_HASH = crypto.createHash("sha256").update(PROMPT + JSON.stringify(RESPONSE_SCHEMA)).digest("hex").slice(0, 16);
@@ -84,25 +94,51 @@ export function shapeExtraction(out) {
     if (seen.has(it.lineNo)) it.lineNo = next++; // next free number after the printed ones
     seen.add(it.lineNo);
   }
-  return { header, items };
+  return { header, items, textContent: cleanText(out?.textContent) };
+}
+
+// Stored text (plan.md §6.1). Bounded so one odd file can't bloat the row; a
+// page marker is added when the model left them out.
+export const MAX_TEXT_CHARS = 200_000;
+export function cleanText(t) {
+  if (typeof t !== "string" || !t.trim()) return null;
+  let s = t.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+  if (!/^=== Page \d+ ===/m.test(s)) s = `=== Page 1 ===\n${s}`;
+  return s.length > MAX_TEXT_CHARS ? s.slice(0, MAX_TEXT_CHARS) : s;
 }
 
 /**
- * buffer + mimeType → { header, items, raw, provenance }
+ * buffer + mimeType → { header, items, textContent, raw, provenance }
+ * With `log.companyId` the call is recorded in ai_runs (plan.md §3.3).
  * Throws CertError EXTRACTION_FAILED with the provider's real message.
  */
-export async function extractInvoice(buffer, mimeType) {
+export async function extractInvoice(buffer, mimeType, log = null) {
   const t0 = Date.now();
   let out;
-  try {
-    out = await geminiClient.generateJson({
+  const call = () =>
+    geminiClient.generateJson({
       model: MODELS.INVOICE_EXTRACT.id,
       temperature: MODELS.INVOICE_EXTRACT.temperature,
       thinkingBudget: MODELS.INVOICE_EXTRACT.thinkingBudget,
       contents: [{ inlineData: { mimeType, data: buffer.toString("base64") } }, PROMPT],
       schema: RESPONSE_SCHEMA,
-      maxOutputTokens: 16384,
+      maxOutputTokens: 32768, // the full transcription (textContent) roughly doubles the output
     });
+  const logged = () =>
+    runLogged(
+      {
+        companyId: log.companyId,
+        kind: "INVOICE_EXTRACT",
+        promptHash: PROMPT_HASH,
+        inputHash: crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 16),
+        entityType: "invoice",
+        entityId: log.invoiceId ?? null,
+        reason: "invoice upload",
+      },
+      call
+    ).then((r) => r.result);
+  try {
+    out = await (log?.companyId ? logged() : call());
   } catch (err) {
     throw new CertError("EXTRACTION_FAILED", `Invoice extraction failed: ${err.message}`, err.statusCode || 502);
   }

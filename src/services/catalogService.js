@@ -5,6 +5,7 @@ import AppError from "../utils/appError.js";
 import { assertGeminiEnabled } from "./ai/geminiGuard.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
+import { scheduleDictionaryRebuild } from "./certificates/dictionary/rebuildScheduler.js";
 
 /**
  * Process uploaded PDF catalog using Gemini File API and store categories/products.
@@ -330,5 +331,6 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     }
   }
 
+  if (summary.productsCreated || summary.productsUpdated) await scheduleDictionaryRebuild(companyId); // certificate data dictionary (plan.md §3.2)
   return summary;
 };

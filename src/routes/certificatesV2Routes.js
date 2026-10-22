@@ -4,11 +4,12 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
 import * as certificates from "../controllers/certificatesV2/certificateController.js";
+import * as certificateAi from "../controllers/certificatesV2/certificateAiController.js";
 import { MAX_INVOICE_BYTES } from "../services/certificates/invoices/invoiceService.js";
 
 // Certificates V2 API (CERTIFICATES_V2_PLAN.md §12). Every route: protect +
@@ -59,7 +60,13 @@ router.post("/template-versions/:id/preview", guard("read_certificate_templates"
 router.post("/template-versions/:id/activate", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.activateVersion);
 router.post("/template-versions/:id/new-version", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.newVersion);
 router.post("/template-versions/:id/enable-groups", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.enableGroups);
-router.get("/certificate-field-sources", guard("read_certificate_templates"), templates.getFieldSources);
+router.get("/certificate-field-sources", guard("read_certificate_templates"), validate(aiSchemas.company), templates.getFieldSources);
+
+// ── certificate AI layers — foundations (plan.md §3, Phase A0) ──────────────
+router.get("/certificate-data-dictionary", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getDataDictionary);
+router.post("/certificate-data-dictionary/rebuild", guard("update_certificate_templates"), validate(aiSchemas.company), certificateAi.rebuildDataDictionary);
+router.get("/certificate-ai-settings", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getSettings);
+router.patch("/certificate-ai-settings", guard("update_certificate_templates"), validate(aiSchemas.updateSettings), certificateAi.updateSettings);
 router.get("/certificate-products", guard("read_products"), validate(productSearchSchema), templates.productSearch);
 
 // ── invoices (§9) ────────────────────────────────────────────────────────────

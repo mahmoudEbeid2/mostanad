@@ -4,6 +4,7 @@ import * as fieldService from "../../services/certificates/templates/fieldServic
 import * as prepareService from "../../services/certificates/templates/prepareService.js";
 import * as assistService from "../../services/certificates/templates/assistService.js";
 import { getSourceCatalogue } from "../../services/certificates/templates/sourceCatalogue.js";
+import { companySourceCatalogue } from "../../services/certificates/dictionary/dataDictionary.js";
 import { searchProducts } from "../../services/certificates/matching/productSearch.js";
 import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
 
@@ -65,8 +66,12 @@ export const getVersionHtml = catchAsync(async (req, res) => {
 });
 
 // ── Phase 2: fields, prepare, activate ───────────────────────────────────────
+// With a company (a company caller, or ?companyId= for a system user) the
+// product paths include what that company's products actually hold inside
+// their JSON columns (plan.md §3.2); without one, the static catalogue.
 export const getFieldSources = catchAsync(async (req, res) => {
-  res.status(200).json({ status: "success", data: getSourceCatalogue() });
+  const companyId = req.company?.id || req.validatedQuery?.companyId;
+  res.status(200).json({ status: "success", data: companyId ? await companySourceCatalogue(companyId) : getSourceCatalogue() });
 });
 
 export const putFields = catchAsync(async (req, res) => {

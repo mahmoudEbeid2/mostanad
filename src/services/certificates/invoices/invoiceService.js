@@ -77,7 +77,7 @@ export async function runExtractJob(invoiceId, ctx = {}) {
   try {
     ctx.progress?.(10, "Reading the invoice");
     const { row, buffer } = await fileStore.readFile(invoice.sourceFileId);
-    const out = await extractInvoice(buffer, row.mimeType);
+    const out = await extractInvoice(buffer, row.mimeType, { companyId: invoice.companyId, invoiceId });
     ctx.progress?.(70, `Found ${out.items.length} lines`);
     const country = invoice.country || normCountry(out.header.customerCountry && /^[A-Za-z]{2}$/.test(out.header.customerCountry) ? out.header.customerCountry : null);
     await prisma.$transaction([
@@ -85,7 +85,7 @@ export async function runExtractJob(invoiceId, ctx = {}) {
       prisma.invoiceItem.createMany({ data: out.items.map((it) => ({ invoiceId, lineNo: it.lineNo, data: it.data, dataExtracted: it.data })) }),
       prisma.invoice.update({
         where: { id: invoiceId },
-        data: { header: out.header, headerExtracted: { ...out.header, _raw: out.raw.header || null }, extraction: out.provenance, country },
+        data: { header: out.header, headerExtracted: { ...out.header, _raw: out.raw.header || null }, extraction: out.provenance, country, textContent: out.textContent },
       }),
     ]);
     ctx.progress?.(85, "Matching products");
@@ -131,6 +131,11 @@ async function searchInvoiceIds(companyId, q) {
   return rows.map((r) => r.id);
 }
 
+// The stored invoice text (plan.md §6.1, up to 200 KB) leaves the API only
+// through GET /invoices/:id (tenant-scoped like every by-id read). Every
+// other invoice response — the list, PATCH, confirm — omits it.
+const TEXT_OMIT = { textContent: true };
+
 export async function listInvoices(companyId, { status, q, page = 1, limit = 20 } = {}) {
   const where = { companyId, ...(status ? { status } : {}) };
   if (q && String(q).trim()) where.id = { in: await searchInvoiceIds(companyId, String(q).trim()) };
@@ -143,6 +148,7 @@ export async function listInvoices(companyId, { status, q, page = 1, limit = 20 
       orderBy: { createdAt: "desc" },
       skip,
       take,
+      omit: TEXT_OMIT,
       include: { brand: { select: { id: true, name: true } }, _count: { select: { items: true } } },
     }),
   ]);
@@ -214,6 +220,7 @@ export async function updateInvoice(id, companyId, { header, brandId, country })
   if (brandId) await assertBrand(inv.companyId, brandId);
   return prisma.invoice.update({
     where: { id },
+    omit: TEXT_OMIT,
     data: {
       ...(header ? { header: mergeFields(inv.header, header, INVOICE_HEADER_FIELDS) } : {}),
       ...(brandId !== undefined ? { brandId: brandId || null } : {}),
@@ -299,5 +306,5 @@ export async function confirmInvoice(invoiceId, companyId, userId) {
   const open = items.filter((i) => i.matchStatus === "needs_match").map((i) => i.lineNo);
   if (open.length) throw new CertError("ITEMS_NEED_MATCH", `Match or ignore every line first (lines ${open.join(", ")})`, 409, { lines: open });
   if (!items.some((i) => i.matchStatus === "matched")) throw new CertError("NO_MATCHED_ITEMS", "At least one line must be matched to a product", 409);
-  return prisma.invoice.update({ where: { id: invoiceId }, data: { status: "ready", reviewedAt: new Date(), reviewedByUserId: userId || null } });
+  return prisma.invoice.update({ where: { id: invoiceId }, omit: TEXT_OMIT, data: { status: "ready", reviewedAt: new Date(), reviewedByUserId: userId || null } });
 }

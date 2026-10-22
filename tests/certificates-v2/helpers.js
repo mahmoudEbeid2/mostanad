@@ -98,6 +98,9 @@ export async function cleanupCompany(companyId) {
   await del("template_versions", `DELETE FROM template_versions WHERE template_id IN (SELECT id FROM certificate_templates WHERE company_id = $1)`);
   await del("certificate_templates", `DELETE FROM certificate_templates WHERE company_id = $1`);
   await del("certificate_types", `DELETE FROM certificate_types WHERE company_id = $1`);
+  // certificate AI layers (plan.md §4): audit rows are Restrict on the company
+  await del("ai_suggestions", `DELETE FROM ai_suggestions WHERE company_id = $1`);
+  await del("ai_runs", `DELETE FROM ai_runs WHERE company_id = $1`);
   const files = await prisma.storedFile.findMany({ where: { companyId } });
   for (const f of files) {
     try {

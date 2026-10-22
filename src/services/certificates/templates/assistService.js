@@ -5,6 +5,7 @@ import { CertError } from "../errors.js";
 import { loadVersion } from "./templateService.js";
 import { listFields } from "./fieldService.js";
 import { getSourceCatalogue, validateSource, validateFormat } from "./sourceCatalogue.js";
+import { runLogged } from "../ai/aiRunLog.js";
 
 // Optional AI assistance for marking fields (CERTIFICATES_V2_PLAN.md §8.3, D3,
 // D10). The model receives the version's line TEXTS only — template HTML never
@@ -82,13 +83,17 @@ export async function suggestFields(versionId, companyId) {
   const text = prompt(lines, catalogue);
   const promptHash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
   const t0 = Date.now();
-  const out = await geminiClient.generateJson({
-    model: MODELS.CERT_ASSIST.id,
-    temperature: MODELS.CERT_ASSIST.temperature,
-    thinkingBudget: MODELS.CERT_ASSIST.thinkingBudget,
-    contents: [text],
-    schema: RESPONSE_SCHEMA,
-  });
+  const { result: out } = await runLogged(
+    { companyId: version.template.companyId, kind: "CERT_ASSIST", promptHash, input: text, entityType: "template_version", entityId: versionId, reason: "suggest fields" },
+    () =>
+      geminiClient.generateJson({
+        model: MODELS.CERT_ASSIST.id,
+        temperature: MODELS.CERT_ASSIST.temperature,
+        thinkingBudget: MODELS.CERT_ASSIST.thinkingBudget,
+        contents: [text],
+        schema: RESPONSE_SCHEMA,
+      })
+  );
 
   const existing = await listFields(versionId);
   const taken = new Set(existing.map((f) => f.key));

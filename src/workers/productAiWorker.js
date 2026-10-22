@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 import geminiClient from "../services/ai/geminiClient.js";
 import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
+import { scheduleDictionaryRebuild } from "../services/certificates/dictionary/rebuildScheduler.js";
 
 const redisConfig = getRedisConfig();
 const backendWsUrl = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -119,6 +120,7 @@ const productAiWorker = new Worker(
           categoryId: categoryId || null
         }
       });
+      await scheduleDictionaryRebuild(companyId); // certificate data dictionary (plan.md §3.2)
 
       // Update background task
       await prisma.backgroundTask.update({

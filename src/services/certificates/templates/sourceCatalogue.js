@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "../invoices/invoiceSchema.js";
+import { parseRelative } from "../paths/sourcePath.js";
 
 // The field-source catalogue (CERTIFICATES_V2_PLAN.md §8.2, §10.3). Generated
 // from the Prisma `Product` model plus the invoice header/item schemas, so the
@@ -164,9 +165,21 @@ export function getSourceCatalogue() {
 }
 
 const PATH_KINDS = new Set(["item", "invoice", "product", "company", "brand"]);
-const INGREDIENT_RE = /^activeIngredients\[(\d{1,2})\]\.(name|concentration)$/;
-const SPEC_RE = /^specifications\.values\.[A-Za-z0-9 _\-().%/]{1,60}$/;
-export const TEMPLATE_TOKEN_RE = /\{\{\s*([a-z]+)(?:\.([A-Za-z0-9_.[\]]+))?\s*\}\}/g;
+
+// One placeholder: {{kind}} or {{kind.<path>}} where <path> is the plan.md
+// §3.1 grammar — identifiers, [n], ["quoted key"], [key="value"].
+const PATH_SEGMENT = String.raw`(?:[^{}"\s\[\]]|\[(?:\d+|"(?:[^"\\]|\\.)*"|[^\]"{}=\s]+="(?:[^"\\]|\\.)*")\])`;
+export const TEMPLATE_TOKEN_RE = new RegExp(String.raw`\{\{\s*([a-z]+)(?:\.(${PATH_SEGMENT}+))?\s*\}\}`, "g");
+
+// Product columns that hold JSON: any key path inside them is addressable
+// (plan.md §3.1) — what is actually in them is the company's data dictionary.
+let jsonColumns = null;
+export function productJsonColumns() {
+  if (!jsonColumns) jsonColumns = new Set(Prisma.dmmf.datamodel.models.find((m) => m.name === "Product").fields.filter((f) => f.kind === "scalar" && f.type === "Json").map((f) => f.name));
+  return jsonColumns;
+}
+// item.extra holds the per-line columns extraction saw but couldn't map (§9.1)
+const ITEM_JSON_KEYS = new Set(["extra"]);
 
 /** → { type } when kind/path is known, else null. */
 export function lookupPath(kind, path) {
@@ -175,7 +188,14 @@ export function lookupPath(kind, path) {
   if (!PATH_KINDS.has(kind)) return { type: entry.type || "string" };
   const hit = entry.paths.find((p) => p.path === path);
   if (hit) return { type: hit.type };
-  if (kind === "product" && (INGREDIENT_RE.test(path || "") || SPEC_RE.test(path || ""))) return { type: "string" };
+  // a path inside a JSON column: structurally valid = addressable (its value
+  // may be absent on some products — that is what `required` and the
+  // dictionary's coverage are for)
+  const parsed = parseRelative(path);
+  if (!parsed.ok || parsed.segments.length < 2 || parsed.segments[0].t !== "key") return null;
+  const head = parsed.segments[0].k;
+  if (kind === "product" && productJsonColumns().has(head)) return { type: "string" };
+  if (kind === "item" && ITEM_JSON_KEYS.has(head) && parsed.segments.length === 2 && parsed.segments[1].t === "key") return { type: "string" };
   return null;
 }
 

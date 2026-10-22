@@ -204,3 +204,22 @@ export const certificateSchemas = {
     }),
   },
 };
+
+// ── certificate AI layers, A0 (plan.md §3) ───────────────────────────────────
+export const aiSchemas = {
+  company: { query: companyQuery },
+  updateSettings: {
+    query: companyQuery,
+    body: z
+      .object({
+        enabled: z.boolean().optional(),
+        autoAccept: z.boolean().optional(),
+        autoAcceptThreshold: z.number().min(0.5).max(1).optional(),
+        allowSynonyms: z.boolean().optional(),
+        allowInvoiceGapFill: z.boolean().optional(),
+        allowAiMatching: z.boolean().optional(),
+        companyId: uuid.optional(),
+      })
+      .strict(),
+  },
+};
