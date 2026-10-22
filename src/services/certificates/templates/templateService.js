@@ -4,7 +4,7 @@ import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import * as pdf2htmlex from "../conversion/pdf2htmlexClient.js";
 import { sanitizeTemplateHtml, describeSanitized } from "../sanitize/htmlSanitizer.js";
-import * as renderer from "../engine/renderer.js";
+import * as renderer from "../engine/rendererClient.js";
 import { computeFontCoverage, fontWarnings } from "../analysis/fontCoverage.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { listFields, listGroups, fieldsHash } from "./fieldService.js";

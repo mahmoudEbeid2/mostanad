@@ -10,9 +10,12 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://localhost:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: always
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -142,9 +145,12 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: always
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -165,8 +171,11 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
     restart: always
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -193,6 +202,20 @@ services:
       mostanad-app:
         condition: service_started
     command: node src/workers/invoiceWorker.js
+
+  # Certificates V2: the only container with Chromium (CERTIFICATES_V2_PLAN.md §5.3).
+  # Never routed through Traefik; the dev override publishes :5070 for `npm run dev:all`.
+  cert-renderer:
+    container_name: cert-renderer
+    build:
+      context: .
+      dockerfile: docker/cert-renderer/Dockerfile
+    init: true # reaps Chromium's exited child processes
+    restart: always
+    environment:
+      - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:-}
+    expose:
+      - "5070"
 
   # Certificates V2: .ai/.pdf -> HTML converter (see CERTIFICATES_V2_PLAN.md §5).
   # Own Ubuntu image: pdf2htmlEX cannot run on the app's Alpine image.

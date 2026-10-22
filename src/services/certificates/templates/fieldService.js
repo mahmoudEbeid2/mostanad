@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
-import * as renderer from "../engine/renderer.js";
+import * as renderer from "../engine/rendererClient.js";
 import { loadVersion } from "./templateService.js";
 import { validateSource, validateFormat, validateGroupSource, validateCellSource, GROUP_MODES, WHEN_EMPTY } from "./sourceCatalogue.js";
 import { inspectDef } from "./prepareEngine.js";
@@ -179,14 +179,10 @@ export async function listGroups(versionId) {
 async function inspectInLayout(version, fields, groups = []) {
   if (!fields.length) return { fields: {}, groups: {} };
   const html = await fileStore.readText(version.sanitizedFileId);
-  return renderer.withDocument(
-    html,
-    async (page) => ({
-      fields: await renderer.engine(page, "inspect", fields.map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue }))),
-      groups: groups.length ? await renderer.engine(page, "inspectGroups", groups.map((g) => inspectDef(g, fields))) : {},
-    }),
-    { label: "fields:inspect" }
-  );
+  return renderer.inspect(html, {
+    fields: fields.map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue })),
+    inspectDefs: groups.map((g) => inspectDef(g, fields)),
+  });
 }
 
 // What the UI needs from detection: the footer line it proposes, how many rows fit, or why it failed.

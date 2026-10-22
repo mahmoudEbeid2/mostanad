@@ -72,6 +72,15 @@ services:
     ports:
       - "5050:5000"
 
+  # Exposed on the host so `npm run dev:all` (outside Docker) can reach it:
+  # set CERT_RENDERER_URL=http://localhost:5070 in .env for that mode.
+  # Development: the shared token is optional here (required in production).
+  cert-renderer:
+    ports:
+      - "5070:5070"
+    environment:
+      - NODE_ENV=development
+
   postgres:
     ports:
       - "5432:5432"

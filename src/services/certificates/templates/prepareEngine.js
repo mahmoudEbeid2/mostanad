@@ -1,4 +1,4 @@
-import * as renderer from "../engine/renderer.js";
+import * as renderer from "../engine/rendererClient.js";
 import { comparePngs } from "../engine/pixelDiff.js";
 
 // The prepare pipeline (CERTIFICATES_V2_PLAN.md §7.3, §7.5, §7.6) as a pure
@@ -8,7 +8,7 @@ import { comparePngs } from "../engine/pixelDiff.js";
 //   prepared ──fill(sampleValues)──► round-trip render ── compare ──► gate
 //
 // Every number comes from the same headless Chromium that renders and prints
-// certificates (D11).
+// certificates (D11) — the cert-renderer service, through rendererClient.
 
 export const GATE = {
   calibrationPx: 0.5,
@@ -67,18 +67,10 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, g
 
   // 1) detect groups on the untouched document, clear every field (group
   //    cells included), then remove the groups' placeholder rows (§7.3, §7.8)
-  const cleared = await renderer.withDocument(
-    sanitizedHtml,
-    async (page) => {
-      const detected = groups.length ? await renderer.engine(page, "inspectGroups", groups.map((g) => inspectDef(g, fields))) : {};
-      const { results } = await renderer.engine(page, "clear", fields.map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue, align: f.align })));
-      const okGeo = Object.fromEntries(Object.entries(detected).filter(([, g]) => g.ok));
-      if (Object.keys(okGeo).length) await renderer.engine(page, "removeGroupPlaceholders", okGeo);
-      const html = await renderer.serialize(page);
-      return { results, detected, html };
-    },
-    { label: "prepare:clear" }
-  );
+  const cleared = await renderer.prepareClear(sanitizedHtml, {
+    inspectDefs: groups.map((g) => inspectDef(g, fields)),
+    clearFields: fields.map((f) => ({ key: f.key, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue, align: f.align })),
+  });
   const tClear = Date.now();
 
   const okFields = fields.filter((f) => cleared.results[f.key]?.ok);
@@ -92,16 +84,13 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, g
 
   // 2) round-trip — refill every field with its own sample value, every group
   //    with its sample rows (§7.5)
-  const roundTrip = await renderer.withDocument(
-    cleared.html,
-    async (page) => {
-      const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage, groupDefs);
-      const rects = await renderer.engine(page, "measure", plainFields.map((f) => f.key).concat(okGroups.length ? okFields.filter((f) => f.groupKey).map((f) => f.key) : []));
-      const shots = await renderer.screenshotPagesOf(page);
-      return { fill, rects, shots };
-    },
-    { label: "prepare:roundtrip" }
-  );
+  const roundTrip = await renderer.prepareRoundTrip(cleared.html, {
+    samples,
+    defs,
+    fontCoverage,
+    groupDefs,
+    measureKeys: plainFields.map((f) => f.key).concat(okGroups.length ? okFields.filter((f) => f.groupKey).map((f) => f.key) : []),
+  });
   const originalShots = await renderer.screenshotPages(sanitizedHtml);
   const tRender = Date.now();
 
@@ -198,14 +187,5 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, g
  * `thumbnailScale` (e.g. 0.25) also returns a PNG of page 1 from the same render.
  */
 export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, label = "fill", thumbnailScale = null, groups = [] } = {}) {
-  return renderer.withDocument(
-    preparedHtml,
-    async (page) => {
-      const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups);
-      const html = await renderer.serialize(page);
-      const thumbnail = thumbnailScale ? (await renderer.screenshotPagesOf(page, { scale: thumbnailScale }))[0]?.png || null : null;
-      return { html, flags: res.flags, geometry: res.geometry, thumbnail };
-    },
-    { label }
-  );
+  return renderer.fill(preparedHtml, { values, defs, fontCoverage, groups, thumbnailScale, label });
 }

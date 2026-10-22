@@ -3,12 +3,15 @@ FROM node:25-alpine
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# No Chromium and no fonts here: every render runs in the cert-renderer image
+# (docker/cert-renderer, CERTIFICATES_V2_PLAN.md §5.3). Nothing else in the API
+# or the workers draws text: fontCoverage parses embedded fonts with fontkit and
+# pixelDiff only decodes/encodes PNGs (@napi-rs/canvas).
 # ghostscript, imagemagick and librsvg removed (review #21): no caller since V1 certificates were retired
-RUN apk add --no-cache fontconfig ttf-dejavu chromium nss freetype harfbuzz ca-certificates ttf-freefont
+RUN apk add --no-cache ca-certificates
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# puppeteer stays in package.json for the tests; never download a browser here
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY package*.json ./
 RUN npm ci

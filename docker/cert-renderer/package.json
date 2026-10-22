@@ -1,0 +1,9 @@
+{
+  "name": "cert-renderer",
+  "private": true,
+  "description": "Certificates V2 renderer service — the only process that runs Chromium (CERTIFICATES_V2_PLAN.md §5.3). Source lives in src/services/certificates/{engine,renderService}.",
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "25.3.0"
+  }
+}

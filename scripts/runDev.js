@@ -9,6 +9,9 @@ import fs from "fs";
 // `npm run dev:all` matches what actually runs in production, one process per
 // line here just like one container per service there.
 const targets = [
+  // Certificates V2: the only process that runs Chromium (plan §5.3); the API
+  // and the certificate workers reach it on CERT_RENDERER_URL (default :5070)
+  { name: "cert-renderer", script: "src/services/certificates/renderService/server.js" },
   { name: "api", script: "src/server.js" },
   { name: "catalog-worker", script: "src/workers/catalogWorker.js" },
   { name: "label-worker", script: "src/workers/labelWorker.js" },
@@ -24,7 +27,7 @@ const targets = [
 
 // Tried Node's built-in --watch here first (no new dependency, matches
 // `npm run dev`'s auto-restart). Verified live it doesn't scope to each
-// script's module graph on this machine — all 9 processes restarted in
+// script's module graph on this machine — all the processes restarted in
 // lockstep, repeatedly, correlated with unrelated filesystem activity
 // anywhere under the project root (e.g. test runs writing to
 // uploads/temp_jobs/, or a doc edit), not just changes to files they

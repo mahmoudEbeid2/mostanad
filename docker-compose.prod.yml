@@ -50,10 +50,14 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://localhost:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
+      - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:?set CERT_RENDERER_TOKEN in .env}
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: unless-stopped
-    mem_limit: 1536m
+    mem_limit: 512m
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -230,10 +234,14 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
+      - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:?set CERT_RENDERER_TOKEN in .env}
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
     restart: unless-stopped
-    mem_limit: 1536m
+    mem_limit: 512m
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -259,9 +267,13 @@ services:
       - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
       - REDIS_URL=redis://redis:6379
       - BACKEND_WS_URL=http://mostanad-app:3000
+      - CERT_RENDERER_URL=http://cert-renderer:5070
+      - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:?set CERT_RENDERER_TOKEN in .env}
     restart: unless-stopped
-    mem_limit: 1536m
+    mem_limit: 768m
     depends_on:
+      cert-renderer:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -298,6 +310,27 @@ services:
       - internal
     volumes:
       - app-uploads:/app/uploads
+
+  # Certificates V2: the only container with Chromium (CERTIFICATES_V2_PLAN.md §5.3).
+  # The API and the certificate workers call it on CERT_RENDERER_URL with the shared
+  # CERT_RENDERER_TOKEN. Internal network only — no Traefik labels, no published port.
+  cert-renderer:
+    container_name: cert-renderer
+    build:
+      context: .
+      dockerfile: docker/cert-renderer/Dockerfile
+    init: true # reaps Chromium's exited child processes
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      - NODE_ENV=production
+      - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:?set CERT_RENDERER_TOKEN in .env}
+      - CERT_RENDER_PAGES=1
+      - CERT_BROWSER_IDLE_MS=300000
+    expose:
+      - "5070"
+    networks:
+      - internal
 
   # Certificates V2: .ai/.pdf -> HTML converter (see CERTIFICATES_V2_PLAN.md §5).
   # Internal network only — never routed through Traefik.

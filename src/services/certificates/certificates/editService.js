@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
-import * as renderer from "../engine/renderer.js";
+import * as renderer from "../engine/rendererClient.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { resolveField, resolveGroup } from "../generation/valueResolver.js";
 import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch, renderDesign, plainFields, groupValue } from "../generation/batchService.js";
