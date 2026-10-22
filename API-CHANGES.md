@@ -302,3 +302,12 @@ Additive, with one behaviour change on generate (opt-in through the data check).
 Additive.
 - **`PATCH /invoices/:id/items/:itemId`:** accepts `aiSuggestionId` (the AI pick shown on that line). With the same `productId` → `matchMethod: "ai_confirmed"`, suggestion `accepted`; another product while a pick was shown → suggestion `edited`. A suggestion of another line/company → 404. Every product a person sets (here or on `POST /invoices/:id/items`) is remembered as an alias of the line's name.
 - **Matching** (`POST /invoices/:id/rematch` and after extraction): a learned alias is step 1; then exact code, exact name, ranked candidates; then one AI call for the lines still ambiguous. `matchMethod` gains `alias` and `ai_confirmed`. An AI pick that isn't auto-accepted appears as the first `matchCandidates` entry with `ai: { suggestionId, confidence, reasons }`. `rematch` responds `{ matched, needsMatch, ai: { used, calls, reused, asked, suggested, autoAccepted, unavailable?, reason? } }` and now also keeps `ai_confirmed` lines.
+
+## Certificate AI layers (plan.md) — Phase A4 Advanced (2026-10-23)
+
+Additive.
+- **New:** `GET /certificate-data-dictionary/health` (`read_certificate_templates`); `POST /certificate-data-dictionary/synonym-suggestions` and `POST /certificate-data-dictionary/synonym-suggestions/:id` `{ decision: accept|reject, synonyms? }` (`update_certificate_templates`); `GET /certificate-product-completeness` (`read_products`); `GET /certificate-products/:id/data` (`read_products`) and `PATCH /certificate-products/:id/data` `{ values?, lists? }` (`update_products`); `GET /certificate-ai-stats?days=` (`read_certificate_templates`). All tenant-forced (a system user passes `?companyId=`).
+- **Data dictionary:** observed entries may carry `typeMix: { string: n, number: n }` (after a rebuild).
+- **AiSuggestion:** new `entityType` `dictionary_entry` (kind `dictionary_synonym`).
+- **New env (optional):** `CERT_AI_PRICE_INPUT_PER_M`, `CERT_AI_PRICE_OUTPUT_PER_M`, `CERT_AI_PRICE_CACHED_PER_M` (USD per 1M tokens, defaults 0.30 / 2.50 / 0.075) — only the dashboard's cost estimate reads them.
+- **`POST /invoices/:id/data-needs` (A2):** concurrent checks of one invoice are serialised in the API process and need rows are upserted, so two checks at once no longer fail (found in the A4 UI check: the review screen fires two).

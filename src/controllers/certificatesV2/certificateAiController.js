@@ -4,6 +4,9 @@ import { getAiSettings, updateAiSettings } from "../../services/certificates/ai/
 import * as fieldService from "../../services/certificates/templates/fieldService.js";
 import * as fieldMapper from "../../services/certificates/mapping/fieldMapper.js";
 import * as dataNeeds from "../../services/certificates/dataNeeds/dataNeedsService.js";
+import * as health from "../../services/certificates/insights/dictionaryHealth.js";
+import * as productNeeds from "../../services/certificates/insights/productNeeds.js";
+import { aiStats } from "../../services/certificates/insights/aiStats.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
 
 // Certificate AI layers — foundations (plan.md §3, Phase A0). Thin: the
@@ -63,4 +66,35 @@ export const decideDataNeeds = catchAsync(async (req, res) => {
 export const addDictionarySynonym = catchAsync(async (req, res) => {
   const row = await addPathSynonym(companyFor(req), req.body.canonical, req.body.alternative);
   res.status(200).json({ status: "success", data: { dictionary: dictionaryView(row) } });
+});
+
+// ── A4: advanced (plan.md §9) ────────────────────────────────────────────────
+export const getDictionaryHealth = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { health: await health.healthReport(companyFor(req)) } });
+});
+
+export const suggestSynonyms = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await health.suggestSynonyms(companyFor(req)) });
+});
+
+export const decideSynonym = catchAsync(async (req, res) => {
+  const data = await health.decideSynonym(companyFor(req), req.params.id, req.body, actorId(req));
+  res.status(200).json({ status: "success", data });
+});
+
+export const getCompleteness = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { completeness: await productNeeds.completeness(companyFor(req)) } });
+});
+
+export const getProductData = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await productNeeds.productData(req.params.id, scopeOf(req)) });
+});
+
+export const saveProductData = catchAsync(async (req, res) => {
+  const { companyId: _ignored, ...body } = req.body;
+  res.status(200).json({ status: "success", data: await productNeeds.saveProductData(req.params.id, scopeOf(req), body) });
+});
+
+export const getAiStats = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { stats: await aiStats(companyFor(req), { days: req.query.days }) } });
 });

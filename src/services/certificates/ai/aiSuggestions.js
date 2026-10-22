@@ -8,7 +8,7 @@ import { initialStatus } from "./aiSettings.js";
 // decision goes through decideSuggestion().
 
 export const SUGGESTION_KINDS = ["field_map", "field_label", "invoice_gap", "product_match", "dictionary_synonym", "group_binding"];
-export const ENTITY_TYPES = ["template_field", "invoice_item", "certificate_field", "product"];
+export const ENTITY_TYPES = ["template_field", "invoice_item", "certificate_field", "product", "dictionary_entry"];
 export const DECISIONS = ["accepted", "edited", "rejected"];
 
 export const clampConfidence = (c) => (typeof c === "number" && Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0);

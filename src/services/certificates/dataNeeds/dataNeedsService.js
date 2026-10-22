@@ -144,7 +144,12 @@ async function computeCode(invoice, ctx) {
       const base = { label: field.label, category: field.dataCategory || null, required: field.required, templateVersionId: entry.templateVersionId, invoiceItemId: itemId, productId: entry.productId, basis };
       const row = prev
         ? await prisma.certificateDataNeed.update({ where: { id: prev.id }, data: { ...base, ...data } })
-        : await prisma.certificateDataNeed.create({ data: { companyId: invoice.companyId, invoiceId: invoice.id, planKey: entry.planKey, fieldKey: field.key, ...base, ...code } });
+        : await prisma.certificateDataNeed.upsert({
+            // upsert, not create: a concurrent check on another API process may have just written it
+            where: { invoiceId_planKey_fieldKey: { invoiceId: invoice.id, planKey: entry.planKey, fieldKey: field.key } },
+            create: { companyId: invoice.companyId, invoiceId: invoice.id, planKey: entry.planKey, fieldKey: field.key, ...base, ...code },
+            update: {},
+          });
       out.push({ row, field, entry });
     }
   }
@@ -286,7 +291,25 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
  * once for the gaps not asked before (unless `ai: false`). → the view.
  * deps.generate replaces the model call (tests).
  */
-export async function computeNeeds(invoiceId, companyScope, { ai = true, generate } = {}) {
+// One check per invoice at a time in this process: the review screen can fire
+// two at once (re-render after an edit), and two runs would race on the rows
+// and could pay for the same gaps twice. The second waits, then runs on the
+// first one's result (its gaps are already asked → 0 calls).
+const running = new Map(); // invoiceId → Promise
+function serialized(invoiceId, fn) {
+  const prev = running.get(invoiceId) || Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  running.set(invoiceId, next);
+  return next.finally(() => {
+    if (running.get(invoiceId) === next) running.delete(invoiceId);
+  });
+}
+
+export async function computeNeeds(invoiceId, companyScope, opts = {}) {
+  return serialized(invoiceId, () => computeNeedsNow(invoiceId, companyScope, opts));
+}
+
+async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate } = {}) {
   const invoice = await loadInvoice(invoiceId, companyScope);
   if (!CHECKABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to check for an invoice that is ${invoice.status}`, 409);
   const ctx = await loadContext(invoice);
@@ -303,9 +326,11 @@ export async function computeNeeds(invoiceId, companyScope, { ai = true, generat
 /** Code-only refresh, used by generation's gate: true when the invoice's check was ever run. */
 export async function refreshIfChecked(invoice) {
   if (!(await prisma.certificateDataNeed.count({ where: { invoiceId: invoice.id } }))) return false;
-  const ctx = await loadContext(invoice);
-  await ensureSpans(invoice, ctx.items);
-  await computeCode(invoice, ctx);
+  await serialized(invoice.id, async () => {
+    const ctx = await loadContext(invoice);
+    await ensureSpans(invoice, ctx.items);
+    await computeCode(invoice, ctx);
+  });
   return true;
 }
 

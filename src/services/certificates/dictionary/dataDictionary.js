@@ -159,7 +159,9 @@ export function observeProducts(products, jsonColumns = [...productJsonColumns()
     if (!a.values.size) continue; // only objects below: their leaves are entries of their own
     const type = [...a.types.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] || "string";
     const examples = [...a.values.entries()].sort((x, y) => y[1] - x[1]).slice(0, MAX_EXAMPLES).map(([v]) => clip(v));
-    entries.push({ path, root: "product", type, coverage, distinct: a.values.size, examples, labels, synonyms: [], source: "observed", label: toLabel(path.replace(/\[\]/g, "")) });
+    // typeMix (A4 health report): more than one value type seen at this key
+    const typeMix = a.types.size > 1 ? Object.fromEntries(a.types) : null;
+    entries.push({ path, root: "product", type, coverage, distinct: a.values.size, examples, labels, synonyms: [], source: "observed", label: toLabel(path.replace(/\[\]/g, "")), ...(typeMix ? { typeMix } : {}) });
   }
 
   // [key="value"] paths for each collection: product.activeIngredients[name="Vitamin E"].concentration

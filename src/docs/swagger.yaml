@@ -257,6 +257,18 @@ paths:
     $ref: './paths/certificates-v2/certificate-data-dictionary-rebuild.yaml'
   /certificate-data-dictionary/synonyms:
     $ref: './paths/certificates-v2/certificate-data-dictionary-synonyms.yaml'
+  /certificate-data-dictionary/health:
+    $ref: './paths/certificates-v2/certificate-data-dictionary-health.yaml'
+  /certificate-data-dictionary/synonym-suggestions:
+    $ref: './paths/certificates-v2/certificate-data-dictionary-synonym-suggestions.yaml'
+  /certificate-data-dictionary/synonym-suggestions/{id}:
+    $ref: './paths/certificates-v2/certificate-data-dictionary-synonym-suggestions-id.yaml'
+  /certificate-product-completeness:
+    $ref: './paths/certificates-v2/certificate-product-completeness.yaml'
+  /certificate-products/{id}/data:
+    $ref: './paths/certificates-v2/certificate-products-id-data.yaml'
+  /certificate-ai-stats:
+    $ref: './paths/certificates-v2/certificate-ai-stats.yaml'
   /certificate-ai-settings:
     $ref: './paths/certificates-v2/certificate-ai-settings.yaml'
   /invoices:

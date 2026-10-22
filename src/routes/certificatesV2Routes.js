@@ -4,7 +4,7 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
@@ -70,6 +70,14 @@ router.get("/certificate-field-sources", guard("read_certificate_templates"), va
 router.get("/certificate-data-dictionary", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getDataDictionary);
 router.post("/certificate-data-dictionary/rebuild", guard("update_certificate_templates"), validate(aiSchemas.company), certificateAi.rebuildDataDictionary);
 router.post("/certificate-data-dictionary/synonyms", guard("update_certificate_templates"), validate(dataNeedSchemas.synonym), certificateAi.addDictionarySynonym);
+// A4 (plan.md §9): dictionary health + AI label synonyms, completeness, structured product data, evaluation
+router.get("/certificate-data-dictionary/health", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getDictionaryHealth);
+router.post("/certificate-data-dictionary/synonym-suggestions", guard("update_certificate_templates"), validate(aiSchemas.company), certificateAi.suggestSynonyms);
+router.post("/certificate-data-dictionary/synonym-suggestions/:id", guard("update_certificate_templates"), validate(insightSchemas.decideSynonym), certificateAi.decideSynonym);
+router.get("/certificate-product-completeness", guard("read_products"), validate(aiSchemas.company), certificateAi.getCompleteness);
+router.get("/certificate-products/:id/data", guard("read_products"), validate(insightSchemas.productById), certificateAi.getProductData);
+router.patch("/certificate-products/:id/data", guard("update_products"), validate(insightSchemas.saveProductData), certificateAi.saveProductData);
+router.get("/certificate-ai-stats", guard("read_certificate_templates"), validate(insightSchemas.stats), certificateAi.getAiStats);
 router.get("/certificate-ai-settings", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getSettings);
 router.patch("/certificate-ai-settings", guard("update_certificate_templates"), validate(aiSchemas.updateSettings), certificateAi.updateSettings);
 router.get("/certificate-products", guard("read_products"), validate(productSearchSchema), templates.productSearch);

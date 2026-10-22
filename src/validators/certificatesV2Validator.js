@@ -283,3 +283,24 @@ export const dataNeedSchemas = {
     body: z.object({ canonical: z.string().min(3).max(300), alternative: z.string().min(3).max(300), companyId: uuid.optional() }),
   },
 };
+
+// Certificate AI layers A4 (plan.md §9)
+const textOrNull = z.string().max(1000).nullable();
+export const insightSchemas = {
+  decideSynonym: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({ decision: z.enum(["accept", "reject"]), synonyms: z.array(z.string().min(1).max(60)).max(8).optional(), companyId: uuid.optional() }),
+  },
+  productById: { params: idParams, query: companyQuery },
+  saveProductData: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      values: z.record(z.string().max(300), textOrNull).optional(),
+      lists: z.record(z.string().max(300), z.array(z.record(z.string().max(100), textOrNull)).max(200)).optional(),
+      companyId: uuid.optional(),
+    }),
+  },
+  stats: { query: companyQuery.extend({ days: z.coerce.number().int().min(1).max(730).optional() }) },
+};

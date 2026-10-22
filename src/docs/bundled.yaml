@@ -4959,6 +4959,191 @@ paths:
           $ref: '#/components/responses/E401'
         '403':
           $ref: '#/components/responses/E403'
+  /certificate-data-dictionary/health:
+    get:
+      tags:
+        - Certificate AI
+      summary: Dictionary health report
+      description: 'Plan.md §9 (A4). `{ dictionary: { version, builtAt, productCount, entries }, lowCoverage: [{ path, label, coverage, examples, neededByTemplates }], typeConflicts: [... + types: { string: n, number: n }], nearDuplicates: [{ reason, canonical, alternative, alreadySynonym, action: { canonical, alternative } }], variants: [{ path, label, spellings }], pathSynonyms: [{ canonical, alternatives }], synonymSuggestions: [{ id, path, label, synonyms, confidence, rationale }] }`. `action` is the body for `POST /certificate-data-dictionary/synonyms` — a person''s click; products are never rewritten. Type conflicts need a dictionary built after this change (rebuild). Permission: `read_certificate_templates`.'
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ health }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-data-dictionary/synonym-suggestions:
+    post:
+      tags:
+        - Certificate AI
+      summary: AI names for unclear product keys (one call)
+      description: 'ONE `CERT_DICTIONARY` call for the observed product keys never asked before (≤ 150, by coverage). Answers are kept only for paths that were sent, stored as `dictionary_synonym` suggestions and ALWAYS `pending` — whatever the auto-accept setting (plan.md §12 Q3). `allowSynonyms` or `enabled` off → no call (`ai.unavailable`). → `{ asked, suggested, ai: { used, calls, unavailable?, reason? } }`. Permission: `update_certificate_templates`.'
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ asked, suggested, ai }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-data-dictionary/synonym-suggestions/{id}:
+    post:
+      tags:
+        - Certificate AI
+      summary: Accept or reject an AI name suggestion
+      description: '`{ decision: accept|reject, synonyms? }`. Accept adds the (optionally edited) names to the dictionary entry''s label `synonyms` (used by template mapping, survive rebuilds); the suggestion becomes `accepted` or `edited`. 409 ALREADY_DECIDED / ENTRY_GONE, 422 VALUE_REQUIRED, 404 for another company''s suggestion. Permission: `update_certificate_templates`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ status, path?, synonyms? }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: ALREADY_DECIDED, ENTRY_GONE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              decision: accept
+              synonyms:
+                - Withdrawal period
+                - WP
+  /certificate-product-completeness:
+    get:
+      tags:
+        - Certificate AI
+      summary: Template-driven product completeness
+      description: 'What the company''s ACTIVE templates read from products (field sources, combinations, repeating groups reading a product list; relations excluded) and which products lack it (accepted path synonyms count). `{ totals: { products, complete, incomplete, needs }, needs: [{ path, label, kind: text|list, children?, expected?, templates[], required, missingCount, missing: [{ id, name }] (≤ 100) }], products: [{ id, name, missing: [label] }] (≤ 500) }`. Permission: `read_products`.'
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ completeness }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+  /certificate-products/{id}/data:
+    get:
+      tags:
+        - Certificate AI
+      summary: Structured certificate data of a product
+      description: '`{ productId, name, definition: { fields: [{ path, label, column, templates, required }], lists: [{ path, label, keyField, children, expected, templates, required }] }, values: { [path]: text }, lists: { [path]: [{ child: text }] }, missing: [label] }`. Permission: `read_products`; another company''s product → 404.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: product data
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+    patch:
+      tags:
+        - Certificate AI
+      summary: Save structured certificate data
+      description: '`{ values?: { [path]: text|null }, lists?: { [path]: [{ child: text|null }] } }`. Only paths of the definition (what active templates need) are written — anything else → 400 NOT_A_CERTIFICATE_FIELD. Inside JSON columns only the named key is set (an existing spelling such as `PH` is kept, other keys untouched); a list replaces the rows, each matched to the existing element with the same key-field value whose extra keys survive. null/empty clears. Schedules a dictionary rebuild. → the same shape as GET. Permission: `update_products`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: product data
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: NOT_A_CERTIFICATE_FIELD, INVALID_LIST
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              values:
+                specifications.values.pH: 6.0-7.0
+              lists:
+                activeIngredients:
+                  - name: Tylosin
+                    concentration: 200 mg
+  /certificate-ai-stats:
+    get:
+      tags:
+        - Certificate AI
+      summary: Evaluation dashboard data
+      description: 'Plan.md §9 (A4), from the company''s ai_suggestions and ai_runs since `?days=` (default 90, ≤ 730). `{ since, kinds: [{ kind, total, pending, accepted, autoAccepted, edited, rejected, refusedByCode, acceptanceRate, editRate, avgConfidence }], calibration: [{ bucket, decided, correct, correctRate }], runs: [{ kind, calls, ok, failed, disabled, skipped, inputTokens, outputTokens, thinkingTokens, cachedTokens, avgMs, costUsd }], weekly: [{ week, per: template|invoice, calls, entities, callsPerEntity, costUsd }], cost: { totalUsd, prices, estimate: true } }`. Kept = accepted/auto-accepted; wrong = edited/rejected (code refusals included). Cost is an estimate from reported tokens at CERT_AI_PRICE_INPUT_PER_M / _OUTPUT_PER_M / _CACHED_PER_M (defaults 0.30 / 2.50 / 0.075 USD). Permission: `read_certificate_templates`.'
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 730
+      responses:
+        '200':
+          description: '`{ stats }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
   /certificate-ai-settings:
     get:
       tags:

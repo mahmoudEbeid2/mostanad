@@ -88,6 +88,11 @@ try {
   check = await computeNeeds(invA.id, cid, { generate: goldenModel(exp("INV_A"), { calls: again }) });
   assert("cleared again → that ONE gap is asked (1 call, 1 gap)", again.length === 1 && JSON.parse(again[0].contents[3].slice(6)).length === 1, again.length);
 
+  const conc = await loadGoldenInvoice(cid, seed.products, "INV_C");
+  const concCalls = [];
+  const settled = await Promise.allSettled([1, 2, 3].map(() => computeNeeds(conc.id, cid, { generate: goldenModel(exp("INV_C"), { calls: concCalls }) })));
+  assert("three checks at once (the review screen re-rendering) → all succeed, ONE AI call", settled.every((x) => x.status === "fulfilled") && concCalls.length === 1, settled.map((x) => x.reason?.message));
+
   console.log("\n🧪 Adversarial answers (§6.4, P2)");
   const adv = async (name, override) => {
     const inv = await loadGoldenInvoice(cid, seed.products, name);
