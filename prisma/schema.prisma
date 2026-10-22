@@ -96,6 +96,7 @@ model Company {
   aiSuggestions        AiSuggestion[]
   aiRuns               AiRun[]
   fieldMappingMemory   FieldMappingMemory[]
+  productAliases       ProductAlias[]
 
   @@map("companies")
 }
@@ -171,6 +172,7 @@ model Product {
   generatedLabels GeneratedLabel[]
   invoiceItems    InvoiceItem[]
   certificates    Certificate[]
+  aliases         ProductAlias[]
 
   @@map("products")
 }
@@ -921,7 +923,7 @@ model InvoiceItem {
   productId       String?  @map("product_id")
   product         Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
   matchStatus     String   @default("needs_match") @map("match_status") // matched | needs_match | ignored
-  matchMethod     String?  @map("match_method") // exact_code | exact_name | user
+  matchMethod     String?  @map("match_method") // exact_code | exact_name | user | alias | ai_confirmed (A3)
   matchCandidates Json?    @map("match_candidates") // [{ productId, name, code, score, reasons[] }]
   textSpan        Json?    @map("text_span") // { page, start, end, via } — this line's row in invoices.text_content (plan.md §6.1 row scope, A2)
 
@@ -1143,4 +1145,24 @@ model CertificateDataNeed {
   @@unique([invoiceId, planKey, fieldKey])
   @@index([companyId, status])
   @@map("certificate_data_needs")
+}
+
+// Learned invoice name → product, per company (plan.md §4, §7; Phase A3).
+// Written on every confirmed match (a person's, or an AI match auto-accepted
+// at/above the threshold); read first by the matcher, so the next invoice
+// from the same supplier matches without any AI call.
+model ProductAlias {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  aliasNorm String   @map("alias_norm") // normalizeName(invoice line name)
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  origin    String // user_confirmed | ai_confirmed
+  timesUsed Int      @default(1) @map("times_used")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([companyId, aliasNorm])
+  @@map("product_aliases")
 }

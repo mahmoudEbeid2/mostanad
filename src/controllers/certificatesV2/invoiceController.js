@@ -36,12 +36,12 @@ export const updateInvoice = catchAsync(async (req, res) => {
 });
 
 export const addItem = catchAsync(async (req, res) => {
-  const item = await invoiceService.addItem(req.params.id, scopeOf(req), req.body);
+  const item = await invoiceService.addItem(req.params.id, scopeOf(req), req.body, actorId(req));
   res.status(201).json({ status: "success", data: { item } });
 });
 
 export const updateItem = catchAsync(async (req, res) => {
-  const item = await invoiceService.updateItem(req.params.id, req.params.itemId, scopeOf(req), req.body);
+  const item = await invoiceService.updateItem(req.params.id, req.params.itemId, scopeOf(req), req.body, actorId(req));
   res.status(200).json({ status: "success", data: { item } });
 });
 

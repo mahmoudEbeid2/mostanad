@@ -296,3 +296,9 @@ Additive, with one behaviour change on generate (opt-in through the data check).
 - **Certificate values** (`CertificateVersion.values[key]`): a value the check settled has `origin: "data_check"` and a new `provenance` object (`kind` invoice_text / product_path / product_json_text / manual, quote, page, needId…). A value read through an accepted path synonym has `provenance: { kind: "path", path, via: "synonym" }`. `POST /certificates/:id/fields/:key/reset` uses the check's value first, as generation does.
 - **Invoice lines:** `InvoiceItem.textSpan` `{ page, start, end, via }` (or `{ none: true }`) — the line's row in `textContent`; returned with the items of `GET /invoices/:id`.
 - **Data dictionary:** an entry may carry `pathSynonyms: [full paths]`; entries with `source: "synonym"` (not pickable) hold a synonym whose canonical path no product has.
+
+## Certificate AI layers (plan.md) — Phase A3 Product matching (2026-10-23)
+
+Additive.
+- **`PATCH /invoices/:id/items/:itemId`:** accepts `aiSuggestionId` (the AI pick shown on that line). With the same `productId` → `matchMethod: "ai_confirmed"`, suggestion `accepted`; another product while a pick was shown → suggestion `edited`. A suggestion of another line/company → 404. Every product a person sets (here or on `POST /invoices/:id/items`) is remembered as an alias of the line's name.
+- **Matching** (`POST /invoices/:id/rematch` and after extraction): a learned alias is step 1; then exact code, exact name, ranked candidates; then one AI call for the lines still ambiguous. `matchMethod` gains `alias` and `ai_confirmed`. An AI pick that isn't auto-accepted appears as the first `matchCandidates` entry with `ai: { suggestionId, confidence, reasons }`. `rematch` responds `{ matched, needsMatch, ai: { used, calls, reused, asked, suggested, autoAccepted, unavailable?, reason? } }` and now also keeps `ai_confirmed` lines.

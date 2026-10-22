@@ -7,6 +7,8 @@ import { dateValue } from "./dateNormalizer.js";
 import { normalizeQuantity } from "./quantityNormalizer.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
 import { matchInvoice } from "../matching/productMatcher.js";
+import { rememberAlias } from "../matching/productAliases.js";
+import { decideSuggestion } from "../ai/aiSuggestions.js";
 import { extractionHints } from "../dataNeeds/extractionHints.js";
 import { locateItemSpans } from "../dataNeeds/itemSpans.js";
 
@@ -247,7 +249,7 @@ async function assertProduct(companyId, productId) {
 }
 
 /** POST /invoices/:id/items — a line the extraction missed. */
-export async function addItem(invoiceId, companyId, { data = {}, productId = null }) {
+export async function addItem(invoiceId, companyId, { data = {}, productId = null }, userId = null) {
   const inv = await loadInvoice(invoiceId, companyId);
   assertEditable(inv);
   if (productId) await assertProduct(inv.companyId, productId);
@@ -266,24 +268,46 @@ export async function addItem(invoiceId, companyId, { data = {}, productId = nul
     }),
     prisma.invoice.update({ where: { id: invoiceId }, data: reopen(inv) }),
   ]);
+  if (productId) await rememberAlias(inv.companyId, item.data?.name, productId, "user_confirmed"); // plan.md §7 learning
   return item;
 }
 
-/** PATCH /invoices/:id/items/:itemId — { data?, productId?, ignored? } */
-export async function updateItem(invoiceId, itemId, companyId, { data, productId, ignored }) {
+/** The AI pick shown on this line (plan.md §7), when the person is confirming it. */
+async function aiPickFor(companyId, item, suggestionId) {
+  const s = await prisma.aiSuggestion.findUnique({ where: { id: suggestionId } });
+  if (!s || s.companyId !== companyId || s.kind !== "product_match" || s.entityId !== item.id) throw notFound("Suggestion");
+  return s;
+}
+
+/**
+ * PATCH /invoices/:id/items/:itemId — { data?, productId?, ignored?, aiSuggestionId? }
+ * A person's match is remembered as an alias of the line's name (plan.md §7).
+ * With aiSuggestionId = the AI pick of this line and the same productId, the
+ * line is `ai_confirmed` and the suggestion accepted; choosing another product
+ * while the AI suggested one records the suggestion as `edited`.
+ */
+export async function updateItem(invoiceId, itemId, companyId, { data, productId, ignored, aiSuggestionId }, userId = null) {
   const { inv, item } = await loadItem(invoiceId, itemId, companyId);
   assertEditable(inv);
   const patch = {};
   if (data) patch.data = mergeFields(item.data, data, INVOICE_ITEM_FIELDS);
+  let decided = null;
   if (productId !== undefined) {
     if (productId) {
       await assertProduct(inv.companyId, productId);
-      Object.assign(patch, { productId, matchStatus: "matched", matchMethod: "user" });
+      const pick = aiSuggestionId ? await aiPickFor(inv.companyId, item, aiSuggestionId) : null;
+      const confirmsAi = pick && pick.proposal?.productId === productId;
+      Object.assign(patch, { productId, matchStatus: "matched", matchMethod: confirmsAi ? "ai_confirmed" : "user" });
+      const shown = (item.matchCandidates || []).find((c) => c?.ai?.suggestionId)?.ai?.suggestionId;
+      if (confirmsAi) decided = { id: pick.id, decision: "accepted", finalValue: { productId } };
+      else if (shown && shown !== aiSuggestionId) decided = { id: shown, decision: "edited", finalValue: { productId } };
     } else Object.assign(patch, { productId: null, matchStatus: "needs_match", matchMethod: null });
   }
   if (ignored === true) Object.assign(patch, { matchStatus: "ignored" });
   if (ignored === false && item.matchStatus === "ignored") Object.assign(patch, { matchStatus: (patch.productId ?? item.productId) ? "matched" : "needs_match" });
   const [updated] = await prisma.$transaction([prisma.invoiceItem.update({ where: { id: itemId }, data: patch }), prisma.invoice.update({ where: { id: invoiceId }, data: reopen(inv) })]);
+  if (patch.productId) await rememberAlias(inv.companyId, updated.data?.name, patch.productId, "user_confirmed"); // a person confirmed it
+  if (decided) await decideSuggestion(inv.companyId, decided.id, { decision: decided.decision, finalValue: decided.finalValue, userId });
   return updated;
 }
 

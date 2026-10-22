@@ -171,7 +171,7 @@ export const invoiceSchemas = {
   updateItem: {
     params: itemParams,
     query: companyQuery,
-    body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional() }),
+    body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional(), aiSuggestionId: uuid.optional() }),
   },
   itemById: { params: itemParams, query: companyQuery },
 };

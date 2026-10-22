@@ -5276,6 +5276,8 @@ paths:
         `data` cells (dates re-normalised to ISO only when unambiguous), `productId` (own company only; null = unmatch), `ignored`.
 
         Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+
+        **AI layers A3 (plan.md §7):** a product chosen here is remembered as an alias of the line's name (the next invoice with that name matches at step 1, without AI). `aiSuggestionId` = the AI pick shown on this line (`matchCandidates[].ai.suggestionId`): with the same `productId` the line becomes `matchMethod: "ai_confirmed"` and the suggestion `accepted`; choosing another product while an AI pick was shown records it as `edited`. A suggestion of another line or company → 404. `matchMethod` may now also be `alias` or `ai_confirmed`; re-matching keeps `user` and `ai_confirmed` lines.
       parameters:
         - $ref: '#/components/parameters/Id'
         - name: itemId
@@ -5292,6 +5294,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+              properties:
+                aiSuggestionId:
+                  type: string
+                  format: uuid
             example:
               productId: uuid
       responses:
@@ -5352,6 +5358,8 @@ paths:
         Lines matched or ignored by hand are kept.
 
         Permission: `update_invoices`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+
+        **AI layers A3 (plan.md §7):** order per line — learned alias, exact code, exact name, ranked candidates; then ONE `CERT_PRODUCT_MATCH` call for the lines still ambiguous (each line's top-10 candidates; the pick must be one of them and the company's; a pack-size or strength contradiction halves its confidence). A pick is matched (`ai_confirmed`, alias written) only when the company auto-accepts at/above its threshold; otherwise it is the first candidate with `ai: { suggestionId, confidence, reasons }`. Lines already answered for the same text and candidates reuse the answer (0 calls). Response adds `ai: { used, calls, reused, asked, suggested, autoAccepted, unavailable?, reason? }`. The same runs after extraction.
       parameters:
         - $ref: '#/components/parameters/Id'
         - $ref: '#/components/parameters/CompanyId-2'

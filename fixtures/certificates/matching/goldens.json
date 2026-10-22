@@ -1,0 +1,43 @@
+{
+  "$comment": "Golden product-matching set (plan.md §7 acceptance). A catalogue with near-duplicates (same product in two pack sizes / two strengths) and two supplier invoices whose line names differ from the catalogue. expect = the catalogue product the line IS, or null when no product can be told apart from the line alone (it must be left for the user). Invoice 2 repeats invoice 1's supplier names: after invoice 1 is confirmed it must match with 0 AI calls. `foreign` products are seeded into ANOTHER company with near-identical names: they must never be offered.",
+  "catalogue": [
+    { "name": "DOXYPHARMA 1KG", "productCode": "DOXY1KG", "packaging": "1KG", "physicalForm": "powder", "strength": "50%" },
+    { "name": "DOXYPHARMA 500G", "productCode": "DOXY500", "packaging": "500 G", "physicalForm": "powder", "strength": "50%" },
+    { "name": "ADD-E120 1L", "productCode": "ADDE120", "packaging": "1L", "physicalForm": "liquid" },
+    { "name": "ADD-E120 5L", "productCode": "ADDE120-5", "packaging": "5L", "physicalForm": "liquid" },
+    { "name": "TYLOPHARMA 20%", "productCode": "TYL20", "packaging": "1KG", "strength": "20%" },
+    { "name": "TYLOPHARMA 10%", "productCode": "TYL10", "packaging": "1KG", "strength": "10%" },
+    { "name": "AMOXIVET 50%", "productCode": "AMX50", "packaging": "1KG", "strength": "50%" },
+    { "name": "COLISTIN 4.8 MIU", "productCode": "COL48", "packaging": "1KG" },
+    { "name": "VITAMIN AD3E", "productCode": "VAD3E", "packaging": "1L", "physicalForm": "liquid" },
+    { "name": "ENROFLOX 10%", "productCode": "ENR10", "packaging": "1L", "strength": "10%" }
+  ],
+  "foreign": [{ "name": "DOXYPHARMA 1 KG" }, { "name": "Doxypharma 500gr" }, { "name": "Unknown premix XYZ" }],
+  "invoices": [
+    {
+      "name": "SUPPLIER-1 / invoice 1",
+      "lines": [
+        { "data": { "name": "DOXYPHARMA 1 KG", "packing": "1 KG" }, "expect": "DOXYPHARMA 1KG" },
+        { "data": { "name": "Doxypharma 500gr", "packing": "500 GR" }, "expect": "DOXYPHARMA 500G" },
+        { "data": { "name": "ADD E120 (5 LT)", "packing": "5 LT" }, "expect": "ADD-E120 5L" },
+        { "data": { "name": "Tylo Pharma 20 %", "packing": "1 KG" }, "expect": "TYLOPHARMA 20%" },
+        { "data": { "name": "AMOXIVET 50% WSP", "packing": "1 KG" }, "expect": "AMOXIVET 50%" },
+        { "data": { "name": "Colistin sulphate 4.8 MIU/g", "packing": "1 KG" }, "expect": "COLISTIN 4.8 MIU" },
+        { "data": { "name": "Unknown premix XYZ", "packing": "25 KG" }, "expect": null },
+        { "data": { "name": "ENROFLOX 10 % oral", "packing": "1 L" }, "expect": "ENROFLOX 10%" },
+        { "data": { "name": "ADD-E120", "code": "ADDE120", "packing": "1 L" }, "expect": "ADD-E120 1L", "byCode": true },
+        { "data": { "name": "Vitamin AD3E 1 L", "packing": "1 L" }, "expect": "VITAMIN AD3E" },
+        { "data": { "name": "TYLOPHARMA 1KG", "packing": "1 KG" }, "expect": null }
+      ]
+    },
+    {
+      "name": "SUPPLIER-1 / invoice 2 (same supplier, later)",
+      "lines": [
+        { "data": { "name": "DOXYPHARMA 1 KG", "packing": "1 KG" }, "expect": "DOXYPHARMA 1KG" },
+        { "data": { "name": "ADD E120 (5 LT)", "packing": "5 LT" }, "expect": "ADD-E120 5L" },
+        { "data": { "name": "Colistin sulphate 4.8 MIU/g", "packing": "1 KG" }, "expect": "COLISTIN 4.8 MIU" },
+        { "data": { "name": "Vitamin AD3E 1 L", "packing": "1 L" }, "expect": "VITAMIN AD3E" }
+      ]
+    }
+  ]
+}

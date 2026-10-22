@@ -1407,3 +1407,31 @@ Owner approved A1 and asked for A1 → A4 back to back with one review at the en
 - The live gap-fill run (above). Also not verified live: the extractor's new `rowText` and hints against real Gemini.
 - **Also fixed (outside A2):** frontend `components/label-detail/EditFieldModal.jsx` called hooks after an early return (4 oxlint `rules-of-hooks` errors, oxlint exit 1); split into wrapper + body. oxlint now exits 0.
 - **Verified:** full `npm test` on a fresh `npm run dev:test`: **74/74 suites** (72 + a2.unit + a2.dataNeeds; a2.dataNeeds green 3 runs in a row after fixing an ordering bug in the test's stand-in model). Frontend `vite build` OK, `oxlint` exit 0. Migration `20261023120000_cert_ai_invoice_intelligence` (additive: 1 nullable column, 1 table) applied locally with `migrate deploy`.
+
+## Certificate AI layers — Phase A3 Product matching (plan.md §7, 2026-10-23)
+
+**Built**
+- **ProductAlias** (`product_aliases`, migration `20261023130000_cert_ai_product_aliases`: one table, FKs cascade on company/product): `matching/productAliases.js` (`aliasMap`, `rememberAlias` — refuses a product of another company). Written on every confirmation: a person's match (`PATCH …/items/:id`, `POST …/items`) → `user_confirmed`; an AI pick auto-accepted at/above the threshold → `ai_confirmed`. A later confirmation to another product replaces the alias.
+- **Order** (`matching/productMatcher.js`): 1 alias of the normalised line name → `alias`; 2 exact code; 3 exact name; 4 ranked candidates (5 shown, top 10 kept for the AI); 5 `matching/aiMatcher.js`: ONE `CERT_PRODUCT_MATCH` call for the lines still ambiguous. Input per line `{ lineNo, name, code, packing, extra, candidates: [{ id, name, code, packaging, brand, keyFacts: { form, strength, species } }] }`; output `{ lineNo, productId|null, confidence, reasons }`.
+- **Code checks:** the pick must be one of THAT line's candidates and a product of the company (else the suggestion is stored `rejected` with the reason); contradictions (`contradictions()`: pack size in g/ml — "1 KG" vs "500 G" — and strength % between the invoice line and the product's packaging/strength/name) halve the confidence and are shown as "⚠ …" reasons.
+- **Confirmation:** `initialStatus` (auto-accept on and ≥ threshold) → matched `ai_confirmed` + alias; otherwise the pick goes first among the line's candidates with `ai: { suggestionId, confidence, reasons }`. Confirming it (`aiSuggestionId`) → `ai_confirmed`, suggestion `accepted`, alias; picking another product → suggestion `edited`. Re-matching keeps `user` and `ai_confirmed` lines.
+- **Cost:** a line already answered for the same (line text, candidates) reuses the answer — a pick, "none" or a refused pick — so re-matching never pays twice (`ai.reused`). A failed call is not an answer: asked again next time. AI off (`allowAiMatching`/`enabled`) → `disabled` run row, candidates as before.
+- **Frontend:** match column shows "AI suggests X (93 %) — Confirm" (amber with ⚠ when contradicted; reasons on hover), badges "✓ remembered" (alias) and "✓ AI" (ai_confirmed); the product picker marks the AI's option ("AI 93 %") and choosing it confirms it; the re-match toast reports AI suggestions or why AI was unavailable.
+- **Golden set** `fixtures/certificates/matching/goldens.json`: 10-product catalogue with near-duplicates (pack sizes, strengths), a look-alike catalogue in another company, invoice 1 (11 lines: renamed lines, an exact-code line, an unknown product, a line that can't tell 10 % from 20 %) and invoice 2 (same supplier, later). Harness `tests/certificates-v2/matchingGoldenHarness.js`.
+- **Tests:** `a3.matching.test.js` (44): code checks, alias step, goldens 11/11 with ONE call, the exact-code line never sent, 0 cross-tenant candidates and no foreign id in the prompt, key facts in the prompt, provenance, re-match reuse (0 calls), adversarial picks (not a candidate / other tenant / invented id), contradiction halving + no auto-accept, auto-accept → aliases → next invoice only asks the unlearned line, a person's confirmations via the API → next invoice 0 calls, edited/accepted suggestion statuses, 404s, aliases never cross tenants, AI off / model down / retry, API rematch reuse.
+- **Live eval** `npm run eval:cert-matching` (`scripts/evalCertMatching.js`; `RUN_LIVE_GEMINI=1`): invoice 1 live, a person confirms it as expected (in-process `updateItem`), invoice 2 must need 0 calls; writes `golden/ai-eval-match-<date>.json`. Not run (paid).
+
+**§7 acceptance: proven / not proven**
+- With a correct stand-in model: 11/11 lines of invoice 1 correctly matched or correctly left (≥ 95 %), 0 cross-tenant candidates, second upload of the same supplier → 0 AI calls (all by alias, all correct). **The live accuracy is not measured** (`RUN_LIVE_GEMINI=1 npm run eval:cert-matching`).
+
+**Differences from plan.md (recorded)**
+- `ProductAlias` has `product` / `company` relations (cascade) and `updatedAt`; not in the plan's model. A deleted product takes its aliases with it.
+- A person's AI confirmation records the alias as `user_confirmed` (a person decided); `ai_confirmed` is kept for auto-accepted picks. The line's `matchMethod` is `ai_confirmed` in both cases; the suggestion status tells them apart (`accepted` vs `auto_accepted`).
+- An AI pick waiting for confirmation is not a new `matchStatus`: the line stays `needs_match` (so confirming the invoice still requires a person) and the pick rides in `matchCandidates[0].ai`.
+- "None of the candidates" answers are stored as suggestions (status pending, confidence 0) so they are reused, not re-asked.
+- Contradiction checks cover pack sizes (g/ml) and strength percentages; other units (MIU, mg per unit) are not compared.
+
+**Deferred / not done**
+- The live matching run (above).
+- AI-matching status from the extraction job is not shown in the review screen (only after "Re-run matching"); it is in `ai_runs`.
+- **Verified:** full `npm test` on a fresh `npm run dev:test` (restarted with the A3 code): **75/75 suites** (74 + a3.matching). Frontend `vite build` OK, `oxlint` exit 0. Migration `20261023130000_cert_ai_product_aliases` applied locally with `migrate deploy`.
