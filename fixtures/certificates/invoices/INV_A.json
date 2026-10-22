@@ -1,0 +1,22 @@
+{
+  "$comment": "ADDVET-style proforma, two lines. Extraction missed the production dates and the per-line pH / analysis numbers, which are printed in each line's row — each line has its OWN values (row-scope trap).",
+  "header": {
+    "invoiceNumber": "PI-2026-0311",
+    "invoiceDate": { "raw": "12/10/2026", "iso": "2026-10-12" },
+    "supplierName": "AFAQ Additives Feed Company",
+    "customerName": "Gulf Vet Trading LLC",
+    "customerCountry": "SA",
+    "currency": "USD"
+  },
+  "lines": [
+    {
+      "product": "ADD-E120",
+      "data": { "name": "ADD-E120 1L", "code": "ADDE120", "batchNo": "AVVS1126041", "productionDate": null, "expiryDate": { "raw": "04/2028", "iso": "2028-04" }, "quantity": 200, "unit": "PCS", "packing": "1L", "extra": {} }
+    },
+    {
+      "product": "ADD-SE",
+      "data": { "name": "ADD-SE 1L", "code": "ADDSE", "batchNo": "AVSE1126007", "productionDate": null, "expiryDate": { "raw": "03/2028", "iso": "2028-03" }, "quantity": 100, "unit": "PCS", "packing": "1L", "extra": {} }
+    }
+  ],
+  "textContent": "=== Page 1 ===\nAFAQ Additives Feed Company\nPROFORMA INVOICE No: PI-2026-0311 | Date: 12/10/2026\nConsignee: Gulf Vet Trading LLC, Riyadh, Saudi Arabia\nHealth Cert. No: HC-SA-26-7781\nNo | Description | Code | Batch | Mfg | Exp | Qty | Analysis\n1 | ADD-E120 1L | ADDE120 | AVVS1126041 | Mfg 04/2026 | Exp 04/2028 | 200 | pH 4.1 · Analysis No AN-26-0412\n2 | ADD-SE 1L | ADDSE | AVSE1126007 | Mfg 03/2026 | Exp 03/2028 | 100 | pH 5.2 · Analysis No AN-26-0413\nTotal: 300 units"
+}

@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../lib/prisma.js";
-import { notFound } from "../errors.js";
+import { CertError, notFound } from "../errors.js";
 import { getSourceCatalogue, productJsonColumns } from "../templates/sourceCatalogue.js";
-import { normKey, toLabel, isIdentifier, quoteKey, isForbiddenKey } from "../paths/sourcePath.js";
+import { normKey, toLabel, isIdentifier, quoteKey, isForbiddenKey, canonicalFull, parse } from "../paths/sourcePath.js";
 
 // The company data dictionary (plan.md §3.2): every addressable source path
 // and what it actually contains, built by code from the company's own
@@ -283,11 +283,47 @@ export function schemaEntries(products) {
   return out;
 }
 
-/** Synonyms survive a rebuild (they were added by a user or accepted from the AI). */
+/** Synonyms survive a rebuild (they were added by a user or accepted from the AI) — label
+ *  synonyms and path synonyms alike. A path synonym whose canonical path no product has any
+ *  more is kept on a non-pickable stub entry, so a template that maps it still finds the alternative. */
 function carrySynonyms(entries, previous) {
   const byPath = new Map((previous || []).filter((e) => e.synonyms?.length).map((e) => [e.path, e.synonyms]));
   for (const e of entries) if (byPath.has(e.path)) e.synonyms = [...new Set([...e.synonyms, ...byPath.get(e.path)])];
+  const paths = new Map(entries.map((e) => [e.path, e]));
+  for (const old of (previous || []).filter((e) => e.pathSynonyms?.length)) {
+    const e = paths.get(old.path);
+    if (e) e.pathSynonyms = [...new Set([...(e.pathSynonyms || []), ...old.pathSynonyms])];
+    else entries.push({ ...synonymStub(old.path), pathSynonyms: old.pathSynonyms });
+  }
   return entries;
+}
+
+const synonymStub = (path) => ({ path, root: path.split(".")[0], type: "string", labels: [], synonyms: [], source: "synonym", pickable: false, label: toLabel(path) });
+
+/** { canonical full path → [alternative full paths] } — what valueResolver's ctx.pathSynonyms reads. */
+export const pathSynonymMap = (entries) => Object.fromEntries((entries || []).filter((e) => e.pathSynonyms?.length).map((e) => [e.path, e.pathSynonyms]));
+
+/**
+ * A person accepted `alternative` as the same value as `canonical` for every
+ * product (plan.md §6.1 near-miss learning; §12 Q3: never applied without a
+ * person). Product data is never changed. → the updated DataDictionary row.
+ */
+export async function addPathSynonym(companyId, canonical, alternative) {
+  const c = canonicalFull(canonical);
+  const a = canonicalFull(alternative);
+  if (!c || !a) throw new CertError("INVALID_PATH", "Both paths must be valid source paths", 400);
+  if (c === a) throw new CertError("INVALID_SYNONYM", "A path can't be a synonym of itself", 400);
+  if (parse(c).root !== parse(a).root) throw new CertError("INVALID_SYNONYM", "A synonym must read the same kind of data (both product paths, …)", 400);
+  if (parse(a).segments.some((s) => s.t === "index")) throw new CertError("INVALID_SYNONYM", "A synonym can't point at a position in a list ([0]) — it must hold for every product", 400);
+  const row = await getDictionary(companyId);
+  const entries = [...row.entries];
+  let e = entries.find((x) => x.path === c);
+  if (!e) {
+    e = synonymStub(c);
+    entries.push(e);
+  }
+  e.pathSynonyms = [...new Set([...(e.pathSynonyms || []), a])];
+  return prisma.dataDictionary.update({ where: { companyId }, data: { entries, version: { increment: 1 } } });
 }
 
 const PRODUCT_SELECT = (() => {

@@ -3,7 +3,7 @@ import * as batchService from "../../services/certificates/generation/batchServi
 import * as certificateService from "../../services/certificates/certificates/certificateService.js";
 import * as editService from "../../services/certificates/certificates/editService.js";
 import { getMetrics } from "../../services/certificates/maintenance/maintenanceService.js";
-import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
+import { companyFor, scopeOf, actorId, sendCertHtml, mayDo } from "./requestScope.js";
 
 // Generation + generated certificates (CERTIFICATES_V2_PLAN.md §10–§12). Thin.
 
@@ -13,7 +13,7 @@ export const generationPlan = catchAsync(async (req, res) => {
 });
 
 export const generate = catchAsync(async (req, res) => {
-  const data = await batchService.startGeneration(req.params.id, scopeOf(req), actorId(req));
+  const data = await batchService.startGeneration(req.params.id, scopeOf(req), actorId(req), { force: req.body?.force === true, canForce: mayDo(req, "update_certificates") });
   res.status(202).json({ status: "accepted", data });
 });
 

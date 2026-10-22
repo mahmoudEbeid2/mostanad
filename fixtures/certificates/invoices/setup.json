@@ -1,0 +1,78 @@
+{
+  "$comment": "Golden invoices for the certificate data check (plan.md §6.4). Anonymised: the suppliers' real layouts, invented numbers. A company is seeded with these products and two active templates (fields only — the check doesn't render). Each INV_*.json is an invoice as extraction would store it (header, lines, textContent); INV_*.expected.json lists every gap code can't fill and whether the invoice/product data holds it.",
+  "products": [
+    {
+      "name": "ADD-E120",
+      "productCode": "ADDE120",
+      "producer": "AFAQ Additives Feed Company",
+      "packaging": "1L",
+      "withdrawalPeriod": "Zero days",
+      "activeIngredients": [{ "name": "Vitamin E", "concentration": "120000 mg" }, { "name": "Sodium selenite", "concentration": "60 mg" }],
+      "specifications": { "type": "string", "values": { "pH": "3.0-5.0", "Assay": "90-110%" } }
+    },
+    {
+      "name": "ADD-SE",
+      "productCode": "ADDSE",
+      "producer": "AFAQ Additives Feed Company",
+      "packaging": "1L",
+      "description": "Sodium selenite and vitamin E oral solution. Withdrawal period: 7 days for meat. Store below 25 °C.",
+      "activeIngredients": [{ "name": "Sodium selenite", "concentration": "30 mg" }, { "name": "Vitamin E", "concentration": "60000 mg" }],
+      "specifications": { "values": { "ph": "4.0-6.0" } }
+    },
+    {
+      "name": "DOXYPHARMA",
+      "productCode": "DOXY1KG",
+      "producer": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ",
+      "packaging": "1KG",
+      "withdrawalPeriod": "Meat: 7 days",
+      "activeIngredients": [{ "name": "Doxycycline hyclate", "concentration": "500 mg" }],
+      "specifications": { "type": "string", "values": { "PH": "2.0 – 3.0", "Assay %": "90-110%" } }
+    },
+    {
+      "name": "ADD-COMPLEX",
+      "productCode": "ADDCPX5",
+      "producer": "AFAQ Additives Feed Company",
+      "packaging": "5L",
+      "withdrawalPeriod": "None",
+      "specifications": { "values": { "PH value": "5.5-6.5", "Density": "1.05 g/ml" } }
+    },
+    {
+      "name": "TYLOPHARMA",
+      "productCode": "TYLO500",
+      "producer": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ",
+      "packaging": "500 G",
+      "activeIngredients": [{ "Name": "Tylosin tartrate", "concentration": "200 mg" }],
+      "specifications": null
+    }
+  ],
+  "templates": [
+    {
+      "name": "COA (all products)",
+      "typeCode": "COA",
+      "typeName": "Certificate of Analysis",
+      "scope": "per_product",
+      "fields": [
+        { "key": "batch_no", "label": "Batch No.", "source": { "kind": "item", "path": "batchNo" }, "category": "invoice_line" },
+        { "key": "production", "label": "Production Date", "source": { "kind": "item", "path": "productionDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+        { "key": "expiry", "label": "Expiry Date", "source": { "kind": "item", "path": "expiryDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+        { "key": "product_name", "label": "Product Name", "source": { "kind": "product", "path": "name" }, "category": "product_data" },
+        { "key": "ph_spec", "label": "pH specification", "source": { "kind": "product", "path": "specifications.values.pH" }, "category": "product_data" },
+        { "key": "ph_result", "label": "pH result", "source": { "kind": "manual" }, "category": "batch_data" },
+        { "key": "withdrawal", "label": "Withdrawal period", "source": { "kind": "product", "path": "withdrawalPeriod" }, "category": "product_data" },
+        { "key": "analysis_no", "label": "Analysis No", "source": { "kind": "item", "path": "extra[\"Analysis No\"]" }, "category": "invoice_line" }
+      ]
+    },
+    {
+      "name": "Free Sale (per invoice)",
+      "typeCode": "FSC",
+      "typeName": "Free Sale Certificate",
+      "scope": "per_invoice",
+      "fields": [
+        { "key": "invoice_no", "label": "Invoice No", "source": { "kind": "invoice", "path": "invoiceNumber" }, "category": "invoice_header" },
+        { "key": "consignee", "label": "Consignee", "source": { "kind": "invoice", "path": "customerName" }, "category": "invoice_header" },
+        { "key": "health_cert_no", "label": "Health certificate no", "source": { "kind": "manual" }, "category": "invoice_header" },
+        { "key": "issue_date", "label": "Date", "source": { "kind": "today" }, "format": { "date": "DD/MM/YYYY" }, "category": "constant" }
+      ]
+    }
+  ]
+}

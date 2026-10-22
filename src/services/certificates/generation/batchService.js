@@ -5,8 +5,10 @@ import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { loadInvoice } from "../invoices/invoiceService.js";
 import { listFields, listGroups } from "../templates/fieldService.js";
 import { renderFilled, fillDef, groupFillDef } from "../templates/prepareEngine.js";
-import { selectTemplates } from "./templateSelector.js";
-import { resolveAll, resolveGroups } from "./valueResolver.js";
+import { computePlan } from "./planService.js";
+import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
+import { refreshIfChecked, blockingCounts, usableNeeds } from "../dataNeeds/dataNeedsService.js";
+import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -25,28 +27,6 @@ const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email
 export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || String(flag).startsWith("glyph:");
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
 
-async function planInputs(invoice) {
-  const [items, templates] = await Promise.all([
-    prisma.invoiceItem.findMany({
-      where: { invoiceId: invoice.id },
-      orderBy: { lineNo: "asc" },
-      include: { product: { select: { id: true, name: true, brandId: true, brand: { select: { id: true, name: true } } } } },
-    }),
-    prisma.certificateTemplate.findMany({
-      where: { companyId: invoice.companyId, archivedAt: null, activeVersionId: { not: null }, certificateType: { isActive: true } },
-      include: { certificateType: { select: { code: true, name: true } }, brand: { select: { name: true } } },
-    }),
-  ]);
-  const versions = await prisma.templateVersion.findMany({ where: { id: { in: templates.map((t) => t.activeVersionId) } }, select: { id: true, versionNumber: true } });
-  const byId = new Map(versions.map((v) => [v.id, v]));
-  return { items, templates: templates.map((t) => ({ ...t, activeVersion: byId.get(t.activeVersionId) || null })) };
-}
-
-async function computePlan(invoice) {
-  const { items, templates } = await planInputs(invoice);
-  return selectTemplates({ invoice: { country: invoice.country, brandId: invoice.brandId }, items, templates });
-}
-
 /** GET /invoices/:id/generation-plan — what "Generate" would produce (plan §13.5, §20 I19). */
 export async function previewPlan(invoiceId, companyId) {
   const invoice = await loadInvoice(invoiceId, companyId);
@@ -61,11 +41,25 @@ const searchText = (parts) =>
     .join(" ")
     .toLowerCase() || null;
 
-/** POST /invoices/:id/generate → 202 { batchId, taskId, planned } */
-export async function startGeneration(invoiceId, companyId, userId) {
+/**
+ * POST /invoices/:id/generate → 202 { batchId, taskId, planned }
+ * The certificate data check (plan.md §6.2): once it has been run for the
+ * invoice, required values that are still missing or awaiting confirmation
+ * block generation — unless `force` ("Generate anyway (leave empty, flagged)",
+ * which needs update_certificates: `canForce`). Never run → V2 behaviour (D7:
+ * empty required values render flagged).
+ */
+export async function startGeneration(invoiceId, companyId, userId, { force = false, canForce = false } = {}) {
   const invoice = await loadInvoice(invoiceId, companyId);
   if (!GENERATABLE.includes(invoice.status)) {
     throw new CertError("INVOICE_NOT_READY", `Confirm the invoice before generating (it is ${invoice.status})`, 409);
+  }
+  if (await refreshIfChecked(invoice)) {
+    const open = await blockingCounts(invoiceId);
+    if (open.missing + open.needsConfirmation > 0) {
+      if (!force) throw new CertError("DATA_NEEDS_OPEN", `${open.missing} required value(s) missing and ${open.needsConfirmation} waiting for confirmation — complete the certificate data check first`, 409, open);
+      if (!canForce) throw new CertError("FORBIDDEN", "Generating with open values needs the update_certificates permission", 403);
+    }
   }
   const plan = await computePlan(invoice);
   if (!plan.entries.length) {
@@ -183,7 +177,7 @@ async function loadProductCtx(cache, companyId, productId) {
  *          (tenant-scoped) as `product`: the rows of an `invoice_lines` group (§7.8).
  */
 export async function certificateContext(cert, base, caches, design) {
-  const ctx = { invoice: base.invoice.header || {}, company: base.company, today: base.today };
+  const ctx = { invoice: base.invoice.header || {}, company: base.company, today: base.today, ...(base.pathSynonyms ? { pathSynonyms: base.pathSynonyms } : {}) };
   ctx.lines = [];
   for (const ci of cert.items || []) {
     const line = ci.invoiceItem;
@@ -205,6 +199,21 @@ export async function certificateContext(cert, base, caches, design) {
   return ctx;
 }
 
+/**
+ * One plain field's value (plan.md §4 "Generation"): what the certificate data
+ * check settled (provided / resolved_ai) first, so what the user confirmed is
+ * exactly what is rendered; else its declared source (with accepted synonyms).
+ * → { value, resolved, flags, origin: data_check|auto, provenance? }
+ */
+export function resolveWithNeed(field, ctx, need) {
+  if (need && need.value !== null && need.value !== undefined) {
+    const { value, flags } = applyFormat(need.value, field.format);
+    return { value, resolved: need.value, flags, origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status } };
+  }
+  const r = resolveField(field, ctx);
+  return { value: r.value, resolved: r.resolved, flags: r.flags, origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
+}
+
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */
 export async function renderInitialVersion(cert, base, caches) {
   if (await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: cert.id, versionNumber: 1 } }, select: { id: true } })) {
@@ -212,7 +221,8 @@ export async function renderInitialVersion(cert, base, caches) {
   }
   const design = await loadDesign(caches.designs, cert.templateVersionId);
   const ctx = await certificateContext(cert, base, caches, design);
-  const resolved = resolveAll(design.fields, ctx);
+  const needs = base.needs?.get(cert.planKey);
+  const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
   const resolvedGroups = resolveGroups(design.groups, design.fields, ctx);
   const draft = Object.fromEntries(plainFields(design).map((f) => [f.key, { value: resolved[f.key].value }]));
   for (const g of design.groups) draft[g.key] = { rows: resolvedGroups[g.key].rows };
@@ -224,7 +234,8 @@ export async function renderInitialVersion(cert, base, caches) {
         value: resolved[f.key].value,
         source: f.source,
         resolved: resolved[f.key].resolved,
-        origin: "auto",
+        origin: resolved[f.key].origin,
+        ...(resolved[f.key].provenance ? { provenance: resolved[f.key].provenance } : {}),
         flags: [...new Set([...(resolved[f.key].flags || []), ...(out.flags[f.key] || [])])],
         editedByUserId: null,
         editedAt: null,
@@ -270,7 +281,8 @@ export async function runGenerateBatch(batchId, ctx = {}) {
   try {
     const company = await prisma.company.findUnique({ where: { id: batch.companyId }, select: COMPANY_SELECT });
     const invoiceBrand = batch.invoice.brandId ? await prisma.brand.findUnique({ where: { id: batch.invoice.brandId }, select: { id: true, name: true } }) : null;
-    const base = { invoice: batch.invoice, company, invoiceBrand, today: new Date(), userId: batch.startedByUserId };
+    const dict = await getDictionary(batch.companyId);
+    const base = { invoice: batch.invoice, company, invoiceBrand, today: new Date(), userId: batch.startedByUserId, needs: await usableNeeds(batch.invoiceId), pathSynonyms: pathSynonymMap(dict.entries) };
     const caches = { designs: new Map(), products: new Map() };
     const certs = await prisma.certificate.findMany({
       where: { batchId },

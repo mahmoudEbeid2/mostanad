@@ -4925,6 +4925,40 @@ paths:
           $ref: '#/components/responses/E401'
         '403':
           $ref: '#/components/responses/E403'
+  /certificate-data-dictionary/synonyms:
+    post:
+      tags:
+        - Certificate AI
+      summary: Add a path synonym for all products
+      description: |
+        `{ canonical, alternative }` — both full source paths of the same root, e.g. `product.specifications.values.pH` and `product.specifications.values["PH value"]`. From then on, whenever a product has no value at the canonical path, the resolver (data check, generation, "reset to source") reads the alternative. Product data is never changed; only a person adds one (plan.md §12 Q3). Survives dictionary rebuilds. 400 INVALID_PATH / INVALID_SYNONYM (same path, different roots, or a list position like `[0]`).
+        Permission: `update_certificate_templates`. → `{ dictionary }`.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              canonical: product.specifications.values.pH
+              alternative: product.specifications.values["PH value"]
+      responses:
+        '200':
+          description: '`{ dictionary }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: INVALID_PATH, INVALID_SYNONYM
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
   /certificate-ai-settings:
     get:
       tags:
@@ -5476,6 +5510,8 @@ paths:
         Requires `ready` (or `generated` / `partially_failed` to regenerate — a new batch; final certificates are never touched). Creates the batch and its certificates in one transaction and queues `generateBatch`.
 
         Permission: `create_certificates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
+
+        **Certificate data check (AI layers A2, plan.md §6.2):** once the check has been run for this invoice (`POST /invoices/{id}/data-needs`), it is refreshed by code and required values that are still `missing` or `needs_confirmation` block generation → **409 DATA_NEEDS_OPEN** `{ missing, needsConfirmation }`. Body `{ force: true }` = "Generate anyway (leave empty, flagged)", which also needs `update_certificates` (else 403). An invoice whose check was never run keeps the V2 behaviour. Values the check settled (`provided` / `resolved_ai`) are rendered first, stored with `origin: "data_check"` and `provenance`.
       parameters:
         - $ref: '#/components/parameters/Id'
         - $ref: '#/components/parameters/CompanyId-2'
@@ -5501,11 +5537,133 @@ paths:
         '404':
           $ref: '#/components/responses/E404'
         '409':
-          description: 'Coded error: INVOICE_NOT_READY, NOTHING_TO_GENERATE (+ unassigned, gaps)'
+          description: 'Coded error: INVOICE_NOT_READY, NOTHING_TO_GENERATE (+ unassigned, gaps), DATA_NEEDS_OPEN (+ missing, needsConfirmation)'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CertError'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+            example:
+              force: true
+  /invoices/{id}/data-needs:
+    get:
+      tags:
+        - Invoices
+      summary: The certificate data check, as last computed (no AI)
+      description: |
+        Check: `{ summary: { certificates, values, ready, resolved, resolvedAi, provided, needsConfirmation, missing, notApplicable, blocking }, certificates: [{ planKey, templateVersionId, templateName, typeCode, typeName, scope, lineNos, invoiceItemId, productName, batchNo, needs: [Need] }], batchData: [{ invoiceItemId, lineNo, productName, batchNo, fields: [{ labelKey, label, needIds, required, value, status }] }], unassigned, computedAt }`.
+        Need: `{ id, fieldKey, label, category, required, status: resolved|resolved_ai|needs_confirmation|missing|provided|not_applicable, value, display, provenance, suggestionId, decidedAt }`.
+        provenance.kind: `path` (+ `via: "synonym"`), `static`, `today`, `template`, `invoice_text` (`quote, page, start, end` — offsets in the stored invoice text), `product_path` (+ `nearMiss: { canonical, alternative }`), `product_json_text` (`path, quote`), `manual`. AI values also carry `suggestionId, confidence, note`.
+        Permission: `read_invoices`. Tenant-scoped (another company's invoice → 404).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ check }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+    post:
+      tags:
+        - Invoices
+      summary: Compute the check (code), then ONE AI call for gaps not asked before
+      description: |
+        For every planned certificate × template field: code resolves it from the field's source (and accepted path synonyms) → `resolved`; empty → `missing` (required) / `not_applicable`. Then one `CERT_INVOICE_GAPS` call for every `missing` value not asked with the same basis before (0 calls when there is none). The model may only point at evidence; the server verifies it word for word (normalised): a quote of the stored invoice text containing the value — for line-level values inside THAT line's row (anywhere for a single-line invoice), for header values outside every item row; a product path (the DB value is used, never the model's); or a quote inside a product text. Verified → `needs_confirmation` (or `resolved_ai` when the company turned auto-accept on and the confidence reaches the threshold); anything else stays `missing` and the refused suggestion is kept with `evidenceVerified: false`.
+        Body `{ ai: false }` = code only. AI off, failing or over quota: the check is still returned with `ai.unavailable` + `ai.reason`; the gaps stay missing and are asked next time.
+        A person's `provided` value and a verified AI value survive re-runs; a change of the field source, product or line resets them.
+        Permission: `update_invoices`. Invoice status review/ready/generated/partially_failed, else 409 INVOICE_NOT_REVIEWED.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ai:
+                  type: boolean
+            example:
+              ai: true
+      responses:
+        '200':
+          description: '`{ check }` with `ai: { used, calls, asked, filled, rejected, unavailable?, reason? }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: INVOICE_NOT_REVIEWED
+    patch:
+      tags:
+        - Invoices
+      summary: A person's decisions on the check
+      description: |
+        `decisions: [{ needId, action, value?, applyTo? }]`:
+        `accept` — confirm a verified AI value (→ `resolved_ai`, suggestion `accepted`); 409 NOTHING_TO_ACCEPT otherwise.
+        `edit` — the person's value (→ `provided`, provenance `manual`; an AI suggestion becomes `edited`/`accepted`). `applyTo: "line"` also sets every other open value of the same line with the same label ("use for all certificates of this product"). Dates are stored as ISO when unambiguous. Empty → 422 VALUE_REQUIRED.
+        `reject` — the AI value is wrong (→ missing, suggestion `rejected`, not asked again).
+        `reset` — forget the decision; recomputed (and asked again) by the next check.
+        Permission: `update_invoices`. → `{ check }`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              decisions:
+                - needId: uuid
+                  action: edit
+                  value: '4.1'
+                  applyTo: line
+      responses:
+        '200':
+          description: '`{ check }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: NOTHING_TO_ACCEPT, NOTHING_TO_REJECT, INVOICE_NOT_REVIEWED
+        '422':
+          description: VALUE_REQUIRED
   /certificate-batches/{id}:
     get:
       tags:

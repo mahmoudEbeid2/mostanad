@@ -91,6 +91,7 @@ export async function cleanupCompany(companyId) {
   await del("certificate_items", `DELETE FROM certificate_items WHERE certificate_id IN (SELECT id FROM certificates WHERE company_id = $1)`);
   await del("certificates", `DELETE FROM certificates WHERE company_id = $1`);
   await del("certificate_batches", `DELETE FROM certificate_batches WHERE company_id = $1`);
+  await del("certificate_data_needs", `DELETE FROM certificate_data_needs WHERE company_id = $1`);
   await del("invoice_items", `DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = $1)`);
   await del("invoices", `DELETE FROM invoices WHERE company_id = $1`);
   await del("template_fields", `DELETE FROM template_fields WHERE version_id IN (SELECT v.id FROM template_versions v JOIN certificate_templates t ON t.id = v.template_id WHERE t.company_id = $1)`);

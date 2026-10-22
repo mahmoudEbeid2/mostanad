@@ -161,6 +161,7 @@ export const invoiceSchemas = {
     }),
   },
   byId: { params: idParams, query: companyQuery },
+  generate: { params: idParams, query: companyQuery, body: z.object({ force: z.boolean().optional() }).optional() },
   update: {
     params: idParams,
     query: companyQuery,
@@ -255,4 +256,30 @@ export const mappingSchemas = {
     }),
   },
   suggestion: { params: idParams, query: companyQuery },
+};
+
+// Certificate AI layers A2 — the certificate data check (plan.md §6)
+export const dataNeedSchemas = {
+  compute: { params: idParams, query: companyQuery, body: z.object({ ai: z.boolean().optional() }).optional() },
+  decide: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      decisions: z
+        .array(
+          z.object({
+            needId: uuid,
+            action: z.enum(["accept", "edit", "reject", "reset"]),
+            value: z.string().max(500).nullable().optional(),
+            applyTo: z.enum(["need", "line"]).optional(),
+          })
+        )
+        .min(1)
+        .max(200),
+    }),
+  },
+  synonym: {
+    query: companyQuery,
+    body: z.object({ canonical: z.string().min(3).max(300), alternative: z.string().min(3).max(300), companyId: uuid.optional() }),
+  },
 };

@@ -1,0 +1,10 @@
+{
+  "invoice": "INV_B",
+  "resolvedByCode": ["batch_no", "production", "product_name", "ph_spec", "withdrawal", "invoice_no", "consignee", "issue_date"],
+  "gaps": [
+    { "line": 1, "field": "expiry", "resolvable": true, "value": "09/2028", "stored": "2028-09", "evidence": { "type": "invoice_text", "quote": "HSPhar02609001 | 09/2026 | 09/2028" } },
+    { "line": 1, "field": "analysis_no", "resolvable": true, "value": "DX-0907-A", "evidence": { "type": "invoice_text", "quote": "Analysis No: DX-0907-A" } },
+    { "line": 1, "field": "ph_result", "resolvable": false },
+    { "line": null, "field": "health_cert_no", "resolvable": false }
+  ]
+}

@@ -287,3 +287,12 @@ Additive. Nothing changes for callers that don't send the new properties.
 - **`POST /template-versions/:id/activate`:** also refused (409 `FIELDS_UNCONFIRMED`) while an AI mapping is unconfirmed; the error adds `mappings: [keys]`. Success adds `remembered` (labels written to the company's mapping memory).
 - **Repeating groups:** a group's `product_list` source may name any list inside a product JSON column (keys only), and its cells any key of the list's elements. Before this, only `activeIngredients` was accepted.
 - **Field sources:** schema paths now carry `synonyms` (e.g. `item.expiryDate` → "expiration date", "exp date"…), exposed in `GET /certificate-field-sources` and the data dictionary.
+
+## Certificate AI layers (plan.md) — Phase A2 Invoice intelligence (2026-10-23)
+
+Additive, with one behaviour change on generate (opt-in through the data check).
+- **New:** `GET /invoices/:id/data-needs` (`read_invoices`): the certificate data check as last computed. `POST /invoices/:id/data-needs` (`update_invoices`): computes it (code) and asks the AI once for gaps not asked before; body `{ ai: false }` = code only. `PATCH /invoices/:id/data-needs` (`update_invoices`): `{ decisions: [{ needId, action: accept|edit|reject|reset, value?, applyTo?: "line" }] }`. `POST /certificate-data-dictionary/synonyms` (`update_certificate_templates`): `{ canonical, alternative }` path synonym for all products. All tenant-forced.
+- **`POST /invoices/:id/generate`:** accepts `{ force?: boolean }`. Once the data check was run for the invoice, open required values (missing / needs confirmation) → **409 `DATA_NEEDS_OPEN`** `{ missing, needsConfirmation }`; `force: true` generates anyway (needs `update_certificates`, else 403). Invoices whose check was never run behave as before.
+- **Certificate values** (`CertificateVersion.values[key]`): a value the check settled has `origin: "data_check"` and a new `provenance` object (`kind` invoice_text / product_path / product_json_text / manual, quote, page, needId…). A value read through an accepted path synonym has `provenance: { kind: "path", path, via: "synonym" }`. `POST /certificates/:id/fields/:key/reset` uses the check's value first, as generation does.
+- **Invoice lines:** `InvoiceItem.textSpan` `{ page, start, end, via }` (or `{ none: true }`) — the line's row in `textContent`; returned with the items of `GET /invoices/:id`.
+- **Data dictionary:** an entry may carry `pathSynonyms: [full paths]`; entries with `source: "synonym"` (not pickable) hold a synonym whose canonical path no product has.

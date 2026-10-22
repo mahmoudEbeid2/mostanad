@@ -905,6 +905,7 @@ model Invoice {
   items        InvoiceItem[]
   batches      CertificateBatch[]
   certificates Certificate[]
+  dataNeeds    CertificateDataNeed[]
 
   @@index([companyId, createdAt])
   @@map("invoices")
@@ -922,6 +923,7 @@ model InvoiceItem {
   matchStatus     String   @default("needs_match") @map("match_status") // matched | needs_match | ignored
   matchMethod     String?  @map("match_method") // exact_code | exact_name | user
   matchCandidates Json?    @map("match_candidates") // [{ productId, name, code, score, reasons[] }]
+  textSpan        Json?    @map("text_span") // { page, start, end, via } — this line's row in invoices.text_content (plan.md §6.1 row scope, A2)
 
   certificateItems CertificateItem[]
 
@@ -1108,4 +1110,37 @@ model FieldMappingMemory {
 
   @@unique([companyId, labelNorm, certificateTypeId])
   @@map("field_mapping_memory")
+}
+
+// Per planned certificate × field, computed before generation (plan.md §4,
+// §6.1; Phase A2). Code resolves what it can from the field's source; the
+// rest is `missing` until the AI finds it WITH verified evidence, or a person
+// provides it. Generation reads `provided` / `resolved_ai` rows first.
+model CertificateDataNeed {
+  id                String    @id @default(uuid())
+  companyId         String    @map("company_id")
+  invoiceId         String    @map("invoice_id")
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  planKey           String    @map("plan_key") // templateSelector's planKey: "{versionId}:{invoiceItemId}" | "{versionId}:invoice"
+  fieldKey          String    @map("field_key")
+  templateVersionId String    @map("template_version_id") // A2 addition: groups the review panel by certificate
+  invoiceItemId     String?   @map("invoice_item_id") // per_product certificates: the line (row scope, batch-data form)
+  productId         String?   @map("product_id")
+  label             String // the template field's label, for the review panel
+  category          String? // the field's dataCategory (batch_data → the batch-data form)
+  required          Boolean
+  status            String // resolved | resolved_ai | needs_confirmation | missing | provided | not_applicable
+  value             String?
+  provenance        Json? // { kind: path|static|today|template|invoice_text|product_path|product_json_text|manual, path?, quote?, page?, suggestionId?, via? }
+  basis             String // hash of what code resolution depends on (source, product, line) — a change resets AI/user values
+  aiAskedBasis      String?   @map("ai_asked_basis") // the basis last sent to CERT_INVOICE_GAPS — the same gap is never asked twice
+  suggestionId      String?   @map("suggestion_id")
+  decidedByUserId   String?   @map("decided_by_user_id")
+  decidedAt         DateTime? @map("decided_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([invoiceId, planKey, fieldKey])
+  @@index([companyId, status])
+  @@map("certificate_data_needs")
 }

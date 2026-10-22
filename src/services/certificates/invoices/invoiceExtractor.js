@@ -34,9 +34,10 @@ const RESPONSE_SCHEMA = {
         type: "object",
         properties: {
           ...Object.fromEntries(INVOICE_ITEM_FIELDS.map((f) => [f.path, f.path === "lineNo" ? { type: "integer", nullable: true } : str])),
+          rowText: { type: "string", nullable: true, description: "this line's row copied exactly from textContent (all of its text lines)" },
           extra: {
             type: "array",
-            description: "other per-line columns printed on the invoice (e.g. registration no., weight)",
+            description: "other per-line columns printed on the invoice (e.g. registration no., weight, lot, mfg/exp date, analysis no.)",
             items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" } }, required: ["label", "value"] },
           },
         },
@@ -60,6 +61,7 @@ const PROMPT = [
   "- Put anything unreadable or ambiguous in warnings.",
   "- textContent: transcribe ALL printed text exactly as printed (headers, every table row, footers), in reading order;",
   "  start each page with a line '=== Page N ===' (N = 1, 2, …). The cells of one table row stay on one line, separated by ' | '.",
+  "- items[].rowText: that line's row exactly as it appears in textContent (every text line belonging to that product line).",
 ].join("\n");
 
 export const PROMPT_HASH = crypto.createHash("sha256").update(PROMPT + JSON.stringify(RESPONSE_SCHEMA)).digest("hex").slice(0, 16);
@@ -85,7 +87,8 @@ export function shapeExtraction(out) {
       } else data[f.path] = clean(it[f.path]);
     }
     data.extra = Object.fromEntries((it.extra || []).filter((e) => e?.label).map((e) => [String(e.label).trim(), clean(e.value)]));
-    return { lineNo: Number.isInteger(it.lineNo) && it.lineNo > 0 ? it.lineNo : i + 1, data };
+    // rowText is a hint for locating the line in textContent (row scope, plan.md §6.1) — not line data
+    return { lineNo: Number.isInteger(it.lineNo) && it.lineNo > 0 ? it.lineNo : i + 1, data, rowText: clean(it.rowText) };
   });
   // line numbers must be unique per invoice
   const seen = new Set();
@@ -108,19 +111,37 @@ export function cleanText(t) {
 }
 
 /**
+ * The company's data needs as an extraction hint (plan.md §6.3): what its
+ * active templates read from invoices, so the model looks for those columns
+ * specifically. hints: { line: [{ path, label, synonyms[] }], header: [...], perLine: [labels] }
+ * → prompt text, or null when there is nothing to add.
+ */
+export function hintText(hints) {
+  if (!hints) return null;
+  const fmt = (h) => `${h.label} (${h.path}${h.synonyms?.length ? `; may be printed as ${h.synonyms.slice(0, 6).join(", ")}` : ""})`;
+  const parts = [];
+  if (hints.line?.length) parts.push(`Per-line values this company's certificates need — look for them in every line: ${hints.line.map(fmt).join("; ")}.`);
+  if (hints.header?.length) parts.push(`Invoice values its certificates need: ${hints.header.map(fmt).join("; ")}.`);
+  if (hints.perLine?.length) parts.push(`If a line also prints any of these, copy them into that line's extra with the printed label: ${hints.perLine.slice(0, 20).join(", ")}.`);
+  return parts.length ? `Hints (still copy only what is printed; null when absent):\n${parts.join("\n")}` : null;
+}
+
+/**
  * buffer + mimeType → { header, items, textContent, raw, provenance }
  * With `log.companyId` the call is recorded in ai_runs (plan.md §3.3).
+ * `hints` (plan.md §6.3) — see hintText(); part of the input, not of the prompt hash.
  * Throws CertError EXTRACTION_FAILED with the provider's real message.
  */
-export async function extractInvoice(buffer, mimeType, log = null) {
+export async function extractInvoice(buffer, mimeType, log = null, hints = null) {
   const t0 = Date.now();
   let out;
+  const hint = hintText(hints);
   const call = () =>
     geminiClient.generateJson({
       model: MODELS.INVOICE_EXTRACT.id,
       temperature: MODELS.INVOICE_EXTRACT.temperature,
       thinkingBudget: MODELS.INVOICE_EXTRACT.thinkingBudget,
-      contents: [{ inlineData: { mimeType, data: buffer.toString("base64") } }, PROMPT],
+      contents: [{ inlineData: { mimeType, data: buffer.toString("base64") } }, PROMPT, ...(hint ? [hint] : [])],
       schema: RESPONSE_SCHEMA,
       maxOutputTokens: 32768, // the full transcription (textContent) roughly doubles the output
     });
@@ -130,7 +151,7 @@ export async function extractInvoice(buffer, mimeType, log = null) {
         companyId: log.companyId,
         kind: "INVOICE_EXTRACT",
         promptHash: PROMPT_HASH,
-        inputHash: crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 16),
+        inputHash: crypto.createHash("sha256").update(buffer).update(hint || "").digest("hex").slice(0, 16),
         entityType: "invoice",
         entityId: log.invoiceId ?? null,
         reason: "invoice upload",

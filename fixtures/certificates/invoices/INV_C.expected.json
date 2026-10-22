@@ -1,0 +1,14 @@
+{
+  "invoice": "INV_C",
+  "resolvedByCode": ["batch_no", "production", "expiry", "product_name", "invoice_no", "consignee", "issue_date"],
+  "gaps": [
+    { "line": 1, "field": "analysis_no", "resolvable": true, "value": "AN-C-778", "evidence": { "type": "invoice_text", "quote": "LOT C-778 | 08/2026 | 08/2029 | AN-C-778" } },
+    { "line": 1, "field": "ph_spec", "resolvable": true, "value": "5.5-6.5", "evidence": { "type": "product_path", "path": "specifications.values[\"PH value\"]" }, "nearMiss": "product.specifications.values[\"PH value\"]" },
+    { "line": 1, "field": "ph_result", "resolvable": false },
+    { "line": 2, "field": "analysis_no", "resolvable": true, "value": "AN-T-112", "evidence": { "type": "invoice_text", "quote": "LOT T-112 | 07/2026 | 07/2028 | AN-T-112" } },
+    { "line": 2, "field": "ph_spec", "resolvable": false },
+    { "line": 2, "field": "ph_result", "resolvable": false },
+    { "line": 2, "field": "withdrawal", "resolvable": false },
+    { "line": null, "field": "health_cert_no", "resolvable": true, "value": "HC-JO-0099", "evidence": { "type": "invoice_text", "quote": "Health certificate number: HC-JO-0099" } }
+  ]
+}

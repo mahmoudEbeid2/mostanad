@@ -1,8 +1,9 @@
 import catchAsync from "../../utils/catchAsync.js";
-import { getDictionary, buildDictionary, dictionaryView } from "../../services/certificates/dictionary/dataDictionary.js";
+import { getDictionary, buildDictionary, dictionaryView, addPathSynonym } from "../../services/certificates/dictionary/dataDictionary.js";
 import { getAiSettings, updateAiSettings } from "../../services/certificates/ai/aiSettings.js";
 import * as fieldService from "../../services/certificates/templates/fieldService.js";
 import * as fieldMapper from "../../services/certificates/mapping/fieldMapper.js";
+import * as dataNeeds from "../../services/certificates/dataNeeds/dataNeedsService.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
 
 // Certificate AI layers — foundations (plan.md §3, Phase A0). Thin: the
@@ -41,4 +42,25 @@ export const mapFields = catchAsync(async (req, res) => {
 export const getSuggestion = catchAsync(async (req, res) => {
   const suggestion = await fieldMapper.getSuggestion(req.params.id, scopeOf(req));
   res.status(200).json({ status: "success", data: { suggestion } });
+});
+
+// ── A2: the certificate data check (plan.md §6) ──────────────────────────────
+export const getDataNeeds = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { check: await dataNeeds.getNeeds(req.params.id, scopeOf(req)) } });
+});
+
+export const computeDataNeeds = catchAsync(async (req, res) => {
+  const check = await dataNeeds.computeNeeds(req.params.id, scopeOf(req), { ai: req.body?.ai !== false });
+  res.status(200).json({ status: "success", data: { check } });
+});
+
+export const decideDataNeeds = catchAsync(async (req, res) => {
+  const check = await dataNeeds.decideNeeds(req.params.id, scopeOf(req), req.body.decisions, actorId(req));
+  res.status(200).json({ status: "success", data: { check } });
+});
+
+/** "Add as synonym for all products" (plan.md §6.1 near-miss learning) — a person's decision, never automatic (§12 Q3). */
+export const addDictionarySynonym = catchAsync(async (req, res) => {
+  const row = await addPathSynonym(companyFor(req), req.body.canonical, req.body.alternative);
+  res.status(200).json({ status: "success", data: { dictionary: dictionaryView(row) } });
 });

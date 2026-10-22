@@ -1,0 +1,22 @@
+{
+  "$comment": "Exporter invoice, two lines. ADD-COMPLEX keeps its pH spec under \"PH value\" (a near miss for the template's specifications.values.pH → product_path, then 'add as synonym'). TYLOPHARMA has no specifications and no withdrawal period anywhere — those gaps must stay missing. No pH results printed.",
+  "header": {
+    "invoiceNumber": "INV-C-5521",
+    "invoiceDate": { "raw": "2026-10-01", "iso": "2026-10-01" },
+    "supplierName": "Mostanad Test Exporter",
+    "customerName": "Levant Agro",
+    "customerCountry": "JO",
+    "currency": "USD"
+  },
+  "lines": [
+    {
+      "product": "ADD-COMPLEX",
+      "data": { "name": "ADD-COMPLEX 5L", "code": null, "batchNo": "C-778", "productionDate": { "raw": "08/2026", "iso": "2026-08" }, "expiryDate": { "raw": "08/2029", "iso": "2029-08" }, "quantity": 40, "unit": "PCS", "packing": "5L", "extra": {} }
+    },
+    {
+      "product": "TYLOPHARMA",
+      "data": { "name": "TYLOPHARMA 500 G", "code": null, "batchNo": "T-112", "productionDate": { "raw": "07/2026", "iso": "2026-07" }, "expiryDate": { "raw": "07/2028", "iso": "2028-07" }, "quantity": 60, "unit": "PCS", "packing": "500 G", "extra": {} }
+    }
+  ],
+  "textContent": "=== Page 1 ===\nMostanad Test Exporter\nINVOICE INV-C-5521 dated 2026-10-01\nShip to: Levant Agro, Amman, JORDAN\nHealth certificate number: HC-JO-0099\nItem | Lot | Production | Expiry | Analysis No\nADD-COMPLEX 5L | LOT C-778 | 08/2026 | 08/2029 | AN-C-778\nTYLOPHARMA 500 G | LOT T-112 | 07/2026 | 07/2028 | AN-T-112"
+}

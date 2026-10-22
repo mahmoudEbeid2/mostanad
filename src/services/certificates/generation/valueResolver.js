@@ -1,5 +1,5 @@
 import { TEMPLATE_TOKEN_RE } from "../templates/sourceCatalogue.js";
-import { resolveRelative } from "../paths/sourcePath.js";
+import { resolveRelative, fromSource, parse, canonicalFull } from "../paths/sourcePath.js";
 
 // Pure value resolution (CERTIFICATES_V2_PLAN.md §10.3, §10.4, D7). No I/O,
 // no model inference, no fallbacks: a value comes from its declared source or
@@ -7,7 +7,11 @@ import { resolveRelative } from "../paths/sourcePath.js";
 // `missing`. A `template` source is plain placeholder substitution; nothing in
 // it is ever evaluated.
 //
-// ctx: { item: { …item.data }, invoice: { …header }, product: { …, category, brand }, company, brand, today: Date }
+// ctx: { item: { …item.data }, invoice: { …header }, product: { …, category, brand }, company, brand, today: Date,
+//        pathSynonyms?: { [canonical full path]: [alternative full paths] } }
+// pathSynonyms (plan.md §6.1 "near-miss learning", A2): alternatives a person
+// accepted company-wide ("PH value" for "pH"). Tried only when the declared
+// path is empty; the value still comes from the product, never from a model.
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -57,7 +61,21 @@ export const CERT_TZ = process.env.CERT_TZ || "Africa/Cairo";
 const todayIso = (ctx) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: ctx.timeZone || CERT_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(ctx.today instanceof Date ? ctx.today : new Date());
 
-function rawValue(source, ctx) {
+/** One path's text, trying accepted synonyms when it is empty → { text, via? } */
+function readText(kind, path, ctx) {
+  const text = asText(readPath(contextFor(kind, ctx), path));
+  if (text || !ctx.pathSynonyms) return { text };
+  const full = canonicalFull(fromSource({ kind, path }));
+  for (const alt of (full && ctx.pathSynonyms[full]) || []) {
+    const p = parse(alt);
+    if (!p.ok || p.root !== kind) continue;
+    const t = asText(readPath(contextFor(kind, ctx), alt.slice(kind.length + 1)));
+    if (t) return { text: t, via: alt };
+  }
+  return { text: "" };
+}
+
+function rawValue(source, ctx, hit = {}) {
   switch (source.kind) {
     case "static":
       return source.text ?? "";
@@ -68,9 +86,11 @@ function rawValue(source, ctx) {
     case "template": {
       let missing = false;
       const out = String(source.template).replace(TEMPLATE_TOKEN_RE, (_m, kind, path) => {
-        const v = kind === "today" ? todayIso(ctx) : asText(readPath(contextFor(kind, ctx), path));
-        if (!v) missing = true;
-        return v;
+        if (kind === "today") return todayIso(ctx);
+        const r = readText(kind, path, ctx);
+        if (r.via) hit.via = r.via;
+        if (!r.text) missing = true;
+        return r.text;
       });
       // a half-filled combination ("COA" without the batch) would be silently
       // wrong — D7: the whole value is empty and gets flagged instead
@@ -78,8 +98,11 @@ function rawValue(source, ctx) {
       // on save); refuse it here too rather than print template syntax
       return missing || /\{\{|\}\}/.test(out) ? "" : out;
     }
-    default:
-      return asText(readPath(contextFor(source.kind, ctx), source.path));
+    default: {
+      const r = readText(source.kind, source.path, ctx);
+      if (r.via) hit.via = r.via;
+      return r.text;
+    }
   }
 }
 
@@ -144,13 +167,15 @@ export function applyFormat(value, format) {
 }
 
 /**
- * field: { key, source, format } → { value, resolved, flags }
- * `resolved` is the source value before formatting ("" when absent).
+ * field: { key, source, format } → { value, resolved, flags, via? }
+ * `resolved` is the source value before formatting ("" when absent); `via` the
+ * accepted synonym path that supplied it, when one did.
  */
 export function resolveField(field, ctx = {}) {
-  const resolved = rawValue(field.source || { kind: "manual" }, ctx);
+  const hit = {};
+  const resolved = rawValue(field.source || { kind: "manual" }, ctx, hit);
   const { value, flags } = applyFormat(resolved, field.format);
-  return { value, resolved, flags };
+  return { value, resolved, flags, ...(hit.via ? { via: hit.via } : {}) };
 }
 
 /** All plain fields (group cells excluded) → { [key]: { value, resolved, flags } }. */

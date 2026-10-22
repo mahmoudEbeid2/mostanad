@@ -263,3 +263,9 @@ export function toLabel(fullPath) {
   });
   return parts.join(" › ");
 }
+
+/** A full path in its one canonical spelling (identifiers dotted, others quoted), or null when invalid. */
+export function canonicalFull(fullPath) {
+  const p = parse(fullPath);
+  return p.ok ? `${p.root}.${format(p.segments)}` : null;
+}

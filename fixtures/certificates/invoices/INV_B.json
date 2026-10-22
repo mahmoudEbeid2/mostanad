@@ -1,0 +1,18 @@
+{
+  "$comment": "PHARMAVET-style commercial invoice, one line, two pages, Turkish İ and an en dash. Extraction missed the expiry date; the analysis number is on page 2 (one line only, so it belongs to that line). No pH result and no health certificate number are printed — those gaps must stay missing.",
+  "header": {
+    "invoiceNumber": "TR-26-0907",
+    "invoiceDate": { "raw": "18.09.2026", "iso": "2026-09-18" },
+    "supplierName": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ",
+    "customerName": "Delta Poultry Co.",
+    "customerCountry": "EG",
+    "currency": "EUR"
+  },
+  "lines": [
+    {
+      "product": "DOXYPHARMA",
+      "data": { "name": "DOXYPHARMA 1 KG", "code": null, "batchNo": "HSPhar02609001", "productionDate": { "raw": "09/2026", "iso": "2026-09" }, "expiryDate": null, "quantity": 500, "unit": "KG", "packing": "1 KG", "extra": {} }
+    }
+  ],
+  "textContent": "=== Page 1 ===\nPHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ\nCOMMERCIAL INVOICE No. TR-26-0907 Date 18.09.2026\nBuyer: Delta Poultry Co. – Cairo / EGYPT\nProduct | Batch | Mfg. | Exp. | Qty\nDOXYPHARMA 1 KG | HSPhar02609001 | 09/2026 | 09/2028 | 500 KG\n=== Page 2 ===\nAnalysis No: DX-0907-A\nRemarks: Health certificate will follow."
+}

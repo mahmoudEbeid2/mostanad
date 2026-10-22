@@ -5,8 +5,10 @@ import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import * as renderer from "../engine/rendererClient.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
-import { resolveField, resolveGroup } from "../generation/valueResolver.js";
-import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch, renderDesign, plainFields, groupValue } from "../generation/batchService.js";
+import { resolveGroup } from "../generation/valueResolver.js";
+import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed } from "../generation/batchService.js";
+import { USABLE } from "../dataNeeds/dataNeedsService.js";
+import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
 
@@ -162,7 +164,8 @@ async function resolverContext(cert) {
     full.invoice.brandId ? prisma.brand.findUnique({ where: { id: full.invoice.brandId }, select: { id: true, name: true } }) : null,
   ]);
   const design = await loadDesign(new Map(), cert.templateVersionId);
-  const ctx = await certificateContext(full, { invoice: full.invoice, company, invoiceBrand, today: new Date() }, { products: new Map() }, design);
+  const dict = await getDictionary(cert.companyId);
+  const ctx = await certificateContext(full, { invoice: full.invoice, company, invoiceBrand, today: new Date(), pathSynonyms: pathSynonymMap(dict.entries) }, { products: new Map() }, design);
   return { design, ctx };
 }
 
@@ -185,8 +188,10 @@ export async function resetField(id, companyId, userId, key, { expectedVersion }
     values[key] = groupValue(group, r, { flags: {} });
     summary = `${key} reset to its source (${(current.values[key].rows || []).length} → ${r.rows.length} rows)`;
   } else {
-    const r = resolveField(field, ctx);
-    values[key] = { value: r.value, source: field.source, resolved: r.resolved, origin: "auto", flags: r.flags, editedByUserId: null, editedAt: null };
+    // the certificate data check's settled value first, as at generation (plan.md §4)
+    const need = await prisma.certificateDataNeed.findFirst({ where: { invoiceId: cert.invoiceId, planKey: cert.planKey, fieldKey: key, status: { in: USABLE }, value: { not: null } } });
+    const r = resolveWithNeed(field, ctx, need);
+    values[key] = { value: r.value, source: field.source, resolved: r.resolved, origin: r.origin, ...(r.provenance ? { provenance: r.provenance } : {}), flags: r.flags, editedByUserId: null, editedAt: null };
     summary = `${key} reset to source value (${short(current.values[key].value)} → ${short(r.value)})`;
   }
   const rendered = await renderValues(cert, values);

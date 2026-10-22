@@ -7,6 +7,8 @@ import { dateValue } from "./dateNormalizer.js";
 import { normalizeQuantity } from "./quantityNormalizer.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
 import { matchInvoice } from "../matching/productMatcher.js";
+import { extractionHints } from "../dataNeeds/extractionHints.js";
+import { locateItemSpans } from "../dataNeeds/itemSpans.js";
 
 // Invoices (CERTIFICATES_V2_PLAN.md §9): upload → extract (AI) → review →
 // confirm → ready. Extraction output is frozen in headerExtracted /
@@ -77,12 +79,14 @@ export async function runExtractJob(invoiceId, ctx = {}) {
   try {
     ctx.progress?.(10, "Reading the invoice");
     const { row, buffer } = await fileStore.readFile(invoice.sourceFileId);
-    const out = await extractInvoice(buffer, row.mimeType, { companyId: invoice.companyId, invoiceId });
+    const out = await extractInvoice(buffer, row.mimeType, { companyId: invoice.companyId, invoiceId }, await extractionHints(invoice.companyId));
     ctx.progress?.(70, `Found ${out.items.length} lines`);
     const country = invoice.country || normCountry(out.header.customerCountry && /^[A-Za-z]{2}$/.test(out.header.customerCountry) ? out.header.customerCountry : null);
+    // each line's row in the stored text (plan.md §6.1 row scope); { none } = looked, not found
+    const spans = locateItemSpans(out.textContent, out.items.map((it) => ({ id: it.lineNo, data: it.data, rowText: it.rowText })));
     await prisma.$transaction([
       prisma.invoiceItem.deleteMany({ where: { invoiceId } }),
-      prisma.invoiceItem.createMany({ data: out.items.map((it) => ({ invoiceId, lineNo: it.lineNo, data: it.data, dataExtracted: it.data })) }),
+      prisma.invoiceItem.createMany({ data: out.items.map((it) => ({ invoiceId, lineNo: it.lineNo, data: it.data, dataExtracted: it.data, textSpan: out.textContent ? spans.get(it.lineNo) || { none: true } : undefined })) }),
       prisma.invoice.update({
         where: { id: invoiceId },
         data: { header: out.header, headerExtracted: { ...out.header, _raw: out.raw.header || null }, extraction: out.provenance, country, textContent: out.textContent },

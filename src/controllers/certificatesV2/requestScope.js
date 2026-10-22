@@ -1,5 +1,7 @@
 import AppError from "../../utils/appError.js";
 import { scopeFor } from "../../utils/tenantScope.js";
+import { companyMayUse } from "../../middleware/authMiddleware.js";
+import { isBypassed } from "../../middleware/testBypass.js";
 
 // Tenant resolution for every Certificates V2 route (plan §12): a company
 // caller is forced to its own id; a system user names the company with
@@ -17,6 +19,13 @@ export function companyFor(req) {
 export const scopeOf = (req) => scopeFor(req);
 
 export const actorId = (req) => req.user?.id || null;
+
+/** Whether the caller holds a permission beyond the route's own — the same rule restrictToPermission applies. */
+export function mayDo(req, slug) {
+  if (isBypassed(req)) return true;
+  if (req.company) return companyMayUse(slug);
+  return (req.user?.role?.permissions || []).some((rp) => rp.permission?.slug === slug);
+}
 
 export const CERT_HTML_CSP = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
 

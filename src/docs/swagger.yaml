@@ -255,6 +255,8 @@ paths:
     $ref: './paths/certificates-v2/certificate-data-dictionary.yaml'
   /certificate-data-dictionary/rebuild:
     $ref: './paths/certificates-v2/certificate-data-dictionary-rebuild.yaml'
+  /certificate-data-dictionary/synonyms:
+    $ref: './paths/certificates-v2/certificate-data-dictionary-synonyms.yaml'
   /certificate-ai-settings:
     $ref: './paths/certificates-v2/certificate-ai-settings.yaml'
   /invoices:
@@ -277,6 +279,8 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-generation-plan.yaml'
   /invoices/{id}/generate:
     $ref: './paths/certificates-v2/invoices-id-generate.yaml'
+  /invoices/{id}/data-needs:
+    $ref: './paths/certificates-v2/invoices-id-data-needs.yaml'
   /certificate-batches/{id}:
     $ref: './paths/certificates-v2/certificate-batches-id.yaml'
   /certificate-batches/{id}/export:

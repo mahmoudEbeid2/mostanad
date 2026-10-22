@@ -1,0 +1,15 @@
+{
+  "$comment": "Gaps of INV_A after code resolution. line = invoice line no (null = header). value = what is printed; stored = the stored value when it differs (dates → ISO). quote/path = correct evidence (used by the golden stand-in model in npm test; the live eval only scores value + verification).",
+  "invoice": "INV_A",
+  "resolvedByCode": ["batch_no", "expiry", "product_name", "ph_spec", "invoice_no", "consignee", "issue_date"],
+  "gaps": [
+    { "line": 1, "field": "production", "resolvable": true, "value": "04/2026", "stored": "2026-04", "evidence": { "type": "invoice_text", "quote": "Mfg 04/2026" } },
+    { "line": 1, "field": "ph_result", "resolvable": true, "value": "4.1", "evidence": { "type": "invoice_text", "quote": "pH 4.1" } },
+    { "line": 1, "field": "analysis_no", "resolvable": true, "value": "AN-26-0412", "evidence": { "type": "invoice_text", "quote": "Analysis No AN-26-0412" } },
+    { "line": 2, "field": "production", "resolvable": true, "value": "03/2026", "stored": "2026-03", "evidence": { "type": "invoice_text", "quote": "Mfg 03/2026" } },
+    { "line": 2, "field": "ph_result", "resolvable": true, "value": "5.2", "evidence": { "type": "invoice_text", "quote": "pH 5.2" } },
+    { "line": 2, "field": "analysis_no", "resolvable": true, "value": "AN-26-0413", "evidence": { "type": "invoice_text", "quote": "Analysis No AN-26-0413" } },
+    { "line": 2, "field": "withdrawal", "resolvable": true, "value": "7 days for meat", "evidence": { "type": "product_json_text", "path": "description", "quote": "Withdrawal period: 7 days for meat" } },
+    { "line": null, "field": "health_cert_no", "resolvable": true, "value": "HC-SA-26-7781", "evidence": { "type": "invoice_text", "quote": "Health Cert. No: HC-SA-26-7781" } }
+  ]
+}

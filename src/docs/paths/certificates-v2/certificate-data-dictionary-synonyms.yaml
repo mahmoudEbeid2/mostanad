@@ -1,0 +1,17 @@
+# /certificate-data-dictionary/synonyms — certificate AI layers A2 (plan.md §6.1 near-miss learning).
+post:
+  tags: ["Certificate AI"]
+  summary: Add a path synonym for all products
+  description: |
+    `{ canonical, alternative }` — both full source paths of the same root, e.g. `product.specifications.values.pH` and `product.specifications.values["PH value"]`. From then on, whenever a product has no value at the canonical path, the resolver (data check, generation, "reset to source") reads the alternative. Product data is never changed; only a person adds one (plan.md §12 Q3). Survives dictionary rebuilds. 400 INVALID_PATH / INVALID_SYNONYM (same path, different roots, or a list position like `[0]`).
+    Permission: `update_certificate_templates`. → `{ dictionary }`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content: { application/json: { schema: { type: object, additionalProperties: true }, example: { canonical: "product.specifications.values.pH", alternative: "product.specifications.values[\"PH value\"]" } } }
+  responses:
+    "200": { description: "`{ dictionary }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: "INVALID_PATH, INVALID_SYNONYM" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

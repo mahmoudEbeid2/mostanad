@@ -4,7 +4,7 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
@@ -69,6 +69,7 @@ router.get("/certificate-field-sources", guard("read_certificate_templates"), va
 // ── certificate AI layers — foundations (plan.md §3, Phase A0) ──────────────
 router.get("/certificate-data-dictionary", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getDataDictionary);
 router.post("/certificate-data-dictionary/rebuild", guard("update_certificate_templates"), validate(aiSchemas.company), certificateAi.rebuildDataDictionary);
+router.post("/certificate-data-dictionary/synonyms", guard("update_certificate_templates"), validate(dataNeedSchemas.synonym), certificateAi.addDictionarySynonym);
 router.get("/certificate-ai-settings", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getSettings);
 router.patch("/certificate-ai-settings", guard("update_certificate_templates"), validate(aiSchemas.updateSettings), certificateAi.updateSettings);
 router.get("/certificate-products", guard("read_products"), validate(productSearchSchema), templates.productSearch);
@@ -90,7 +91,11 @@ router.post("/invoices/:id/retry", guard("update_invoices"), validate(invoiceSch
 
 // ── generation + generated certificates (§10–§12) ───────────────────────────
 router.get("/invoices/:id/generation-plan", guard("read_invoices"), validate(invoiceSchemas.byId), certificates.generationPlan); // plan §20 I19
-router.post("/invoices/:id/generate", guard("create_certificates"), validate(invoiceSchemas.byId), certificates.generate);
+router.post("/invoices/:id/generate", guard("create_certificates"), validate(invoiceSchemas.generate), certificates.generate);
+// certificate data check (plan.md §6, A2)
+router.get("/invoices/:id/data-needs", guard("read_invoices"), validate(invoiceSchemas.byId), certificateAi.getDataNeeds);
+router.post("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.compute), certificateAi.computeDataNeeds);
+router.patch("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.decide), certificateAi.decideDataNeeds);
 router.get("/certificate-batches/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getBatch);
 router.get("/certificates", guard("read_certificates"), validate(certificateSchemas.list), certificates.listCertificates);
 router.get("/certificates/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getCertificate);
