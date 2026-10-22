@@ -7,6 +7,7 @@ import { loadVersion } from "./templateService.js";
 import { listFields, listGroups, fieldsHash } from "./fieldService.js";
 import { resolveAll, resolveGroups } from "../generation/valueResolver.js";
 import { loadProductContext } from "../generation/contextLoader.js";
+import { rememberMappings } from "../mapping/mappingMemory.js";
 
 // Prepare → ready → activate, new version, previews (CERTIFICATES_V2_PLAN.md
 // §7.3–§7.6, §8.4, D10, D11). Every number comes from the backend renderer.
@@ -85,18 +86,20 @@ export async function runPrepareJob(versionId, ctx = {}) {
 }
 
 /** POST /template-versions/:id/activate (§8.4, D10). */
-export async function activateVersion(versionId, companyId) {
+export async function activateVersion(versionId, companyId, userId = null) {
   const version = await loadVersion(versionId, companyId);
   if (version.status !== "ready") throw new CertError("VERSION_NOT_READY", `Only a ready version can be activated (this one is ${version.status})`, 409);
   if (version.template.archivedAt) throw new CertError("TEMPLATE_ARCHIVED", "This template is archived", 409);
-  const unconfirmed = await prisma.templateField.findMany({ where: { versionId, confirmed: false }, select: { key: true } });
+  // D10 + AI plan §5.1 step 5: a suggested field, or an AI mapping nobody confirmed yet, blocks activation
+  const unconfirmed = await prisma.templateField.findMany({ where: { versionId, OR: [{ confirmed: false }, { mappingConfirmed: false }] }, select: { key: true, confirmed: true, mappingConfirmed: true } });
   if (unconfirmed.length) {
     throw new CertError("FIELDS_UNCONFIRMED", `Confirm every field before activating: ${unconfirmed.map((f) => f.key).join(", ")}`, 409, {
       fields: unconfirmed.map((f) => f.key),
+      mappings: unconfirmed.filter((f) => !f.mappingConfirmed).map((f) => f.key),
     });
   }
   const t = version.template;
-  return prisma.$transaction(async (tx) => {
+  const activated = await prisma.$transaction(async (tx) => {
     // the template slot is unique among non-archived templates (§6.1); the
     // partial index enforces it, this gives a readable error first
     const clash = await tx.certificateTemplate.findFirst({
@@ -115,6 +118,16 @@ export async function activateVersion(versionId, companyId) {
     if (previous) await tx.templateVersion.updateMany({ where: { id: previous, status: "active" }, data: { status: "superseded" } });
     return { versionId, templateId: t.id, status: "active", supersededVersionId: previous };
   });
+  // AI plan §5.1 step 7: an activated design is the company's settled answer
+  // for every label on it — remembered for the next template (no AI then).
+  // The activation is committed; a memory failure is reported, never undone.
+  try {
+    activated.remembered = await rememberMappings(t.companyId, t.certificateTypeId, await listFields(versionId), userId);
+  } catch (err) {
+    console.error(`[activateVersion] ${versionId}: could not remember the field mappings: ${err.message}`);
+    activated.remembered = 0;
+  }
+  return activated;
 }
 
 /** POST /template-versions/:id/new-version — clone as draft vN+1 (same design, same fields). */

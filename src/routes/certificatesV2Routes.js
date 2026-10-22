@@ -4,7 +4,7 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
@@ -53,6 +53,10 @@ router.get("/template-versions/:id/html", guard("read_certificate_templates"), v
 router.get("/template-versions/:id/thumbnail", guard("read_certificate_templates"), validate(versionSchemas.byId), templates.getThumbnail);
 router.put("/template-versions/:id/fields", guard("update_certificate_templates"), validate(versionSchemas.fields), templates.putFields);
 router.post("/template-versions/:id/fields/confirm", guard("update_certificate_templates"), validate(versionSchemas.confirm), templates.confirmFields);
+// AI plan §5 (A1): label proposals (code), field mapping (memory → dictionary → one AI call), the "Why?" of a suggestion
+router.post("/template-versions/:id/label-proposals", guard("update_certificate_templates"), validate(mappingSchemas.labelProposals), certificateAi.labelProposals);
+router.post("/template-versions/:id/map-fields", guard("update_certificate_templates"), validate(mappingSchemas.mapFields), certificateAi.mapFields);
+router.get("/ai-suggestions/:id", guard("read_certificate_templates"), validate(mappingSchemas.suggestion), certificateAi.getSuggestion);
 router.post("/template-versions/:id/suggest", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.suggestFields);
 router.post("/template-versions/:id/prepare", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.prepareVersion);
 router.get("/template-versions/:id/prepare-diff", guard("read_certificate_templates"), validate(versionSchemas.diff), templates.getPrepareDiff);

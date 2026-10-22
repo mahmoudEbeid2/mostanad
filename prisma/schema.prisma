@@ -95,6 +95,7 @@ model Company {
   dataDictionary       DataDictionary?
   aiSuggestions        AiSuggestion[]
   aiRuns               AiRun[]
+  fieldMappingMemory   FieldMappingMemory[]
 
   @@map("companies")
 }
@@ -824,30 +825,35 @@ model TemplateVersion {
 }
 
 model TemplateField {
-  id            String          @id @default(uuid())
-  versionId     String          @map("version_id")
-  version       TemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  key           String // snake_case, unique per version: "batch_no"
-  label         String // "Batch number"
-  page          Int             @default(1)
-  lineId        String          @map("line_id") // data-line id assigned at sanitize
-  origin        String          @default("manual") // manual | detected | ai_suggested (D10)
-  confirmed     Boolean         @default(true) // activation refused while any field is unconfirmed (D10)
-  charStart     Int             @map("char_start") // offsets in the line's textContent (sanitized HTML)
-  charEnd       Int             @map("char_end")
-  sampleValue   String          @map("sample_value") // exact original text — previews + round-trip gate
-  source        Json // §10.3 — { kind, path?, text?, template? }
-  format        Json? // { date?, case?, number?, prefix?, suffix? }
-  required      Boolean         @default(true)
-  align         String          @default("left") // left | center | right
+  id                  String          @id @default(uuid())
+  versionId           String          @map("version_id")
+  version             TemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  key                 String // snake_case, unique per version: "batch_no"
+  label               String // "Batch number"
+  page                Int             @default(1)
+  lineId              String          @map("line_id") // data-line id assigned at sanitize
+  origin              String          @default("manual") // manual | detected | ai_suggested (D10)
+  confirmed           Boolean         @default(true) // activation refused while any field is unconfirmed (D10)
+  charStart           Int             @map("char_start") // offsets in the line's textContent (sanitized HTML)
+  charEnd             Int             @map("char_end")
+  sampleValue         String          @map("sample_value") // exact original text — previews + round-trip gate
+  source              Json // §10.3 — { kind, path?, text?, template? }
+  format              Json? // { date?, case?, number?, prefix?, suffix? }
+  required            Boolean         @default(true)
+  align               String          @default("left") // left | center | right
   // geometry & calibration, written by prepare (§7.3):
-  box           Json? // { x, y, w, h } CSS px, page-relative
-  limits        Json? // { minX, maxX }
-  letterSpacing Float?          @map("letter_spacing")
-  fontClass     String?         @map("font_class")
-  scale         Float?
-  groupKey      String?         @map("group_key") // repeating group (Phase 7)
-  sortOrder     Int             @default(0) @map("sort_order")
+  box                 Json? // { x, y, w, h } CSS px, page-relative
+  limits              Json? // { minX, maxX }
+  letterSpacing       Float?          @map("letter_spacing")
+  fontClass           String?         @map("font_class")
+  scale               Float?
+  groupKey            String?         @map("group_key") // repeating group (Phase 7)
+  sortOrder           Int             @default(0) @map("sort_order")
+  // AI layers A1 (plan.md §5): where the source came from, and whether a person settled it
+  mappingOrigin       String          @default("manual") @map("mapping_origin") // manual | memory | dictionary | ai
+  mappingSuggestionId String?         @map("mapping_suggestion_id") // the AiSuggestion it came from (ai)
+  mappingConfirmed    Boolean         @default(true) @map("mapping_confirmed") // false while an AI mapping awaits a person (activation refused)
+  dataCategory        String?         @map("data_category") // product_data | invoice_line | invoice_header | company | constant | batch_data | unknown
 
   @@unique([versionId, key])
   @@map("template_fields")
@@ -1082,4 +1088,24 @@ model AiRun {
   @@index([companyId, kind, createdAt])
   @@index([entityType, entityId])
   @@map("ai_runs")
+}
+
+// Learned label → source, per company (plan.md §4, §5.1 step 7). Written when
+// a version is activated (every field) and when an AI mapping is confirmed.
+// Read first in the mapping chain (§5.2 step 1): a hit never calls the AI.
+model FieldMappingMemory {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  labelNorm         String   @map("label_norm") // lower-case, no punctuation, collapsed spaces
+  certificateTypeId String?  @map("certificate_type_id") // null = applies to all types
+  source            Json // { kind, path?, text?, template? } as stored on TemplateField
+  format            Json?
+  category          String? // batch_data etc. (A1 addition, see PROGRESS.md)
+  timesUsed         Int      @default(1) @map("times_used")
+  lastUsedAt        DateTime @map("last_used_at")
+  createdByUserId   String?  @map("created_by_user_id")
+
+  @@unique([companyId, labelNorm, certificateTypeId])
+  @@map("field_mapping_memory")
 }

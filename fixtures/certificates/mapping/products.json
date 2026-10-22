@@ -1,0 +1,49 @@
+{
+  "$comment": "Fixture products for the template-mapping goldens (plan.md §5.4): the two golden designs' products plus neighbours, with realistic, inconsistent JSON (key spellings differ, one product has no specifications). Seeded into a test company.",
+  "products": [
+    {
+      "name": "ADD-E120",
+      "productCode": "ADDE120",
+      "producer": "AFAQ Additives Feed Company",
+      "origin": "JORDAN",
+      "packaging": "1L",
+      "physicalForm": "liquid",
+      "appearance": "Light yellow liquid",
+      "activeIngredients": [
+        { "name": "Vitamin E", "concentration": "120000 mg" },
+        { "name": "Sodium selenite", "concentration": "60 mg" }
+      ],
+      "specifications": { "type": "string", "values": { "pH": "3.0-5.0", "Assay": "90-110% of the labeled amount of constituents", "Appearance": "Light yellow liquid", "Sterility": "Sterile" } }
+    },
+    {
+      "name": "DOXYPHARMA",
+      "productCode": "DOXY1KG",
+      "producer": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ",
+      "origin": "TURKEY",
+      "packaging": "1KG",
+      "physicalForm": "powder",
+      "appearance": "Light yellow crystalline powder",
+      "activeIngredients": [{ "name": "Doxycycline hyclate", "concentration": "500 mg" }],
+      "specifications": { "type": "string", "values": { "PH": "2.0 – 3.0", "Assay %": "90-110%" } }
+    },
+    {
+      "name": "ADD-SE",
+      "producer": "AFAQ Additives Feed Company",
+      "origin": "JORDAN",
+      "packaging": "1L",
+      "activeIngredients": [
+        { "name": "Sodium selenite", "concentration": "30 mg" },
+        { "name": "Vitamin E", "concentration": "60000 mg" }
+      ],
+      "specifications": { "values": { "ph": "4.0-6.0" } }
+    },
+    {
+      "name": "TYLOPHARMA",
+      "producer": "PHARMAVET İÇ VE DIŞ TİCARET LTD.ŞTİ",
+      "origin": "TURKEY",
+      "packaging": "500 G",
+      "activeIngredients": [{ "Name": "Tylosin tartrate", "concentration": "200 mg" }],
+      "specifications": null
+    }
+  ]
+}

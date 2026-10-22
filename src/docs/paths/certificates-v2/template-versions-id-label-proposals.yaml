@@ -1,0 +1,28 @@
+# /template-versions/{id}/label-proposals — certificate AI layers A1 (plan.md §5.1 step 2).
+post:
+  tags: ["Template Versions"]
+  summary: Propose labels for marked values (code, no AI)
+  description: |
+    For each selected value: the label printed with it. Same line first ("Batch No.:  AVVS1122005" → "Batch No."), then the column header above it in the real layout (the nearest text above printed in a different font: "EXPIRATION DATE" → "Expiration date"). A generic header ("Specifications", "Results") defers to the row's own label ("pH" + "Results" → "pH result"). `label: null` when neither exists (the mapping step's AI names it).
+    Also returns `key` (snake_case of the label), `category: "batch_data"` for per-batch analysis results (description | specification | result rows), and `context` (columnHeader, rowCells, rowIndex) to pass on to POST …/map-fields.
+
+    Permission: `update_certificate_templates`. Tenant-scoped: another company's version → 404.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        example: { fields: [{ lineId: "p1-l11", charStart: 12, charEnd: 23, sampleValue: "AVVS1122005" }] }
+        schema: { type: object, additionalProperties: true }
+  responses:
+    "200":
+      description: "`{ proposals: [{ label, from: same_line|column_header|row_label|null, key, category, context }] }` — same order as the request"
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "422": { description: "INVALID_FIELDS — an offset range does not hold its sampleValue" }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

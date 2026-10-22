@@ -1,0 +1,24 @@
+{
+  "$comment": "Golden mapping set (plan.md §5.4) for ADDVET_COA.ai: the expected source per field of golden-fields.json. `alsoAccept` lists sources that read the same value on the sample product (positional vs [name=…] element paths). `label` is what the user ends up with when code proposes none.",
+  "template": "ADDVET_COA.ai",
+  "sampleProduct": "ADD-E120",
+  "fields": {
+    "batch_no": { "source": { "kind": "item", "path": "batchNo" }, "category": "invoice_line" },
+    "product_name": { "source": { "kind": "product", "path": "name" }, "category": "product_data" },
+    "expiry": { "source": { "kind": "item", "path": "expiryDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+    "production": { "source": { "kind": "item", "path": "productionDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+    "ph_result": { "source": { "kind": "manual" }, "category": "batch_data" },
+    "constituent_2_name": {
+      "label": "Constituent 2",
+      "source": { "kind": "product", "path": "activeIngredients[1].name" },
+      "alsoAccept": [{ "kind": "product", "path": "activeIngredients[name=\"Sodium selenite\"].name" }],
+      "category": "product_data"
+    },
+    "constituent_2_amount": {
+      "source": { "kind": "product", "path": "activeIngredients[1].concentration" },
+      "alsoAccept": [{ "kind": "product", "path": "activeIngredients[name=\"Sodium selenite\"].concentration" }],
+      "category": "product_data"
+    },
+    "document_no": { "source": { "kind": "template", "template": "COA{{item.batchNo}}" }, "category": "invoice_line" }
+  }
+}

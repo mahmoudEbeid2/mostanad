@@ -225,6 +225,12 @@ paths:
     $ref: './paths/certificates-v2/template-versions-id-thumbnail.yaml'
   /template-versions/{id}/fields:
     $ref: './paths/certificates-v2/template-versions-id-fields.yaml'
+  /template-versions/{id}/label-proposals:
+    $ref: './paths/certificates-v2/template-versions-id-label-proposals.yaml'
+  /template-versions/{id}/map-fields:
+    $ref: './paths/certificates-v2/template-versions-id-map-fields.yaml'
+  /ai-suggestions/{id}:
+    $ref: './paths/certificates-v2/ai-suggestions-id.yaml'
   /template-versions/{id}/fields/confirm:
     $ref: './paths/certificates-v2/template-versions-id-fields-confirm.yaml'
   /template-versions/{id}/suggest:

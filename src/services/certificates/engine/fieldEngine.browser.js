@@ -271,6 +271,94 @@
     return seg ? { x0: round(seg.x0), x1: round(seg.x1), center: round((seg.x0 + seg.x1) / 2) } : null;
   }
 
+  // ── label context (AI plan §5.1 step 2): what is printed around a value ────
+  // Read-only. columnHeader: the nearest text above in the value's column
+  // that is printed in a DIFFERENT font than the value (headers are styled;
+  // the values stacked between header and value are not). rowCells: the
+  // row's cells left → right; rowIndex: the value's cell.
+  const HEADER_MAX_DISTANCE = 200; // px above the value
+  const HEADER_MAX_ROW_GAP = 45; // a larger gap ends the column (another block)
+
+  function fontKey(el) {
+    const cs = getComputedStyle(el);
+    return [cs.fontFamily, cs.fontWeight, cs.fontStyle, Math.round(parseFloat(cs.fontSize) * 10) / 10, cs.color].join("|");
+  }
+
+  // the text of `rowRuns` between x0 and x1, in visual order. Designs split
+  // words into many kerning spans, so spaces come from the printed spaces and
+  // from real gaps (> 0.3 × the glyph height) — never from span boundaries.
+  function textBetween(rowRuns, x0, x1) {
+    const seen = new Set();
+    const chars = [];
+    for (const run of rowRuns) {
+      if (seen.has(run.node)) continue;
+      seen.add(run.node);
+      const pageEl = pageOf(run.node.parentElement);
+      for (let i = 0; i < run.node.data.length; i++) {
+        const r = document.createRange();
+        r.setStart(run.node, i);
+        r.setEnd(run.node, i + 1);
+        const rect = relRect(r.getBoundingClientRect(), pageEl);
+        const cx = rect.x + rect.w / 2;
+        if (cx < x0 - 0.5 || cx > x1 + 0.5) continue;
+        chars.push({ c: run.node.data[i], x: rect.x, r: rect.x + rect.w, h: rect.h });
+      }
+    }
+    chars.sort((a, b) => a.x - b.x);
+    let out = "";
+    let prev = null;
+    let space = false;
+    for (const ch of chars) {
+      if (/\s/.test(ch.c)) {
+        space = true;
+        continue;
+      }
+      if (prev && (space || ch.x - prev.r > Math.max(1, prev.h * 0.3))) out += " ";
+      out += ch.c;
+      prev = ch;
+      space = false;
+    }
+    return out.trim();
+  }
+
+  function rowsOf(runs) {
+    const rows = [];
+    for (const run of runs.slice().sort((a, b) => b.rect.y + b.rect.h - (a.rect.y + a.rect.h))) {
+      const bottom = run.rect.y + run.rect.h;
+      const row = rows.find((r) => Math.abs(r.bottom - bottom) <= 1.5);
+      if (row) row.runs.push(run);
+      else rows.push({ bottom, runs: [run] });
+    }
+    return rows;
+  }
+
+  function labelContext(box, runs, valueEl) {
+    const valueFont = fontKey(valueEl);
+    const mid = box.y + box.h / 2;
+    const rowRuns = runs.filter(({ rect }) => rect.y <= mid && mid <= rect.y + rect.h);
+    const cells = segmentsOf(rowRuns);
+    const rowCells = cells.map((s) => textBetween(rowRuns, s.x0, s.x1));
+    const centre = box.x + box.w / 2;
+    const rowIndex = cells.findIndex((s) => s.x0 - TOL <= centre && centre <= s.x1 + TOL);
+
+    let columnHeader = null;
+    let prevTop = box.y;
+    for (const row of rowsOf(runs.filter(({ rect }) => rect.y + rect.h <= box.y + TOL && box.y - (rect.y + rect.h) <= HEADER_MAX_DISTANCE))) {
+      const top = Math.min(...row.runs.map((r) => r.rect.y));
+      if (prevTop - row.bottom > HEADER_MAX_ROW_GAP) break;
+      prevTop = top;
+      const segs = segmentsOf(row.runs).map((s) => ({ ...s, overlap: Math.min(s.x1, box.x + box.w) - Math.max(s.x0, box.x) })).filter((s) => s.overlap > 0);
+      if (!segs.length) continue; // an empty cell of this column
+      const seg = segs.sort((a, b) => b.overlap - a.overlap)[0];
+      const inSeg = row.runs.filter(({ rect }) => rect.x < seg.x1 && rect.x + rect.w > seg.x0);
+      if (inSeg.some((r) => fontKey(r.node.parentElement) !== valueFont)) {
+        columnHeader = textBetween(inSeg, seg.x0, seg.x1);
+        break;
+      }
+    }
+    return { columnHeader: columnHeader || null, rowCells, rowIndex };
+  }
+
   function inspect(fields) {
     const out = {};
     const runsByPage = new Map();
@@ -296,7 +384,8 @@
         const edgeAligned = Math.abs(header.x0 - box.x) <= EDGE_ALIGNED_PX || Math.abs(header.x1 - (box.x + box.w)) <= EDGE_ALIGNED_PX;
         if (centered && !edgeAligned) suggestedAlign = "center";
       }
-      out[f.key] = { ok: true, page: pageNo(pageEl), box, header, suggestedAlign };
+      const valueEl = range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer;
+      out[f.key] = { ok: true, page: pageNo(pageEl), box, header, suggestedAlign, labelContext: labelContext(box, runsByPage.get(pageEl), valueEl) };
     }
     return out;
   }

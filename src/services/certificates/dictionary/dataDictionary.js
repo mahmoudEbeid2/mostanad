@@ -260,7 +260,7 @@ export function schemaEntries(products) {
       if (kind.kind === "product" && /\[\d+\]/.test(p.path)) continue; // positional slots: superseded by [name="…"] paths
       if (kind.kind === "product" && productJsonColumns().has(p.path.split(".")[0])) continue; // JSON: observed entries describe it
       const path = `${kind.kind}.${p.path}`;
-      const entry = { path, root: kind.kind, type: p.type, labels: [p.label], synonyms: [], source: "schema", label: `${kind.label} › ${p.label}`, pickable: true };
+      const entry = { path, root: kind.kind, type: p.type, labels: [p.label], synonyms: [...(p.synonyms || [])], source: "schema", label: `${kind.label} › ${p.label}`, pickable: true };
       if (kind.kind === "product") {
         const seen = new Map();
         let has = 0;
@@ -286,7 +286,7 @@ export function schemaEntries(products) {
 /** Synonyms survive a rebuild (they were added by a user or accepted from the AI). */
 function carrySynonyms(entries, previous) {
   const byPath = new Map((previous || []).filter((e) => e.synonyms?.length).map((e) => [e.path, e.synonyms]));
-  for (const e of entries) if (byPath.has(e.path)) e.synonyms = byPath.get(e.path);
+  for (const e of entries) if (byPath.has(e.path)) e.synonyms = [...new Set([...e.synonyms, ...byPath.get(e.path)])];
   return entries;
 }
 

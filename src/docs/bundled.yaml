@@ -4257,6 +4257,7 @@ paths:
         - Template Versions
       summary: Replace the field list (draft only)
       description: |-
+        **AI plan §5 (A1):** each field may also carry `mappingOrigin` (manual|memory|dictionary|ai), `mappingSuggestionId` and `dataCategory` (product_data|invoice_line|invoice_header|company|constant|batch_data|unknown), as returned by POST …/map-fields. The server decides `mappingConfirmed`: a field whose source equals its AI suggestion’s proposal stays unconfirmed while that suggestion is pending; a different source is a person’s edit (the suggestion is recorded `edited`, the mapping becomes manual); an `ai` origin without a matching suggestion becomes manual. Source paths may use the plan.md §3.1 grammar; a repeating group may read any list inside a product JSON column.
         Idempotent. Validates keys (snake_case, unique), line ids, offsets (`line.text.slice(charStart, charEnd) === sampleValue`), overlaps, `source` against the catalogue, `format` against the source type, and the selection against the real layout. Returns server-side suggestions (`align: center`, plan D11).
 
         **Repeating groups (plan §7.8, §8.2):** optional `groups` replaces the group list (omitted = stored groups kept, `[]` removes them). A group cell is a field with `groupKey` whose `source` is `{ kind: "row", path }`, `static` or `manual`. Needs an SVG-background version (409 `GROUP_NEEDS_SVG` → `POST …/enable-groups`). `invoice_lines` only on per_invoice templates, `product_list` only on per_product. The response adds `groups` and `groupDetection` (shape, band, frame, footer line proposal, capacity) per group; a group the engine can't take apart → 422 with `code` `GROUP_RULES_COMBINED` / `GROUP_TABLE_RASTER` / `GROUP_RULES_NOT_FOUND`, `problems[]` and `fallback: "fixed_rows"`.
@@ -4396,13 +4397,133 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CertError'
+  /template-versions/{id}/label-proposals:
+    post:
+      tags:
+        - Template Versions
+      summary: Propose labels for marked values (code, no AI)
+      description: |
+        For each selected value: the label printed with it. Same line first ("Batch No.:  AVVS1122005" → "Batch No."), then the column header above it in the real layout (the nearest text above printed in a different font: "EXPIRATION DATE" → "Expiration date"). A generic header ("Specifications", "Results") defers to the row's own label ("pH" + "Results" → "pH result"). `label: null` when neither exists (the mapping step's AI names it).
+        Also returns `key` (snake_case of the label), `category: "batch_data"` for per-batch analysis results (description | specification | result rows), and `context` (columnHeader, rowCells, rowIndex) to pass on to POST …/map-fields.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: another company's version → 404.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              fields:
+                - lineId: p1-l11
+                  charStart: 12
+                  charEnd: 23
+                  sampleValue: AVVS1122005
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: '`{ proposals: [{ label, from: same_line|column_header|row_label|null, key, category, context }] }` — same order as the request'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '422':
+          description: INVALID_FIELDS — an offset range does not hold its sampleValue
+  /template-versions/{id}/map-fields:
+    post:
+      tags:
+        - Template Versions
+      summary: Map fields to their data source (memory → dictionary → one AI call)
+      description: |
+        Draft versions only. Per field: (1) the company's mapping memory for the label (no AI); (2) a per-batch result recognised from the layout → manual, `batch_data`; (3) a single plausible match in the company's data dictionary (labels, synonyms, key words; with `sampleProductId`, the sample product's value must equal the sample) (no AI); (4) everything still open — and repeating groups code could not bind — in ONE `CERT_FIELD_MAP` call for the whole request.
+        The model only chooses from the dictionary. Code validates every answer (an invented path, fixed text that isn't the printed sample, or an invented placeholder → `status: "invalid"`), checks it against the sample product (agrees → confidence ≥ 0.97; disagrees → × 0.6) and stores an AiSuggestion with provenance. AI answers are `pending` unless the company turned auto-accept on and the confidence reaches the threshold.
+        AI turned off, failing or over quota: steps 1–3 still run, `ai.unavailable` + `ai.reason` explain why, and the rest come back `unmapped`. Nothing is written to the fields: the client applies the mappings and saves them with PUT …/fields.
+
+        Mapping: `{ source, format, required, category, origin: memory|dictionary|ai|none, confidence, status: accepted|pending|auto_accepted|unmapped|invalid, rationale, evidence?, suggestionId?, ambiguousDate?, candidates?, note?, label? }`.
+        Group binding: `{ source: { kind: "product_list", path }, cells: { [cellKey]: { kind: "row", path } }, origin, status, confidence, rationale }`.
+
+        Permission: `update_certificate_templates`. Tenant-scoped: another company's version or sample product → 404.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              fields:
+                - key: batch_no
+                  label: Batch No.
+                  lineId: p1-l11
+                  sampleValue: AVVS1122005
+                  labelContext: null
+              keys:
+                - batch_no
+              sampleProductId: null
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: '`{ mappings: { [key]: Mapping }, groups: { [groupKey]: Binding }, ai: { used, calls, unavailable?, reason? }, dictionaryVersion }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid body
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: VERSION_NOT_DRAFT
+  /ai-suggestions/{id}:
+    get:
+      tags:
+        - Template Versions
+      summary: One AI suggestion (the "Why?" of a mapping)
+      description: |
+        `{ suggestion: { id, kind, entityType, entityId, proposal, evidence, evidenceVerified, confidence, status, decidedByUserId, decidedAt, finalValue, modelId, promptHash, inputHash, dictionaryVersion, aiRunId, createdAt } }`.
+
+        Permission: `read_certificate_templates`. Tenant-scoped: another company's suggestion → 404.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: The suggestion
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
   /template-versions/{id}/fields/confirm:
     post:
       tags:
         - Template Versions
       summary: Confirm fields (D10)
       description: |-
-        Marks `ai_suggested` / `detected` fields as confirmed. Allowed on draft and ready (plan §20 I8).
+        Marks `ai_suggested` / `detected` fields as confirmed, and accepts their pending AI mappings (plan.md §5: the AiSuggestion becomes `accepted` by this user, the field `mappingConfirmed: true`, and the label → source is remembered for the company). Allowed on draft and ready (plan §20 I8).
 
         Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:
@@ -4589,7 +4710,7 @@ paths:
         - Template Versions
       summary: Activate a ready version
       description: |-
-        Supersedes the previous active version in one transaction. Refused while any field is unconfirmed (D10).
+        Supersedes the previous active version in one transaction. Refused while any field is unconfirmed (D10) or has an AI mapping nobody confirmed (plan.md §5: the 409 lists those in `mappings`). On success every field's label → source/format/category is remembered for the company (`remembered`: how many), so the next template with the same labels maps without AI.
 
         Permission: `update_certificate_templates`. Tenant-scoped: a system user passes `?companyId=`; another company's resource is **404**, never 403.
       parameters:

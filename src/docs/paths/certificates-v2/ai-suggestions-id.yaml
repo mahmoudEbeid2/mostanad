@@ -1,0 +1,20 @@
+# /ai-suggestions/{id} — certificate AI layers (plan.md §4, P7).
+get:
+  tags: ["Template Versions"]
+  summary: One AI suggestion (the "Why?" of a mapping)
+  description: |
+    `{ suggestion: { id, kind, entityType, entityId, proposal, evidence, evidenceVerified, confidence, status, decidedByUserId, decidedAt, finalValue, modelId, promptHash, inputHash, dictionaryVersion, aiRunId, createdAt } }`.
+
+    Permission: `read_certificate_templates`. Tenant-scoped: another company's suggestion → 404.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200":
+      description: The suggestion
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

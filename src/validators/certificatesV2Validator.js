@@ -223,3 +223,36 @@ export const aiSchemas = {
       .strict(),
   },
 };
+
+// ── certificate AI layers, A1 — template field mapping (plan.md §5) ─────────
+const probe = z.object({ lineId: z.string().max(40), charStart: z.number().int().min(0), charEnd: z.number().int().min(1), sampleValue: z.string().min(1).max(500) });
+const labelContext = z
+  .object({ columnHeader: z.string().max(200).nullable().optional(), rowCells: z.array(z.string().max(500)).max(30).optional(), rowIndex: z.number().int().optional() })
+  .nullable()
+  .optional();
+export const mappingSchemas = {
+  labelProposals: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(probe).min(1).max(100) }) },
+  mapFields: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      fields: z
+        .array(
+          z.object({
+            key: z.string().max(60),
+            label: z.string().max(120),
+            lineId: z.string().max(40),
+            sampleValue: z.string().max(500),
+            groupKey: z.string().max(60).nullable().optional(),
+            labelContext,
+          })
+        )
+        .min(1)
+        .max(200),
+      groups: z.array(z.object({ key: z.string().max(60), label: z.string().max(120) })).max(20).optional(),
+      keys: z.array(z.string().max(60)).max(200).optional(),
+      sampleProductId: uuid.optional().nullable(),
+    }),
+  },
+  suggestion: { params: idParams, query: companyQuery },
+};

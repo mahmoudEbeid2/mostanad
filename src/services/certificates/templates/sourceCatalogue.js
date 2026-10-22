@@ -15,6 +15,19 @@ const PRODUCT_LABELS = {
   routeOfAdmin: "Route of administration",
 };
 const MAX_INGREDIENT_SLOTS = 6;
+// other printed labels for product columns (plan.md §5.2 step 2: code before AI)
+const PRODUCT_SYNONYMS = {
+  name: ["product name", "product", "trade name", "name of product", "product description"],
+  producer: ["manufacturer", "manufactured by", "producer", "made by"],
+  origin: ["country of origin", "origin", "made in"],
+  packaging: ["packaging", "pack size", "package", "presentation"],
+  registrationNumber: ["registration no", "reg no", "registration number", "license no"],
+  storage: ["storage conditions", "storage", "store"],
+  "category.name": ["category", "product category", "type of product"],
+  "brand.name": ["brand"],
+  physicalForm: ["form", "physical form", "dosage form"],
+  appearance: ["appearance", "description"],
+};
 
 const humanize = (s) => s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 
@@ -22,9 +35,9 @@ function productPaths() {
   const model = Prisma.dmmf.datamodel.models.find((m) => m.name === "Product");
   const paths = model.fields
     .filter((f) => f.kind === "scalar" && !PRODUCT_HIDDEN.has(f.name) && f.name !== "specifications")
-    .map((f) => ({ path: f.name, label: PRODUCT_LABELS[f.name] || humanize(f.name), type: f.type === "DateTime" ? "date" : "string" }));
-  paths.push({ path: "category.name", label: "Category", type: "string" });
-  paths.push({ path: "brand.name", label: "Brand", type: "string" });
+    .map((f) => ({ path: f.name, label: PRODUCT_LABELS[f.name] || humanize(f.name), type: f.type === "DateTime" ? "date" : "string", ...(PRODUCT_SYNONYMS[f.name] ? { synonyms: PRODUCT_SYNONYMS[f.name] } : {}) }));
+  paths.push({ path: "category.name", label: "Category", type: "string", synonyms: PRODUCT_SYNONYMS["category.name"] });
+  paths.push({ path: "brand.name", label: "Brand", type: "string", synonyms: PRODUCT_SYNONYMS["brand.name"] });
   for (let i = 0; i < MAX_INGREDIENT_SLOTS; i++) {
     paths.push({ path: `activeIngredients[${i}].name`, label: `Active ingredient ${i + 1} — name`, type: "string" });
     paths.push({ path: `activeIngredients[${i}].concentration`, label: `Active ingredient ${i + 1} — concentration`, type: "string" });
@@ -104,8 +117,22 @@ export function rowPathsFor(groupSource) {
 export function validateGroupSource(source) {
   if (!source || typeof source !== "object") return ["source is required"];
   if (!GROUP_SOURCE_KINDS.includes(source.kind)) return [`unknown group source "${source.kind}" (use ${GROUP_SOURCE_KINDS.join(", ")})`];
-  if (source.kind === "product_list" && !PRODUCT_LISTS.some((l) => l.path === source.path)) return [`unknown product list "${source.path}" (use ${PRODUCT_LISTS.map((l) => l.path).join(", ")})`];
+  if (source.kind === "product_list" && !PRODUCT_LISTS.some((l) => l.path === source.path) && !isJsonListPath(source.path)) {
+    return [`unknown product list "${source.path}" (use ${PRODUCT_LISTS.map((l) => l.path).join(", ")}, or a list inside a product JSON column)`];
+  }
   return [];
+}
+
+// AI plan §5.3: any list of objects inside a product JSON column can fill a
+// group (what lists exist is the company's data dictionary). Keys only — no
+// [index]/[filter] in a list path or a row path.
+const keysOnly = (path) => {
+  const p = parseRelative(path);
+  return p.ok && p.segments.every((s) => s.t === "key") ? p.segments : null;
+};
+function isJsonListPath(path) {
+  const segs = keysOnly(path);
+  return !!segs && productJsonColumns().has(segs[0].k);
 }
 
 /** Problems with a group cell's source, given its group's source. */
@@ -115,7 +142,10 @@ export function validateCellSource(source, groupSource) {
   if (source.kind === "static" && (typeof source.text !== "string" || !source.text.length)) return ["source.text is required for fixed text"];
   if (source.kind === "row") {
     const paths = rowPathsFor(groupSource);
-    if (!paths) return ["this group's rows are typed by hand — its cells can't read a row path (use manual or static)"];
+    if (!paths) {
+      if (groupSource?.kind === "product_list" && isJsonListPath(groupSource.path)) return keysOnly(source.path) ? [] : [`invalid row path "${source.path}" (a key of the list's elements)`];
+      return ["this group's rows are typed by hand — its cells can't read a row path (use manual or static)"];
+    }
     if (!paths.some((p) => p.path === source.path)) return [`unknown row path "${source.path}"`];
   }
   return [];

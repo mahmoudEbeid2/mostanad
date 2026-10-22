@@ -1320,3 +1320,51 @@ Plan: `plan.md` (Certificates — AI Layers Plan v1). Only A0 was built; A1 (tem
 - **Migration vs schema check (owner review, 2026-10-22).** Prisma 7.8 has no `--shadow-database-url`; I used a temporary config with `datasource.shadowDatabaseUrl` → a throwaway local DB `mostanad_shadow_a0` (created, then dropped):
   `npx prisma migrate diff --config <tmp> --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script`.
   **Result: not empty, but nothing from A0.** The only output is `ALTER TABLE "regulatory_documents" ALTER COLUMN "product_scope" DROP DEFAULT, ALTER COLUMN "activation_mode" DROP NOT NULL;`. Running the same diff on the pre-A0 state (HEAD's `schema.prisma` + migrations without `20261022120000`) gives **exactly the same two statements**, so this is older drift in the regulatory tables: migrations `20260828030000` (`product_scope … NOT NULL DEFAULT '{}'`) and `20260913182628` (`activation_mode … NOT NULL DEFAULT 'full'`) vs `productScope String[]` (no default) and `activationMode String?` in the schema. Every A0 table, column, index and FK matches `schema.prisma` exactly. **Not fixed:** it is outside A0, and either fix (schema to match the DB, or a migration) is a decision for the regulatory pipeline's owner. The DB is the stricter side, so nothing is broken at runtime.
+
+## Certificate AI layers — Phase A1 Template field mapping (plan.md §5, 2026-10-22)
+A0 approved by the owner. A1 stops here for review (plan §11). Auto-accept stays off by default (owner, §12 Q1).
+
+**Built**
+- **Label proposal (code)** `mapping/labelProposal.js` + the engine. `fieldEngine.inspect` now also returns `labelContext` per field: `columnHeader` is the nearest text above in the value's column printed in a *different font* (headers are styled; the values stacked between header and value are not). The engine also returns the row's cells and the value's cell. Text is rebuilt from glyph geometry, so kerning spans don't insert spaces. Order of rules: same line `Label:`/`Label #`, then the column header; a generic header (Specifications/Results/…) defers to the row's own label ("pH" + Results → "pH result"); otherwise null and the AI names it. On the goldens: ADDVET Batch No., Product Name, Expiry Date, Production Date, pH result, Document, "Sodium selenite result", and null for the constituent name. PHARMAVET Expiration date, Manufacturing date, Batch number, pH result, Producer, "Constituents (per gm) result". NFKC handles PDF ligatures ("Speciﬁcations").
+- **batch_data (code):** a value in a RESULT column whose row has a specification cell before it (a range, a limit or %) is a per-batch result → manual, `dataCategory: batch_data`, with the UI note. A "Results" column alone is not enough: ADDVET puts constituent amounts in it.
+- **Format inference** `mapping/formatInference.js`: MM/YYYY, MM.YYYY, DD/MM/YYYY vs MM/DD/YYYY (decided only by a number > 12, otherwise `ambiguousDate` is shown to the user), YYYY-MM-DD, DD MMM YYYY, MMM YYYY. Letter case only for samples without digits (SUPPLEMENT → upper; AVVS1122005 untouched).
+- **Mapping chain** `mapping/fieldMapper.js`, `POST /template-versions/:id/map-fields`:
+  1. memory (`field_mapping_memory`: this certificate type first, then any type);
+  2. batch_data layout rule;
+  3. dictionary match `mapping/dictionaryMatch.js`: labels, synonyms and key words, with No./Nr./Num. → number. It is used only for a single hit whose type the sample fits, and that agrees with the sample product when one is given. Built-in synonyms were added to the schema paths (invoiceSchema/sourceCatalogue: expiration date, mfg date, lot no, manufacturer…);
+  4. one `CERT_FIELD_MAP` call for everything still open, with groups. Prompt order: instructions → dictionary (≤ 200 entries) → raw JSON of ≤ 5 of the company's products (4 KB each) → fields. Code validates every answer (`validateAiField`): paths only from the dictionary (an element `[i]`/`[key="v"]` of an observed collection counts), fixed text must equal the printed sample, every placeholder must be in the dictionary, and `product_text` is kept as a proposal (see deferred). Plausibility against the sample product: agrees → ≥ 0.97 with evidence; disagrees → × 0.6. An AiSuggestion is stored per answer (invalid ones as `rejected` with the reason). AI off, failing or over quota still returns the code mappings, plus `ai.unavailable`/`ai.reason`.
+- **Saving / confirming / learning** (`fieldService`, `prepareService`): new TemplateField columns `mappingOrigin`, `mappingSuggestionId`, `mappingConfirmed`, `dataCategory`. On PUT the server reconciles each field with its suggestion: same source → pending until confirmed; a different source → the suggestion is recorded `edited` and the mapping becomes manual; a client claiming `ai` without a real suggestion → manual. `/fields/confirm` accepts pending mappings (recording who and when) and remembers them. Activation is refused while a mapping is pending (`FIELDS_UNCONFIRMED` + `mappings`), and on success remembers every label (a label used twice in one version is skipped as ambiguous).
+- **Group binding (§5.3):** code first. With a sample product, the one product collection whose element holds every cell's sample. Otherwise the AI's answer, validated: the collection and child keys must be in the dictionary. Groups may now read any list inside a product JSON column (not only `activeIngredients`).
+- **Frontend** (mostanad_front):
+  - **New field:** `make()` proposes the label/key (`label-proposals`), then maps the field.
+  - **Field card:** origin badge "Memory ✓ / Dictionary ✓ / AI 0.94 ✓ / AI 0.71 — confirm" (amber card plus Confirm, which saves first, then calls `/fields/confirm`); "Why?" panel (rationale, dictionary entry with coverage and examples, sample-product check, note); batch_data note; ambiguous day/month hint.
+  - **Toolbar:** "Map all" and an optional sample-product picker.
+  - **Re-mapping:** happens on label blur.
+  - **Activate step:** lists pending AI mappings.
+  - **Accessibility:** `.cert-select` focus ring for react-select inputs.
+- **Tests:**
+  - `a1.unit.test.js` (65): labels, batch rule, formats, dictionary match, AI-answer validation.
+  - `a1.mapping.test.js` (76, API + in-process with a stand-in model): label proposals on both goldens; AI off; AI down; golden sets; adversarial answers (invented path / text / placeholder, an answer for an unasked field, quota error, 503, no answer); prompt tenant isolation and order; group binding (code and AI, invented collection refused); PUT/edit/claim reconciliation; activation gate; confirm; memory; second template with 0 AI calls; "Why?" tenancy.
+  - Shared harness `mappingHarness.js`.
+  - Golden mapping sets `fixtures/certificates/mapping/{ADDVET_COA,PHARMAVET_COA,products}.json`.
+  - UI smoke through the wizard (phases 1–2): 47/47, zero console errors. It used a throwaway local admin, deleted afterwards.
+- **Live eval** `npm run eval:cert-mapping` (`scripts/evalCertMapping.js`): refuses unless `RUN_LIVE_GEMINI=1`; writes `golden/ai-eval-<date>.json` (scores, tokens, ms per template); exits 1 below the §5.4 bar or on a > 2-point drop from the previous scorecard.
+
+**§5.4 acceptance: what is proven and what is not**
+- Proven without AI (code only): on ADDVET 5/8 fields and on PHARMAVET 5/6 resolve by dictionary/layout, all correct, with 0 AI calls for them. pH result is batch_data on both (100 %). 0 invalid paths reach the DB (validation + tests). Memory: the second template with the same labels → **0 AI calls**, every field from memory. AI disabled → the wizard works, and labels plus dictionary matching still run. Cost: **one AI call per template** whatever the field count (asserted).
+- With a *correct* stand-in model the golden sets score 8/8 and 6/6. This proves the pipeline (validation, plausibility, provenance) but **not the real model's accuracy**. The remaining 4 golden fields (two ADDVET constituent fields, the COA{{item.batchNo}} combination, the PHARMAVET constituent amount) depend on the live model. **The ≥ 90 % live number is not measured yet**: it needs `RUN_LIVE_GEMINI=1 npm run eval:cert-mapping` (paid; not run without the owner's go).
+
+**Differences from plan.md (recorded)**
+- Mapping memory is written at **activation** (every field) and on **confirming an AI mapping**, not "on save": autosave runs every 800 ms on half-edited fields and would teach the memory unfinished choices.
+- `FieldMappingMemory.category` added (so a remembered batch_data field stays batch_data); the plan's model has no category.
+- `map-fields` writes nothing to the fields; the client applies the result and the normal autosave PUT stores it. A server-side write would race the 800 ms autosave of the whole list.
+- Batch results are recognised by code first (layout rule), not only by the AI's category.
+- `product_text` (value inside a longer product string, §5.2): the AI's proposal is validated and stored, but the field stays manual with a note. Per-product extraction with a verbatim check is §6.1 machinery (A2).
+- Code-proposed and code-bound group bindings are applied directly; an AI group binding is applied as `pending` in the UI, but there is no server-side activation gate for groups (fields only).
+- **Migration fix:** my first `20261022130000` named the memory index `…certificate_type_id_key` (64 chars). Postgres truncates identifiers to 63, so the name didn't match Prisma's. Fixed in the (unreleased) file to Prisma's name `…certificate_type_key`; locally I renamed the index and updated the ledger checksum. `migrate diff --from-migrations` (shadow DB) → only the old regulatory drift; local DB → schema only the orphan `eda_requirements`; `migrate status` up to date.
+
+**Deferred / not done**
+- The live accuracy run (above).
+- When code finds no label, the AI proposes one in the same call (`label` in the answer), but the UI only takes it while the field still has its placeholder label.
+- The V2 "Suggest fields (AI)" (CERT_ASSIST) button is unchanged; it now logs to `ai_runs`.
+- **Verified:** full `npm test` on a fresh `npm run dev:test`: **72/72 suites** (70 + a1.unit + a1.mapping). Frontend: `vite build` OK and oxlint clean; UI smoke phases 1–2: 47/47.

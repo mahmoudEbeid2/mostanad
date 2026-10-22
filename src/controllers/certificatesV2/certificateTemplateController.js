@@ -86,7 +86,7 @@ export const enableGroups = catchAsync(async (req, res) => {
 });
 
 export const confirmFields = catchAsync(async (req, res) => {
-  const fields = await fieldService.confirmFields(req.params.id, scopeOf(req), req.body.keys);
+  const fields = await fieldService.confirmFields(req.params.id, scopeOf(req), req.body.keys, actorId(req));
   res.status(200).json({ status: "success", data: { fields } });
 });
 
@@ -111,7 +111,7 @@ export const previewVersion = catchAsync(async (req, res) => {
 });
 
 export const activateVersion = catchAsync(async (req, res) => {
-  const data = await prepareService.activateVersion(req.params.id, scopeOf(req));
+  const data = await prepareService.activateVersion(req.params.id, scopeOf(req), actorId(req));
   res.status(200).json({ status: "success", data });
 });
 

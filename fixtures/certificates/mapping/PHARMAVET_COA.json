@@ -1,0 +1,17 @@
+{
+  "$comment": "Golden mapping set (plan.md §5.4) for PHARMAVET_COA.pdf. See ADDVET_COA.json for the format.",
+  "template": "PHARMAVET_COA.pdf",
+  "sampleProduct": "DOXYPHARMA",
+  "fields": {
+    "expiry": { "source": { "kind": "item", "path": "expiryDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+    "production": { "source": { "kind": "item", "path": "productionDate" }, "format": { "date": "MM/YYYY" }, "category": "invoice_line" },
+    "batch_no": { "source": { "kind": "item", "path": "batchNo" }, "category": "invoice_line" },
+    "ph_result": { "source": { "kind": "manual" }, "category": "batch_data" },
+    "constituent_amount": {
+      "source": { "kind": "product", "path": "activeIngredients[0].concentration" },
+      "alsoAccept": [{ "kind": "product", "path": "activeIngredients[name=\"Doxycycline hyclate\"].concentration" }],
+      "category": "product_data"
+    },
+    "producer": { "source": { "kind": "product", "path": "producer" }, "category": "product_data" }
+  }
+}

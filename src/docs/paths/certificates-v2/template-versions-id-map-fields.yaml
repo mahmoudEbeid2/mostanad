@@ -1,0 +1,33 @@
+# /template-versions/{id}/map-fields — certificate AI layers A1 (plan.md §5.2, §5.3).
+post:
+  tags: ["Template Versions"]
+  summary: Map fields to their data source (memory → dictionary → one AI call)
+  description: |
+    Draft versions only. Per field: (1) the company's mapping memory for the label (no AI); (2) a per-batch result recognised from the layout → manual, `batch_data`; (3) a single plausible match in the company's data dictionary (labels, synonyms, key words; with `sampleProductId`, the sample product's value must equal the sample) (no AI); (4) everything still open — and repeating groups code could not bind — in ONE `CERT_FIELD_MAP` call for the whole request.
+    The model only chooses from the dictionary. Code validates every answer (an invented path, fixed text that isn't the printed sample, or an invented placeholder → `status: "invalid"`), checks it against the sample product (agrees → confidence ≥ 0.97; disagrees → × 0.6) and stores an AiSuggestion with provenance. AI answers are `pending` unless the company turned auto-accept on and the confidence reaches the threshold.
+    AI turned off, failing or over quota: steps 1–3 still run, `ai.unavailable` + `ai.reason` explain why, and the rest come back `unmapped`. Nothing is written to the fields: the client applies the mappings and saves them with PUT …/fields.
+
+    Mapping: `{ source, format, required, category, origin: memory|dictionary|ai|none, confidence, status: accepted|pending|auto_accepted|unmapped|invalid, rationale, evidence?, suggestionId?, ambiguousDate?, candidates?, note?, label? }`.
+    Group binding: `{ source: { kind: "product_list", path }, cells: { [cellKey]: { kind: "row", path } }, origin, status, confidence, rationale }`.
+
+    Permission: `update_certificate_templates`. Tenant-scoped: another company's version or sample product → 404.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        example: { fields: [{ key: "batch_no", label: "Batch No.", lineId: "p1-l11", sampleValue: "AVVS1122005", labelContext: null }], keys: ["batch_no"], sampleProductId: null }
+        schema: { type: object, additionalProperties: true }
+  responses:
+    "200":
+      description: "`{ mappings: { [key]: Mapping }, groups: { [groupKey]: Binding }, ai: { used, calls, unavailable?, reason? }, dictionaryVersion }`"
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    "400": { description: Invalid body }
+    "409": { description: "VERSION_NOT_DRAFT" }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

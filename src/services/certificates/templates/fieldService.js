@@ -6,6 +6,9 @@ import * as renderer from "../engine/rendererClient.js";
 import { loadVersion } from "./templateService.js";
 import { validateSource, validateFormat, validateGroupSource, validateCellSource, GROUP_MODES, WHEN_EMPTY } from "./sourceCatalogue.js";
 import { inspectDef } from "./prepareEngine.js";
+import { stableStringify } from "../ai/aiRunLog.js";
+import { rememberMappings } from "../mapping/mappingMemory.js";
+import { proposeLabel, slugKey, looksLikeBatchResult } from "../mapping/labelProposal.js";
 
 // Field definitions on a draft TemplateVersion (CERTIFICATES_V2_PLAN.md §8.2,
 // D3, D10). The UI sends the full list; the server validates it against the
@@ -15,6 +18,8 @@ import { inspectDef } from "./prepareEngine.js";
 const KEY_RE = /^[a-z][a-z0-9_]{0,59}$/;
 const ALIGNS = ["left", "center", "right"];
 const ORIGINS = ["manual", "detected", "ai_suggested"];
+const MAPPING_ORIGINS = ["manual", "memory", "dictionary", "ai"];
+export const DATA_CATEGORIES = ["product_data", "invoice_line", "invoice_header", "company", "constant", "batch_data", "unknown"];
 
 const fail = (problems) =>
   new CertError("INVALID_FIELDS", `The field list is invalid: ${problems.slice(0, 5).map((p) => `${p.key ? `${p.key}: ` : ""}${p.message}`).join("; ")}`, 422, {
@@ -114,6 +119,11 @@ export function validateFieldList(input, lines, groups = []) {
       confirmed: raw.confirmed,
       sortOrder: Number.isInteger(raw.sortOrder) ? raw.sortOrder : i,
       groupKey: raw.groupKey ? String(raw.groupKey) : null,
+      // AI plan §5 (A1): reconciled against the stored suggestion in replaceFields
+      mappingOrigin: MAPPING_ORIGINS.includes(raw.mappingOrigin) ? raw.mappingOrigin : "manual",
+      mappingSuggestionId: typeof raw.mappingSuggestionId === "string" && raw.mappingSuggestionId ? raw.mappingSuggestionId : null,
+      mappingConfirmed: true,
+      dataCategory: DATA_CATEGORIES.includes(raw.dataCategory) ? raw.dataCategory : null,
     };
     const p = (message) => problems.push({ key: f.key || `#${i + 1}`, message });
     if (!KEY_RE.test(f.key)) p("key must be snake_case (a-z, 0-9, _), starting with a letter");
@@ -229,6 +239,8 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
     }
   }
 
+  await reconcileMappings(versionId, version.template.companyId, fields);
+
   // the analysed text must also hold in the real layout (same browser as prepare)
   const inspected = await inspectInLayout(version, fields, groups);
   const measured = inspected.fields;
@@ -265,6 +277,10 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         align: f.align,
         sortOrder: f.sortOrder,
         groupKey: f.groupKey,
+        mappingOrigin: f.mappingOrigin,
+        mappingSuggestionId: f.mappingSuggestionId,
+        mappingConfirmed: f.mappingConfirmed,
+        dataCategory: f.dataCategory,
       })),
     }),
     prisma.templateGroup.createMany({
@@ -297,10 +313,81 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
   };
 }
 
-/** Marks fields confirmed (D10) — the only change allowed to a field outside a full PUT. */
-export async function confirmFields(versionId, companyId, keys) {
+/**
+ * AI plan §5.1 step 5 / P4. A field whose source is exactly what an AI
+ * suggestion proposed stays linked to it — unconfirmed while the suggestion
+ * is pending (activation is refused). A field whose source differs was
+ * edited by a person: the suggestion is recorded `edited` with what was kept,
+ * and the mapping counts as the person's. Only the server decides this; the
+ * client's mappingOrigin "ai" without a matching suggestion becomes "manual".
+ */
+async function reconcileMappings(versionId, companyId, fields) {
+  const ids = [...new Set(fields.map((f) => f.mappingSuggestionId).filter(Boolean))];
+  const rows = ids.length ? await prisma.aiSuggestion.findMany({ where: { id: { in: ids }, companyId, kind: "field_map" } }) : [];
+  const byId = new Map(rows.map((s) => [s.id, s]));
+  const now = new Date();
+  for (const f of fields) {
+    const s = f.mappingSuggestionId ? byId.get(f.mappingSuggestionId) : null;
+    if (!s || !s.entityId.startsWith(`${versionId}:`) || ["rejected", "expired"].includes(s.status)) {
+      if (f.mappingOrigin === "ai") f.mappingOrigin = "manual";
+      f.mappingSuggestionId = null;
+      continue;
+    }
+    if (stableStringify(f.source) === stableStringify(s.proposal?.source)) {
+      f.mappingOrigin = "ai";
+      f.mappingConfirmed = ["accepted", "auto_accepted", "edited"].includes(s.status);
+      if (s.status === "edited") f.mappingOrigin = "manual";
+      continue;
+    }
+    if (["pending", "auto_accepted"].includes(s.status)) {
+      await prisma.aiSuggestion.updateMany({
+        where: { id: s.id, status: s.status },
+        data: { status: "edited", finalValue: { source: f.source, format: f.format ?? null }, decidedAt: now },
+      });
+    }
+    f.mappingOrigin = "manual";
+    f.mappingConfirmed = true;
+  }
+}
+
+/** Marks fields confirmed (D10) and accepts their pending AI mappings (AI plan §5.1) — the only change allowed to a field outside a full PUT. */
+export async function confirmFields(versionId, companyId, keys, userId = null) {
   const version = await loadVersion(versionId, companyId);
   if (!["draft", "ready"].includes(version.status)) throw new CertError("VERSION_NOT_EDITABLE", `This version is ${version.status}`, 409);
-  await prisma.templateField.updateMany({ where: { versionId, key: { in: keys } }, data: { confirmed: true } });
+  const rows = await prisma.templateField.findMany({ where: { versionId, key: { in: keys } } });
+  const pendingIds = rows.filter((f) => !f.mappingConfirmed && f.mappingSuggestionId).map((f) => f.mappingSuggestionId);
+  await prisma.$transaction([
+    prisma.templateField.updateMany({ where: { versionId, key: { in: keys } }, data: { confirmed: true, mappingConfirmed: true } }),
+    prisma.aiSuggestion.updateMany({ where: { id: { in: pendingIds }, status: { in: ["pending", "auto_accepted"] } }, data: { status: "accepted", decidedByUserId: userId, decidedAt: new Date() } }),
+  ]);
+  // a confirmed AI mapping is remembered right away (§5.1 step 7)
+  const accepted = rows.filter((f) => pendingIds.includes(f.mappingSuggestionId));
+  if (accepted.length) await rememberMappings(version.template.companyId, version.template.certificateTypeId, accepted, userId);
   return listFields(versionId);
+}
+
+/**
+ * POST /template-versions/:id/label-proposals (AI plan §5.1 step 2) — code only.
+ * fields: [{ lineId, charStart, charEnd, sampleValue }] → [{ label, from, key, category, context }]
+ * `context` (column header, row cells) is what the mapper and the AI read next.
+ */
+export async function proposeLabels(versionId, companyId, input) {
+  const version = await loadVersion(versionId, companyId);
+  if (!version.sanitizedFileId) throw new CertError("VERSION_NOT_CONVERTED", "This version has no converted design yet", 409);
+  const lines = new Map((version.lines || []).map((l) => [l.id, l]));
+  const probes = input.map((f, i) => ({ key: `f${i}`, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue }));
+  const bad = probes.filter((p) => lines.get(p.lineId)?.text.slice(p.charStart, p.charEnd) !== p.sampleValue);
+  if (bad.length) throw fail(bad.map((p) => ({ key: p.key, message: `"${p.sampleValue}" is not at ${p.charStart}–${p.charEnd} of line ${p.lineId}` })));
+  const inspected = (await inspectInLayout(version, probes)).fields;
+  return probes.map((p) => {
+    const context = inspected[p.key]?.ok ? inspected[p.key].labelContext || null : null;
+    const { label, from } = proposeLabel({ lineText: lines.get(p.lineId).text, charStart: p.charStart, context });
+    return {
+      label,
+      from,
+      key: label ? slugKey(label) : null,
+      category: looksLikeBatchResult({ label, context }) ? "batch_data" : null,
+      context,
+    };
+  });
 }
