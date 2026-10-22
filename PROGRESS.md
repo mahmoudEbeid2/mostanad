@@ -1462,3 +1462,17 @@ Owner: build the dictionary health report, the completeness view, structured pro
 - **Batch entity** (plan §9 "optional"): not built, per the owner. Lab results stay per invoice review (A2 batch-data form). How often to revisit: the dashboard's `invoice_gap` / data-check numbers and repeated `provided` lab values per batch number are the signal.
 - No live run of `CERT_DICTIONARY` (paid); it has no golden set (its output is suggestions a person always reviews).
 - **Verified:** full `npm test` on a fresh `npm run dev:test`: **76/76 suites** (75 + a4.insights). Frontend `vite build` OK, `oxlint` exit 0. No migration in A4.
+
+## Certificate AI layers — post-A4 fixes (owner, 2026-10-23)
+
+**Built**
+- **Automatic data check:** the extract job now runs match → status `review` → `computeNeeds` (code + one gap call) for every new invoice. A failing check never fails the extraction (logged; the review screen runs it again). New column `invoices.data_checked_at`, set by every check run.
+- **Gate:** `batchService.assertDataCheckGate` (extracted from `startGeneration`) — an invoice whose check ran (`dataCheckedAt`, or need rows from a manual check before the column existed) is refreshed by code and refused while required values are missing / need confirmation (force + `update_certificates` as before), even if nobody opened the review panel and even when no template applied (0 values → open). Invoices created before this change (`dataCheckedAt` NULL, no rows) keep the V2 behaviour; nothing is computed for them behind the user's back.
+- **Match status:** matching already ran at the end of the extract job (V2 §9.1); what was missing was its outcome — only the background task saw it, so the screen said nothing about AI suggestions or an unavailable AI until "Re-run matching". New column `invoices.match_summary` `{ matched, needsMatch, ai: { used, calls, suggested, autoAccepted, unavailable?, reason? }, by: extraction|rematch, at }`, written by the extract job and by `rematch`; returned by `GET /invoices/:id`. Frontend: a line under the review header ("Matched automatically when the invoice was read: 2 lines matched, 1 needs a product · AI suggests a product for 1 — confirm them in the lines below", plus the reason when the AI was unavailable).
+- `runExtractJob(invoiceId, ctx, deps)` takes `{ extract, matchGenerate, gapsGenerate }` for tests; the worker is unchanged.
+- Migration `20261023140000_cert_ai_auto_check` (additive: 2 nullable columns), applied locally with `migrate deploy`.
+- **Test** `postA4.autoCheck.test.js` (20): the job with a stand-in extractor/models → code matches, ONE AI match call, the pick waiting, summary stored; check ran (20 values, ONE gap call, 8 waiting); API GET shows both; gate 409 through service and API without opening the panel, force 403/pass, opens after confirmation; legacy invoice not gated and untouched; company without templates still marked checked; AI down for both steps → extraction succeeds, summary says why, gaps missing; rematch rewrites the summary.
+
+**Cost note:** every uploaded invoice now makes up to 3 Gemini calls (extraction, matching for ambiguous lines, gap fill) instead of 1 — on the free tier (20/day) that is ~6 invoices a day. Each step is off with its company setting.
+
+**Verified:** full `npm test` on a fresh `npm run dev:test`: **77/77 suites**. Frontend `vite build` OK, `oxlint` exit 0.

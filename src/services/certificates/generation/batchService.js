@@ -42,6 +42,21 @@ const searchText = (parts) =>
     .toLowerCase() || null;
 
 /**
+ * The generate gate (plan.md §6.2): for an invoice whose data check has run,
+ * refresh it by code and refuse while required values are missing or waiting
+ * for confirmation — unless `force` with `canForce`. → { gated, open? }
+ */
+export async function assertDataCheckGate(invoice, { force = false, canForce = false } = {}) {
+  if (!(await refreshIfChecked(invoice))) return { gated: false };
+  const open = await blockingCounts(invoice.id);
+  if (open.missing + open.needsConfirmation > 0) {
+    if (!force) throw new CertError("DATA_NEEDS_OPEN", `${open.missing} required value(s) missing and ${open.needsConfirmation} waiting for confirmation — complete the certificate data check first`, 409, open);
+    if (!canForce) throw new CertError("FORBIDDEN", "Generating with open values needs the update_certificates permission", 403);
+  }
+  return { gated: true, open };
+}
+
+/**
  * POST /invoices/:id/generate → 202 { batchId, taskId, planned }
  * The certificate data check (plan.md §6.2): once it has been run for the
  * invoice, required values that are still missing or awaiting confirmation
@@ -54,13 +69,7 @@ export async function startGeneration(invoiceId, companyId, userId, { force = fa
   if (!GENERATABLE.includes(invoice.status)) {
     throw new CertError("INVOICE_NOT_READY", `Confirm the invoice before generating (it is ${invoice.status})`, 409);
   }
-  if (await refreshIfChecked(invoice)) {
-    const open = await blockingCounts(invoiceId);
-    if (open.missing + open.needsConfirmation > 0) {
-      if (!force) throw new CertError("DATA_NEEDS_OPEN", `${open.missing} required value(s) missing and ${open.needsConfirmation} waiting for confirmation — complete the certificate data check first`, 409, open);
-      if (!canForce) throw new CertError("FORBIDDEN", "Generating with open values needs the update_certificates permission", 403);
-    }
-  }
+  await assertDataCheckGate(invoice, { force, canForce });
   const plan = await computePlan(invoice);
   if (!plan.entries.length) {
     throw new CertError("NOTHING_TO_GENERATE", "No active template applies to any line of this invoice", 409, { unassigned: plan.unassigned, gaps: plan.gaps });

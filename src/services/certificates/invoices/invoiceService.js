@@ -68,12 +68,26 @@ export async function uploadInvoice({ companyId, userId, file, brandId = null, c
   return { invoiceId: invoice.id, taskId: task.id };
 }
 
+/** What the review screen shows about the last matching run (post-A4): counts + the AI step's outcome. */
+export const matchSummaryOf = (res, by) => ({
+  matched: res.matched,
+  needsMatch: res.needsMatch,
+  ai: res.ai ? { used: !!res.ai.used, calls: res.ai.calls || 0, suggested: res.ai.suggested || 0, autoAccepted: res.ai.autoAccepted || 0, ...(res.ai.unavailable ? { unavailable: true, reason: String(res.ai.reason || "").slice(0, 500) } : {}) } : null,
+  by,
+  at: new Date().toISOString(),
+});
+
 /**
  * The `extract` job (§9.1): file → Gemini → frozen raw output + editable
- * copies → automatic matching → `review`. A failure leaves the invoice
- * `failed` with the provider's real message and ZERO items.
+ * copies → automatic matching (its summary stored for the review screen) →
+ * `review` → the certificate data check (plan.md §6.1, post-A4: automatic for
+ * every new invoice; from then on generate is gated on it). A failed check
+ * never fails the extraction — the review screen runs it again.
+ * A failure of extraction leaves the invoice `failed` with the provider's real
+ * message and ZERO items.
+ * deps (tests): { extract, matchGenerate, gapsGenerate }
  */
-export async function runExtractJob(invoiceId, ctx = {}) {
+export async function runExtractJob(invoiceId, ctx = {}, deps = {}) {
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!invoice) throw notFound("Invoice");
   if (["review", "ready", "generating", "generated", "partially_failed"].includes(invoice.status)) return { invoiceId, status: invoice.status, skipped: true }; // idempotent retry
@@ -81,7 +95,7 @@ export async function runExtractJob(invoiceId, ctx = {}) {
   try {
     ctx.progress?.(10, "Reading the invoice");
     const { row, buffer } = await fileStore.readFile(invoice.sourceFileId);
-    const out = await extractInvoice(buffer, row.mimeType, { companyId: invoice.companyId, invoiceId }, await extractionHints(invoice.companyId));
+    const out = await (deps.extract || extractInvoice)(buffer, row.mimeType, { companyId: invoice.companyId, invoiceId }, await extractionHints(invoice.companyId));
     ctx.progress?.(70, `Found ${out.items.length} lines`);
     const country = invoice.country || normCountry(out.header.customerCountry && /^[A-Za-z]{2}$/.test(out.header.customerCountry) ? out.header.customerCountry : null);
     // each line's row in the stored text (plan.md §6.1 row scope); { none } = looked, not found
@@ -95,9 +109,19 @@ export async function runExtractJob(invoiceId, ctx = {}) {
       }),
     ]);
     ctx.progress?.(85, "Matching products");
-    const match = await matchInvoice(invoiceId);
-    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "review" } });
-    return { invoiceId, status: "review", items: out.items.length, ...match };
+    const match = await matchInvoice(invoiceId, { generate: deps.matchGenerate });
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "review", matchSummary: matchSummaryOf(match, "extraction") } });
+    ctx.progress?.(95, "Checking certificate data");
+    let dataCheck;
+    try {
+      const { computeNeeds } = await import("../dataNeeds/dataNeedsService.js"); // lazy: dataNeeds imports this module
+      const check = await computeNeeds(invoiceId, null, { generate: deps.gapsGenerate });
+      dataCheck = { ...check.summary, ai: check.ai };
+    } catch (err) {
+      console.error(`[invoice ${invoiceId}] automatic data check failed (the review screen runs it again): ${err.message}`);
+      dataCheck = { error: err.message };
+    }
+    return { invoiceId, status: "review", items: out.items.length, ...match, dataCheck };
   } catch (err) {
     await prisma.$transaction([
       prisma.invoiceItem.deleteMany({ where: { invoiceId } }),
@@ -322,7 +346,7 @@ export async function rematch(invoiceId, companyId) {
   const inv = await loadInvoice(invoiceId, companyId);
   assertEditable(inv);
   const res = await matchInvoice(invoiceId);
-  await prisma.invoice.update({ where: { id: invoiceId }, data: reopen(inv) });
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { ...reopen(inv), matchSummary: matchSummaryOf(res, "rematch") } });
   return res;
 }
 

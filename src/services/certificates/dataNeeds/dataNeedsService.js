@@ -315,6 +315,8 @@ async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate } 
   const ctx = await loadContext(invoice);
   await ensureSpans(invoice, ctx.items);
   const rows = await computeCode(invoice, ctx);
+  // the check has run: from now on generate is gated on it (post-A4), even if no template applied yet
+  await prisma.invoice.update({ where: { id: invoice.id }, data: { dataCheckedAt: new Date() } });
   let aiOut = { used: false, calls: 0 };
   if (ai) {
     const settings = await getAiSettings(invoice.companyId);
@@ -323,9 +325,13 @@ async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate } 
   return buildView(invoice, ctx, aiOut);
 }
 
-/** Code-only refresh, used by generation's gate: true when the invoice's check was ever run. */
+/**
+ * Code-only refresh, used by generation's gate: true when the invoice's check
+ * was ever run — `dataCheckedAt` (automatic since post-A4), or need rows from a
+ * check run by hand before that column existed. Older invoices: false (V2 behaviour).
+ */
 export async function refreshIfChecked(invoice) {
-  if (!(await prisma.certificateDataNeed.count({ where: { invoiceId: invoice.id } }))) return false;
+  if (!invoice.dataCheckedAt && !(await prisma.certificateDataNeed.count({ where: { invoiceId: invoice.id } }))) return false;
   await serialized(invoice.id, async () => {
     const ctx = await loadContext(invoice);
     await ensureSpans(invoice, ctx.items);

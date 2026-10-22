@@ -897,6 +897,8 @@ model Invoice {
   headerExtracted  Json?     @map("header_extracted") // raw AI output, never edited (audit)
   extraction       Json? // { modelId, promptHash, ms, warnings[] }
   textContent      String?   @map("text_content") @db.Text // the full text the extractor read, "=== Page N ===" markers (plan.md §6.1, P2 evidence)
+  matchSummary     Json?     @map("match_summary") // last product matching: { matched, needsMatch, ai, at, by: extraction|rematch } (post-A4)
+  dataCheckedAt    DateTime? @map("data_checked_at") // the certificate data check ran (automatically after extraction, post-A4) → generate is gated
   error            String?
   reviewedAt       DateTime? @map("reviewed_at")
   reviewedByUserId String?   @map("reviewed_by_user_id")

@@ -311,3 +311,9 @@ Additive.
 - **AiSuggestion:** new `entityType` `dictionary_entry` (kind `dictionary_synonym`).
 - **New env (optional):** `CERT_AI_PRICE_INPUT_PER_M`, `CERT_AI_PRICE_OUTPUT_PER_M`, `CERT_AI_PRICE_CACHED_PER_M` (USD per 1M tokens, defaults 0.30 / 2.50 / 0.075) — only the dashboard's cost estimate reads them.
 - **`POST /invoices/:id/data-needs` (A2):** concurrent checks of one invoice are serialised in the API process and need rows are upserted, so two checks at once no longer fail (found in the A4 UI check: the review screen fires two).
+
+## Certificate AI layers — post-A4 fixes (2026-10-23)
+
+- **Extraction** now also runs the certificate data check automatically (after matching). From then on `POST /invoices/:id/generate` is gated on it (409 `DATA_NEEDS_OPEN`) even if the review panel was never opened. Invoices created before this change are not gated.
+- **`GET /invoices/:id`** adds `matchSummary` `{ matched, needsMatch, ai: { used, calls, suggested, autoAccepted, unavailable?, reason? }, by: extraction|rematch, at }` and `dataCheckedAt`. `POST /invoices/:id/rematch` rewrites `matchSummary`.
+- Migration `20261023140000_cert_ai_auto_check` (two nullable columns).
