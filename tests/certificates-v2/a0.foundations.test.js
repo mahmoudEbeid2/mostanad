@@ -91,14 +91,21 @@ try {
   assert("manual rebuild → version bumps and the new key appears", r.status === 200 && r.data.data.dictionary.version === dict.version + 1 && r.data.data.dictionary.entries.some((e) => e.path === 'product.specifications.values["Loss on drying"]'), r.data?.data?.dictionary?.version);
   r = await api("POST", "/certificate-data-dictionary/rebuild", B);
   assert("rebuild is tenant-forced (B's own)", r.status === 200 && !JSON.stringify(r.data.data.dictionary).includes("Loss on drying"));
+  const before = await prisma.dataDictionary.findUnique({ where: { companyId: coA.id } });
   await createProduct(coA.id, { name: `A0 trigger ${Date.now()}` });
   const queue = new Queue("certificateTemplateQueue", { connection: getRedisConfig() });
-  const delayed = await queue.getJobs(["delayed", "waiting", "active"]);
-  assert("a product save schedules one throttled rebuild (≥ 10 min after the last)", delayed.some((j) => j.name === "rebuildDictionary" && j.data.companyId === coA.id && j.id.startsWith(`dict-${coA.id}-`) && j.delay > 5 * 60 * 1000), delayed.map((j) => [j.name, j.id, j.delay]));
+  const mine = async () => (await queue.getJobs(["delayed", "waiting", "active"])).filter((j) => j.name === "rebuildDictionary" && j.data.companyId === coA.id);
+  let pending = await mine();
+  assert("a product save schedules a rebuild within seconds (debounced, not throttled)", pending.length === 1 && pending[0].delay <= 5000, pending.map((j) => [j.id, j.delay]));
   await createProduct(coA.id, { name: `A0 trigger 2 ${Date.now()}` });
-  const again = (await queue.getJobs(["delayed", "waiting", "active"])).filter((j) => j.name === "rebuildDictionary" && j.data.companyId === coA.id);
-  assert("a second save in the same window adds no second rebuild", again.length === 1, again.length);
-  for (const j of again) await j.remove();
+  pending = await mine();
+  assert("a second save right after still makes one rebuild", pending.length === 1, pending.length);
+  let after = null;
+  for (let i = 0; i < 20 && !(after && after.version > before.version); i++) {
+    await new Promise((res) => setTimeout(res, 1000));
+    after = await prisma.dataDictionary.findUnique({ where: { companyId: coA.id } });
+  }
+  assert("…which the worker runs: the dictionary now counts both new products", after.version === before.version + 1 && after.productCount === before.productCount + 2, { before: [before.version, before.productCount], after: [after?.version, after?.productCount] });
   const schedulers = await queue.getJobSchedulers();
   assert("nightly rebuild is scheduled", schedulers.some((s) => s.key === "certificates-dictionary-nightly" || s.id === "certificates-dictionary-nightly"), schedulers.map((s) => s.key || s.id));
   await queue.close();

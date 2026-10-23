@@ -3,28 +3,29 @@ import { QUEUES, enqueueRaw } from "../jobs/queues.js";
 import { buildDictionary } from "./dataDictionary.js";
 
 // When a company's data dictionary is rebuilt (plan.md §3.2): lazily on first
-// use (getDictionary), after product changes — at most one rebuild per
-// company per 10 minutes — and nightly. Rebuilds run on the template worker.
+// use (getDictionary), after every product change, and nightly. Rebuilds run
+// on the template worker; they read products only (no AI).
+//
+// After a product change the rebuild is debounced, not throttled: it runs
+// DEBOUNCE_MS after the LAST save, so a burst (a catalogue apply) is one
+// rebuild and a single edit shows up in the source picker within seconds.
+// (It used to be at most one rebuild per 10 minutes — a product created right
+// after the wizard opened stayed invisible for up to 10 minutes.)
 
-export const REBUILD_WINDOW_MS = 10 * 60 * 1000;
-const SOON_MS = 5000; // coalesces a burst of saves (a catalog upload) into one rebuild
+export const DEBOUNCE_MS = 5000;
 
 /**
- * Schedules a rebuild after a product change. A rebuild already waiting in
- * the same 10-minute window absorbs this one (same jobId → BullMQ ignores the
- * add). Never fails the caller's product write: a scheduling error is logged
- * and the nightly rebuild catches up.
+ * Schedules a rebuild after a product change: one delayed job per company;
+ * each further save replaces it and restarts the delay (BullMQ deduplication,
+ * extend + replace). Never fails the caller's product write: a scheduling
+ * error is logged and the nightly rebuild catches up.
  */
 export async function scheduleDictionaryRebuild(companyId) {
   if (!companyId) return;
   try {
-    const row = await prisma.dataDictionary.findUnique({ where: { companyId }, select: { builtAt: true } });
-    const earliest = row ? row.builtAt.getTime() + REBUILD_WINDOW_MS : 0;
-    const runAt = Math.max(Date.now() + SOON_MS, earliest);
-    const bucket = Math.floor(runAt / REBUILD_WINDOW_MS);
     await enqueueRaw(QUEUES.template, "rebuildDictionary", { companyId, entity: "data_dictionary", entityId: companyId }, {
-      jobId: `dict-${companyId}-${bucket}`,
-      delay: runAt - Date.now(),
+      delay: DEBOUNCE_MS,
+      deduplication: { id: `dict-${companyId}`, ttl: DEBOUNCE_MS, extend: true, replace: true },
       removeOnComplete: true,
       removeOnFail: 100,
     });
