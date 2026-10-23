@@ -65,6 +65,8 @@ async function run() {
   r = await call("GET", `/products?limit=100&search=${ts}&companyId=${coB.id}`, asAdmin);
   ids = (r.data?.data?.products || []).map((p) => p.id);
   assert("a system user may filter with ?companyId=", r.status === 200 && ids.length === 1 && ids[0] === pB.id, ids);
+  const row = r.data.data.products[0];
+  assert("list rows name their company (id + name only, nothing else of the company)", row.company?.id === coB.id && !!row.company.name && Object.keys(row.company).sort().join() === "id,name", row.company);
 
   // by id
   r = await call("GET", `/products/${pA.id}`, A);

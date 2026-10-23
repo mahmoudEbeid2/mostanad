@@ -72,7 +72,7 @@ export const getAllProducts = async (queryString, scopeCompanyId) => {
     .paginate();
 
   if (scopeCompanyId) features.queryOptions.where.companyId = scopeCompanyId;
-  features.queryOptions.include = { category: true, brand: true };
+  features.queryOptions.include = { category: true, brand: true, company: { select: { id: true, name: true } } }; // the list's "Company & Brand" column
 
   const result = await features.exec();
 
@@ -89,7 +89,7 @@ export const getAllProducts = async (queryString, scopeCompanyId) => {
 export const getProductById = async (id, scopeCompanyId) => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { category: true, brand: true },
+    include: { category: true, brand: true, company: { select: { id: true, name: true } } },
   });
 
   if (!product || (scopeCompanyId && product.companyId !== scopeCompanyId)) {
