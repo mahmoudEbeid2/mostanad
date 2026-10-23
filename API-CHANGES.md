@@ -369,3 +369,8 @@ Additive; no migration.
 - **Migration** `20261023170000_catalogue_search` (additive): `CREATE EXTENSION IF NOT EXISTS pg_trgm` (needs a role allowed to create extensions — the app role in docker-compose owns the database) + two GIN expression indexes on `catalogue_blocks` (FTS over title + text, trigram over the extracted name). No column changes; `prisma migrate diff` shows no drift for them.
 - **New:** `GET /catalogue-search?q=&companyId=&limit=&allVersions=` (read_products) → `{ q, words, results }` (OpenAPI doc).
 - **Invoice matching:** for a line still needing a product, products whose linked catalogue block (latest edition) prints ≥ half (and ≥ 2) of the line name's words join its candidates (reason `catalogue p.N: k/n words printed`, score ≤ 0.8) and the AI shortlist — never an automatic match. The match summary gains `catalogue { lines, added, failed? }`.
+
+## Certificate AI layers (plan.md) — P8 manual invoice entry (2026-10-23)
+
+Additive; no migration.
+- **New:** `POST /invoices/:id/manual` (update_invoices) — a `failed` invoice moves to `review` with no lines and nothing filled in (`extraction: { manual: true, byUserId, at, reason }`, `error` cleared); the person types the header and lines with the existing review endpoints. 409 `INVOICE_NOT_FAILED` otherwise. Before this, an invoice that couldn't be read (AI unavailable) could only be retried — there was no manual path.

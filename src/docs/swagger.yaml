@@ -289,6 +289,8 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-confirm.yaml'
   /invoices/{id}/retry:
     $ref: './paths/certificates-v2/invoices-id-retry.yaml'
+  /invoices/{id}/manual:
+    $ref: './paths/certificates-v2/invoices-id-manual.yaml'
   /invoices/{id}/generation-plan:
     $ref: './paths/certificates-v2/invoices-id-generation-plan.yaml'
   /invoices/{id}/generate:

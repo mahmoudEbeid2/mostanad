@@ -60,6 +60,11 @@ export const confirmInvoice = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { invoice } });
 });
 
+export const startManualEntry = catchAsync(async (req, res) => {
+  const invoice = await invoiceService.startManualEntry(req.params.id, scopeOf(req), actorId(req));
+  res.status(200).json({ status: "success", data: { invoice } });
+});
+
 export const retryExtraction = catchAsync(async (req, res) => {
   const data = await invoiceService.retryExtraction(req.params.id, scopeOf(req));
   res.status(202).json({ status: "accepted", data });
