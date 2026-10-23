@@ -1,0 +1,13 @@
+# /catalogues/{id} (plan.md §15.2, A6.1).
+get:
+  tags: ["Catalogues"]
+  summary: One catalogue with its versions
+  description: "Another company's catalogue → 404. Permission: read_products."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "OK", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

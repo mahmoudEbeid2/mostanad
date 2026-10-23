@@ -19,6 +19,7 @@ export const CERT_TASK_TYPES = [
   "certificate_generate_batch",
   "certificate_export_pdf",
   "certificate_export_zip",
+  "catalogue_segment", // product catalogues (plan.md §15, A6)
 ];
 
 /** Ids of every StoredFile some row still references. */
@@ -34,7 +35,8 @@ async function referencedFileIds() {
     UNION SELECT pdf_file_id FROM certificate_versions
     UNION SELECT thumbnail_file_id FROM certificate_versions
     UNION SELECT final_pdf_file_id FROM certificates
-    UNION SELECT zip_file_id FROM certificate_batches`;
+    UNION SELECT zip_file_id FROM certificate_batches
+    UNION SELECT source_file_id FROM catalogue_versions`; // a catalogue is kept forever (plan.md §15.7)
   return new Set(rows.map((r) => r.id).filter(Boolean));
 }
 
@@ -125,7 +127,10 @@ export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), 
     });
     await prisma.invoice.updateMany({ where: { id: b.invoiceId, status: "generating" }, data: { status: "partially_failed" } });
   }
-  return { tasks: tasks.count, templateVersions: converting.count + preparing.count, invoices: extracting.count, batches: batches.length };
+  // a catalogue version whose segmentation never finished: failed, so the admin can upload it again
+  const stuckCatalogueIds = idsNotLive(await prisma.catalogueVersion.findMany({ where: { ...own, status: { in: ["uploaded", "segmenting"] }, updatedAt: { lt: cutoff } }, select: { id: true } }), live.entityIds);
+  const catalogues = await prisma.catalogueVersion.updateMany({ where: { id: { in: stuckCatalogueIds } }, data: { status: "failed", error: reason } });
+  return { tasks: tasks.count, templateVersions: converting.count + preparing.count, invoices: extracting.count, batches: batches.length, catalogueVersions: catalogues.count };
 }
 
 /** The daily job. */

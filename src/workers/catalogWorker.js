@@ -5,6 +5,9 @@ import { prisma } from "../lib/prisma.js";
 import { processCatalogPDF } from "../services/catalogService.js";
 import io from "socket.io-client";
 import { geminiWorkerName } from "../services/ai/geminiGuard.js";
+import { startWorker } from "../services/certificates/jobs/taskRunner.js";
+import { QUEUES } from "../services/certificates/jobs/queues.js";
+import { runSegmentJob } from "../services/catalogues/catalogueService.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -127,3 +130,15 @@ const worker = new Worker(
 
 worker.on("ready", () => console.log("[Catalog Worker] BullMQ worker is ready."));
 worker.on("failed", (job, err) => console.error(`[Catalog Worker] Job ${job?.id} failed:`, err));
+
+// Product catalogues as source documents (plan.md §15, A6) — the queue that
+// replaces the legacy one above once the new flow is live (§15.8). Same process,
+// so no new container. Thin: the work is in services/catalogues.
+export const catalogueWorker = startWorker({
+  queueName: QUEUES.catalogue,
+  label: "Catalogue Worker",
+  concurrency: 1,
+  handlers: {
+    segment: ({ versionId }, ctx) => runSegmentJob(versionId, ctx),
+  },
+});

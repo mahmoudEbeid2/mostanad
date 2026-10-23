@@ -9,6 +9,7 @@ export const QUEUES = {
   template: "certificateTemplateQueue", // convert, prepare
   invoice: "invoiceQueue", // extract, match
   render: "certificateRenderQueue", // generateBatch, renderVersion, exportPdf, exportZip
+  catalogue: "catalogueQueue", // product catalogues (plan.md §15, A6): segment
 };
 
 const connection = getRedisConfig();

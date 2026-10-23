@@ -1,0 +1,14 @@
+# /catalogue-versions/{id} (plan.md §15.3, A6.1).
+get:
+  tags: ["Catalogues"]
+  summary: A catalogue version and its blocks
+  description: |
+    { version }: the version (label, status, pages, warnings, numberConvention, extraction, catalogue { manufacturer }) and `blocks` in reading order — { id, seq, kind: product|context, page, bbox { x, y, w, h } (PDF points, top-left origin), title (the large-font title code found; null when drawn as artwork), text (what every quote is verified against; the cells of one printed line are tab-separated), status, productId, extracted }. Line geometry is on GET /catalogue-blocks/{id}. Permission: read_products.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "OK", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

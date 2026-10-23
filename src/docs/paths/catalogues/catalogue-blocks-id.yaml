@@ -1,0 +1,13 @@
+# /catalogue-blocks/{id} (plan.md §15.3, A6.1).
+get:
+  tags: ["Catalogues"]
+  summary: One block with its line geometry
+  description: "{ block } with lines: [{ t, o, x, y, w, h }] — each printed line's text, its offset into text, and its box on the page (to highlight a quote). Permission: read_products."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "OK", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

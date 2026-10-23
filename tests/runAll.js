@@ -27,6 +27,7 @@ const GEMINI_QUEUES = [
   "certificateTemplateQueue",
   "invoiceQueue", // the only Gemini caller in the certificate pipeline (§9.1)
   "certificateRenderQueue",
+  "catalogueQueue", // product catalogues (plan.md §15, A6) — CATALOGUE_EXTRACT from A6.3
 ];
 
 async function assertNoGeminiConsumers() {

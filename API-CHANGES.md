@@ -317,3 +317,13 @@ Additive.
 - **Extraction** now also runs the certificate data check automatically (after matching). From then on `POST /invoices/:id/generate` is gated on it (409 `DATA_NEEDS_OPEN`) even if the review panel was never opened. Invoices created before this change are not gated.
 - **`GET /invoices/:id`** adds `matchSummary` `{ matched, needsMatch, ai: { used, calls, suggested, autoAccepted, unavailable?, reason? }, by: extraction|rematch, at }` and `dataCheckedAt`. `POST /invoices/:id/rematch` rewrites `matchSummary`.
 - Migration `20261023140000_cert_ai_auto_check` (two nullable columns).
+
+## Certificate AI layers (plan.md) — Phase A6.1 Catalogue kept as a source document (2026-10-23)
+
+Additive. The V1 `POST /products/upload-catalog` is unchanged and keeps working until the new flow is live (plan §15.8).
+- **New:** `POST /catalogues` (multipart `file` + `companyId` required, `manufacturer?`, `brandId?`, `label?`) and `POST /catalogues/:id/versions` (`file`, `label?`) → 202 `{ catalogueId, versionId, jobId }`; `POST /catalogue-blocks/:id/link` `{ productId }` → `{ blockId, productId, catalogueRef }`. All three need the new permission **`manage_catalogues`** (module `catalogues`, not company-allowed → system users only).
+- **New (read, `read_products`, tenant-forced; a system user passes `?companyId=`):** `GET /catalogues`, `GET /catalogues/:id`, `GET /catalogue-versions/:id` (version + blocks), `GET /catalogue-versions/:id/file` (the kept PDF), `GET /catalogue-blocks/:id` (block + line geometry). Another company's row → 404.
+- **Background task** type `catalogue_segment` on the new `catalogueQueue` (consumed by the existing catalog-worker process). Version status: `uploaded → segmenting → segmented` (or `failed`).
+- **Product:** two nullable columns returned with every product — `catalogueRef` `{ catalogueId, catalogueVersionId, blockId, page }` and `fieldProvenance` (per field `{ tier: "C"|"I", … }`, written from A6.3).
+- **Errors:** 400 `COMPANY_REQUIRED`, `BRAND_NOT_IN_COMPANY`, `FILE_REQUIRED`; 409 `NOT_A_PRODUCT_BLOCK`; 413 `FILE_TOO_LARGE` (60 MB); 415 `NOT_A_PDF`.
+- Migration `20261023160000_catalogues` (3 tables, 2 nullable product columns). Permission seeded in `prisma/seed.js`.

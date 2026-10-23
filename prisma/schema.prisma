@@ -97,6 +97,7 @@ model Company {
   aiRuns               AiRun[]
   fieldMappingMemory   FieldMappingMemory[]
   productAliases       ProductAlias[]
+  catalogues           Catalogue[]
 
   @@map("companies")
 }
@@ -159,6 +160,10 @@ model Product {
   productType        String? @map("product_type")
   prescriptionStatus String? @map("prescription_status") // POM | OTC | VFD
 
+  // Catalogue as a source document (plan.md §15, A6)
+  catalogueRef    Json? @map("catalogue_ref") // { catalogueId, catalogueVersionId, blockId, page } — the block this product was created/updated/linked from
+  fieldProvenance Json? @map("field_provenance") // field -> { tier: "C"|"I", catalogueVersionId?, blockId?, page?, quote?, estimated?, basis?, modelId?, promptHash?, at, confirmedByUserId? }
+
   // Relations
   categoryId String?   @map("category_id")
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -173,6 +178,7 @@ model Product {
   invoiceItems    InvoiceItem[]
   certificates    Certificate[]
   aliases         ProductAlias[]
+  catalogueBlocks CatalogueBlock[]
 
   @@map("products")
 }
@@ -228,6 +234,7 @@ model Brand {
   referenceLabels      ReferenceLabel[]
   certificateTemplates CertificateTemplate[]
   invoices             Invoice[]
+  catalogues           Catalogue[]
 
   @@map("brands")
 }
@@ -1168,4 +1175,79 @@ model ProductAlias {
 
   @@unique([companyId, aliasNorm])
   @@map("product_aliases")
+}
+
+// ==========================================
+// Product catalogues as source documents (plan.md §15, Phase A6)
+// ==========================================
+
+// One manufacturer catalogue per company (plan §15.2). Uploaded by a system
+// user (manage_catalogues) for a chosen company; tenant-scoped like everything else.
+model Catalogue {
+  id           String             @id @default(uuid())
+  companyId    String             @map("company_id")
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  manufacturer String
+  brandId      String?            @map("brand_id")
+  brand        Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  versions     CatalogueVersion[]
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@unique([companyId, manufacturer])
+  @@map("catalogues")
+}
+
+// One uploaded file of a catalogue. The file is a StoredFile kept forever
+// (the maintenance sweep counts source_file_id as a reference).
+model CatalogueVersion {
+  id               String           @id @default(uuid())
+  catalogueId      String           @map("catalogue_id")
+  catalogue        Catalogue        @relation(fields: [catalogueId], references: [id], onDelete: Restrict)
+  companyId        String           @map("company_id") // = catalogue.companyId, for tenant-scoped queries without a join
+  label            String // "2025–2026"
+  sourceFileId     String           @map("source_file_id")
+  status           String           @default("uploaded") // uploaded|segmenting|segmented|extracting|review|applied|failed
+  numberConvention Json?            @map("number_convention") // { dotGroup3: "thousands"|"decimal", source: "majority"|"admin", confirmedByUserId?, at }
+  pages            Int              @default(0)
+  warnings         Json? // [{ code: no_text_layer|no_product_blocks, page?, message }]
+  extraction       Json? // { segmenter, modelId?, promptHash?, ms, calls, … }
+  error            String?
+  uploadedByUserId String?          @map("uploaded_by_user_id")
+  appliedAt        DateTime?        @map("applied_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  blocks           CatalogueBlock[]
+
+  @@index([companyId, createdAt])
+  @@index([catalogueId, createdAt])
+  @@map("catalogue_versions")
+}
+
+// One product (or context) region of a page, found by code (plan §15.3 step 2).
+// `text` is what every quote is verified against; `lines` keep the geometry
+// so the review screen can highlight a quote on the page.
+model CatalogueBlock {
+  id        String           @id @default(uuid())
+  versionId String           @map("version_id")
+  version   CatalogueVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  companyId String           @map("company_id")
+  seq       Int // reading order within the version
+  kind      String           @default("product") // product | context (cover/back pages: producer, origin)
+  page      Int
+  bbox      Json // { x, y, w, h } in PDF points, top-left origin
+  title     String? // the large-font title code found, if any
+  text      String           @db.Text
+  lines     Json // [{ t, o, x, y, w, h }] — text, offset into `text`, box
+  extracted Json? // structured record + per-field quotes + flags (A6.3)
+  status    String           @default("pending") // pending|accepted|rejected|applied
+  productId String?          @map("product_id")
+  product   Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@index([versionId, seq])
+  @@index([companyId])
+  @@index([productId])
+  @@map("catalogue_blocks")
 }

@@ -1,0 +1,17 @@
+# /catalogue-blocks/{id}/link (plan.md §15.3 step 7, §15.8; A6.1).
+post:
+  tags: ["Catalogues"]
+  summary: Link a product block to an existing product
+  description: "Body { productId } (same company). Writes block.productId and the product's catalogueRef { catalogueId, catalogueVersionId, blockId, page } — no other product field changes. A context block → 409 NOT_A_PRODUCT_BLOCK. Permission: manage_catalogues."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content: { application/json: { schema: { type: object, required: [productId], properties: { productId: { type: string, format: uuid } } } } }
+  responses:
+    "200": { description: "OK", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: NOT_A_PRODUCT_BLOCK }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

@@ -101,6 +101,11 @@ export const permissions = [
   { name: "Update Invoices", slug: "update_invoices", module: "invoices" },
   { name: "Delete Invoices", slug: "delete_invoices", module: "invoices" },
   { name: "Export Certificates", slug: "export_certificates", module: "certificates" },
+
+  // Product catalogues (plan.md §15.2): upload, re-extraction, applying a diff.
+  // Module "catalogues" is deliberately NOT in COMPANY_ALLOWED_MODULES — system
+  // users only. Companies read their catalogues under read_products.
+  { name: "Manage Catalogues", slug: "manage_catalogues", module: "catalogues" },
 ];
 
 async function main() {

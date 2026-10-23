@@ -23,6 +23,8 @@ tags:
     description: Certificates V2
   - name: Template Versions
     description: Certificates V2
+  - name: Catalogues
+    description: Manufacturer catalogues kept as source documents (plan.md §15)
   - name: Invoices
     description: Certificates V2
   - name: Certificate Generation
@@ -295,6 +297,20 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-data-needs.yaml'
   /invoices/{id}/data-needs/web-lookup:
     $ref: './paths/certificates-v2/invoices-id-data-needs-web-lookup.yaml'
+  /catalogues:
+    $ref: './paths/catalogues/catalogues.yaml'
+  /catalogues/{id}:
+    $ref: './paths/catalogues/catalogues-id.yaml'
+  /catalogues/{id}/versions:
+    $ref: './paths/catalogues/catalogues-id-versions.yaml'
+  /catalogue-versions/{id}:
+    $ref: './paths/catalogues/catalogue-versions-id.yaml'
+  /catalogue-versions/{id}/file:
+    $ref: './paths/catalogues/catalogue-versions-id-file.yaml'
+  /catalogue-blocks/{id}:
+    $ref: './paths/catalogues/catalogue-blocks-id.yaml'
+  /catalogue-blocks/{id}/link:
+    $ref: './paths/catalogues/catalogue-blocks-id-link.yaml'
   /certificate-batches/{id}:
     $ref: './paths/certificates-v2/certificate-batches-id.yaml'
   /certificate-batches/{id}/export:

@@ -1,0 +1,38 @@
+# /catalogues — product catalogues as source documents (plan.md §15.2, A6.1).
+post:
+  tags: ["Catalogues"]
+  summary: Upload a manufacturer catalogue for a company
+  description: |
+    System users only (`manage_catalogues` — its module is not company-allowed). Multipart: `file` (PDF, ≤ 60 MB), `companyId` (required — the admin picks the target company), `manufacturer` (optional; defaults to the brand's name, else the file name), `brandId` (optional, must belong to the company), `label` (edition, e.g. "2025–2026").
+    The same company + manufacturer reuses the catalogue and adds a version. The file is kept as a StoredFile (kind `catalogue_source`) forever. Code splits it into product blocks in the background (task type `catalogue_segment`); no product is created or changed.
+    → 202 `{ catalogueId, versionId, jobId }`. Errors: 400 COMPANY_REQUIRED, BRAND_NOT_IN_COMPANY, FILE_REQUIRED; 413 FILE_TOO_LARGE; 415 NOT_A_PDF.
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required: [file, companyId]
+          properties:
+            file: { type: string, format: binary }
+            companyId: { type: string, format: uuid }
+            manufacturer: { type: string, maxLength: 120 }
+            brandId: { type: string, format: uuid }
+            label: { type: string, maxLength: 80 }
+  responses:
+    "202": { description: "{ catalogueId, versionId, jobId }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: COMPANY_REQUIRED / BRAND_NOT_IN_COMPANY / FILE_REQUIRED }
+    "413": { description: FILE_TOO_LARGE }
+    "415": { description: NOT_A_PDF }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }
+get:
+  tags: ["Catalogues"]
+  summary: List the company's catalogues with their versions
+  description: "Tenant-forced: a company sees its own; a system user passes ?companyId= (without it: every company). Each version: id, label, status (uploaded|segmenting|segmented|extracting|review|applied|failed), pages, warnings, error, createdAt, appliedAt, _count.blocks. Permission: read_products."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ catalogues }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

@@ -18,6 +18,7 @@ import regulatoryDocumentRoutes from "./regulatoryDocumentRoutes.js";
 import regulatoryRuleRoutes from "./regulatoryRuleRoutes.js";
 import assuranceRoutes from "./assuranceRoutes.js";
 import certificatesV2Routes from "./certificatesV2Routes.js";
+import catalogueRoutes from "./catalogueRoutes.js";
 import { getReviewInbox } from "../controllers/assuranceController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { health as converterHealth } from "../services/certificates/conversion/pdf2htmlexClient.js";
@@ -59,6 +60,7 @@ router.use("/regulatory-rules", regulatoryRuleRoutes); // internal protect appli
 router.use("/assurance", assuranceRoutes); // internal protect applied in assuranceRoutes.js
 router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
 router.use("/", certificatesV2Routes); // Certificates V2 — protect + permission applied per route
+router.use("/", catalogueRoutes); // product catalogues (plan.md §15) — protect + permission applied per route
 router.use("/", protect, productRoutes);
 
 export default router;
