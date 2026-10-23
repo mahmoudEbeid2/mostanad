@@ -1,0 +1,17 @@
+# /catalogue-versions/{id}/merge-blocks (A6.4, §15.3 step 2).
+post:
+  tags: ["Catalogues"]
+  summary: Merge two blocks of one page into one product block
+  description: |
+    Body `{ blockIds: [a, b] }` — both pending, unlinked, same page. The first keeps its id with both texts (lines re-offset, bbox recomputed), the second is deleted; the extraction is cleared — extract it again with `POST /catalogue-versions/{id}/extract { blockIds }`. → `{ blockId, removed, needsExtraction }`. 409 BLOCK_DECIDED / DIFFERENT_PAGES. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    content: { application/json: { schema: { type: object, required: [blockIds], properties: { blockIds: { type: array, items: { type: string, format: uuid }, minItems: 2, maxItems: 2 } } } } }
+  responses:
+    "200": { description: "{ blockId, removed, needsExtraction }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: BLOCK_DECIDED / DIFFERENT_PAGES }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

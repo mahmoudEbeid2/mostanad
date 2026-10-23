@@ -46,3 +46,35 @@ export function provenanceFor(product, fullPath) {
   const column = rel.split(/[.[]/)[0];
   return fp[column] ? { path: column, ...fp[column] } : null;
 }
+
+// key order doesn't count (jsonb stores keys in its own order); "", [] and null are all "empty"
+const canonical = (v) => {
+  if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) return null;
+  if (Array.isArray(v)) return v.map(canonical);
+  if (typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
+  return v;
+};
+const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+
+/**
+ * A person edited the product: every field whose value changed and that carried a
+ * catalogue/estimate provenance is now the person's value ({ tier: "manual" }) —
+ * an edited estimate is no longer an estimate, and a catalogue quote no longer
+ * vouches for it. → the new fieldProvenance, or undefined when nothing changes.
+ */
+export function provenanceAfterEdit(existing, updates) {
+  const fp = existing?.fieldProvenance;
+  if (!fp || typeof fp !== "object") return undefined;
+  let changed = false;
+  const next = { ...fp };
+  for (const [path, p] of Object.entries(fp)) {
+    const column = path.split(".")[0];
+    if (!(column in updates) || p?.tier === "manual") continue;
+    const before = path.split(".").reduce((o, k) => (o == null ? o : o[k]), existing);
+    const after = path.split(".").reduce((o, k) => (o == null ? o : o[k]), updates);
+    if (same(before, after)) continue;
+    next[path] = { tier: "manual", at: new Date().toISOString(), replaced: p.tier };
+    changed = true;
+  }
+  return changed ? next : undefined;
+}

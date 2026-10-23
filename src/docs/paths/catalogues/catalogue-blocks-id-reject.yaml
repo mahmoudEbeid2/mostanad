@@ -1,0 +1,13 @@
+# /catalogue-blocks/{id}/reject (A6.4).
+post:
+  tags: ["Catalogues"]
+  summary: Reject a block (nothing is written)
+  description: "→ `{ blockId, status: \"rejected\" }`. 409 BLOCK_DECIDED. Permission: `manage_catalogues`."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ blockId, status }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

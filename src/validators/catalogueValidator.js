@@ -21,9 +21,23 @@ export const catalogueSchemas = {
     body: z.object({ companyId: uuid.optional(), manufacturer: optionalText(120), brandId: optionalUuid, label: optionalText(80), extract: flag }),
   },
   uploadVersion: { params: idParams, query: companyQuery, body: z.object({ label: optionalText(80), extract: flag }) },
-  extract: { params: idParams, query: companyQuery, body: z.object({ infer: flag }).optional() },
+  extract: { params: idParams, query: companyQuery, body: z.object({ infer: flag, blockIds: z.array(uuid).min(1).max(200).optional() }).optional() },
   convention: { params: idParams, query: companyQuery, body: z.object({ dotGroup3: z.enum(["thousands", "decimal"]) }) },
   list: { query: companyQuery },
   byId: { params: idParams, query: companyQuery },
   link: { params: idParams, query: companyQuery, body: z.object({ productId: uuid }) },
+  // A6.4 review: typed values are text or a list of text; null clears a typed value
+  editBlock: {
+    params: idParams,
+    query: companyQuery,
+    body: z
+      .object({
+        values: z.record(z.string().max(40), z.union([z.string().max(4000), z.array(z.string().max(400)).max(50), z.null()])).optional(),
+        categoryId: z.union([uuid, z.null()]).optional(),
+      })
+      .refine((b) => b.values !== undefined || b.categoryId !== undefined, { message: "values or categoryId is required" }),
+  },
+  decide: { params: idParams, query: companyQuery },
+  merge: { params: idParams, query: companyQuery, body: z.object({ blockIds: z.array(uuid).length(2) }) },
+  split: { params: idParams, query: companyQuery, body: z.object({ atLine: z.number().int().min(1) }) },
 };

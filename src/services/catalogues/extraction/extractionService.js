@@ -42,8 +42,8 @@ function numberContext(blocks, version) {
   return { evidence, majority, admin };
 }
 
-async function assertUntouched(versionId) {
-  const touched = await prisma.catalogueBlock.count({ where: { versionId, OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
+async function assertUntouched(versionId, blockIds = null) {
+  const touched = await prisma.catalogueBlock.count({ where: { versionId, ...(blockIds ? { id: { in: blockIds } } : {}), OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
   if (touched) throw new CertError("BLOCKS_IN_USE", "Blocks of this version were already accepted or linked; it can't be extracted again", 409);
 }
 
@@ -61,22 +61,27 @@ function contextFacts(catalogue, contextBlocks) {
 }
 
 /**
- * The catalogue worker's `extract` job. deps (tests): { generate, inferGenerate, infer: false }
+ * The catalogue worker's `extract` job. deps: { infer: false, blockIds } (from the job) and,
+ * in tests, { generate, inferGenerate }. With blockIds only those pending blocks are read
+ * (after a merge/split in the review); the rest of the version is left as it is.
  * → { versionId, products, flagged, calls, inference }
  */
 export async function runExtractJob(versionId, ctx = { progress: () => {} }, deps = {}) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version) throw notFound("Catalogue version");
-  await assertUntouched(versionId);
+  const only = Array.isArray(deps.blockIds) && deps.blockIds.length ? deps.blockIds : null;
+  await assertUntouched(versionId, only);
   const settings = await getAiSettings(version.companyId);
   if (!aiAllowed(settings)) throw new CertError("AI_DISABLED", "AI is turned off for this company — the blocks are kept; extract them once it is on", 409);
   const started = Date.now();
   await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "extracting", error: null } });
   try {
     const all = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
-    const blocks = all.filter((b) => b.kind === "product");
+    const allProducts = all.filter((b) => b.kind === "product");
+    const blocks = only ? allProducts.filter((b) => only.includes(b.id)) : allProducts;
+    const others = only ? allProducts.filter((b) => !only.includes(b.id)) : [];
     const context = all.filter((b) => b.kind === "context");
-    const numbers = numberContext(blocks, version);
+    const numbers = numberContext(allProducts, version);
 
     // AI structuring, a group at a time (the shared rate limiter queues them)
     const raws = new Map();
@@ -119,9 +124,10 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
       out.set(b.id, { ...v, convention });
     }
 
-    // duplicate product codes inside this catalogue
+    // duplicate product codes inside this catalogue (the blocks just read and the ones already extracted)
+    for (const b of others) if (b.extracted?.record) out.set(b.id, { record: b.extracted.record, flags: [], untouched: true });
     const byCode = new Map();
-    for (const b of blocks) {
+    for (const b of [...blocks, ...others.filter((x) => out.has(x.id))]) {
       const code = out.get(b.id).record.productCode;
       if (!code) continue;
       const k = code.toUpperCase();
@@ -131,12 +137,14 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     for (const [code, list] of byCode) {
       if (list.length < 2) continue;
       for (const b of list) {
-        const others = list.filter((x) => x.id !== b.id).map((x) => out.get(x.id).record.name || x.title || `page ${x.page}`);
-        out.get(b.id).flags.push({ code: "duplicate_code", field: "productCode", message: `Code ${code} is printed for ${list.length} products (${others.join(", ")}) — invoices with it are never matched automatically`, duplicateOf: list.filter((x) => x.id !== b.id).map((x) => x.id) });
+        if (out.get(b.id).untouched) continue; // a block extracted earlier keeps its own flags
+        const names = list.filter((x) => x.id !== b.id).map((x) => out.get(x.id).record.name || x.title || `page ${x.page}`);
+        out.get(b.id).flags.push({ code: "duplicate_code", field: "productCode", message: `Code ${code} is printed for ${list.length} products (${names.join(", ")}) — invoices with it are never matched automatically`, duplicateOf: list.filter((x) => x.id !== b.id).map((x) => x.id) });
       }
     }
 
     // categories: proposed, matched to an existing one, never created
+    for (const b of others) out.delete(b.id);
     const categories = await prisma.category.findMany({ select: { id: true, name: true } });
     for (const v of out.values()) {
       if (!v.categoryProposal) continue;
@@ -199,6 +207,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
           status: "review",
           extraction: {
             ...(version.extraction || {}),
+            ...(only ? { lastPartial: { blockIds: only, at: new Date().toISOString() } } : {}),
             modelId: MODELS.CATALOGUE_EXTRACT.id,
             promptHash: EXTRACT_HASH,
             blocksPerCall: BLOCKS_PER_CALL,

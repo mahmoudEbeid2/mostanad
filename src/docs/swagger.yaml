@@ -315,6 +315,18 @@ paths:
     $ref: './paths/catalogues/catalogue-versions-id-extract.yaml'
   /catalogue-versions/{id}/number-convention:
     $ref: './paths/catalogues/catalogue-versions-id-number-convention.yaml'
+  /catalogue-versions/{id}/review:
+    $ref: './paths/catalogues/catalogue-versions-id-review.yaml'
+  /catalogue-versions/{id}/accept-unflagged:
+    $ref: './paths/catalogues/catalogue-versions-id-accept-unflagged.yaml'
+  /catalogue-versions/{id}/merge-blocks:
+    $ref: './paths/catalogues/catalogue-versions-id-merge-blocks.yaml'
+  /catalogue-blocks/{id}/accept:
+    $ref: './paths/catalogues/catalogue-blocks-id-accept.yaml'
+  /catalogue-blocks/{id}/reject:
+    $ref: './paths/catalogues/catalogue-blocks-id-reject.yaml'
+  /catalogue-blocks/{id}/split:
+    $ref: './paths/catalogues/catalogue-blocks-id-split.yaml'
   /certificate-batches/{id}:
     $ref: './paths/certificates-v2/certificate-batches-id.yaml'
   /certificate-batches/{id}/export:

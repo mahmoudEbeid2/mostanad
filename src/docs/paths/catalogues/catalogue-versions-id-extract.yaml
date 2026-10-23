@@ -4,12 +4,12 @@ post:
   summary: Extract (again) the products of a segmented version
   description: |
     Queues task `catalogue_extract` (an upload queues it automatically unless `extract=false`). CATALOGUE_EXTRACT reads the product blocks (6 per call by default, `CATALOGUE_BLOCKS_PER_CALL`; a block the model skips is asked once more alone); code keeps a value only when its quote is verbatim in THAT block (list glyphs aside) and the value is inside it — else it is dropped and flagged `unverified`. Amounts: `amountRaw` as printed, `amount`/`unit` parsed by code; "." + three digits is resolved by the admin's convention, the block's own evidence ("10.000.000", "up to 1.000 mL" in a 1 L basis) or the catalogue majority (then flagged `ambiguous_number`). Specifications only from a SPECIFICATIONS table. Producer/origin from the cover/back pages. Then ONE CATALOGUE_INFER call estimates fields still empty (never composition, code, specifications, registration, producer, origin, packaging); estimates are stored apart in `extracted.estimated`. Version → `review`; a failed extraction call → back to `segmented` with the error.
-    Body `{ infer?: boolean }` (default true). → 202 `{ versionId, jobId }`. 409 VERSION_NOT_READY / BLOCKS_IN_USE (a block was accepted or linked) / AI_DISABLED. Permission: `manage_catalogues`.
+    Body `{ infer?: boolean, blockIds?: uuid[] }` (infer default true). With `blockIds` (A6.4, after a merge/split) only those pending product blocks of THIS version are read again — allowed also on an `applied` version; the other blocks keep their extraction (404 for a block of another version). → 202 `{ versionId, jobId }`. 409 VERSION_NOT_READY / BLOCKS_IN_USE (a block was accepted or linked) / AI_DISABLED. Permission: `manage_catalogues`.
   parameters:
     - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
     - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
   requestBody:
-    content: { application/json: { schema: { type: object, properties: { infer: { type: boolean } } } } }
+    content: { application/json: { schema: { type: object, properties: { infer: { type: boolean }, blockIds: { type: array, items: { type: string, format: uuid } } } } } }
   responses:
     "202": { description: "{ versionId, jobId }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
     "409": { description: VERSION_NOT_READY / BLOCKS_IN_USE / AI_DISABLED }

@@ -345,3 +345,13 @@ Additive; no migration.
 - **Invoice matching:** a line whose code is carried by several products of the company is never matched automatically (`matchStatus: needs_match`, candidates shown; an auto-accepted AI pick for it stays `pending`). A learned alias still applies.
 - **Models:** `CATALOGUE_EXTRACT`, `CATALOGUE_INFER`, `CATALOGUE_LEGACY` in `modelRegistry.js`. The V1 `POST /products/upload-catalog` now calls Gemini through `geminiClient` (same prompt and response); no source file imports `@google/generative-ai` any more.
 - **New env (optional):** `CATALOGUE_BLOCKS_PER_CALL` (default 6). **New script:** `npm run eval:catalogue` (opt-in, `RUN_LIVE_GEMINI=1`).
+
+## Certificate AI layers (plan.md) — Phase A6.4 Catalogue review (2026-10-23)
+
+Additive; no migration.
+- **New (read_products):** `GET /catalogue-versions/:id/review` → `{ version, counts, categories, blocks }`; each product block adds `lines` (printed line texts), `highlights` `{ field: [{ x, y, w, h }] }` (PDF points, scale 1, top-left origin — multiply by the page render scale), `categoryId`, `match` (existing product by code, else name) and `bulkAcceptable`.
+- **New (manage_catalogues):** `PATCH /catalogue-blocks/:id` `{ values?, categoryId? }`; `POST /catalogue-blocks/:id/accept` → 201 `{ blockId, productId, product }`; `POST /catalogue-blocks/:id/reject`; `POST /catalogue-versions/:id/accept-unflagged` → `{ created, products, skipped }`; `POST /catalogue-versions/:id/merge-blocks` `{ blockIds: [a, b] }`; `POST /catalogue-blocks/:id/split` `{ atLine }`.
+- **Changed:** `POST /catalogue-versions/:id/extract` accepts `blockIds` (re-read only those pending blocks, also on an `applied` version).
+- **Accept never updates an existing product** (409 `EXISTING_PRODUCT` with `match`) — existing products change only through the re-upload diff (A6.5). An ambiguous "." + 3 digits → 409 `CONFIRM_NUMBER_CONVENTION` until the convention is set.
+- **Products created from a catalogue:** `fieldProvenance[field]` = `{ tier: "C", catalogueVersionId, blockId, page, quote, at }` | `{ tier: "I", estimated: true, basis, modelId, promptHash, at }` | `{ tier: "manual", by, at }`; `activeIngredients` items `{ name, concentration, amountRaw, amount, unit, basis }` (`concentration` = the printed text, null when nothing is printed).
+- **`PATCH /products/:id`:** ingredient items now accept (and keep) `amountRaw`, `amount`, `unit`, `basis`, `readAs`; `concentration` is optional/nullable. A changed field that carried a catalogue/estimate provenance becomes `{ tier: "manual", at, replaced }` — the "Estimated" badge goes and certificates may use the value.

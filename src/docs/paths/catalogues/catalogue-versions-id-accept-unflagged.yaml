@@ -1,0 +1,14 @@
+# /catalogue-versions/{id}/accept-unflagged (A6.4).
+post:
+  tags: ["Catalogues"]
+  summary: Bulk accept every unflagged block
+  description: |
+    Creates a product for each pending, extracted block with no flag and no existing product match (same rules as accepting one block). → `{ created, products: [{ blockId, productId, name }], skipped: { flagged, existing, notExtracted } }`. When no product block is pending any more the version becomes `applied`. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ created, products, skipped }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

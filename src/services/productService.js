@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
 import { scheduleDictionaryRebuild } from "./certificates/dictionary/rebuildScheduler.js";
+import { provenanceAfterEdit } from "./catalogues/fieldProvenance.js";
 
 /**
  * Create a new product scoped to a company
@@ -128,6 +129,9 @@ export const updateProduct = async (id, data, scopeCompanyId) => {
   }
 
   const updateData = { ...updateFields };
+  // an edited catalogue value / estimate becomes the person's value (A6: the Estimated badge goes, certificates may use it)
+  const fieldProvenance = provenanceAfterEdit(existingProduct, updateFields);
+  if (fieldProvenance) updateData.fieldProvenance = fieldProvenance;
   if (categoryId !== undefined) {
     updateData.categoryId = categoryId || null;
   }

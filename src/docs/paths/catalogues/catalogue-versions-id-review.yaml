@@ -1,0 +1,14 @@
+# /catalogue-versions/{id}/review (plan.md §15.3 steps 6–7, A6.4).
+get:
+  tags: ["Catalogues"]
+  summary: The admin's review of an extracted version
+  description: |
+    Every block of the version. Product blocks carry `extracted` (record, quotes with offsets into the block text, `estimated`, `flags`, `category`, `manual` typed values), `lines` (the block's printed lines, for a split), `highlights` `{ field: [{ x, y, w, h }] }` — where each field's quote sits on the page, in PDF points at scale 1 with a top-left origin (multiply by the render scale), `categoryId` (the admin's pick, else an existing category whose name equals the proposal; never a new one), `match` (an existing product of the company with the same code, else the same normalised name — such a block is never applied here, it goes through the §15.4 diff) and `bulkAcceptable` (pending, extracted, no flags, no match). Also `counts` and the `categories` list. Permission: `read_products`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ version, counts, categories, blocks }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

@@ -27,6 +27,14 @@ router.post("/catalogue-blocks/:id/link", guard("manage_catalogues"), validate(c
 // A6.3: AI extraction (CATALOGUE_EXTRACT + CATALOGUE_INFER) and the once-per-catalogue number convention
 router.post("/catalogue-versions/:id/extract", guard("manage_catalogues"), validate(catalogueSchemas.extract), catalogues.extractVersion);
 router.put("/catalogue-versions/:id/number-convention", guard("manage_catalogues"), validate(catalogueSchemas.convention), catalogues.putNumberConvention);
+// A6.4: review — accept creates a product (never updates one: that is the §15.4 diff), bulk accept, segmentation fixes
+router.get("/catalogue-versions/:id/review", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getReview);
+router.post("/catalogue-versions/:id/accept-unflagged", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.acceptUnflagged);
+router.post("/catalogue-versions/:id/merge-blocks", guard("manage_catalogues"), validate(catalogueSchemas.merge), catalogues.mergeBlocks);
+router.patch("/catalogue-blocks/:id", guard("manage_catalogues"), validate(catalogueSchemas.editBlock), catalogues.editBlock);
+router.post("/catalogue-blocks/:id/accept", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.acceptBlock);
+router.post("/catalogue-blocks/:id/reject", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.rejectBlock);
+router.post("/catalogue-blocks/:id/split", guard("manage_catalogues"), validate(catalogueSchemas.split), catalogues.splitBlock);
 
 // Coded errors: { status, code, message, ...extra } (same contract as the certificates router).
 router.use((err, req, res, next) => {

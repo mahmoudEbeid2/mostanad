@@ -1,0 +1,17 @@
+# /catalogue-blocks/{id}/split (A6.4, §15.3 step 2).
+post:
+  tags: ["Catalogues"]
+  summary: Split a block that holds two products
+  description: |
+    Body `{ atLine }` (1 … lines − 1): lines from `atLine` on become a new block right after this one (same page). Both lose their extraction — extract them with `POST /catalogue-versions/{id}/extract { blockIds }`. → `{ blockId, newBlockId, needsExtraction }`. 400 INVALID_SPLIT; 409 BLOCK_DECIDED. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    content: { application/json: { schema: { type: object, required: [atLine], properties: { atLine: { type: integer, minimum: 1 } } } } }
+  responses:
+    "200": { description: "{ blockId, newBlockId, needsExtraction }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: INVALID_SPLIT }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

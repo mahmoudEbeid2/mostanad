@@ -65,23 +65,30 @@ async function addVersion({ catalogue, label, file, userId, extract = true }) {
 }
 
 /** Queues the AI extraction of a segmented version (catalogue worker `extract`). → the task row */
-export function enqueueExtraction(version, { infer = true } = {}) {
+export function enqueueExtraction(version, { infer = true, blockIds = null } = {}) {
   return enqueueTask({
     queueName: QUEUES.catalogue,
     jobName: "extract",
     type: "catalogue_extract",
     companyId: version.companyId,
-    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, infer: infer !== false },
+    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, infer: infer !== false, ...(blockIds?.length ? { blockIds } : {}) },
   });
 }
 
-/** POST /catalogue-versions/:id/extract — (re-)extract the products of a version whose blocks nobody acted on yet. */
-export async function requestExtraction(versionId, companyScope, { infer = true } = {}) {
+/**
+ * POST /catalogue-versions/:id/extract { infer?, blockIds? } — (re-)extract a version whose blocks
+ * nobody acted on yet, or just some pending product blocks (after a merge/split).
+ */
+export async function requestExtraction(versionId, companyScope, { infer = true, blockIds = null } = {}) {
   const version = await loadVersion(versionId, companyScope);
-  if (!["segmented", "review"].includes(version.status)) throw new CertError("VERSION_NOT_READY", `A version that is ${version.status} can't be extracted`, 409);
-  const touched = await prisma.catalogueBlock.count({ where: { versionId, OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
+  if (!["segmented", "review", "applied"].includes(version.status) || (version.status === "applied" && !blockIds?.length)) throw new CertError("VERSION_NOT_READY", `A version that is ${version.status} can't be extracted`, 409);
+  if (blockIds?.length) {
+    const own = await prisma.catalogueBlock.count({ where: { versionId, id: { in: blockIds }, kind: "product" } });
+    if (own !== blockIds.length) throw notFound("Catalogue block");
+  }
+  const touched = await prisma.catalogueBlock.count({ where: { versionId, ...(blockIds?.length ? { id: { in: blockIds } } : {}), OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
   if (touched) throw new CertError("BLOCKS_IN_USE", "Blocks of this version were already accepted or linked; it can't be extracted again", 409);
-  const task = await enqueueExtraction(version, { infer });
+  const task = await enqueueExtraction(version, { infer, blockIds });
   return { versionId, jobId: task.id };
 }
 

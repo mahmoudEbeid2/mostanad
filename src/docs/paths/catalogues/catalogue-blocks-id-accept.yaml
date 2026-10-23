@@ -1,0 +1,15 @@
+# /catalogue-blocks/{id}/accept (A6.4).
+post:
+  tags: ["Catalogues"]
+  summary: Accept a block — create a product from it
+  description: |
+    CREATES a product for the version's company: catalogue values with `fieldProvenance[field] = { tier: "C", catalogueVersionId, blockId, page, quote, at }`, estimates for fields the catalogue doesn't print as `{ tier: "I", estimated: true, basis, modelId, promptHash, at }` (masked in certificates until a person confirms them), typed values as `{ tier: "manual" }`; `activeIngredients` `[{ name, concentration (= amountRaw), amountRaw, amount, unit, basis }]`; `specifications` only from a SPECIFICATIONS table; `catalogueRef`; the brand of the catalogue; the category from the review. Never updates an existing product. → 201 `{ blockId, productId, product }`. 409 EXISTING_PRODUCT (`match`) / CONFIRM_NUMBER_CONVENTION / NAME_REQUIRED / BLOCK_DECIDED / NOT_EXTRACTED / NOT_A_PRODUCT_BLOCK. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "201": { description: "{ blockId, productId, product }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: EXISTING_PRODUCT / CONFIRM_NUMBER_CONVENTION / NAME_REQUIRED / BLOCK_DECIDED / NOT_EXTRACTED }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

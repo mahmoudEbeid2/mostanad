@@ -11,3 +11,21 @@ get:
     "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
     "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
     "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }
+# A6.4
+patch:
+  tags: ["Catalogues"]
+  summary: The admin's corrections before accepting
+  description: |
+    Body `{ values?: { field: text | [text] | null }, categoryId?: uuid | null }`. Typed values are stored in `extracted.manual` (who, when) and become `{ tier: "manual" }` on the product; null clears a typed value. Editable: name, productCode, physicalForm, description, indications, dosage, mixingInstructions, withdrawalPeriod, contraindications, storage, packaging, registrationNumber, appearance, origin, producer, targetSpecies, userSafety — never amounts or specifications (400 NOT_EDITABLE). A typed name answers `no_name`, a typed value answers that field's `unverified` flag. `categoryId` picks an EXISTING category (404 if unknown; null = none). → `{ blockId, extracted }`. 409 BLOCK_DECIDED / NOT_EXTRACTED. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    content: { application/json: { schema: { type: object, properties: { values: { type: object, additionalProperties: true }, categoryId: { type: string, format: uuid, nullable: true } } } } }
+  responses:
+    "200": { description: "{ blockId, extracted }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: NOT_EDITABLE }
+    "409": { description: BLOCK_DECIDED / NOT_EXTRACTED }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

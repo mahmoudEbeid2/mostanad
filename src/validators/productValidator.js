@@ -2,7 +2,17 @@ import { z } from "zod";
 
 const activeIngredientSchema = z.object({
   name: z.string({ required_error: "Active ingredient name is required" }).min(1),
-  concentration: z.string({ required_error: "Active ingredient concentration is required" }).min(1),
+  concentration: z.string().min(1).optional().nullable(),
+  // catalogue products (A6) keep the printed text and its parse — an edit must not drop them
+  amountRaw: z.string().max(200).optional().nullable(),
+  amount: z.number().optional().nullable(),
+  unit: z.string().max(40).optional().nullable(),
+  basis: z.string().max(400).optional().nullable(),
+  readAs: z.string().max(40).optional().nullable(),
+}).superRefine((i, ctx) => {
+  // a typed ingredient needs its concentration; a catalogue one (it carries amountRaw)
+  // may have none — the catalogue printed no amount, and a placeholder is never stored
+  if (!i.concentration && !("amountRaw" in i)) ctx.addIssue({ code: "custom", path: ["concentration"], message: "Active ingredient concentration is required" });
 });
 
 const specificationsSchema = z.object({
