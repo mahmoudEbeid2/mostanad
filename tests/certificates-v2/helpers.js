@@ -106,6 +106,10 @@ export async function cleanupCompany(companyId) {
   await del("catalogue_blocks", `DELETE FROM catalogue_blocks WHERE company_id = $1`);
   await del("catalogue_versions", `DELETE FROM catalogue_versions WHERE company_id = $1`);
   await del("catalogues", `DELETE FROM catalogues WHERE company_id = $1`);
+  // data dictionary (A0), mapping memory (A1) and product aliases (A3) are company-scoped too
+  await del("product_aliases", `DELETE FROM product_aliases WHERE company_id = $1`);
+  await del("field_mapping_memory", `DELETE FROM field_mapping_memory WHERE company_id = $1`);
+  await del("data_dictionaries", `DELETE FROM data_dictionaries WHERE company_id = $1`);
   const files = await prisma.storedFile.findMany({ where: { companyId } });
   for (const f of files) {
     try {
@@ -119,7 +123,10 @@ export async function cleanupCompany(companyId) {
   await prisma.product.deleteMany({ where: { companyId } });
   await prisma.brand.deleteMany({ where: { companyId } });
   await prisma.backgroundTask.deleteMany({ where: { companyId } });
-  await prisma.company.delete({ where: { id: companyId } }).catch(() => {});
+  await prisma.company.delete({ where: { id: companyId } }).catch((e) => {
+    // already gone is fine; anything else means a table above was missed and the company leaks
+    if (e.code !== "P2025") console.warn(`⚠ cleanupCompany(${companyId}) left the company behind: ${e.message.split("\n").pop()}`);
+  });
 }
 
 export async function finish(counts, extraCleanup) {
