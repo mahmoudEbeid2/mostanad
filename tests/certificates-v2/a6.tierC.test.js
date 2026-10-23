@@ -54,7 +54,7 @@ const needs = async (invoiceId) => Object.fromEntries((await prisma.certificateD
 const gapsOf = (args) => JSON.parse(args.contents[3].slice(args.contents[3].indexOf("\n") + 1));
 
 async function uploadFor(c) {
-  const r = await api("POST", "/catalogues", asAdmin, form({ companyId: c.id, manufacturer: "Agrikima Sdn. Bhd." }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
+  const r = await api("POST", "/catalogues", asAdmin, form({ companyId: c.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
   await pollTask(r.data.data.jobId, asAdmin);
   return prisma.catalogueBlock.findMany({ where: { versionId: r.data.data.versionId, kind: "product" }, orderBy: { seq: "asc" } });
 }
@@ -133,7 +133,7 @@ try {
     const out = [];
     if (id("Target animals")) out.push({ gapId: id("Target animals"), found: true, value: "ANIMALS", evidence: [{ type: "catalogue_text", quote: "PROMOTES HEALTH AND GROWTH FOR ANIMALS" }], confidence: 0.8 });
     // a results gap answered from the catalogue → must be refused
-    if (id("Assay result")) out.push({ gapId: id("Assay result"), found: true, value: "50", evidence: [{ type: "catalogue_text", quote: "Assay, %\t≥\t50" }], confidence: 0.95 });
+    if (id("Assay result")) out.push({ gapId: id("Assay result"), found: true, value: "50", evidence: [{ type: "catalogue_text", quote: "Assay, %\t≥ 50" }], confidence: 0.95 });
     // a quote from ANOTHER product's block → must be refused
     if (id("Result")) out.push({ gapId: id("Result"), found: true, value: "None", evidence: [{ type: "catalogue_text", quote: "Store in a cool and dry place." }], confidence: 0.9 });
     return { gaps: out };

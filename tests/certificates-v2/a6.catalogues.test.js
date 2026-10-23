@@ -73,7 +73,7 @@ async function segmentation() {
   assert("a composition row keeps its name and value on one line", agrizec.text.includes("Vitamin E\t200.000 mg") && agrizec.text.includes("Vitamin A\t100000 I.U."));
   assert("Calcium-70 keeps its raw numbers", products[13].text.includes("Calcium Chloride\t70.000 mg") && products[13].text.includes("Distillate water up to\t1.000 mL"));
   assert("AD3E keeps space-grouped numbers", products[21].text.includes("100 000 000 I.U."));
-  assert("Betaine's SPECIFICATIONS table rows stay rows", products[28].text.includes("Assay, %\t≥\t50"));
+  assert("Betaine's SPECIFICATIONS table rows stay rows", products[28].text.includes("Assay, %\t≥ 50"));
   const linesOk = products.every((b) => b.lines.every((l) => b.text.slice(l.o, l.o + l.t.length) === l.t && l.w >= 0 && l.h > 0));
   assert("every line's offset points at its text in the block", linesOk);
   assert("every block has a page and a bbox inside its page", products.every((b) => { const p = layout.pages[b.page - 1]; return b.bbox.x >= 0 && b.bbox.x + b.bbox.w <= p.width + 1 && b.bbox.y + b.bbox.h <= p.height + 1; }));
@@ -107,7 +107,7 @@ async function upload() {
   assert("another company's brand → 400 BRAND_NOT_IN_COMPANY", r.status === 400 && r.data?.code === "BRAND_NOT_IN_COMPANY", r.status);
 
   const before = await prisma.product.count();
-  r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", label: "2025–2026" }, { buffer: pdf, name: "Agrikima_Catalogue_2022-new_-_feed.pdf", type: "application/pdf" }));
+  r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", label: "2025–2026", extract: "false" }, { buffer: pdf, name: "Agrikima_Catalogue_2022-new_-_feed.pdf", type: "application/pdf" }));
   assert("upload → 202 with catalogue, version and job ids", r.status === 202 && r.data?.data?.versionId && r.data?.data?.jobId, r);
   ({ versionId, catalogueId } = r.data.data);
   const task = await pollTask(r.data.data.jobId, asAdmin, { timeoutMs: 60_000 });
@@ -125,10 +125,10 @@ async function upload() {
   assert("no product was created or changed by an upload", (await prisma.product.count()) === before);
 
   // a second upload from the same manufacturer is a new version of the same catalogue
-  r = await api("POST", `/catalogues/${catalogueId}/versions`, asAdmin, form({ label: "reprint" }, { buffer: pdf, name: "again.pdf", type: "application/pdf" }));
+  r = await api("POST", `/catalogues/${catalogueId}/versions`, asAdmin, form({ label: "reprint", extract: "false" }, { buffer: pdf, name: "again.pdf", type: "application/pdf" }));
   assert("POST /catalogues/:id/versions → 202, same catalogue", r.status === 202 && r.data?.data?.catalogueId === catalogueId, r);
   await pollTask(r.data.data.jobId, asAdmin);
-  r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd." }, { buffer: pdf, name: "third.pdf", type: "application/pdf" }));
+  r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "third.pdf", type: "application/pdf" }));
   assert("upload with the same manufacturer → a version of the same catalogue", r.data?.data?.catalogueId === catalogueId);
   await pollTask(r.data.data.jobId, asAdmin);
   assert("the company has one catalogue with three versions", (await prisma.catalogueVersion.count({ where: { catalogueId } })) === 3 && (await prisma.catalogue.count({ where: { companyId: co.id } })) === 1);
@@ -249,7 +249,7 @@ async function permissions() {
   const manager = await user("manager", [perm]);
   const reader = await user("reader", [readProducts]);
   const block = blocks.find((b) => b.kind === "product");
-  const pdfForm = () => form({ companyId: co.id }, { buffer: pdf, name: "p.pdf", type: "application/pdf" });
+  const pdfForm = () => form({ companyId: co.id, extract: "false" }, { buffer: pdf, name: "p.pdf", type: "application/pdf" });
 
   assert("company token: upload refused (403)", denied(await call("POST", "/catalogues", companyToken, pdfForm())));
   assert("company token: new version refused (403)", denied(await call("POST", `/catalogues/${catalogueId}/versions`, companyToken, pdfForm())));

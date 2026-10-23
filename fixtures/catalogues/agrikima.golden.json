@@ -1,0 +1,1090 @@
+{
+  "source": "fixtures/catalogues/Agrikima_Catalogue_2022-new_-_feed.pdf",
+  "checked": "2026-10-23 — every amount checked by hand against the rendered page images (A6 step-1 audit)",
+  "notes": [
+    "Codes as printed: AKS12 (the plan cites AKS012); AKS13 is printed for both AD3E-CK and AD3E-PLUS.",
+    "IMMUSOL, DL-METHIONINE, CHOLINE CHLORIDE 70%, THERIONINE 65% and BETAINE 50% print no code and no withdrawal period.",
+    "Number formats mix within the catalogue: comma (60,000), dot (70.000), space (100 000 000), none (200000), decimals (13.6, 0.5)."
+  ],
+  "expectedAmbiguous": [
+    {
+      "product": "Agrizec",
+      "ingredient": "Vitamin E",
+      "amountRaw": "200.000 mg",
+      "readAsThousands": 200000
+    }
+  ],
+  "expectedAmounts": [
+    {
+      "product": "Agrizec",
+      "ingredient": "Vitamin E",
+      "amountRaw": "200.000 mg",
+      "amount": 200000,
+      "unit": "mg"
+    },
+    {
+      "product": "Calcium-70",
+      "ingredient": "Calcium Chloride",
+      "amountRaw": "70.000 mg",
+      "amount": 70000,
+      "unit": "mg"
+    },
+    {
+      "product": "Calcium-70",
+      "ingredient": "Distillate water up to",
+      "amountRaw": "1.000 mL",
+      "amount": 1000,
+      "unit": "mL"
+    },
+    {
+      "product": "AD3E 100/20/20",
+      "ingredient": "Vitamin A",
+      "amountRaw": "100 000 000 I.U.",
+      "amount": 100000000,
+      "unit": "IU"
+    },
+    {
+      "product": "Growth 80",
+      "ingredient": "Phosphoric acid",
+      "amountRaw": "13.6 mg",
+      "amount": 13.6,
+      "unit": "mg"
+    },
+    {
+      "product": "Agri-E+S200",
+      "ingredient": "Sodium Selenite (Selenium)",
+      "amountRaw": "0.5 mg",
+      "amount": 0.5,
+      "unit": "mg"
+    }
+  ],
+  "products": [
+    {
+      "page": 3,
+      "name": "Advice",
+      "productCode": "AKS030",
+      "physicalForm": "Liquid",
+      "packaging": "ADVICE is available in a 1L bottle.",
+      "withdrawalPeriod": "- None.",
+      "storage": "It is recommended to store the product in its original packing in a cool and dry condition.\nKeep it away from a heating sources or direct sunlight.",
+      "activeIngredients": []
+    },
+    {
+      "page": 3,
+      "name": "MIX5",
+      "productCode": "AKS031",
+      "physicalForm": "Liquid",
+      "packaging": "MIX5 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Eucalyptus essential oil",
+          "amountRaw": "120 gm"
+        },
+        {
+          "name": "Menthol",
+          "amountRaw": "80 gm"
+        },
+        {
+          "name": "Yucca extract",
+          "amountRaw": "50 gm"
+        },
+        {
+          "name": "Ginger extract",
+          "amountRaw": "50 gm"
+        },
+        {
+          "name": "Cinnamon extract",
+          "amountRaw": "50 gm"
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "name": "Toxinil",
+      "productCode": "AKF029",
+      "physicalForm": "Liquid",
+      "packaging": "Toxinil is available in a 1L bottle.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Propionic Acid",
+          "amountRaw": "120 gm"
+        },
+        {
+          "name": "Citric Acid",
+          "amountRaw": "80 gm"
+        },
+        {
+          "name": "Butyric Acid",
+          "amountRaw": "20 gm"
+        },
+        {
+          "name": "Formic Acid",
+          "amountRaw": "20 gm"
+        },
+        {
+          "name": "Lactic Acid",
+          "amountRaw": "10 gm"
+        },
+        {
+          "name": "Acetic Acid",
+          "amountRaw": "10 gm"
+        },
+        {
+          "name": "Malic Acid",
+          "amountRaw": "4 gm"
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "name": "Antistrs-300",
+      "productCode": "AKS040",
+      "physicalForm": "Powder",
+      "packaging": "Antistrs-300 is available in 500gm jars.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Paracetamol",
+          "amountRaw": "180 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "120 mg"
+        },
+        {
+          "name": "Excipients q.s",
+          "amountRaw": "1 gm"
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "name": "NUTRITIC",
+      "productCode": "AKF007",
+      "physicalForm": "Powder",
+      "packaging": "Nutritic is available in 25KG pails.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": []
+    },
+    {
+      "page": 5,
+      "name": "K-Digest",
+      "productCode": "AKS17",
+      "physicalForm": "Liquid",
+      "packaging": "K-Digest is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Sorbitol",
+          "amountRaw": "200 mg"
+        },
+        {
+          "name": "Carnitine hydrochloride",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Betaine",
+          "amountRaw": "30 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "220 mg"
+        },
+        {
+          "name": "D-panthenol",
+          "amountRaw": "25 mg"
+        },
+        {
+          "name": "Magnesium sulphate",
+          "amountRaw": "100 mg"
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "name": "Re-Cover",
+      "productCode": "AKS2017015",
+      "physicalForm": "Liquid",
+      "packaging": "Re-Cover is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Betaine",
+          "amountRaw": "220 mg"
+        },
+        {
+          "name": "Methionine",
+          "amountRaw": "120 mg"
+        },
+        {
+          "name": "Vitamin C (Ascorbic Acid)",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Calcium Chloride Dihyrate",
+          "amountRaw": "40 mg"
+        },
+        {
+          "name": "Sodium Chloride Dihydrate",
+          "amountRaw": "40 mg"
+        },
+        {
+          "name": "Potassium Chloride",
+          "amountRaw": "2 mg"
+        },
+        {
+          "name": "Magnesium Chloride hexahydrate",
+          "amountRaw": "4 mg"
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "name": "Growth 80",
+      "productCode": "AKS2017014",
+      "physicalForm": "Liquid",
+      "packaging": "Growth80 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Yeast extract",
+          "amountRaw": "80 mg"
+        },
+        {
+          "name": "Betaine",
+          "amountRaw": "200 mg"
+        },
+        {
+          "name": "Methionine",
+          "amountRaw": "120 mg"
+        },
+        {
+          "name": "Lysine",
+          "amountRaw": "80 mg"
+        },
+        {
+          "name": "Threonine",
+          "amountRaw": "60 mg"
+        },
+        {
+          "name": "Citric acid",
+          "amountRaw": "16 mg"
+        },
+        {
+          "name": "Malic acid",
+          "amountRaw": "3 mg"
+        },
+        {
+          "name": "Phosphoric acid",
+          "amountRaw": "13.6 mg"
+        },
+        {
+          "name": "Copper sulphate",
+          "amountRaw": "20 mg"
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "name": "Immuzyme",
+      "productCode": "AKF06",
+      "physicalForm": "Powder",
+      "packaging": "Immuzyme is available in 500GM and 1KG jars.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Lysozyme",
+          "amountRaw": "240 mg"
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "20 mg"
+        },
+        {
+          "name": "Dextrose up to",
+          "amountRaw": "1 mg"
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "name": "Optimum24",
+      "productCode": "AKF41",
+      "physicalForm": "Powder",
+      "packaging": "Optimum24 is available in 500GM and 1KG jars.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin C (ascorbic acid)",
+          "amountRaw": "300 mg"
+        },
+        {
+          "name": "Paracetamol",
+          "amountRaw": "150 mg"
+        },
+        {
+          "name": "Methionine",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Betaine HCL",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Dextrose up to",
+          "amountRaw": "1 gm"
+        }
+      ]
+    },
+    {
+      "page": 8,
+      "name": "Mentholic",
+      "productCode": "AKS05",
+      "physicalForm": "Liquid",
+      "packaging": "Mentholic is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Menthol",
+          "amountRaw": "20 mg"
+        },
+        {
+          "name": "Eucalyptus",
+          "amountRaw": "20 mg"
+        },
+        {
+          "name": "Garlic extract",
+          "amountRaw": "20 mg"
+        }
+      ]
+    },
+    {
+      "page": 8,
+      "name": "Agri-CalD3",
+      "productCode": "AKS01",
+      "physicalForm": "Liquid",
+      "packaging": "Agri-CalD3 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Calcium Chloride",
+          "amountRaw": "60,000 mg"
+        },
+        {
+          "name": "Phosphoric Acid",
+          "amountRaw": "30,000 mg"
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "100,000 I.U."
+        },
+        {
+          "name": "Iron",
+          "amountRaw": "8,000 mg"
+        },
+        {
+          "name": "Copper",
+          "amountRaw": "1,000 mg"
+        },
+        {
+          "name": "Zinc",
+          "amountRaw": "5,000 mg"
+        },
+        {
+          "name": "Magnesium",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Distillate water up to",
+          "amountRaw": "1,000 mL"
+        }
+      ]
+    },
+    {
+      "page": 9,
+      "name": "Aminovital",
+      "productCode": "AKS02",
+      "physicalForm": "Liquid",
+      "packaging": "Aminovital is available in\n1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin A",
+          "amountRaw": "10.000.000 I.U."
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "2.000.000 I.U."
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "2.000 mg"
+        },
+        {
+          "name": "Vitamin B1",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Vitamin B2",
+          "amountRaw": "4 mg"
+        },
+        {
+          "name": "Vitamin B6",
+          "amountRaw": "500 mg"
+        },
+        {
+          "name": "Vitamin B12",
+          "amountRaw": "1 mcg"
+        },
+        {
+          "name": "Biotin",
+          "amountRaw": "10 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "2.000 mg"
+        },
+        {
+          "name": "Vitamin K3",
+          "amountRaw": "10 mg"
+        },
+        {
+          "name": "Magnesium(Sulphate)",
+          "amountRaw": "5.000 mg"
+        },
+        {
+          "name": "Zinc(Sulphate)",
+          "amountRaw": "5.000 mg"
+        },
+        {
+          "name": "Iron(Sulphate)",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Cobalt(Sulphate)",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Potassium Iodite",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Sodium Selenite",
+          "amountRaw": "25 mg"
+        },
+        {
+          "name": "Calcium Pantothenate",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Nicotinic Acid",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "350 mg"
+        },
+        {
+          "name": "Folic Acid",
+          "amountRaw": "10 mg"
+        },
+        {
+          "name": "Methionine",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Lysine",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Threonine",
+          "amountRaw": "500 mg"
+        },
+        {
+          "name": "Betaine",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Distillate water up to",
+          "amountRaw": "1.000 mL"
+        }
+      ]
+    },
+    {
+      "page": 9,
+      "name": "Calcium-70",
+      "productCode": "AKS03",
+      "physicalForm": "Liquid",
+      "packaging": "Calcium-70 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Calcium Chloride",
+          "amountRaw": "70.000 mg"
+        },
+        {
+          "name": "Potassium Chloride",
+          "amountRaw": "7.000 mg"
+        },
+        {
+          "name": "Phosphoric Acid",
+          "amountRaw": "35.000 mg"
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "200.000 I.U."
+        },
+        {
+          "name": "Sorbitol",
+          "amountRaw": "10.000 mg"
+        },
+        {
+          "name": "Distillate water up to",
+          "amountRaw": "1.000 mL"
+        }
+      ]
+    },
+    {
+      "page": 10,
+      "name": "Agrivita+",
+      "productCode": "AKS06",
+      "physicalForm": "Liquid",
+      "packaging": "Agrivita+ is available in\n1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin A",
+          "amountRaw": "28.000.000 I.U."
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "3.000.000 I.U."
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "3.000 mg"
+        },
+        {
+          "name": "Vitamin B1",
+          "amountRaw": "1.400 mg"
+        },
+        {
+          "name": "Vitamin B2",
+          "amountRaw": "200 mg"
+        },
+        {
+          "name": "Vitamin B6",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Vitamin B12",
+          "amountRaw": "5 mg"
+        },
+        {
+          "name": "Biotine",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "3.000 mg"
+        },
+        {
+          "name": "Vitamin K3",
+          "amountRaw": "500 mg"
+        },
+        {
+          "name": "Calcium pantothenate",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Nicotinic acid",
+          "amountRaw": "2.000 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "1.800 mg"
+        },
+        {
+          "name": "Folic acid",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Methionine",
+          "amountRaw": "2.400 mg"
+        },
+        {
+          "name": "Lysine",
+          "amountRaw": "1.000 mg"
+        },
+        {
+          "name": "Threonine",
+          "amountRaw": "850 mg"
+        },
+        {
+          "name": "Valine",
+          "amountRaw": "500 mg"
+        },
+        {
+          "name": "Tryptophane",
+          "amountRaw": "500 mg"
+        },
+        {
+          "name": "Distillate water up to",
+          "amountRaw": "1000 mL"
+        }
+      ]
+    },
+    {
+      "page": 10,
+      "name": "Agri-E+S200",
+      "productCode": "AKS207",
+      "physicalForm": "Liquid",
+      "packaging": "Agri-E+S200 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin E",
+          "amountRaw": "200 mg"
+        },
+        {
+          "name": "Sodium Selenite (Selenium)",
+          "amountRaw": "0.5 mg"
+        }
+      ]
+    },
+    {
+      "page": 11,
+      "name": "Kima-Immune",
+      "productCode": "AKS08",
+      "physicalForm": "Liquid",
+      "packaging": "Kima-Immune is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin E",
+          "amountRaw": "200000 mg"
+        },
+        {
+          "name": "Selenium",
+          "amountRaw": "2200 mg"
+        },
+        {
+          "name": "Vitamin A",
+          "amountRaw": "100000 I.U."
+        },
+        {
+          "name": "Vitamin B12",
+          "amountRaw": "1600 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "15000 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "4000 mg"
+        },
+        {
+          "name": "Distillate water up to",
+          "amountRaw": "1,000 mL"
+        }
+      ]
+    },
+    {
+      "page": 11,
+      "name": "Agri-Hepa+",
+      "productCode": "AKS09",
+      "physicalForm": "Liquid",
+      "packaging": "Agri-Hepa+ is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Silymarine",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Sorbitol",
+          "amountRaw": "25,000 mg"
+        },
+        {
+          "name": "Betaine",
+          "amountRaw": "5,000 mg"
+        },
+        {
+          "name": "L-Lysine",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Nicotinamide",
+          "amountRaw": "5,000 mg"
+        },
+        {
+          "name": "Formic acid",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Propionic acid",
+          "amountRaw": "15,000 mg"
+        },
+        {
+          "name": "Acetic acid",
+          "amountRaw": "5,000 mg"
+        },
+        {
+          "name": "Lactic acid",
+          "amountRaw": "5,000 mg"
+        }
+      ]
+    },
+    {
+      "page": 12,
+      "name": "Agrilyte+C",
+      "productCode": "AKS11",
+      "physicalForm": "Liquid",
+      "packaging": "Agrilyte+C is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Ammonium chloride",
+          "amountRaw": "320,000 mg"
+        },
+        {
+          "name": "Magnesium sulphate",
+          "amountRaw": "20,000 mg"
+        },
+        {
+          "name": "Copper sulphate",
+          "amountRaw": "10,000 mg"
+        },
+        {
+          "name": "Manganese sulphate",
+          "amountRaw": "20,000 mg"
+        },
+        {
+          "name": "Zinc sulphate",
+          "amountRaw": "15,000 mg"
+        },
+        {
+          "name": "Iron sulphate",
+          "amountRaw": "5,000 mg"
+        },
+        {
+          "name": "Cobalt sulphate",
+          "amountRaw": "3,000 mg"
+        },
+        {
+          "name": "Potassium iodite",
+          "amountRaw": "1,000 mg"
+        },
+        {
+          "name": "Sodium selenite",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Distilled water up to",
+          "amountRaw": "1000 mL"
+        }
+      ]
+    },
+    {
+      "page": 12,
+      "name": "Agrivita-C",
+      "productCode": "AKS10",
+      "physicalForm": "Powder",
+      "packaging": "Agrivita-C is available in 1KG & 3KG jars.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin C (ascorbic acid)",
+          "amountRaw": "99% (990 gm)"
+        }
+      ]
+    },
+    {
+      "page": 13,
+      "name": "Agrizec",
+      "productCode": "AKS12",
+      "physicalForm": "Liquid",
+      "packaging": "Agrizec is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin E",
+          "amountRaw": "200.000 mg"
+        },
+        {
+          "name": "Selenium",
+          "amountRaw": "2300 mg"
+        },
+        {
+          "name": "Zinc.",
+          "amountRaw": "8500 mg"
+        },
+        {
+          "name": "Vitamin A",
+          "amountRaw": "100000 I.U."
+        }
+      ]
+    },
+    {
+      "page": 13,
+      "name": "AD3E 100/20/20",
+      "productCode": "AKS43",
+      "physicalForm": "Liquid",
+      "packaging": "AD3E 100/20/20 is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin A",
+          "amountRaw": "100 000 000 I.U."
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "20 000 000 I.U."
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "20 000 mg"
+        }
+      ]
+    },
+    {
+      "page": 14,
+      "name": "AD3E-CK",
+      "productCode": "AKS13",
+      "physicalForm": "Liquid",
+      "packaging": "AD3E-CK is available in 1L bottles",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin A",
+          "amountRaw": "50 000 I.U."
+        },
+        {
+          "name": "Vitamin D3",
+          "amountRaw": "10 000 I.U."
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "20 mg"
+        },
+        {
+          "name": "Vitamin C",
+          "amountRaw": "100 mg"
+        },
+        {
+          "name": "Vitamin K3",
+          "amountRaw": "50 mg"
+        }
+      ]
+    },
+    {
+      "page": 14,
+      "name": "AD3E-PLUS",
+      "productCode": "AKS13",
+      "physicalForm": "Liquid",
+      "packaging": "AD3E-Plus is available in 1L bottles and 5L cans.",
+      "withdrawalPeriod": "- None.",
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "Vitamin A, retinol palmitate",
+          "amountRaw": "12 000 I.U."
+        },
+        {
+          "name": "Vitamin D3, cholecalciferol",
+          "amountRaw": "2 000 I.U."
+        },
+        {
+          "name": "Vitamin E, a-tocopherol acetate",
+          "amountRaw": "60 mg"
+        },
+        {
+          "name": "Vitamin B1, thiamine hydrochloride",
+          "amountRaw": "3 mg"
+        },
+        {
+          "name": "Vitamin B2, riboflavine sodium phosphate",
+          "amountRaw": "6 mg"
+        },
+        {
+          "name": "Vitamin B6, pyridoxine hydrochloride",
+          "amountRaw": "4 mg"
+        },
+        {
+          "name": "Vitamin B12, cyanocobalamin",
+          "amountRaw": "30 μg"
+        },
+        {
+          "name": "Vitamin C, ascorbic acid",
+          "amountRaw": "50 mg"
+        },
+        {
+          "name": "Vitamin K3",
+          "amountRaw": "2 mg"
+        },
+        {
+          "name": "D-panthenol",
+          "amountRaw": "20 mg"
+        },
+        {
+          "name": "Nicotinamide",
+          "amountRaw": "40 mg"
+        },
+        {
+          "name": "Biotin",
+          "amountRaw": "150 μg"
+        },
+        {
+          "name": "Folic acid",
+          "amountRaw": "1 mg"
+        },
+        {
+          "name": "Choline chloride",
+          "amountRaw": "110 mg"
+        },
+        {
+          "name": "Glycine",
+          "amountRaw": "10 mg"
+        }
+      ]
+    },
+    {
+      "page": 15,
+      "name": "IMMUSOL",
+      "productCode": null,
+      "physicalForm": "Liquid",
+      "packaging": "IMMUSOL is available in 1L bottles",
+      "withdrawalPeriod": null,
+      "storage": "Store in a cool and dry place.",
+      "activeIngredients": [
+        {
+          "name": "seaweed extract",
+          "amountRaw": "42,000 mg"
+        },
+        {
+          "name": "Astragalus polysaccharide extract",
+          "amountRaw": "30,000 mg"
+        },
+        {
+          "name": "Star Anise Oil",
+          "amountRaw": "50,000 mg"
+        },
+        {
+          "name": "Thymol",
+          "amountRaw": "50,000 mg"
+        },
+        {
+          "name": "Black seed Oil",
+          "amountRaw": "50,000 mg"
+        },
+        {
+          "name": "Oregano extract",
+          "amountRaw": "50,000 mg"
+        },
+        {
+          "name": "Licorice extract",
+          "amountRaw": "30,000 mg"
+        },
+        {
+          "name": "Cinnamon oil",
+          "amountRaw": "30,000 mg"
+        },
+        {
+          "name": "Riboflavin",
+          "amountRaw": "3000 mg"
+        },
+        {
+          "name": "Vitamin E",
+          "amountRaw": "20,000 mg"
+        }
+      ]
+    },
+    {
+      "page": 15,
+      "name": "DL-METHIONINE",
+      "productCode": null,
+      "physicalForm": "Powder",
+      "packaging": "25KG",
+      "withdrawalPeriod": null,
+      "storage": "Store in a dry and dark place.\n- Keep away from direct exposure to sunlight.",
+      "activeIngredients": []
+    },
+    {
+      "page": 16,
+      "name": "CHOLINE CHLORIDE 70%",
+      "productCode": null,
+      "physicalForm": "Powder",
+      "packaging": "25KG",
+      "withdrawalPeriod": null,
+      "storage": "Store in a dry and dark place.\n- Keep away from direct exposure to sunlight.",
+      "activeIngredients": [
+        {
+          "name": "Choline chloride",
+          "amountRaw": "70%"
+        }
+      ]
+    },
+    {
+      "page": 16,
+      "name": "THERIONINE 65%",
+      "productCode": null,
+      "physicalForm": "Powder",
+      "packaging": "25KG",
+      "withdrawalPeriod": null,
+      "storage": "Store in a dry and dark place.\n- Keep away from direct exposure to sunlight.",
+      "activeIngredients": [
+        {
+          "name": "Threonine",
+          "amountRaw": "65%"
+        }
+      ]
+    },
+    {
+      "page": 17,
+      "name": "BETAINE 50%",
+      "productCode": null,
+      "physicalForm": "Powder",
+      "packaging": "25KG",
+      "withdrawalPeriod": null,
+      "storage": "Store in a dry and dark place.\n- Keep away from direct exposure to sunlight.",
+      "activeIngredients": []
+    }
+  ]
+}

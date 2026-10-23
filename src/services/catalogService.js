@@ -3,12 +3,17 @@ import path from "path";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import { assertGeminiEnabled } from "./ai/geminiGuard.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAIFileManager } from "@google/generative-ai/server";
+import geminiClient from "./ai/geminiClient.js";
+import { MODELS } from "./ai/modelRegistry.js";
 import { scheduleDictionaryRebuild } from "./certificates/dictionary/rebuildScheduler.js";
 
 /**
  * Process uploaded PDF catalog using Gemini File API and store categories/products.
+ * V1 upload (POST /products/upload-catalog), kept working until the A6 catalogue
+ * flow replaces it (plan.md §15.8). Since A6.3 it calls Gemini through
+ * geminiClient (rate limiter, retries, real error metadata) with the
+ * CATALOGUE_LEGACY model — no longer the deprecated @google/generative-ai SDK.
+ * Same prompt, same output as before.
  */
 export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catalog.pdf", brandId = null, onProgress = null) => {
   const reportProgress = (progress, message) => {
@@ -51,8 +56,6 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
   fs.writeFileSync(tempFilePath, fileBuffer);
   reportProgress(15, "Uploading catalog");
 
-  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   
   let uploadResult = null;
   let summary = {
@@ -71,21 +74,21 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
 
     // 2. Upload file to Gemini File API
     console.log("[CatalogService] Uploading file to Gemini File API...");
-    uploadResult = await fileManager.uploadFile(tempFilePath, {
+    uploadResult = await geminiClient.uploadFile(tempFilePath, {
       mimeType: "application/pdf",
       displayName: fileName,
     });
-    console.log(`[CatalogService] Upload succeeded. File Name: ${uploadResult.file.name}, URI: ${uploadResult.file.uri}`);
+    console.log(`[CatalogService] Upload succeeded. File Name: ${uploadResult.name}, URI: ${uploadResult.uri}`);
 
     // 3. Poll for the file to be processed (state ACTIVE)
     console.log("[CatalogService] Polling file state...");
     reportProgress(30, "Analyzing catalog pages");
-    let file = await fileManager.getFile(uploadResult.file.name);
+    let file = await geminiClient.getFile(uploadResult.name);
     let attempts = 0;
     while (file.state === "PROCESSING" && attempts < 12) {
       console.log(`[CatalogService] File state is processing. Attempt ${attempts + 1}/12. Waiting 5s...`);
       await new Promise((resolve) => setTimeout(resolve, 5000));
-      file = await fileManager.getFile(uploadResult.file.name);
+      file = await geminiClient.getFile(uploadResult.name);
       attempts++;
     }
     console.log(`[CatalogService] File state is now: ${file.state}`);
@@ -94,7 +97,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
       throw new AppError(`File processing failed at Gemini API. State: ${file.state}`, 500);
     }
 
-    // 4. Invoke Gemini 2.5 Flash model
+    // 4. Invoke the model (CATALOGUE_LEGACY in modelRegistry.js)
     console.log("[CatalogService] Invoking Gemini model...");
     reportProgress(50, "Extracting products");
 
@@ -169,65 +172,18 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
       ]
     `;
 
-    // Try generating content
-    let resultText = "";
-    let success = false;
-    let retries = 4;
-    let delay = 3000;
-    let currentModelName = "gemini-2.5-flash";
-
-    while (retries > 0 && !success) {
-      try {
-        console.log(`[CatalogService] Calling generateContent with model ${currentModelName}... (Retries left: ${retries})`);
-        const activeModel = genAI.getGenerativeModel({ model: currentModelName });
-        const response = await activeModel.generateContent([
-          {
-            fileData: {
-              mimeType: uploadResult.file.mimeType,
-              fileUri: uploadResult.file.uri,
-            },
-          },
-          prompt,
-        ]);
-        console.log("[CatalogService] Received response from model!");
-        resultText = response.response.text();
-        success = true;
-      } catch (error) {
-        console.warn(`[CatalogService] Error during generateContent: ${error.message}`);
-        const errMsg = error.message || "";
-        const isQuotaOrDemand = 
-          errMsg.includes("503") || 
-          errMsg.includes("Service Unavailable") || 
-          errMsg.includes("429") || 
-          errMsg.includes("Too Many Requests") ||
-          errMsg.includes("demand") ||
-          errMsg.includes("quota");
-
-        if (isQuotaOrDemand) {
-          console.warn(`[CatalogService] Quota/demand error. Retrying model ${currentModelName} in ${delay}ms...`);
-          reportProgress(50, `Quota limits hit, retrying in ${delay / 1000}s`);
-          retries--;
-          if (retries === 0) throw error;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay = Math.floor(delay * 1.5);
-        } else {
-          console.error("[CatalogService] Non-quota error, throwing immediately.");
-          throw error;
-        }
-      }
-    }
-
-    // Clean up Gemini Markdown syntax if returned
-    let cleanJson = resultText.trim();
-    if (cleanJson.startsWith("```json")) {
-      cleanJson = cleanJson.substring(7);
-    }
-    if (cleanJson.endsWith("```")) {
-      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-    }
-    cleanJson = cleanJson.trim();
-
-    extractedProducts = JSON.parse(cleanJson);
+    // geminiClient owns retries/backoff (429 vs 503) and the process-wide rate limit
+    const model = MODELS.CATALOGUE_LEGACY;
+    console.log(`[CatalogService] Calling ${model.id} through geminiClient...`);
+    extractedProducts = await geminiClient.generateJson({
+      model: model.id,
+      temperature: model.temperature,
+      thinkingBudget: model.thinkingBudget,
+      maxOutputTokens: 65536,
+      contents: [{ fileData: { mimeType: uploadResult.mimeType || "application/pdf", fileUri: uploadResult.uri } }, prompt],
+    });
+    console.log("[CatalogService] Received response from model!");
+    if (!Array.isArray(extractedProducts)) throw new Error("the model did not return a JSON array of products");
     reportProgress(80, "Saving to database");
   }
 
@@ -321,13 +277,17 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     if (fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
-      } catch (_) {}
+      } catch (err) {
+        console.error(`[CatalogService] Could not delete temp file ${tempFilePath}: ${err.message}`);
+      }
     }
     // Delete file on Gemini API storage
-    if (uploadResult && uploadResult.file) {
+    if (uploadResult?.name) {
       try {
-        await fileManager.deleteFile(uploadResult.file.name);
-      } catch (_) {}
+        await geminiClient.deleteFile(uploadResult.name);
+      } catch (err) {
+        console.error(`[CatalogService] Could not delete Gemini file ${uploadResult.name}: ${err.message}`);
+      }
     }
   }
 

@@ -11,7 +11,7 @@
 //     CONTEXT block (cover, welcome, back page: producer and origin live there).
 // The admin can merge or split blocks in the review screen.
 
-export const SEGMENTER_VERSION = "a6.1-spread-title-headings";
+export const SEGMENTER_VERSION = "a6.3-spread-title-headings-gapjoin";
 const TITLE_RATIO = 3;
 const MIN_HEADINGS = 2;
 const SPREAD_RATIO = 1.3;
@@ -41,7 +41,20 @@ export function bodySize(pages) {
   return size || 8;
 }
 
-/** Items (stream order) → lines: same baseline and moving right → one line, cells joined by a tab. */
+/**
+ * How two runs of one line are joined, by the gap between them: touching glyphs
+ * (a font change inside a word — "μ"+"g") → nothing; a word space → " "; a
+ * column gap (name → value, FORM → CODE) → a tab, the cell separator.
+ */
+function joiner(prev, next) {
+  const gap = next.x - (prev.x + prev.w);
+  const h = Math.min(prev.h, next.h) || 8;
+  if (gap <= 0.1 * h) return "";
+  if (gap < 0.6 * h) return " ";
+  return "\t";
+}
+
+/** Items (stream order) → lines: same baseline and moving right → one line; cells joined by a tab. */
 export function toLines(items) {
   const lines = [];
   let cur = null;
@@ -56,7 +69,7 @@ export function toLines(items) {
     const y = Math.min(...its.map((i) => i.y));
     const r = Math.max(...its.map((i) => i.x + i.w));
     const b = Math.max(...its.map((i) => i.y + i.h));
-    return { t: its.map((i) => i.s).join("\t"), x, y, w: round(r - x), h: round(b - y), size: Math.max(0, ...its.filter((i) => !i.r).map((i) => i.h)) }; // rotated text is never a title
+    return { t: its.map((i, k) => (k ? joiner(its[k - 1], i) : "") + i.s).join(""), x, y, w: round(r - x), h: round(b - y), size: Math.max(0, ...its.filter((i) => !i.r).map((i) => i.h)) }; // rotated text is never a title
   });
 }
 

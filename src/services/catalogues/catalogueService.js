@@ -42,8 +42,8 @@ function assertFile(file) {
 
 const baseName = (name) => path.basename(String(name || "catalogue.pdf")).replace(/\.pdf$/i, "").trim().slice(0, 120) || "Catalogue";
 
-/** Stores the file, creates the version and queues its segmentation. */
-async function addVersion({ catalogue, label, file, userId }) {
+/** Stores the file, creates the version and queues its segmentation (then, unless extract === false, its extraction). */
+async function addVersion({ catalogue, label, file, userId, extract = true }) {
   const stored = await fileStore.putFile({ companyId: catalogue.companyId, kind: "catalogue_source", buffer: file.buffer, mimeType: "application/pdf", originalName: file.originalname || null });
   const version = await prisma.catalogueVersion.create({
     data: {
@@ -59,9 +59,30 @@ async function addVersion({ catalogue, label, file, userId }) {
     jobName: "segment",
     type: "catalogue_segment",
     companyId: catalogue.companyId,
-    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id },
+    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, extract: extract !== false },
   });
   return { catalogue, version, taskId: task.id };
+}
+
+/** Queues the AI extraction of a segmented version (catalogue worker `extract`). → the task row */
+export function enqueueExtraction(version, { infer = true } = {}) {
+  return enqueueTask({
+    queueName: QUEUES.catalogue,
+    jobName: "extract",
+    type: "catalogue_extract",
+    companyId: version.companyId,
+    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, infer: infer !== false },
+  });
+}
+
+/** POST /catalogue-versions/:id/extract — (re-)extract the products of a version whose blocks nobody acted on yet. */
+export async function requestExtraction(versionId, companyScope, { infer = true } = {}) {
+  const version = await loadVersion(versionId, companyScope);
+  if (!["segmented", "review"].includes(version.status)) throw new CertError("VERSION_NOT_READY", `A version that is ${version.status} can't be extracted`, 409);
+  const touched = await prisma.catalogueBlock.count({ where: { versionId, OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
+  if (touched) throw new CertError("BLOCKS_IN_USE", "Blocks of this version were already accepted or linked; it can't be extracted again", 409);
+  const task = await enqueueExtraction(version, { infer });
+  return { versionId, jobId: task.id };
 }
 
 /**
@@ -69,7 +90,7 @@ async function addVersion({ catalogue, label, file, userId }) {
  * company's catalogue from the same manufacturer). manufacturer defaults to the
  * brand's name, else the file name.
  */
-export async function uploadCatalogue({ companyId, manufacturer, brandId, label, file, userId }) {
+export async function uploadCatalogue({ companyId, manufacturer, brandId, label, file, userId, extract = true }) {
   await assertCompany(companyId);
   const brand = await assertBrand(companyId, brandId);
   assertFile(file);
@@ -79,15 +100,15 @@ export async function uploadCatalogue({ companyId, manufacturer, brandId, label,
     update: brand ? { brandId: brand.id } : {},
     create: { companyId, manufacturer: maker, brandId: brand?.id || null },
   });
-  return addVersion({ catalogue, label, file, userId });
+  return addVersion({ catalogue, label, file, userId, extract });
 }
 
 /** POST /catalogues/:id/versions — a newer file of an existing catalogue (diff in §15.4). */
-export async function uploadVersion(catalogueId, companyScope, { label, file, userId }) {
+export async function uploadVersion(catalogueId, companyScope, { label, file, userId, extract = true }) {
   const catalogue = await prisma.catalogue.findUnique({ where: { id: catalogueId } });
   if (!visible(catalogue, companyScope)) throw notFound("Catalogue");
   assertFile(file);
-  return addVersion({ catalogue, label, file, userId });
+  return addVersion({ catalogue, label, file, userId, extract });
 }
 
 /**
@@ -95,7 +116,7 @@ export async function uploadVersion(catalogueId, companyScope, { label, file, us
  * by version: a retried job replaces the blocks it wrote, unless a person already
  * acted on them (then it refuses rather than lose that work).
  */
-export async function runSegmentJob(versionId, ctx = { progress: () => {} }) {
+export async function runSegmentJob(versionId, ctx = { progress: () => {} }, { extract = false } = {}) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version) throw notFound("Catalogue version");
   // checked before anything changes, so a refused retry leaves a reviewed version as it is
@@ -120,7 +141,9 @@ export async function runSegmentJob(versionId, ctx = { progress: () => {} }) {
       }),
     ]);
     ctx.progress(100, `${stats.products} product blocks found`);
-    return { versionId, pages: stats.pages, productBlocks: stats.products, contextBlocks: stats.context, warnings };
+    // the AI step is its own job (own task, own retry); a scanned/empty catalogue has nothing to extract
+    const next = extract && stats.products ? await enqueueExtraction({ id: versionId, companyId: version.companyId }) : null;
+    return { versionId, pages: stats.pages, productBlocks: stats.products, contextBlocks: stats.context, warnings, ...(next ? { extractJobId: next.id } : {}) };
   } catch (err) {
     await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "failed", error: err.code ? `${err.code}: ${err.message}` : err.message } });
     throw err;

@@ -311,6 +311,10 @@ paths:
     $ref: './paths/catalogues/catalogue-blocks-id.yaml'
   /catalogue-blocks/{id}/link:
     $ref: './paths/catalogues/catalogue-blocks-id-link.yaml'
+  /catalogue-versions/{id}/extract:
+    $ref: './paths/catalogues/catalogue-versions-id-extract.yaml'
+  /catalogue-versions/{id}/number-convention:
+    $ref: './paths/catalogues/catalogue-versions-id-number-convention.yaml'
   /certificate-batches/{id}:
     $ref: './paths/certificates-v2/certificate-batches-id.yaml'
   /certificate-batches/{id}/export:

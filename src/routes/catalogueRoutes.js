@@ -24,6 +24,9 @@ router.get("/catalogue-versions/:id", guard("read_products"), validate(catalogue
 router.get("/catalogue-versions/:id/file", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getVersionFile);
 router.get("/catalogue-blocks/:id", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getBlock);
 router.post("/catalogue-blocks/:id/link", guard("manage_catalogues"), validate(catalogueSchemas.link), catalogues.linkBlock);
+// A6.3: AI extraction (CATALOGUE_EXTRACT + CATALOGUE_INFER) and the once-per-catalogue number convention
+router.post("/catalogue-versions/:id/extract", guard("manage_catalogues"), validate(catalogueSchemas.extract), catalogues.extractVersion);
+router.put("/catalogue-versions/:id/number-convention", guard("manage_catalogues"), validate(catalogueSchemas.convention), catalogues.putNumberConvention);
 
 // Coded errors: { status, code, message, ...extra } (same contract as the certificates router).
 router.use((err, req, res, next) => {

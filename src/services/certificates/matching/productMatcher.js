@@ -8,6 +8,9 @@ import { aiMatch, AI_CANDIDATES } from "./aiMatcher.js";
 // step stops on a single confident hit:
 //  1. a learned alias of the line's name (ProductAlias) → matched (alias)
 //  2. exact, case-insensitive productCode            → matched (exact_code)
+//     — a code that several products carry (a catalogue printing AKS13 twice,
+//       plan.md A6) is ambiguous: the line is NEVER matched automatically then,
+//       not by name and not by an auto-accepted AI pick; a person picks
 //  3. exact normalised name with a single hit         → matched (exact_name)
 //  4. otherwise top-5 ranked candidates               → needs_match
 //  5. ONE AI call for the lines still ambiguous (aiMatcher): its pick of the
@@ -58,12 +61,14 @@ export function matchLine(line, products, { brandId = null, aliases = null } = {
   const alias = aliases?.get(normalizeName(line.name));
   if (alias && products.some((p) => p.id === alias)) return { productId: alias, matchStatus: "matched", matchMethod: "alias", matchCandidates: null };
   const code = normalizeCode(line.code);
+  let duplicateCode = false;
   if (code) {
     const hits = products.filter((p) => normalizeCode(p.productCode) === code);
     if (hits.length === 1) return { productId: hits[0].id, matchStatus: "matched", matchMethod: "exact_code", matchCandidates: null };
+    duplicateCode = hits.length > 1;
   }
   const name = normalizeName(line.name);
-  if (name) {
+  if (name && !duplicateCode) {
     const hits = products.filter((p) => normalizeName(p.name) === name);
     if (hits.length === 1) return { productId: hits[0].id, matchStatus: "matched", matchMethod: "exact_name", matchCandidates: null };
   }
@@ -86,7 +91,7 @@ export function matchLine(line, products, { brandId = null, aliases = null } = {
     .filter((c) => c.score >= MIN_SCORE)
     .sort((a, b) => b.score - a.score)
     .slice(0, AI_CANDIDATES);
-  return { productId: null, matchStatus: "needs_match", matchMethod: null, matchCandidates: ranked.slice(0, CANDIDATES), aiCandidates: ranked.map((c) => c.productId) };
+  return { productId: null, matchStatus: "needs_match", matchMethod: null, matchCandidates: ranked.slice(0, CANDIDATES), aiCandidates: ranked.map((c) => c.productId), ...(duplicateCode ? { duplicateCode: true } : {}) };
 }
 
 /**
@@ -113,6 +118,11 @@ export async function matchInvoice(invoiceId, { generate } = {}) {
   for (const u of updates) {
     const pick = picks.get(u.id);
     if (!pick) continue;
+    if (pick.autoAccepted && u.duplicateCode) {
+      // a code several products carry is never auto-matched: the pick waits for a person like any other suggestion
+      await prisma.aiSuggestion.update({ where: { id: pick.suggestion.id }, data: { status: "pending" } });
+      pick.autoAccepted = false;
+    }
     if (pick.autoAccepted) {
       Object.assign(u, { productId: pick.productId, matchStatus: "matched", matchMethod: "ai_confirmed", matchCandidates: null });
       await rememberAlias(invoice.companyId, u.item.data?.name, pick.productId, "ai_confirmed");

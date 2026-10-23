@@ -1,0 +1,17 @@
+# /catalogue-versions/{id}/number-convention (plan.md §15.3 step 5, A6.3).
+put:
+  tags: ["Catalogues"]
+  summary: Confirm how this catalogue writes "." + three digits (once)
+  description: "Body { dotGroup3: thousands | decimal }. Stored as version.numberConvention { dotGroup3, source: admin, confirmedByUserId, at }. Every amount is re-read from its amountRaw by code (no AI); ambiguous_number flags disappear. A block whose own numbers prove the other reading keeps it and is flagged convention_conflict. → { numberConvention, blocks, amountsReread }. Permission: manage_catalogues."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content: { application/json: { schema: { type: object, required: [dotGroup3], properties: { dotGroup3: { type: string, enum: [thousands, decimal] } } } } }
+  responses:
+    "200": { description: "{ numberConvention, blocks, amountsReread }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: INVALID_CONVENTION / validation }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

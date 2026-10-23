@@ -335,3 +335,13 @@ Additive; no new endpoint, no migration.
 - **Estimated product values:** a product field whose `fieldProvenance[path]` is `{ estimated: true }` without `confirmedAt` is never used by generation; the check returns it as `inferred` with provenance `{ tier: "I", kind: "product_estimate", estimated: true, path, basis, modelId, promptHash }`.
 - **`PATCH …/data-needs` accept + `saveToProduct: true`:** now also for `catalogue_found` (writes the value + `product.fieldProvenance[path]` with tier C, block, page, quote, `confirmedAt`) and for estimates (sets `fieldProvenance[path].confirmedAt`; value unchanged). `CANNOT_SAVE_TO_PRODUCT` otherwise, as before.
 - **Gap call evidence:** new type `catalogue_text { quote }` (verified against the product's own block; refused for batch data / results / invoice values).
+
+## Certificate AI layers (plan.md) — Phase A6.3 Catalogue extraction quality (2026-10-23)
+
+Additive; no migration.
+- **New:** `POST /catalogue-versions/:id/extract` `{ infer? }` → 202 `{ versionId, jobId }` (task `catalogue_extract`); `PUT /catalogue-versions/:id/number-convention` `{ dotGroup3: "thousands"|"decimal" }` → `{ numberConvention, blocks, amountsReread }`. Both `manage_catalogues`.
+- **Upload** (`POST /catalogues`, `POST /catalogues/:id/versions`): new optional field `extract` (`"false"` = segment only). By default the segment task's result carries `extractJobId` and the version goes `segmented → extracting → review` (a failed extraction call → back to `segmented` with `error`).
+- **`GET /catalogue-versions/:id`:** each product block's `extracted` = `{ isProduct, record, quotes, estimated, flags, category, convention, modelId, promptHash, extractedAt }` (shape in the OpenAPI doc); version `extraction` adds `modelId, promptHash, blocksPerCall, calls, retriedBlocks, runIds, numberConvention { majority, blocksWithEvidence, admin }, inference { calls, estimated, refused, failed?, reason? }`.
+- **Invoice matching:** a line whose code is carried by several products of the company is never matched automatically (`matchStatus: needs_match`, candidates shown; an auto-accepted AI pick for it stays `pending`). A learned alias still applies.
+- **Models:** `CATALOGUE_EXTRACT`, `CATALOGUE_INFER`, `CATALOGUE_LEGACY` in `modelRegistry.js`. The V1 `POST /products/upload-catalog` now calls Gemini through `geminiClient` (same prompt and response); no source file imports `@google/generative-ai` any more.
+- **New env (optional):** `CATALOGUE_BLOCKS_PER_CALL` (default 6). **New script:** `npm run eval:catalogue` (opt-in, `RUN_LIVE_GEMINI=1`).

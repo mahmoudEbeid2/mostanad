@@ -4,9 +4,8 @@
 //
 // Scope note: this covers the label-engine call sites migrated in Phase 0
 // (geminiClient, labelGeneratorWorker, referenceLabelWorker, edaRequirementWorker,
-// productAiWorker, labelService). catalogService.js is a separate subsystem
-// still on the deprecated @google/generative-ai SDK with its own hardcoded
-// model strings — out of scope for this phase, flagged separately. (The V1
+// productAiWorker, labelService). catalogService.js (the V1 catalogue upload)
+// moved onto geminiClient + CATALOGUE_LEGACY in plan.md A6.3. (The V1
 // certificate/template services were removed in Certificates V2 Phase 8.)
 //
 // DEVIATION FROM MOSTANAD_ARCHITECTURE.md §9.2/§9.3: the doc's registry example
@@ -145,4 +144,18 @@ export const MODELS = {
   // product's identity there. Its own name (not WEB_SEARCH, the label engine's)
   // so the two can be tuned independently. One call per product per 90 days.
   CERT_WEB_LOOKUP: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+
+  // Product catalogues as source documents (plan.md §15, A6).
+  // Block text → a schema-bound product record where every value carries a
+  // quote that code verifies against THAT block (§15.3 steps 3–4): copying, not
+  // reasoning — thinking off, as §15.7 specifies. Several blocks per call.
+  CATALOGUE_EXTRACT: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  // Owner rule (A6.3): product facts the catalogue does NOT print are estimated
+  // for the fields still empty — stored apart, marked estimated, never for
+  // composition/codes/specifications/registration. One call per catalogue version.
+  CATALOGUE_INFER: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  // The V1 upload (catalogService.processCatalogPDF), kept working until A6 is
+  // live (§15.8): same model and behaviour as before (no thinking budget was
+  // set, i.e. the model's dynamic default), now through geminiClient.
+  CATALOGUE_LEGACY: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
 };

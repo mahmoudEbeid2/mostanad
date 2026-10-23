@@ -205,13 +205,45 @@ export function findCatalogueValue(field, block) {
  * `value` is inside the quote (both after the evidence normalisation — case,
  * dashes, whitespace/tabs). → { ok, quote (as printed), start, end, page } | { ok: false, reason }
  */
-export function verifyBlockQuote(block, quote, value) {
+export function verifyBlockQuote(block, quote, value, { loose = false } = {}) {
   if (!block?.text) return { ok: false, reason: "the product has no catalogue block" };
-  const q = String(quote ?? "").trim();
-  const v = String(value ?? "").trim();
+  const prep = loose ? unbullet : (s) => s;
+  const q = prep(String(quote ?? "")).trim();
+  const v = prep(String(value ?? "")).trim();
   if (!q || !v) return { ok: false, reason: "a quote and a value are needed" };
   if (!normalizeEvidence(q).includes(normalizeEvidence(v))) return { ok: false, reason: "the value is not inside the quote" };
-  const occ = findOccurrences(normalizeWithMap(block.text), q);
+  // the block's text with list glyphs blanked IN PLACE (same length), so offsets stay the original's
+  const occ = findOccurrences(normalizeWithMap(prep(block.text)), q);
   if (!occ.length) return { ok: false, reason: "the quote is not in this product's catalogue block" };
-  return { ok: true, quote: block.text.slice(occ[0].start, occ[0].end), start: occ[0].start, end: occ[0].end, page: block.page };
+  const at = occ[0];
+  // the highlight starts at the first printed character (not at a blanked bullet)
+  let start = at.start;
+  while (start < at.end && /\s/.test(prep(block.text)[start])) start++;
+  return { ok: true, quote: block.text.slice(start, at.end), start, end: at.end, page: block.page };
+}
+
+/**
+ * List glyphs that a copy of a list legitimately leaves out — "• ", "▪ ", and a
+ * "- " / "– " opening a line — replaced by spaces of the same length, so a value
+ * written as running text ("Improves respiration. Reduces mucus …") is found in
+ * the printed list. Words, numbers and punctuation inside lines are untouched.
+ */
+export const unbullet = (s) => String(s ?? "").replace(/[•●▪◦‣∙]/g, " ").replace(/(^|\n)([ \t]*)[-–—](?=[ \t])/g, (m, nl, sp) => `${nl}${sp} `);
+
+const wordRe = (w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:e?s)?(?![\\p{L}\\p{N}])`, "iu");
+
+/**
+ * A short word (a species: "Poultry", "Cows") printed in the block, as a whole
+ * word (plural-tolerant) → { ok, quote: its printed line, start, end } | { ok: false, reason }.
+ */
+export function verifyBlockWord(block, word) {
+  const w = String(word ?? "").trim();
+  if (!block?.text || !w) return { ok: false, reason: "no word" };
+  const stem = w.replace(/(?<=\w{3})(es|s)$/i, "");
+  const m = wordRe(stem).exec(block.text);
+  if (!m) return { ok: false, reason: `"${w}" is not printed in this product's catalogue block` };
+  const lineStart = block.text.lastIndexOf("\n", m.index - 1) + 1;
+  const nl = block.text.indexOf("\n", m.index);
+  const lineEnd = nl < 0 ? block.text.length : nl;
+  return { ok: true, quote: block.text.slice(lineStart, lineEnd), start: lineStart, end: lineEnd };
 }

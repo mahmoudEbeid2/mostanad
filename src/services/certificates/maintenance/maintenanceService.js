@@ -20,6 +20,7 @@ export const CERT_TASK_TYPES = [
   "certificate_export_pdf",
   "certificate_export_zip",
   "catalogue_segment", // product catalogues (plan.md §15, A6)
+  "catalogue_extract",
 ];
 
 /** Ids of every StoredFile some row still references. */
@@ -130,7 +131,10 @@ export async function failStuckTasks({ olderThanMinutes = 30, now = new Date(), 
   // a catalogue version whose segmentation never finished: failed, so the admin can upload it again
   const stuckCatalogueIds = idsNotLive(await prisma.catalogueVersion.findMany({ where: { ...own, status: { in: ["uploaded", "segmenting"] }, updatedAt: { lt: cutoff } }, select: { id: true } }), live.entityIds);
   const catalogues = await prisma.catalogueVersion.updateMany({ where: { id: { in: stuckCatalogueIds } }, data: { status: "failed", error: reason } });
-  return { tasks: tasks.count, templateVersions: converting.count + preparing.count, invoices: extracting.count, batches: batches.length, catalogueVersions: catalogues.count };
+  // …and one whose extraction never finished goes back to its blocks (segmented), to extract again
+  const stuckExtractIds = idsNotLive(await prisma.catalogueVersion.findMany({ where: { ...own, status: "extracting", updatedAt: { lt: cutoff } }, select: { id: true } }), live.entityIds);
+  const catalogueExtracting = await prisma.catalogueVersion.updateMany({ where: { id: { in: stuckExtractIds } }, data: { status: "segmented", error: reason } });
+  return { tasks: tasks.count, templateVersions: converting.count + preparing.count, invoices: extracting.count, batches: batches.length, catalogueVersions: catalogues.count + catalogueExtracting.count };
 }
 
 /** The daily job. */

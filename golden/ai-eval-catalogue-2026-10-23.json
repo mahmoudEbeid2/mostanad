@@ -1,0 +1,1841 @@
+{
+  "date": "2026-10-23T08:49:26.489Z",
+  "products": [
+    {
+      "name": "Advice",
+      "page": 3,
+      "found": true,
+      "code": {
+        "want": "AKS030",
+        "got": "AKS030"
+      },
+      "ingredients": [],
+      "flags": [
+        "unverified: subtitle: \"HERBAL ANTIVIRAL SUPPLEMENT\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: description: \"ADVICE is an additive formulated to be mixed with drinking w\" — the quote is not in this product's catalogue block; dropped, enter it by hand",
+        "unverified: dosage: \"Enhancing immunity: poultry and livestock: 1000 ml per 1000 \" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: storage: \"It is recommended to store the product in its original packi\" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "contraindications"
+      ]
+    },
+    {
+      "name": "MIX5",
+      "page": 3,
+      "found": true,
+      "code": {
+        "want": "AKS031",
+        "got": "AKS031"
+      },
+      "ingredients": [
+        {
+          "name": "Eucalyptus essential oil",
+          "want": "120 gm",
+          "got": "120 gm",
+          "amount": 120,
+          "ok": true
+        },
+        {
+          "name": "Menthol",
+          "want": "80 gm",
+          "got": "80 gm",
+          "amount": 80,
+          "ok": true
+        },
+        {
+          "name": "Yucca extract",
+          "want": "50 gm",
+          "got": "50 gm",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Ginger extract",
+          "want": "50 gm",
+          "got": "50 gm",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Cinnamon extract",
+          "want": "50 gm",
+          "got": "50 gm",
+          "amount": 50,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "unverified: indications: \"MIX5 is recommended for prevention and help in the treatment\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: dosage: \"Poultry: 250 ml per 1000 Litres of drinking water, 3-4 days.\" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "indications",
+        "contraindications"
+      ]
+    },
+    {
+      "name": "Toxinil",
+      "page": 4,
+      "found": true,
+      "code": {
+        "want": "AKF029",
+        "got": "AKF029"
+      },
+      "ingredients": [
+        {
+          "name": "Propionic Acid",
+          "want": "120 gm",
+          "got": "120 gm",
+          "amount": 120,
+          "ok": true
+        },
+        {
+          "name": "Citric Acid",
+          "want": "80 gm",
+          "got": "80 gm",
+          "amount": 80,
+          "ok": true
+        },
+        {
+          "name": "Butyric Acid",
+          "want": "20 gm",
+          "got": "20 gm",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Formic Acid",
+          "want": "20 gm",
+          "got": "20 gm",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Lactic Acid",
+          "want": "10 gm",
+          "got": "10 gm",
+          "amount": 10,
+          "ok": true
+        },
+        {
+          "name": "Acetic Acid",
+          "want": "10 gm",
+          "got": "10 gm",
+          "amount": 10,
+          "ok": true
+        },
+        {
+          "name": "Malic Acid",
+          "want": "4 gm",
+          "got": "4 gm",
+          "amount": 4,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "unverified: subtitle: \"TOXINIL IS A CONCENTRATED ACIDIFYING FORMULATION CONTAINING \" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: indications: \"Strong effect against mold. Broad-spectrum of activity. Adso\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: description: \"Optimizes pH for balanced microflora in the gut. Promotes di\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: dosage: \"Recommended Dosage 500 ml per 1000 L drinking water. This do\" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "indications",
+        "contraindications"
+      ]
+    },
+    {
+      "name": "Antistrs-300",
+      "page": 4,
+      "found": true,
+      "code": {
+        "want": "AKS040",
+        "got": "AKS040"
+      },
+      "ingredients": [
+        {
+          "name": "Paracetamol",
+          "want": "180 mg",
+          "got": "180 mg",
+          "amount": 180,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "120 mg",
+          "got": "120 mg",
+          "amount": 120,
+          "ok": true
+        },
+        {
+          "name": "Excipients q.s",
+          "want": "1 gm",
+          "got": "1 gm",
+          "amount": 1,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "unverified: indications: \"ANTISTRS-300 works to relieve pain and reduce fever, and inc\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: dosage: \"500 gm per 1000 Litres of drinking water for 3-5 days. Cattl\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: target species \"parrots\" — \"parrots\" is not printed in this product's catalogue block; dropped"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "indications",
+        "contraindications"
+      ]
+    },
+    {
+      "name": "NUTRITIC",
+      "page": 5,
+      "found": true,
+      "code": {
+        "want": "AKF007",
+        "got": "AKF007"
+      },
+      "ingredients": [],
+      "flags": [
+        "unverified: subtitle: \"QUALITY NATURAL FEED ADDITIVES\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: indications: \"- Restricting and killing harmful germs. It is very nice for\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: description: \"Allicin of Garlic Extract has strong sterilizing, antimicrob\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: dosage: \"Application & Dosage : Poultry 500gm per ton of feed.or as a\" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": []
+    },
+    {
+      "name": "K-Digest",
+      "page": 5,
+      "found": true,
+      "code": {
+        "want": "AKS17",
+        "got": "AKS17"
+      },
+      "ingredients": [
+        {
+          "name": "Sorbitol",
+          "want": "200 mg",
+          "got": "200 mg",
+          "amount": 200,
+          "ok": true
+        },
+        {
+          "name": "Carnitine hydrochloride",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Betaine",
+          "want": "30 mg",
+          "got": "30 mg",
+          "amount": 30,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "220 mg",
+          "got": "220 mg",
+          "amount": 220,
+          "ok": true
+        },
+        {
+          "name": "D-panthenol",
+          "want": "25 mg",
+          "got": "25 mg",
+          "amount": 25,
+          "ok": true
+        },
+        {
+          "name": "Magnesium sulphate",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "unverified: subtitle: \"COMBINATION FOR CORRECTING AND PREVENTING LIVER AND ORAL SOL\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: indications: \"K-Digest is a dietetic liquid supplement formulated to corre\" — the value is not inside the quote; dropped, enter it by hand",
+        "unverified: dosage: \"For oral administration. 1 litre per 4000 litre of drinking \" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "indications",
+        "contraindications"
+      ]
+    },
+    {
+      "name": "Re-Cover",
+      "page": 6,
+      "found": true,
+      "code": {
+        "want": "AKS2017015",
+        "got": "AKS2017015"
+      },
+      "ingredients": [
+        {
+          "name": "Betaine",
+          "want": "220 mg",
+          "got": "220 mg",
+          "amount": 220,
+          "ok": true
+        },
+        {
+          "name": "Methionine",
+          "want": "120 mg",
+          "got": "120 mg",
+          "amount": 120,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C (Ascorbic Acid)",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Calcium Chloride Dihyrate",
+          "want": "40 mg",
+          "got": "40 mg",
+          "amount": 40,
+          "ok": true
+        },
+        {
+          "name": "Sodium Chloride Dihydrate",
+          "want": "40 mg",
+          "got": "40 mg",
+          "amount": 40,
+          "ok": true
+        },
+        {
+          "name": "Potassium Chloride",
+          "want": "2 mg",
+          "got": "2 mg",
+          "amount": 2,
+          "ok": true
+        },
+        {
+          "name": "Magnesium Chloride hexahydrate",
+          "want": "4 mg",
+          "got": "4 mg",
+          "amount": 4,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Growth 80",
+      "page": 6,
+      "found": true,
+      "code": {
+        "want": "AKS2017014",
+        "got": "AKS2017014"
+      },
+      "ingredients": [
+        {
+          "name": "Yeast extract",
+          "want": "80 mg",
+          "got": "80 mg",
+          "amount": 80,
+          "ok": true
+        },
+        {
+          "name": "Betaine",
+          "want": "200 mg",
+          "got": "200 mg",
+          "amount": 200,
+          "ok": true
+        },
+        {
+          "name": "Methionine",
+          "want": "120 mg",
+          "got": "120 mg",
+          "amount": 120,
+          "ok": true
+        },
+        {
+          "name": "Lysine",
+          "want": "80 mg",
+          "got": "80 mg",
+          "amount": 80,
+          "ok": true
+        },
+        {
+          "name": "Threonine",
+          "want": "60 mg",
+          "got": "60 mg",
+          "amount": 60,
+          "ok": true
+        },
+        {
+          "name": "Citric acid",
+          "want": "16 mg",
+          "got": "16 mg",
+          "amount": 16,
+          "ok": true
+        },
+        {
+          "name": "Malic acid",
+          "want": "3 mg",
+          "got": "3 mg",
+          "amount": 3,
+          "ok": true
+        },
+        {
+          "name": "Phosphoric acid",
+          "want": "13.6 mg",
+          "got": "13.6 mg",
+          "amount": 13.6,
+          "ok": true
+        },
+        {
+          "name": "Copper sulphate",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "unverified: indications: \"Growth 80 is a combination of yeast extract with Amino acid,\" — the value is not inside the quote; dropped, enter it by hand"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "indications",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Immuzyme",
+      "page": 7,
+      "found": true,
+      "code": {
+        "want": "AKF06",
+        "got": "AKF06"
+      },
+      "ingredients": [
+        {
+          "name": "Lysozyme",
+          "want": "240 mg",
+          "got": "240 mg",
+          "amount": 240,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Dextrose up to",
+          "want": "1 mg",
+          "got": "1 mg",
+          "amount": 1,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Optimum24",
+      "page": 7,
+      "found": true,
+      "code": {
+        "want": "AKF41",
+        "got": "AKF41"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin C (ascorbic acid)",
+          "want": "300 mg",
+          "got": "300 mg",
+          "amount": 300,
+          "ok": true
+        },
+        {
+          "name": "Paracetamol",
+          "want": "150 mg",
+          "got": "150 mg",
+          "amount": 150,
+          "ok": true
+        },
+        {
+          "name": "Methionine",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Betaine HCL",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Dextrose up to",
+          "want": "1 gm",
+          "got": "1 gm",
+          "amount": 1,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Mentholic",
+      "page": 8,
+      "found": true,
+      "code": {
+        "want": "AKS05",
+        "got": "AKS05"
+      },
+      "ingredients": [
+        {
+          "name": "Menthol",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Eucalyptus",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Garlic extract",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agri-CalD3",
+      "page": 8,
+      "found": true,
+      "code": {
+        "want": "AKS01",
+        "got": "AKS01"
+      },
+      "ingredients": [
+        {
+          "name": "Calcium Chloride",
+          "want": "60,000 mg",
+          "got": "60,000 mg",
+          "amount": 60000,
+          "ok": true
+        },
+        {
+          "name": "Phosphoric Acid",
+          "want": "30,000 mg",
+          "got": "30,000 mg",
+          "amount": 30000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "100,000 I.U.",
+          "got": "100,000 I.U.",
+          "amount": 100000,
+          "ok": true
+        },
+        {
+          "name": "Iron",
+          "want": "8,000 mg",
+          "got": "8,000 mg",
+          "amount": 8000,
+          "ok": true
+        },
+        {
+          "name": "Copper",
+          "want": "1,000 mg",
+          "got": "1,000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Zinc",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Magnesium",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Distillate water up to",
+          "want": "1,000 mL",
+          "got": "1,000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Aminovital",
+      "page": 9,
+      "found": true,
+      "code": {
+        "want": "AKS02",
+        "got": "AKS02"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin A",
+          "want": "10.000.000 I.U.",
+          "got": "10.000.000 I.U.",
+          "amount": 10000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "2.000.000 I.U.",
+          "got": "2.000.000 I.U.",
+          "amount": 2000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "2.000 mg",
+          "got": "2.000 mg",
+          "amount": 2000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B1",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B2",
+          "want": "4 mg",
+          "got": "4 mg",
+          "amount": 4,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B6",
+          "want": "500 mg",
+          "got": "500 mg",
+          "amount": 500,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B12",
+          "want": "1 mcg",
+          "got": "1 mcg",
+          "amount": 1,
+          "ok": true
+        },
+        {
+          "name": "Biotin",
+          "want": "10 mg",
+          "got": "10 mg",
+          "amount": 10,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "2.000 mg",
+          "got": "2.000 mg",
+          "amount": 2000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin K3",
+          "want": "10 mg",
+          "got": "10 mg",
+          "amount": 10,
+          "ok": true
+        },
+        {
+          "name": "Magnesium(Sulphate)",
+          "want": "5.000 mg",
+          "got": "5.000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Zinc(Sulphate)",
+          "want": "5.000 mg",
+          "got": "5.000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Iron(Sulphate)",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Cobalt(Sulphate)",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Potassium Iodite",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Sodium Selenite",
+          "want": "25 mg",
+          "got": "25 mg",
+          "amount": 25,
+          "ok": true
+        },
+        {
+          "name": "Calcium Pantothenate",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Nicotinic Acid",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "350 mg",
+          "got": "350 mg",
+          "amount": 350,
+          "ok": true
+        },
+        {
+          "name": "Folic Acid",
+          "want": "10 mg",
+          "got": "10 mg",
+          "amount": 10,
+          "ok": true
+        },
+        {
+          "name": "Methionine",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Lysine",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Threonine",
+          "want": "500 mg",
+          "got": "500 mg",
+          "amount": 500,
+          "ok": true
+        },
+        {
+          "name": "Betaine",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Distillate water up to",
+          "want": "1.000 mL",
+          "got": "1.000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": []
+    },
+    {
+      "name": "Calcium-70",
+      "page": 9,
+      "found": true,
+      "code": {
+        "want": "AKS03",
+        "got": "AKS03"
+      },
+      "ingredients": [
+        {
+          "name": "Calcium Chloride",
+          "want": "70.000 mg",
+          "got": "70.000 mg",
+          "amount": 70000,
+          "ok": true
+        },
+        {
+          "name": "Potassium Chloride",
+          "want": "7.000 mg",
+          "got": "7.000 mg",
+          "amount": 7000,
+          "ok": true
+        },
+        {
+          "name": "Phosphoric Acid",
+          "want": "35.000 mg",
+          "got": "35.000 mg",
+          "amount": 35000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "200.000 I.U.",
+          "got": "200.000 I.U.",
+          "amount": 200000,
+          "ok": true
+        },
+        {
+          "name": "Sorbitol",
+          "want": "10.000 mg",
+          "got": "10.000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Distillate water up to",
+          "want": "1.000 mL",
+          "got": "1.000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agrivita+",
+      "page": 10,
+      "found": true,
+      "code": {
+        "want": "AKS06",
+        "got": "AKS06"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin A",
+          "want": "28.000.000 I.U.",
+          "got": "28.000.000 I.U.",
+          "amount": 28000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "3.000.000 I.U.",
+          "got": "3.000.000 I.U.",
+          "amount": 3000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "3.000 mg",
+          "got": "3.000 mg",
+          "amount": 3000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B1",
+          "want": "1.400 mg",
+          "got": "1.400 mg",
+          "amount": 1400,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B2",
+          "want": "200 mg",
+          "got": "200 mg",
+          "amount": 200,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B6",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B12",
+          "want": "5 mg",
+          "got": "5 mg",
+          "amount": 5,
+          "ok": true
+        },
+        {
+          "name": "Biotine",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "3.000 mg",
+          "got": "3.000 mg",
+          "amount": 3000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin K3",
+          "want": "500 mg",
+          "got": "500 mg",
+          "amount": 500,
+          "ok": true
+        },
+        {
+          "name": "Calcium pantothenate",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Nicotinic acid",
+          "want": "2.000 mg",
+          "got": "2.000 mg",
+          "amount": 2000,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "1.800 mg",
+          "got": "1.800 mg",
+          "amount": 1800,
+          "ok": true
+        },
+        {
+          "name": "Folic acid",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Methionine",
+          "want": "2.400 mg",
+          "got": "2.400 mg",
+          "amount": 2400,
+          "ok": true
+        },
+        {
+          "name": "Lysine",
+          "want": "1.000 mg",
+          "got": "1.000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Threonine",
+          "want": "850 mg",
+          "got": "850 mg",
+          "amount": 850,
+          "ok": true
+        },
+        {
+          "name": "Valine",
+          "want": "500 mg",
+          "got": "500 mg",
+          "amount": 500,
+          "ok": true
+        },
+        {
+          "name": "Tryptophane",
+          "want": "500 mg",
+          "got": "500 mg",
+          "amount": 500,
+          "ok": true
+        },
+        {
+          "name": "Distillate water up to",
+          "want": "1000 mL",
+          "got": "1000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agri-E+S200",
+      "page": 10,
+      "found": true,
+      "code": {
+        "want": "AKS207",
+        "got": "AKS207"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin E",
+          "want": "200 mg",
+          "got": "200 mg",
+          "amount": 200,
+          "ok": true
+        },
+        {
+          "name": "Sodium Selenite (Selenium)",
+          "want": "0.5 mg",
+          "got": "0.5 mg",
+          "amount": 0.5,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Kima-Immune",
+      "page": 11,
+      "found": true,
+      "code": {
+        "want": "AKS08",
+        "got": "AKS08"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin E",
+          "want": "200000 mg",
+          "got": "200000 mg",
+          "amount": 200000,
+          "ok": true
+        },
+        {
+          "name": "Selenium",
+          "want": "2200 mg",
+          "got": "2200 mg",
+          "amount": 2200,
+          "ok": true
+        },
+        {
+          "name": "Vitamin A",
+          "want": "100000 I.U.",
+          "got": "100000 I.U.",
+          "amount": 100000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B12",
+          "want": "1600 mg",
+          "got": "1600 mg",
+          "amount": 1600,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "15000 mg",
+          "got": "15000 mg",
+          "amount": 15000,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "4000 mg",
+          "got": "4000 mg",
+          "amount": 4000,
+          "ok": true
+        },
+        {
+          "name": "Distillate water up to",
+          "want": "1,000 mL",
+          "got": "1,000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agri-Hepa+",
+      "page": 11,
+      "found": true,
+      "code": {
+        "want": "AKS09",
+        "got": "AKS09"
+      },
+      "ingredients": [
+        {
+          "name": "Silymarine",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Sorbitol",
+          "want": "25,000 mg",
+          "got": "25,000 mg",
+          "amount": 25000,
+          "ok": true
+        },
+        {
+          "name": "Betaine",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "L-Lysine",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Nicotinamide",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Formic acid",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Propionic acid",
+          "want": "15,000 mg",
+          "got": "15,000 mg",
+          "amount": 15000,
+          "ok": true
+        },
+        {
+          "name": "Acetic acid",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Lactic acid",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agrilyte+C",
+      "page": 12,
+      "found": true,
+      "code": {
+        "want": "AKS11",
+        "got": "AKS11"
+      },
+      "ingredients": [
+        {
+          "name": "Ammonium chloride",
+          "want": "320,000 mg",
+          "got": "320,000 mg",
+          "amount": 320000,
+          "ok": true
+        },
+        {
+          "name": "Magnesium sulphate",
+          "want": "20,000 mg",
+          "got": "20,000 mg",
+          "amount": 20000,
+          "ok": true
+        },
+        {
+          "name": "Copper sulphate",
+          "want": "10,000 mg",
+          "got": "10,000 mg",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Manganese sulphate",
+          "want": "20,000 mg",
+          "got": "20,000 mg",
+          "amount": 20000,
+          "ok": true
+        },
+        {
+          "name": "Zinc sulphate",
+          "want": "15,000 mg",
+          "got": "15,000 mg",
+          "amount": 15000,
+          "ok": true
+        },
+        {
+          "name": "Iron sulphate",
+          "want": "5,000 mg",
+          "got": "5,000 mg",
+          "amount": 5000,
+          "ok": true
+        },
+        {
+          "name": "Cobalt sulphate",
+          "want": "3,000 mg",
+          "got": "3,000 mg",
+          "amount": 3000,
+          "ok": true
+        },
+        {
+          "name": "Potassium iodite",
+          "want": "1,000 mg",
+          "got": "1,000 mg",
+          "amount": 1000,
+          "ok": true
+        },
+        {
+          "name": "Sodium selenite",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Distilled water up to",
+          "want": "1000 mL",
+          "got": "1000 mL",
+          "amount": 1000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agrivita-C",
+      "page": 12,
+      "found": true,
+      "code": {
+        "want": "AKS10",
+        "got": "AKS10"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin C (ascorbic acid)",
+          "want": "99% (990 gm)",
+          "got": "99% (990 gm)",
+          "amount": 99,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "Agrizec",
+      "page": 13,
+      "found": true,
+      "code": {
+        "want": "AKS12",
+        "got": "AKS12"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin E",
+          "want": "200.000 mg",
+          "got": "200.000 mg",
+          "amount": 200000,
+          "ok": true
+        },
+        {
+          "name": "Selenium",
+          "want": "2300 mg",
+          "got": "2300 mg",
+          "amount": 2300,
+          "ok": true
+        },
+        {
+          "name": "Zinc.",
+          "want": "8500 mg",
+          "got": "8500 mg",
+          "amount": 8500,
+          "ok": true
+        },
+        {
+          "name": "Vitamin A",
+          "want": "100000 I.U.",
+          "got": "100000 I.U.",
+          "amount": 100000,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "ambiguous_number: \"Vitamin E\": \"200.000\" read as 200,000 (the catalogue's usual \".\" — confirm the convention)"
+      ],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "AD3E 100/20/20",
+      "page": 13,
+      "found": true,
+      "code": {
+        "want": "AKS43",
+        "got": "AKS43"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin A",
+          "want": "100 000 000 I.U.",
+          "got": "100 000 000 I.U.",
+          "amount": 100000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "20 000 000 I.U.",
+          "got": "20 000 000 I.U.",
+          "amount": 20000000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "20 000 mg",
+          "got": "20 000 mg",
+          "amount": 20000,
+          "ok": true
+        }
+      ],
+      "flags": [],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "AD3E-CK",
+      "page": 14,
+      "found": true,
+      "code": {
+        "want": "AKS13",
+        "got": "AKS13"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin A",
+          "want": "50 000 I.U.",
+          "got": "50 000 I.U.",
+          "amount": 50000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3",
+          "want": "10 000 I.U.",
+          "got": "10 000 I.U.",
+          "amount": 10000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C",
+          "want": "100 mg",
+          "got": "100 mg",
+          "amount": 100,
+          "ok": true
+        },
+        {
+          "name": "Vitamin K3",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "duplicate_code: Code AKS13 is printed for 2 products (AD3E-PLUS) — invoices with it are never matched automatically"
+      ],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "AD3E-PLUS",
+      "page": 14,
+      "found": true,
+      "code": {
+        "want": "AKS13",
+        "got": "AKS13"
+      },
+      "ingredients": [
+        {
+          "name": "Vitamin A, retinol palmitate",
+          "want": "12 000 I.U.",
+          "got": "12 000 I.U.",
+          "amount": 12000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin D3, cholecalciferol",
+          "want": "2 000 I.U.",
+          "got": "2 000 I.U.",
+          "amount": 2000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E, a-tocopherol acetate",
+          "want": "60 mg",
+          "got": "60 mg",
+          "amount": 60,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B1, thiamine hydrochloride",
+          "want": "3 mg",
+          "got": "3 mg",
+          "amount": 3,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B2, riboflavine sodium phosphate",
+          "want": "6 mg",
+          "got": "6 mg",
+          "amount": 6,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B6, pyridoxine hydrochloride",
+          "want": "4 mg",
+          "got": "4 mg",
+          "amount": 4,
+          "ok": true
+        },
+        {
+          "name": "Vitamin B12, cyanocobalamin",
+          "want": "30 μg",
+          "got": "30 μg",
+          "amount": 30,
+          "ok": true
+        },
+        {
+          "name": "Vitamin C, ascorbic acid",
+          "want": "50 mg",
+          "got": "50 mg",
+          "amount": 50,
+          "ok": true
+        },
+        {
+          "name": "Vitamin K3",
+          "want": "2 mg",
+          "got": "2 mg",
+          "amount": 2,
+          "ok": true
+        },
+        {
+          "name": "D-panthenol",
+          "want": "20 mg",
+          "got": "20 mg",
+          "amount": 20,
+          "ok": true
+        },
+        {
+          "name": "Nicotinamide",
+          "want": "40 mg",
+          "got": "40 mg",
+          "amount": 40,
+          "ok": true
+        },
+        {
+          "name": "Biotin",
+          "want": "150 μg",
+          "got": "150 μg",
+          "amount": 150,
+          "ok": true
+        },
+        {
+          "name": "Folic acid",
+          "want": "1 mg",
+          "got": "1 mg",
+          "amount": 1,
+          "ok": true
+        },
+        {
+          "name": "Choline chloride",
+          "want": "110 mg",
+          "got": "110 mg",
+          "amount": 110,
+          "ok": true
+        },
+        {
+          "name": "Glycine",
+          "want": "10 mg",
+          "got": "10 mg",
+          "amount": 10,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "duplicate_code: Code AKS13 is printed for 2 products (AD3E-CK) — invoices with it are never matched automatically"
+      ],
+      "estimated": [
+        "appearance",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "IMMUSOL",
+      "page": 15,
+      "found": true,
+      "code": {
+        "want": null,
+        "got": null
+      },
+      "ingredients": [
+        {
+          "name": "seaweed extract",
+          "want": "42,000 mg",
+          "got": "42,000 mg",
+          "amount": 42000,
+          "ok": true
+        },
+        {
+          "name": "Astragalus polysaccharide extract",
+          "want": "30,000 mg",
+          "got": "30,000 mg",
+          "amount": 30000,
+          "ok": true
+        },
+        {
+          "name": "Star Anise Oil",
+          "want": "50,000 mg",
+          "got": "50,000 mg",
+          "amount": 50000,
+          "ok": true
+        },
+        {
+          "name": "Thymol",
+          "want": "50,000 mg",
+          "got": "50,000 mg",
+          "amount": 50000,
+          "ok": true
+        },
+        {
+          "name": "Black seed Oil",
+          "want": "50,000 mg",
+          "got": "50,000 mg",
+          "amount": 50000,
+          "ok": true
+        },
+        {
+          "name": "Oregano extract",
+          "want": "50,000 mg",
+          "got": "50,000 mg",
+          "amount": 50000,
+          "ok": true
+        },
+        {
+          "name": "Licorice extract",
+          "want": "30,000 mg",
+          "got": "30,000 mg",
+          "amount": 30000,
+          "ok": true
+        },
+        {
+          "name": "Cinnamon oil",
+          "want": "30,000 mg",
+          "got": "30,000 mg",
+          "amount": 30000,
+          "ok": true
+        },
+        {
+          "name": "Riboflavin",
+          "want": "3000 mg",
+          "got": "3000 mg",
+          "amount": 3000,
+          "ok": true
+        },
+        {
+          "name": "Vitamin E",
+          "want": "20,000 mg",
+          "got": "20,000 mg",
+          "amount": 20000,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "estimated_withdrawal: Withdrawal period not printed — estimated \"None.\"; review it"
+      ],
+      "estimated": [
+        "appearance",
+        "targetSpecies",
+        "withdrawalPeriod",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "DL-METHIONINE",
+      "page": 15,
+      "found": true,
+      "code": {
+        "want": null,
+        "got": null
+      },
+      "ingredients": [],
+      "flags": [],
+      "estimated": [
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "CHOLINE CHLORIDE 70%",
+      "page": 16,
+      "found": true,
+      "code": {
+        "want": null,
+        "got": null
+      },
+      "ingredients": [
+        {
+          "name": "Choline chloride",
+          "want": "70%",
+          "got": null,
+          "amount": null,
+          "ok": false
+        }
+      ],
+      "flags": [
+        "estimated_withdrawal: Withdrawal period not printed — estimated \"None.\"; review it"
+      ],
+      "estimated": [
+        "appearance",
+        "targetSpecies",
+        "withdrawalPeriod",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "THERIONINE 65%",
+      "page": 16,
+      "found": true,
+      "code": {
+        "want": null,
+        "got": null
+      },
+      "ingredients": [
+        {
+          "name": "Threonine",
+          "want": "65%",
+          "got": "65%",
+          "amount": 65,
+          "ok": true
+        }
+      ],
+      "flags": [
+        "estimated_withdrawal: Withdrawal period not printed — estimated \"None.\"; review it"
+      ],
+      "estimated": [
+        "appearance",
+        "description",
+        "targetSpecies",
+        "withdrawalPeriod",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    },
+    {
+      "name": "BETAINE 50%",
+      "page": 17,
+      "found": true,
+      "code": {
+        "want": null,
+        "got": null
+      },
+      "ingredients": [],
+      "flags": [
+        "estimated_withdrawal: Withdrawal period not printed — estimated \"None.\"; review it"
+      ],
+      "estimated": [
+        "appearance",
+        "targetSpecies",
+        "withdrawalPeriod",
+        "contraindications",
+        "mixingInstructions"
+      ]
+    }
+  ],
+  "totals": {
+    "products": 29,
+    "codes": 24,
+    "codesExpected": 24,
+    "ingredients": 178,
+    "amountRawOk": 177,
+    "ambiguousFlagged": 1,
+    "ambiguousExpected": 1,
+    "misparsed": 0,
+    "unverifiedStored": 0,
+    "droppedAsUnverified": 21,
+    "estimated": 108,
+    "ms": 130614,
+    "calls": 6,
+    "inference": {
+      "calls": 1,
+      "runId": "37b9c2fb-ca39-4437-83a0-e5924b1ea87e",
+      "refused": 0,
+      "estimated": 108
+    },
+    "convention": {
+      "admin": null,
+      "majority": {
+        "votes": {
+          "decimal": 1,
+          "thousands": 3
+        },
+        "dotGroup3": "thousands"
+      },
+      "blocksWithEvidence": 4
+    }
+  },
+  "bar": {
+    "allProducts": true,
+    "allCodes": true,
+    "allAmountRaw": false,
+    "ambiguousFlagged": true,
+    "noneMisparsed": true,
+    "zeroUnverifiedStored": true
+  }
+}
