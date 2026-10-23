@@ -189,12 +189,28 @@ try {
     ["rematch", "POST", `/invoices/${inv.id}/rematch`],
     ["confirm", "POST", `/invoices/${inv.id}/confirm`],
     ["retry", "POST", `/invoices/${failedId}/retry`],
+    ["manual", "POST", `/invoices/${failedId}/manual`],
   ]) {
     r = await api(method, url, B, body);
     assert(`${label} → 404`, r.status === 404, r.status);
   }
   r = await api("GET", "/invoices", B);
   assert("other tenant's list is empty", r.data?.total === 0);
+
+  console.log("\n✍️ P8 — AI unavailable: a failed invoice is entered by hand");
+  r = await api("POST", `/invoices/${inv.id}/manual`, A);
+  assert("manual on a non-failed invoice → 409 INVOICE_NOT_FAILED", r.status === 409 && r.data?.code === "INVOICE_NOT_FAILED", r.data);
+  r = await api("POST", `/invoices/${failedId}/manual`, A);
+  const mInv = r.data?.data?.invoice;
+  assert("failed → review, no lines, nothing filled in, the reason kept", r.status === 200 && mInv.status === "review" && mInv.items.length === 0 && !mInv.error && mInv.extraction?.manual === true && /GEMINI_DISABLED/.test(mInv.extraction.reason) && !Object.keys(mInv.header || {}).length, mInv);
+  r = await api("POST", `/invoices/${failedId}/manual`, A);
+  assert("…only once (409 the second time)", r.status === 409 && r.data?.code === "INVOICE_NOT_FAILED", r.data);
+  r = await api("PATCH", `/invoices/${failedId}`, A, { header: { invoiceNumber: "INV-HAND-1", invoiceDate: "2026-10-20" } });
+  assert("header typed by hand", r.status === 200 && r.data.data.invoice.header.invoiceNumber === "INV-HAND-1", r.data);
+  r = await api("POST", `/invoices/${failedId}/items`, A, { data: { name: "ADD-E120", batchNo: "M-1", expiryDate: "11/2028" }, productId: pAE.id });
+  assert("a line typed by hand, matched by the person", r.status === 201 && r.data.data.item.lineNo === 1 && r.data.data.item.matchMethod === "user", r.data);
+  r = await api("POST", `/invoices/${failedId}/confirm`, A);
+  assert("confirm → ready", r.status === 200 && r.data.data.invoice.status === "ready", r.data);
 } catch (err) {
   console.error("Fatal:", err);
   counts.failed++;

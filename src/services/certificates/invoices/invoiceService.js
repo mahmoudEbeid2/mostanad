@@ -152,6 +152,29 @@ export async function retryExtraction(invoiceId, companyId) {
   return { invoiceId, taskId: task.id };
 }
 
+/**
+ * POST /invoices/:id/manual — P8, everything degrades to manual: a FAILED
+ * invoice (AI unavailable, quota, unreadable scan) is entered by hand instead
+ * of read again. It moves to review with no lines and nothing filled in; the
+ * person adds the header and lines from the original beside it, then matches,
+ * confirms and generates as usual. Why it couldn't be read is kept in
+ * `extraction.reason`. → the invoice
+ */
+export async function startManualEntry(invoiceId, companyId, userId = null) {
+  const inv = await loadInvoice(invoiceId, companyId);
+  const claimed = await prisma.invoice.updateMany({
+    where: { id: invoiceId, status: "failed" },
+    data: {
+      status: "review",
+      error: null,
+      header: inv.header || {},
+      extraction: { manual: true, byUserId: userId, at: new Date().toISOString(), reason: inv.error || null, warnings: [] },
+    },
+  });
+  if (!claimed.count) throw new CertError("INVOICE_NOT_FAILED", `Only an invoice that couldn't be read can be entered by hand (this one is ${inv.status})`, 409);
+  return getInvoice(invoiceId, companyId);
+}
+
 // ── reads ────────────────────────────────────────────────────────────────────
 /** Ids of a company's invoices whose number or customer contains `q` (case-insensitive). */
 async function searchInvoiceIds(companyId, q) {

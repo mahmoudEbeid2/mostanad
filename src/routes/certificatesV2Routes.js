@@ -96,6 +96,7 @@ router.delete("/invoices/:id/items/:itemId", guard("update_invoices"), validate(
 router.post("/invoices/:id/rematch", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.rematch);
 router.post("/invoices/:id/confirm", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.confirmInvoice);
 router.post("/invoices/:id/retry", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.retryExtraction); // plan §20 I17
+router.post("/invoices/:id/manual", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.startManualEntry); // plan.md P8 — enter a failed invoice by hand
 
 // ── generation + generated certificates (§10–§12) ───────────────────────────
 router.get("/invoices/:id/generation-plan", guard("read_invoices"), validate(invoiceSchemas.byId), certificates.generationPlan); // plan §20 I19
