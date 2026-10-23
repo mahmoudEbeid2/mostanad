@@ -73,6 +73,8 @@ export const matchSummaryOf = (res, by) => ({
   matched: res.matched,
   needsMatch: res.needsMatch,
   ai: res.ai ? { used: !!res.ai.used, calls: res.ai.calls || 0, suggested: res.ai.suggested || 0, autoAccepted: res.ai.autoAccepted || 0, ...(res.ai.unavailable ? { unavailable: true, reason: String(res.ai.reason || "").slice(0, 500) } : {}) } : null,
+  // A6.6: lines that got catalogue candidates (a failed catalogue search is reported, not hidden)
+  ...(res.catalogue ? { catalogue: { lines: res.catalogue.lines || 0, added: res.catalogue.added || 0, ...(res.catalogue.failed ? { failed: String(res.catalogue.failed).slice(0, 300) } : {}) } } : {}),
   by,
   at: new Date().toISOString(),
 });

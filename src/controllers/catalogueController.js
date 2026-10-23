@@ -4,6 +4,7 @@ import * as catalogues from "../services/catalogues/catalogueService.js";
 import { setNumberConvention } from "../services/catalogues/extraction/extractionService.js";
 import * as review from "../services/catalogues/reviewService.js";
 import * as diff from "../services/catalogues/diffService.js";
+import { searchCatalogues } from "../services/catalogues/searchService.js";
 
 // Product catalogues as source documents (plan.md §15, A6). Thin: every rule
 // and every tenant check is in services/catalogues/catalogueService.js.
@@ -44,6 +45,12 @@ export const splitBlock = catchAsync(async (req, res) => ok(res, await review.sp
 export const getDiff = catchAsync(async (req, res) => ok(res, await diff.versionDiff(req.params.id, scopeFor(req))));
 export const applyBlockDiff = catchAsync(async (req, res) => ok(res, await diff.applyBlockDiff(req.params.id, scopeFor(req), req.body || {}, actor(req))));
 export const applyVersionDiff = catchAsync(async (req, res) => ok(res, await diff.applyVersionDiff(req.params.id, scopeFor(req), actor(req))));
+
+// A6.6 — catalogue search (plan §15.6), always one company
+export const search = catchAsync(async (req, res) => {
+  const q = req.validatedQuery || req.query;
+  ok(res, await searchCatalogues(scopeFor(req), q.q, { limit: q.limit ? Number(q.limit) : undefined, allVersions: q.allVersions === "true" }));
+});
 
 export const getVersionFile = catchAsync(async (req, res) => {
   const { row, stream } = await catalogues.versionFile(req.params.id, scopeFor(req));

@@ -18,6 +18,8 @@ const uploadPdf = multer({ storage: multer.memoryStorage(), limits: { fileSize: 
 
 router.post("/catalogues", guard("manage_catalogues"), uploadPdf.single("file"), validate(catalogueSchemas.upload), catalogues.uploadCatalogue);
 router.get("/catalogues", guard("read_products"), validate(catalogueSchemas.list), catalogues.listCatalogues);
+// A6.6: full text + fuzzy names over the company's catalogue blocks
+router.get("/catalogue-search", guard("read_products"), validate(catalogueSchemas.search), catalogues.search);
 router.get("/catalogues/:id", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getCatalogue);
 router.post("/catalogues/:id/versions", guard("manage_catalogues"), uploadPdf.single("file"), validate(catalogueSchemas.uploadVersion), catalogues.uploadVersion);
 router.get("/catalogue-versions/:id", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getVersion);

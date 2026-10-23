@@ -67,6 +67,9 @@ function amountAfterName(block, start, end, name) {
   return m ? m[1].trim() : null;
 }
 
+// an amount inside a name: a number (with its unit) after a word, followed by more words or nothing
+const FOLDED_AMOUNT = /\s(\d[\d.,]*\s?(?:%|mg|g|kg|mcg|μg|ml|mL|L|I\.U\.|IU))(?=\s|$)/;
+
 function verifyIngredient(block, ing, { basis, convention }, flags) {
   const amountRaw = ing?.amountRaw === null || ing?.amountRaw === undefined || !String(ing.amountRaw).trim() ? null : String(ing.amountRaw).trim();
   let name = String(ing?.name || "").trim();
@@ -81,6 +84,10 @@ function verifyIngredient(block, ing, { basis, convention }, flags) {
   }
   const quote = { quote: ok.quote, start: ok.start, end: ok.end };
   if (!amountRaw) {
+    // the amount folded into the name with the model's amount left out ("Choline chloride 70% feed grade"
+    // seen live): split at the amount and verify it like any other — it must be printed right after the name
+    const folded = name.match(FOLDED_AMOUNT);
+    if (folded && folded.index > 0) return verifyIngredient(block, { name: name.slice(0, folded.index).trim(), amountRaw: folded[1], quote: ing.quote || name }, { basis, convention }, flags);
     // the model left the amount out: code copies it only from that ingredient's OWN composition line,
     // when the first thing after the name is an amount ("Choline chloride 70% feed grade") — copied, never inferred
     const printed = amountAfterName(block, ok.start, ok.end, name);

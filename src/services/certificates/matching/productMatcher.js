@@ -2,6 +2,7 @@ import { prisma } from "../../../lib/prisma.js";
 import { getAiSettings } from "../ai/aiSettings.js";
 import { aliasMap, rememberAlias } from "./productAliases.js";
 import { aiMatch, AI_CANDIDATES } from "./aiMatcher.js";
+import { catalogueCandidates } from "../../catalogues/searchService.js";
 
 // Invoice line → catalogue product (CERTIFICATES_V2_PLAN.md §9.2, plan.md §7).
 // Always tenant-scoped (`where: { companyId }`, never a global product). Each
@@ -13,6 +14,8 @@ import { aiMatch, AI_CANDIDATES } from "./aiMatcher.js";
 //       not by name and not by an auto-accepted AI pick; a person picks
 //  3. exact normalised name with a single hit         → matched (exact_name)
 //  4. otherwise top-5 ranked candidates               → needs_match
+//     (+ products whose linked catalogue block prints most words of the line's
+//     name — plan.md §15.6; a candidate only, never an automatic match)
 //  5. ONE AI call for the lines still ambiguous (aiMatcher): its pick of the
 //     line's top-10 candidates is a suggestion — matched (ai_confirmed) only
 //     when the company auto-accepts at/above its threshold, else shown first
@@ -110,6 +113,8 @@ export async function matchInvoice(invoiceId, { generate } = {}) {
   const auto = invoice.items.filter((it) => it.matchStatus !== "ignored" && !KEPT_METHODS.includes(it.matchMethod));
   const updates = auto.map((it) => ({ id: it.id, item: it, ...matchLine(it.data || {}, products, { brandId: invoice.brandId, aliases }) }));
 
+  const catalogue = await addCatalogueCandidates(invoice.companyId, updates, products);
+
   const pending = updates.filter((u) => u.matchStatus === "needs_match" && u.aiCandidates?.length).map((u) => ({ item: u.item, candidates: u.aiCandidates }));
   const settings = await getAiSettings(invoice.companyId);
   const { picks, ai } = await aiMatch(invoice, pending, new Map(products.map((p) => [p.id, p])), settings, { generate });
@@ -143,5 +148,45 @@ export async function matchInvoice(invoiceId, { generate } = {}) {
     matched: updates.filter((u) => u.matchStatus === "matched").length,
     needsMatch: updates.filter((u) => u.matchStatus === "needs_match").length,
     ai,
+    catalogue,
   };
+}
+
+/**
+ * The catalogue as an extra candidate source (plan.md §15.6): for each line still
+ * needing a product, products whose catalogue block prints most words of the
+ * line's name join (or lift) its candidates and the AI's shortlist. A failed
+ * search leaves the code candidates as they were and is reported, never hidden.
+ */
+async function addCatalogueCandidates(companyId, updates, products) {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const out = { lines: 0, added: 0 };
+  for (const u of updates) {
+    if (u.matchStatus !== "needs_match" || !u.item.data?.name) continue;
+    let hits;
+    try {
+      hits = await catalogueCandidates(companyId, u.item.data.name);
+    } catch (err) {
+      console.error(`[productMatcher] catalogue candidates failed for invoice item ${u.id}: ${err.message}`);
+      out.failed = err.message;
+      return out;
+    }
+    if (!hits.size) continue;
+    out.lines++;
+    const list = [...(u.matchCandidates || [])];
+    for (const [productId, hit] of hits) {
+      const p = byId.get(productId);
+      if (!p) continue;
+      const at = list.findIndex((c) => c.productId === productId);
+      if (at >= 0) list[at] = { ...list[at], score: Math.max(list[at].score ?? 0, hit.score), reasons: [...list[at].reasons, ...hit.reasons] };
+      else {
+        list.push({ productId, name: p.name, code: p.productCode || null, score: hit.score, reasons: hit.reasons });
+        out.added++;
+      }
+    }
+    list.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    u.matchCandidates = list.slice(0, CANDIDATES);
+    u.aiCandidates = [...new Set([...list.map((c) => c.productId), ...(u.aiCandidates || [])])].slice(0, AI_CANDIDATES);
+  }
+  return out;
 }

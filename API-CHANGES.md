@@ -363,3 +363,9 @@ Additive; no migration.
 - **Changed matching** (review and diff): a code printed for several products of one version is never used to match (the name decides); among several hits the products already linked to this catalogue win; a product already linked to another block of the version is never matched twice. An ambiguous `match` now carries `candidates [{ id, name, productCode }]`.
 - **New version:** inherits the catalogue's last admin-confirmed `numberConvention` (`inheritedFromVersionId`) — confirmed once per catalogue.
 - **Product `fieldProvenance`:** applied diff values carry `appliedByUserId` and `replacedValue`; a change not taken carries `declined { catalogueId, catalogueVersionId, value, byUserId, at }` (a pre-catalogue value then becomes `tier: "manual"`).
+
+## Certificate AI layers (plan.md) — Phase A6.6 Catalogue search (2026-10-23)
+
+- **Migration** `20261023170000_catalogue_search` (additive): `CREATE EXTENSION IF NOT EXISTS pg_trgm` (needs a role allowed to create extensions — the app role in docker-compose owns the database) + two GIN expression indexes on `catalogue_blocks` (FTS over title + text, trigram over the extracted name). No column changes; `prisma migrate diff` shows no drift for them.
+- **New:** `GET /catalogue-search?q=&companyId=&limit=&allVersions=` (read_products) → `{ q, words, results }` (OpenAPI doc).
+- **Invoice matching:** for a line still needing a product, products whose linked catalogue block (latest edition) prints ≥ half (and ≥ 2) of the line name's words join its candidates (reason `catalogue p.N: k/n words printed`, score ≤ 0.8) and the AI shortlist — never an automatic match. The match summary gains `catalogue { lines, added, failed? }`.

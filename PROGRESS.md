@@ -1590,3 +1590,37 @@ Owner: re-upload never overwrites; nothing applied until the admin approves per 
 - "Removed" covers products linked to the catalogue through an earlier version; a pre-catalogue product with no link is never "removed".
 - `activeIngredients` and `specifications` are compared as one field each (the acceptance counts the edited line as 1 changed field); comparison = name + printed amount / item + printed value, whitespace and key order ignored.
 - In v2 Betaine's own page evidence (decimal) is applied without a `convention_conflict` flag — that flag is only raised when the admin sets the convention (A6.3); the value is read the block's way in both cases.
+
+## Certificate AI layers — Phase A6.6 Catalogue search (plan.md §15.6, 2026-10-23)
+Owner: Postgres FTS + pg_trgm, company-scoped, also a candidate source in invoice matching.
+
+**Built**
+- Migration `20261023170000_catalogue_search` (additive, applied locally with `migrate deploy`): `CREATE EXTENSION IF NOT EXISTS pg_trgm` + GIN expression indexes (FTS `to_tsvector('simple', title || text)`; trigram on the extracted name / title). No column; `prisma migrate diff` shows no drift for them (the only drift it reports is the pre-existing `eda_requirements` table, not in the schema).
+- `services/catalogues/searchService.js`: `searchCatalogues` — one company always (a company session is forced to itself; a system user must pass `companyId`), latest edition per catalogue unless `allVersions`, all words (AND) with phrase hits first, last word a prefix when ≥ 3 characters, trigram name similarity ≥ 0.3, `ts_headline` snippet with `[[…]]` marks; queries are parameterised (words only reach `to_tsquery` quoted). `catalogueCandidates` for invoice matching.
+- `GET /catalogue-search` (read_products), OpenAPI, `API-CHANGES.md`.
+- Invoice matching (`productMatcher.matchInvoice`): lines still needing a product get products whose linked catalogue block prints ≥ half (≥ 2) of the line name's words as candidates (reason `catalogue p.N: k/n words printed`, score ≤ 0.8) and in the AI shortlist — never an automatic match; a failed search is logged and reported in the result / `invoices.match_summary.catalogue`, the code candidates stay.
+- Frontend: "Search catalogues" panel on the Products page (company picker for system users, snippet with highlighted words, product, code, edition, page, phrase/similar-name badges), each hit opens the review screen on that block (`?block=`), which scrolls the PDF to it.
+- **Tests** `a6.search.test.js` (21), expected sets computed from the block text in JS: “Vitamin E” = exactly the 10 blocks printing the phrase, ranked first; “withdrawal none” = the 24 blocks holding both words; “AKS0” = the 10 blocks with a code starting AKS0; “Agrivta” → Agrivita by trigram; other company's identical catalogue never returned (also when a company passes another companyId); system user without companyId 400; SQL text in the query harmless; a new edition replaces the old in results, `allVersions` returns both; an invoice line named by composition (“Calcium Chloride Phosphoric Acid oral solution”) gets Agri-CalD3 as a catalogue candidate, still `needs_match`, and in the AI shortlist.
+
+**Fixes from the final live run** (see below): an ingredient amount folded into the name with the amount left out (“Choline chloride 70% feed grade”) is split and verified on its printed line; a block the AI never answered gets no estimates (the live run estimated Aminovital's withdrawal “None.” although the catalogue prints it). Tests added to `a6.extraction.test.js` (70).
+
+**Verified:** full `npm test` on a fresh `npm run dev:test`: **84/84 suites**. Frontend `vite build` OK, `oxlint` clean on the new files. Not driven in a browser.
+
+**Differences from plan.md (recorded)**
+- No `tsvector` column: expression indexes give the same plan without a column Prisma can't model.
+- Results default to each catalogue's latest edition (older editions repeat the same products); `allVersions=true` for all.
+- `pg_trgm` needs a role allowed to create extensions on a non-local database — **owner to confirm** before `migrate deploy` there.
+
+## Phase A6 — §15.9 acceptance on Agrikima_Catalogue_2022-new_-_feed.pdf (2026-10-23)
+| Criterion | Result | Where |
+|---|---|---|
+| Every product block found, segmentation errors ≤ 1, fixable in the UI | 29/29 blocks, 0 errors; merge/split in the review | a6.catalogues, a6.review |
+| Every productCode captured | stand-in: 24/24; **live: 23/24** (Aminovital — the model returned nothing for that block twice; flagged `no_ai_answer`, re-extract that block) | a6.extraction, eval |
+| amountRaw = catalogue text for every active ingredient | stand-in: 178/178; **live: 152/178** — 25 are Aminovital's (no AI answer), 1 Choline (amount folded into the name — fixed after the run, re-run blocked by the daily quota) | eval scorecard `golden/ai-eval-catalogue-2026-10-23.json` |
+| Every ambiguous number flagged, none silently mis-parsed | live: 1/1 flagged (Agrizec 200.000), 0 mis-parsed | eval |
+| 0 values without a verified quote | live: 0 stored unverified (6 dropped as unverified) | eval |
+| Diff: same file → 0 changes | 0 changed fields, 0 new, 0 removed, 29 unchanged | a6.diff |
+| Diff: one edited composition line → exactly 1 changed field | PDF edited (Phosphoric Acid 30,000 → 50,000): exactly 1 (activeIngredients) | a6.diff |
+| Tier C: "Storage conditions" from the catalogue with a page-cited quote; results never | yes / never | a6.tierC |
+| Search: "Vitamin E" → every block containing it, company-scoped | 10/10 exactly, other company excluded | a6.search |
+| Live eval opt-in | `RUN_LIVE_GEMINI=1 npm run eval:catalogue` — run once (7 calls); the second run after the fixes stopped on the free-tier daily quota (20/day) | — |

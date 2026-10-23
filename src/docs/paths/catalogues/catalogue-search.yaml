@@ -1,0 +1,16 @@
+# /catalogue-search (plan.md §15.6, A6.6).
+get:
+  tags: ["Catalogues"]
+  summary: Search a company's catalogue pages
+  description: |
+    Postgres full text ('simple' config — no stemming, no stop words) over every printed block, plus pg_trgm similarity (≥ 0.3) on the product name. Several words → blocks holding all of them; blocks holding them as a phrase come first (`match: "phrase"`); the last word is also a prefix when ≥ 3 characters ("AKS0" → AKS01…); `match: "name"` = a fuzzy product-name hit only. Only each catalogue's latest edition unless `allVersions=true`. Always one company: a company session searches its own (any `companyId` is ignored); a system user must pass `companyId` (400 COMPANY_REQUIRED). → `{ q, words, results: [{ blockId, versionId, catalogueId, manufacturer, versionLabel, page, kind, status, productId, name, productCode, snippet, match, nameSimilarity, score }] }`; `snippet` marks matched words as `[[word]]`. Permission: `read_products`.
+  parameters:
+    - { name: q, in: query, required: true, schema: { type: string, maxLength: 200 } }
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+    - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+    - { name: allVersions, in: query, schema: { type: string, enum: ["true", "false"] } }
+  responses:
+    "200": { description: "{ q, words, results }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: COMPANY_REQUIRED / QUERY_REQUIRED / validation }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

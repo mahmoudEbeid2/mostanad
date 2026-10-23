@@ -158,7 +158,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
       ctx.progress(88, "Estimating facts the catalogue doesn't print");
       const products = blocks.map((b) => {
         const r = out.get(b.id).record;
-        return { blockId: b.id, name: r.name || b.title || null, known: { ...r, activeIngredients: (r.activeIngredients || []).map((x) => x.name) }, missing: r.name ? missingFields(r) : [] };
+        return { blockId: b.id, name: r.name || b.title || null, known: { ...r, activeIngredients: (r.activeIngredients || []).map((x) => x.name) }, missing: r.name && !out.get(b.id).flags.some((f) => f.code === "no_ai_answer") ? missingFields(r) : [] }; // a block the AI didn't read gets no estimates: what it prints is unknown
       });
       try {
         const res = await estimateMissing({ companyId: version.companyId, versionId, products }, { generate: deps.inferGenerate });

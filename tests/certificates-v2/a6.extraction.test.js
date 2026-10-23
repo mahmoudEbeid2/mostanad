@@ -17,6 +17,7 @@ import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupComp
 import { runExtractJob, setNumberConvention } from "../../src/services/catalogues/extraction/extractionService.js";
 import { verifyBlockQuote } from "../../src/services/catalogues/catalogueSections.js";
 import { normaliseAmount, readNumber } from "../../src/services/catalogues/extraction/numbers.js";
+import { verifyRecord } from "../../src/services/catalogues/extraction/recordVerifier.js";
 import { cleanEstimate, NEVER_INFERRED, INFERABLE } from "../../src/services/catalogues/extraction/catalogueInference.js";
 import { BLOCKS_PER_CALL } from "../../src/services/catalogues/extraction/catalogueExtractor.js";
 import { matchLine, matchInvoice } from "../../src/services/certificates/matching/productMatcher.js";
@@ -181,6 +182,12 @@ try {
   assert("Threonine: the amount folded into the name is split off (\"Threonine\" · 65%)", E("THERIONINE 65%").record.activeIngredients?.[0]?.name === "Threonine" && E("THERIONINE 65%").record.activeIngredients[0].amountRaw === "65%" && E("THERIONINE 65%").record.activeIngredients[0].amount === 65);
   assert("Re-Cover, skipped in its group, read on the retry", E("Re-Cover").record.productCode === "AKS2017015" && !flagsOf("Re-Cover", "no_ai_answer").length);
   assert("Choline chloride: the amount the model left out is copied by code from its own line (70%)", E("CHOLINE CHLORIDE 70%").record.activeIngredients?.[0]?.amountRaw === "70%");
+  // seen live (A6 final run): the amount folded into the name, followed by more words, and amountRaw null
+  const chBlock = ext.get(byName("CHOLINE CHLORIDE 70%").id);
+  const folded = verifyRecord({ isProduct: true, name: { value: "CHOLINE CHLORIDE 70%", quote: "CHOLINE CHLORIDE 70%" }, activeIngredients: [{ name: "Choline chloride 70% feed grade", amountRaw: null, quote: "Choline chloride 70% feed grade" }] }, chBlock);
+  assert("an amount folded into the name (“Choline chloride 70% feed grade”, amount null) → name “Choline chloride”, amountRaw 70%, verified on its line", folded.record.activeIngredients?.[0]?.name === "Choline chloride" && folded.record.activeIngredients[0].amountRaw === "70%" && !folded.flags.length, folded.record.activeIngredients);
+  const notAmount = verifyRecord({ isProduct: true, name: { value: "CHOLINE CHLORIDE 70%", quote: "CHOLINE CHLORIDE 70%" }, activeIngredients: [{ name: "Choline chloride 99% pure", amountRaw: null, quote: "Choline chloride 99% pure" }] }, chBlock);
+  assert("…a folded amount that isn't printed there is dropped, never stored", !notAmount.record.activeIngredients?.some((i) => i.amountRaw === "99%"));
   assert("a long value with a short quote is kept when the value itself is printed (Antistrs-300 dosage)", E("Antistrs-300").record.dosage?.startsWith("500 gm per 1000 Litres") && E("Antistrs-300").quotes.dosage.quote.includes("Cattle : 8 g"));
   assert("…and dropped when it isn't (Re-Cover \"2 litres\")", E("Re-Cover").record.dosage === undefined && flagsOf("Re-Cover", "unverified").some((f) => f.field === "dosage"));
   assert("an answer for a block it wasn't given → ignored", ![...ext.values()].some((b) => b.extracted.record.name === "Ghost"));
@@ -260,6 +267,30 @@ try {
   const item = await prisma.invoiceItem.findFirst({ where: { invoiceId: inv.id } });
   const sug = await prisma.aiSuggestion.findFirst({ where: { companyId: co.id, kind: "product_match" }, orderBy: { createdAt: "desc" } });
   assert("…even a 0.99 AI pick with auto-accept on is only shown, waiting (suggestion pending)", item.matchStatus === "needs_match" && item.matchCandidates[0]?.productId === ck.id && item.matchCandidates[0].ai && sug.status === "pending" && mr.ai.autoAccepted === 0, { status: item.matchStatus, sug: sug?.status });
+
+  console.log("\n🙈 A block the AI never answers gets no estimates (seen live: Aminovital)");
+  {
+    const up = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "No answer test", extract: "false" }, { buffer: pdf, name: "na.pdf", type: "application/pdf" }));
+    await pollTask(up.data.data.jobId, asAdmin);
+    const vb = await prisma.catalogueBlock.findMany({ where: { versionId: up.data.data.versionId, kind: "product" }, orderBy: { seq: "asc" } });
+    const gOf = new Map(vb.map((b, i) => [b.id, GOLDEN.products[i]]));
+    const amino = vb[GOLDEN.products.findIndex((p) => p.name === "Aminovital")];
+    const silent = extractModel(gOf, [], { mutate: false });
+    const inferSeen = [];
+    await runExtractJob(up.data.data.versionId, undefined, {
+      generate: async (args) => {
+        const out = await silent(args);
+        out.products = out.products.filter((p) => p.blockId !== amino.id); // never answered, not even alone
+        return out;
+      },
+      inferGenerate: async (args) => {
+        inferSeen.push(JSON.parse(args.contents[1].slice(args.contents[1].indexOf("\n") + 1)));
+        return { products: [] };
+      },
+    });
+    const a = (await prisma.catalogueBlock.findUnique({ where: { id: amino.id } })).extracted;
+    assert("flagged no_ai_answer, no estimate stored, not even sent to the inference call", a.flags.some((f) => f.code === "no_ai_answer") && !Object.keys(a.estimated || {}).length && inferSeen.every((p) => !p.products.some((x) => x.blockId === amino.id)), { flags: a.flags, estimated: a.estimated });
+  }
 } catch (e) {
   assert(`suite crashed: ${e.message}`, false, e.stack);
 }

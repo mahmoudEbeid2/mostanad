@@ -41,5 +41,11 @@ export const catalogueSchemas = {
   merge: { params: idParams, query: companyQuery, body: z.object({ blockIds: z.array(uuid).length(2) }) },
   split: { params: idParams, query: companyQuery, body: z.object({ atLine: z.number().int().min(1) }) },
   // A6.5 re-upload diff: per product (no fields → every non-conflict change) or per field
+  // A6.6 search: a company session is always scoped to itself; a system user passes companyId
+  search: {
+    query: z
+      .object({ q: z.string().trim().min(1).max(200), companyId: uuid.optional(), limit: z.coerce.number().int().min(1).max(100).optional(), allVersions: z.enum(["true", "false"]).optional() })
+      .passthrough(),
+  },
   applyDiff: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(z.string().max(40)).max(40).optional(), productId: uuid.optional() }).optional() },
 };
