@@ -6,7 +6,9 @@ import { parseRelative } from "../paths/sourcePath.js";
 // from the Prisma `Product` model plus the invoice header/item schemas, so the
 // UI's source picker can never offer a path the resolver doesn't know.
 
-const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt"]);
+// catalogueRef / fieldProvenance are bookkeeping about WHERE values came from, not product data:
+// a certificate never prints them, and the dictionary must not offer (or pair up) their keys
+const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance"]);
 const PRODUCT_LABELS = {
   productCode: "Product code",
   activeIngredients: "Active ingredients (all)",
@@ -205,7 +207,7 @@ export const TEMPLATE_TOKEN_RE = new RegExp(String.raw`\{\{\s*([a-z]+)(?:\.(${PA
 // (plan.md §3.1) — what is actually in them is the company's data dictionary.
 let jsonColumns = null;
 export function productJsonColumns() {
-  if (!jsonColumns) jsonColumns = new Set(Prisma.dmmf.datamodel.models.find((m) => m.name === "Product").fields.filter((f) => f.kind === "scalar" && f.type === "Json").map((f) => f.name));
+  if (!jsonColumns) jsonColumns = new Set(Prisma.dmmf.datamodel.models.find((m) => m.name === "Product").fields.filter((f) => f.kind === "scalar" && f.type === "Json" && !PRODUCT_HIDDEN.has(f.name)).map((f) => f.name));
   return jsonColumns;
 }
 // item.extra holds the per-line columns extraction saw but couldn't map (§9.1)

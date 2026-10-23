@@ -86,9 +86,20 @@ try {
   assert("unknown company → 404", r.status === 404, r.status);
 
   console.log("\n🧪 Rebuild triggers");
-  await prisma.product.update({ where: { id: p1.id }, data: { specifications: { values: { pH: "4.0", "Assay %": "102.7", "Loss on drying": "≤ 5 %" } } } });
+  await prisma.product.update({
+    where: { id: p1.id },
+    data: {
+      specifications: { values: { pH: "4.0", "Assay %": "102.7", "Loss on drying": "≤ 5 %" } },
+      // bookkeeping a catalogue/estimate leaves on a product: never dictionary keys
+      catalogueRef: { catalogueId: "c1", catalogueVersionId: "v1", blockId: "b1", page: 4 },
+      fieldProvenance: { storage: { tier: "C", page: 4 } },
+    },
+  });
   r = await api("POST", "/certificate-data-dictionary/rebuild", A);
   assert("manual rebuild → version bumps and the new key appears", r.status === 200 && r.data.data.dictionary.version === dict.version + 1 && r.data.data.dictionary.entries.some((e) => e.path === 'product.specifications.values["Loss on drying"]'), r.data?.data?.dictionary?.version);
+  assert("catalogueRef / fieldProvenance never become dictionary keys", r.status === 200 && !r.data.data.dictionary.entries.some((e) => /^product\.(catalogueRef|fieldProvenance)/.test(e.path)), r.data.data.dictionary.entries.filter((e) => /catalogueRef|fieldProvenance/.test(e.path)).map((e) => e.path));
+  r = await api("GET", "/certificate-data-dictionary/health", A);
+  assert("…nor duplicate-key suggestions", r.status === 200 && !JSON.stringify(r.data.data.health).match(/catalogueRef|fieldProvenance|Catalogue ref/), r.data?.data?.health?.duplicates);
   r = await api("POST", "/certificate-data-dictionary/rebuild", B);
   assert("rebuild is tenant-forced (B's own)", r.status === 200 && !JSON.stringify(r.data.data.dictionary).includes("Loss on drying"));
   const before = await prisma.dataDictionary.findUnique({ where: { companyId: coA.id } });
