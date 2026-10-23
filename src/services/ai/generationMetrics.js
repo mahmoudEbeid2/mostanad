@@ -38,6 +38,19 @@ export function recordGeminiCall(usageMetadata, elapsedMs) {
   store.elapsedMs += elapsedMs;
 }
 
+/**
+ * Called by geminiClient when a request was SENT and failed (429, 503, 4xx…):
+ * it is a real call — counted, with its time — but has no tokens to bill.
+ * A call the guard blocked (GEMINI_DISABLED) never reaches this: nothing was sent.
+ */
+export function recordGeminiFailedCall(elapsedMs) {
+  const store = als.getStore();
+  if (!store) return;
+  store.calls += 1;
+  store.failedCalls = (store.failedCalls || 0) + 1;
+  store.elapsedMs += elapsedMs;
+}
+
 export function generationMetricsSnapshot() {
   const store = als.getStore();
   if (!store) return null;

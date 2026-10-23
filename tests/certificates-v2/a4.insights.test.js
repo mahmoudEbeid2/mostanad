@@ -146,6 +146,9 @@ try {
   const run = (kind, entityId, daysAgo, tokens = {}) => prisma.aiRun.create({ data: { companyId: co.id, kind, entityType: "x", entityId, modelId: "m", promptHash: "p", outcome: "ok", calls: 1, inputTokens: 1000, outputTokens: 100, thinkingTokens: 50, cachedTokens: 200, ms: 1200, createdAt: new Date(Date.now() - daysAgo * 86_400_000), ...tokens } });
   await Promise.all([run("CERT_FIELD_MAP", "t1", 14), run("CERT_FIELD_MAP", "t2", 14), run("CERT_FIELD_MAP", "t3", 0), run("CERT_INVOICE_GAPS", "i1", 0), run("INVOICE_EXTRACT", "i1", 0), run("CERT_PRODUCT_MATCH", "i1", 0)]);
   await prisma.aiRun.create({ data: { companyId: co.id, kind: "CERT_FIELD_MAP", modelId: "m", promptHash: "p", outcome: "disabled" } });
+  // P8: a run the guard blocked (failed, nothing sent) vs one whose request went out and failed (429)
+  await prisma.aiRun.create({ data: { companyId: co.id, kind: "CERT_FIELD_MAP", modelId: "m", promptHash: "p", outcome: "failed", calls: 0, error: "Gemini calls are disabled in this process" } });
+  await prisma.aiRun.create({ data: { companyId: co.id, kind: "CERT_FIELD_MAP", entityType: "x", entityId: "t3", modelId: "m", promptHash: "p", outcome: "failed", calls: 2, ms: 400, error: "Gemini quota exhausted" } });
   await prisma.aiRun.create({ data: { companyId: coB.id, kind: "CERT_FIELD_MAP", modelId: "m", promptHash: "p", outcome: "ok", inputTokens: 999999 } });
   r = await api("GET", "/certificate-ai-stats?days=90", A);
   const s = r.data?.data?.stats;
@@ -154,11 +157,11 @@ try {
   const top = s.calibration.find((b) => b.bucket === "≥ 0.90");
   assert("calibration: ≥ 0.90 bucket 3/3 kept (incl. auto-accepted); < 0.50 0/1", top.decided === 3 && top.correctRate === 1 && s.calibration.find((b) => b.bucket === "< 0.50").correctRate === 0, s.calibration);
   const fmRuns = s.runs.find((k) => k.kind === "CERT_FIELD_MAP");
-  assert("runs per kind: calls exclude disabled; tokens summed", fmRuns.calls === 3 && fmRuns.disabled === 1 && fmRuns.inputTokens === 3000, fmRuns);
+  assert("runs per kind: calls = requests actually sent (3 ok + 2 sent-and-failed); blocked and disabled are notSent; tokens summed", fmRuns.calls === 5 && fmRuns.notSent === 2 && fmRuns.disabled === 1 && fmRuns.failed === 2 && fmRuns.inputTokens === 3000, fmRuns);
   const each = costUsd({ inputTokens: 1000, outputTokens: 100, thinkingTokens: 50, cachedTokens: 200 });
   assert("cost estimate = (800×0.30 + 200×0.075 + 150×2.50) / 1M per call", Math.abs(each - (800 * 0.3 + 200 * 0.075 + 150 * 2.5) / 1e6) < 1e-12 && Math.abs(s.cost.totalUsd - each * 6) < 1e-6 && s.cost.estimate === true, s.cost);
   const tWeeks = s.weekly.filter((w) => w.per === "template");
-  assert("calls per template per week (2 weeks)", tWeeks.length === 2 && tWeeks.every((w) => w.callsPerEntity === 1), s.weekly);
+  assert("calls per template per week (2 weeks; this week t3 = 1 ok + 2 sent-and-failed)", tWeeks.length === 2 && tWeeks[0].callsPerEntity === 1 && tWeeks[1].calls === 3 && tWeeks[1].entities === 1, s.weekly);
   const inv = s.weekly.find((w) => w.per === "invoice");
   assert("calls per invoice: extraction + gaps + matching for one invoice = 3", inv.calls === 3 && inv.entities === 1 && inv.callsPerEntity === 3, inv);
   assert("another company's runs are not counted", !s.runs.some((k) => k.inputTokens >= 999999));

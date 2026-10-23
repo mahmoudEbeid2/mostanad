@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { GeminiRateLimiter } from "./rateLimiter.js";
 import { parseGeminiError } from "./geminiErrors.js";
-import { recordGeminiCall } from "./generationMetrics.js";
+import { recordGeminiCall, recordGeminiFailedCall } from "./generationMetrics.js";
 import { assertGeminiEnabled } from "./geminiGuard.js";
 
 // CLAUDE.md "SHARED RATE LIMITER — the real fix": this is the ONLY place a
@@ -67,6 +67,7 @@ class GeminiClient {
         return response;
       } catch (error) {
         this.limiter.release();
+        recordGeminiFailedCall(Date.now() - startedAt); // the request went out (the guard runs before the loop)
         const parsed = parseGeminiError(error);
         lastParsed = parsed;
         console.error(

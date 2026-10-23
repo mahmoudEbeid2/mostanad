@@ -40,7 +40,7 @@ export async function aiStats(companyId, { days = 90 } = {}) {
   const since = new Date(Date.now() - Math.min(Math.max(Number(days) || 90, 1), 730) * 86_400_000);
   const [suggestions, runs] = await Promise.all([
     prisma.aiSuggestion.findMany({ where: { companyId, createdAt: { gte: since } }, select: { kind: true, status: true, confidence: true, decidedByUserId: true } }),
-    prisma.aiRun.findMany({ where: { companyId, createdAt: { gte: since } }, select: { kind: true, outcome: true, entityType: true, entityId: true, inputTokens: true, outputTokens: true, thinkingTokens: true, cachedTokens: true, ms: true, createdAt: true } }),
+    prisma.aiRun.findMany({ where: { companyId, createdAt: { gte: since } }, select: { kind: true, outcome: true, calls: true, entityType: true, entityId: true, inputTokens: true, outputTokens: true, thinkingTokens: true, cachedTokens: true, ms: true, createdAt: true } }),
   ]);
 
   const kinds = SUGGESTION_KINDS.map((kind) => {
@@ -71,20 +71,25 @@ export async function aiStats(companyId, { days = 90 } = {}) {
   const p = prices();
   const byKind = new Map();
   for (const r of runs) {
-    if (!byKind.has(r.kind)) byKind.set(r.kind, { kind: r.kind, calls: 0, ok: 0, failed: 0, disabled: 0, skipped: 0, inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cachedTokens: 0, ms: 0, costUsd: 0 });
+    if (!byKind.has(r.kind)) byKind.set(r.kind, { kind: r.kind, calls: 0, notSent: 0, ok: 0, failed: 0, disabled: 0, skipped: 0, inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cachedTokens: 0, ms: 0, costUsd: 0, sentRuns: 0 });
     const k = byKind.get(r.kind);
     k[r.outcome] = (k[r.outcome] || 0) + 1;
-    if (r.outcome === "ok" || r.outcome === "failed") {
-      k.calls++;
-      k.inputTokens += r.inputTokens;
-      k.outputTokens += r.outputTokens;
-      k.thinkingTokens += r.thinkingTokens;
-      k.cachedTokens += r.cachedTokens;
-      k.ms += r.ms;
-      k.costUsd += costUsd(r, p);
+    // calls = requests that actually reached the provider (retries included); a run
+    // the guard or a company setting stopped sent nothing and is counted as notSent
+    if (!r.calls) {
+      k.notSent++;
+      continue;
     }
+    k.calls += r.calls;
+    k.sentRuns++;
+    k.inputTokens += r.inputTokens;
+    k.outputTokens += r.outputTokens;
+    k.thinkingTokens += r.thinkingTokens;
+    k.cachedTokens += r.cachedTokens;
+    k.ms += r.ms;
+    k.costUsd += costUsd(r, p);
   }
-  const runsView = [...byKind.values()].map((k) => ({ ...k, avgMs: k.calls ? Math.round(k.ms / k.calls) : null, costUsd: Math.round(k.costUsd * 1e6) / 1e6 }));
+  const runsView = [...byKind.values()].map(({ sentRuns, ...k }) => ({ ...k, avgMs: sentRuns ? Math.round(k.ms / sentRuns) : null, costUsd: Math.round(k.costUsd * 1e6) / 1e6 }));
 
   // calls per template / per invoice, per week (plan.md §9: should fall as memory grows)
   const weekOf = (d) => {
@@ -95,11 +100,11 @@ export async function aiStats(companyId, { days = 90 } = {}) {
   const weeks = new Map();
   for (const r of runs) {
     const per = PER[r.kind];
-    if (!per || !["ok", "failed"].includes(r.outcome)) continue;
+    if (!per || !r.calls) continue;
     const key = `${weekOf(r.createdAt)}|${per}`;
     if (!weeks.has(key)) weeks.set(key, { week: weekOf(r.createdAt), per, calls: 0, entities: new Set(), costUsd: 0 });
     const w = weeks.get(key);
-    w.calls++;
+    w.calls += r.calls;
     if (r.entityId) w.entities.add(r.entityId);
     w.costUsd += costUsd(r, p);
   }
