@@ -11,6 +11,9 @@ import { CertError, notFound } from "../errors.js";
 // or above autoAcceptThreshold (and with verified evidence, P2/P4) is
 // accepted without a click.
 
+// A5 (plan.md §14.4, §12 Q6): inference from product data and web lookup are
+// built but OFF until the owner enables them per company; webDomainAllowList
+// lets a company accept extra source domains (§14.3, Q7).
 export const AI_SETTINGS_DEFAULTS = Object.freeze({
   enabled: true,
   autoAccept: false,
@@ -18,9 +21,18 @@ export const AI_SETTINGS_DEFAULTS = Object.freeze({
   allowSynonyms: true,
   allowInvoiceGapFill: true,
   allowAiMatching: true,
+  allowProductInference: false,
+  allowWebLookup: false,
+  webDomainAllowList: [],
 });
 
-const BOOLEAN_KEYS = ["enabled", "autoAccept", "allowSynonyms", "allowInvoiceGapFill", "allowAiMatching"];
+const BOOLEAN_KEYS = ["enabled", "autoAccept", "allowSynonyms", "allowInvoiceGapFill", "allowAiMatching", "allowProductInference", "allowWebLookup"];
+const MAX_ALLOWED_DOMAINS = 50;
+/** "https://www.Example.com/x" / "example.com" → "example.com"; null when it isn't a host name. */
+export function normalizeDomain(d) {
+  const s = String(d || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  return /^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/.test(s) ? s : null;
+}
 
 /** Stored JSON → complete settings (unknown keys dropped, bad values → defaults). */
 export function withDefaults(stored) {
@@ -28,6 +40,7 @@ export function withDefaults(stored) {
   const out = { ...AI_SETTINGS_DEFAULTS };
   for (const k of BOOLEAN_KEYS) if (typeof s[k] === "boolean") out[k] = s[k];
   if (typeof s.autoAcceptThreshold === "number" && s.autoAcceptThreshold >= 0.5 && s.autoAcceptThreshold <= 1) out.autoAcceptThreshold = s.autoAcceptThreshold;
+  if (Array.isArray(s.webDomainAllowList)) out.webDomainAllowList = [...new Set(s.webDomainAllowList.map(normalizeDomain).filter(Boolean))].slice(0, MAX_ALLOWED_DOMAINS);
   return out;
 }
 
@@ -45,11 +58,17 @@ export async function updateAiSettings(companyId, patch) {
       if (typeof v !== "boolean") problems.push(`${k} must be true or false`);
     } else if (k === "autoAcceptThreshold") {
       if (typeof v !== "number" || v < 0.5 || v > 1) problems.push("autoAcceptThreshold must be a number from 0.5 to 1");
+    } else if (k === "webDomainAllowList") {
+      if (!Array.isArray(v) || v.length > MAX_ALLOWED_DOMAINS) problems.push(`webDomainAllowList must be a list of at most ${MAX_ALLOWED_DOMAINS} domains`);
+      else {
+        const bad = v.filter((d) => !normalizeDomain(d));
+        if (bad.length) problems.push(`not a domain: ${bad.slice(0, 5).join(", ")}`);
+      }
     } else problems.push(`unknown setting "${k}"`);
   }
   if (problems.length) throw new CertError("INVALID_AI_SETTINGS", problems.join("; "), 400, { problems });
   const current = await getAiSettings(companyId);
-  const next = { ...current, ...patch };
+  const next = withDefaults({ ...current, ...patch });
   await prisma.company.update({ where: { id: companyId }, data: { aiSettings: next } });
   return next;
 }

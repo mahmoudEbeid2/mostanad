@@ -217,7 +217,8 @@ export async function certificateContext(cert, base, caches, design) {
 export function resolveWithNeed(field, ctx, need) {
   if (need && need.value !== null && need.value !== undefined) {
     const { value, flags } = applyFormat(need.value, field.format);
-    return { value, resolved: need.value, flags, origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status } };
+    // who confirmed it travels with the value (plan.md §14.4: the tier, evidence and the person, forever)
+    return { value, resolved: need.value, flags, origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
   const r = resolveField(field, ctx);
   return { value: r.value, resolved: r.resolved, flags: r.flags, origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };

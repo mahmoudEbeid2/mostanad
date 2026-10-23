@@ -1,0 +1,251 @@
+{
+  "date": "2026-10-22T13:06:45.052Z",
+  "templates": {
+    "ADDVET_COA.ai": {
+      "exact": 6,
+      "total": 8,
+      "batchCorrect": 1,
+      "batchTotal": 1,
+      "invalid": 0,
+      "aiCalls": 1,
+      "aiUnavailable": null,
+      "tokens": {
+        "input": 2501,
+        "output": 294,
+        "thinking": 768,
+        "cached": 0
+      },
+      "ms": 5745,
+      "fields": [
+        {
+          "key": "batch_no",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "batchNo"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "batchNo"
+          }
+        },
+        {
+          "key": "product_name",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.98,
+          "got": {
+            "kind": "product",
+            "path": "name"
+          },
+          "expected": {
+            "kind": "product",
+            "path": "name"
+          }
+        },
+        {
+          "key": "expiry",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "expiryDate"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "expiryDate"
+          }
+        },
+        {
+          "key": "production",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "productionDate"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "productionDate"
+          }
+        },
+        {
+          "key": "ph_result",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.95,
+          "got": {
+            "kind": "manual"
+          },
+          "expected": {
+            "kind": "manual"
+          }
+        },
+        {
+          "key": "constituent_2_name",
+          "ok": false,
+          "origin": "none",
+          "status": "invalid",
+          "confidence": 0,
+          "got": {
+            "kind": "manual"
+          },
+          "expected": {
+            "kind": "product",
+            "path": "activeIngredients[1].name"
+          }
+        },
+        {
+          "key": "constituent_2_amount",
+          "ok": true,
+          "origin": "ai",
+          "status": "pending",
+          "confidence": 1,
+          "got": {
+            "kind": "product",
+            "path": "activeIngredients[name=\"Sodium selenite\"].concentration"
+          },
+          "expected": {
+            "kind": "product",
+            "path": "activeIngredients[1].concentration"
+          }
+        },
+        {
+          "key": "document_no",
+          "ok": false,
+          "origin": "ai",
+          "status": "pending",
+          "confidence": 1,
+          "got": {
+            "kind": "manual"
+          },
+          "expected": {
+            "kind": "template",
+            "template": "COA{{item.batchNo}}"
+          }
+        }
+      ]
+    },
+    "PHARMAVET_COA.pdf": {
+      "exact": 6,
+      "total": 6,
+      "batchCorrect": 1,
+      "batchTotal": 1,
+      "invalid": 0,
+      "aiCalls": 1,
+      "aiUnavailable": null,
+      "tokens": {
+        "input": 2391,
+        "output": 128,
+        "thinking": 389,
+        "cached": 1976
+      },
+      "ms": 3112,
+      "fields": [
+        {
+          "key": "expiry",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "expiryDate"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "expiryDate"
+          }
+        },
+        {
+          "key": "production",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "productionDate"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "productionDate"
+          }
+        },
+        {
+          "key": "batch_no",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.9,
+          "got": {
+            "kind": "item",
+            "path": "batchNo"
+          },
+          "expected": {
+            "kind": "item",
+            "path": "batchNo"
+          }
+        },
+        {
+          "key": "ph_result",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.95,
+          "got": {
+            "kind": "manual"
+          },
+          "expected": {
+            "kind": "manual"
+          }
+        },
+        {
+          "key": "constituent_amount",
+          "ok": true,
+          "origin": "ai",
+          "status": "pending",
+          "confidence": 1,
+          "got": {
+            "kind": "product",
+            "path": "activeIngredients[name=\"Doxycycline hyclate\"].concentration"
+          },
+          "expected": {
+            "kind": "product",
+            "path": "activeIngredients[0].concentration"
+          }
+        },
+        {
+          "key": "producer",
+          "ok": true,
+          "origin": "dictionary",
+          "status": "accepted",
+          "confidence": 0.98,
+          "got": {
+            "kind": "product",
+            "path": "producer"
+          },
+          "expected": {
+            "kind": "product",
+            "path": "producer"
+          }
+        }
+      ]
+    }
+  },
+  "totals": {
+    "exactRate": 0.8571428571428571,
+    "batchRate": 1,
+    "invalid": 0,
+    "aiCallsPerTemplate": 1
+  }
+}

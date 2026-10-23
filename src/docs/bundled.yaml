@@ -5781,6 +5781,7 @@ paths:
         For every planned certificate × template field: code resolves it from the field's source (and accepted path synonyms) → `resolved`; empty → `missing` (required) / `not_applicable`. Then one `CERT_INVOICE_GAPS` call for every `missing` value not asked with the same basis before (0 calls when there is none). The model may only point at evidence; the server verifies it word for word (normalised): a quote of the stored invoice text containing the value — for line-level values inside THAT line's row (anywhere for a single-line invoice), for header values outside every item row; a product path (the DB value is used, never the model's); or a quote inside a product text. Verified → `needs_confirmation` (or `resolved_ai` when the company turned auto-accept on and the confidence reaches the threshold); anything else stays `missing` and the refused suggestion is kept with `evidenceVerified: false`.
         Body `{ ai: false }` = code only. AI off, failing or over quota: the check is still returned with `ai.unavailable` + `ai.reason`; the gaps stay missing and are asked next time.
         A person's `provided` value and a verified AI value survive re-runs; a change of the field source, product or line resets them.
+        A5 tier I (company setting `allowProductInference`, off by default): after the gap call, ONE `CERT_PRODUCT_INFER` call for missing product facts whose field policy allows inference. The model must quote the value from the product's own record, or name an allow-listed derivation (unit_conversion, select_from_list, join_list, normalize_case) that code re-runs and must reproduce; anything else is refused. Verified → status `inferred` (provenance `tier: "I"`), always confirmed by a person. Statuses `inferred` and `web_found` block generation like `needs_confirmation`. The view adds `summary.inferred`, `summary.webFound` and `tiers: { inference, web, webEligible }`.
         Permission: `update_invoices`. Invoice status review/ready/generated/partially_failed, else 409 INVOICE_NOT_REVIEWED.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -5822,6 +5823,7 @@ paths:
         `edit` — the person's value (→ `provided`, provenance `manual`; an AI suggestion becomes `edited`/`accepted`). `applyTo: "line"` also sets every other open value of the same line with the same label ("use for all certificates of this product"). Dates are stored as ISO when unambiguous. Empty → 422 VALUE_REQUIRED.
         `reject` — the AI value is wrong (→ missing, suggestion `rejected`, not asked again).
         `reset` — forget the decision; recomputed (and asked again) by the next check.
+        A5: `accept` also confirms `inferred` / `web_found` values; with `saveToProduct: true` the confirmed tier I/W value is written into the product field the template reads (the next invoice reads it by code), and a web fact's cache entry becomes `approved`. `reject` on a web fact marks its cache entry `rejected`.
         Permission: `update_invoices`. → `{ check }`.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -5857,6 +5859,36 @@ paths:
           description: NOTHING_TO_ACCEPT, NOTHING_TO_REJECT, INVOICE_NOT_REVIEWED
         '422':
           description: VALUE_REQUIRED
+  /invoices/{id}/data-needs/web-lookup:
+    post:
+      tags:
+        - Invoices
+      summary: Look up missing product facts on the web (on request only)
+      description: |
+        Only when the company turned `allowWebLookup` on (off by default), only for missing values of fields whose inference policy allows the web (`product_facts_and_web`: product data — never lab results, batch, dates, quantities, invoice/document numbers), and only on a person's request (the check and the upload never call it).
+        ONE `CERT_WEB_LOOKUP` call (Google-Search grounding) per product for all its missing web-eligible facts. Sent: product name, manufacturer, brand, origin, active ingredients, field labels — never the invoice, customer, prices or other tenants' data.
+        The server fetches every cited page itself (http(s) only, no private/local addresses, 12 s, 3 MB, HTML/PDF) and accepts a value only when the quote is on the page with the value inside it, the page names the product AND its manufacturer or brand, and the source ranks: official registry / manufacturer / company allow-listed → accepted; distributor → accepted with a warning; anything else → rejected. Registration numbers: official registry only.
+        Verified → status `web_found` (provenance `tier: "W"`, citations with url, finalUrl, quote, sourceType, warning?); always confirmed by a person. Every answer (found or not) is cached per company and product for 90 days in `external_knowledge_cache` (kind `cert_product_fact`) — the same fact on a later invoice costs 0 calls; a rejected one is not served again.
+        → `{ check }` with `ai.web: { used, calls, fromCache, found, rejected, products, unavailable?, reason? }`. Permission: `update_invoices`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/CompanyId-2'
+      responses:
+        '200':
+          description: '`{ check }`'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          description: INVOICE_NOT_REVIEWED
   /certificate-batches/{id}:
     get:
       tags:

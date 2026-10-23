@@ -14,6 +14,7 @@
     "eval:cert-mapping": "node scripts/evalCertMapping.js",
     "eval:cert-gaps": "node scripts/evalCertGaps.js",
     "eval:cert-matching": "node scripts/evalCertMatching.js",
+    "eval:cert-inference": "node scripts/evalCertInference.js",
     "docs:export": "redocly bundle src/docs/swagger.yaml -o src/docs/bundled.yaml && openapi2postmanv2 -s src/docs/bundled.yaml -o src/docs/postman_collection.json -p -c postman_config.json"
   },
   "keywords": [],

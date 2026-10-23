@@ -22,6 +22,7 @@ post:
     For every planned certificate × template field: code resolves it from the field's source (and accepted path synonyms) → `resolved`; empty → `missing` (required) / `not_applicable`. Then one `CERT_INVOICE_GAPS` call for every `missing` value not asked with the same basis before (0 calls when there is none). The model may only point at evidence; the server verifies it word for word (normalised): a quote of the stored invoice text containing the value — for line-level values inside THAT line's row (anywhere for a single-line invoice), for header values outside every item row; a product path (the DB value is used, never the model's); or a quote inside a product text. Verified → `needs_confirmation` (or `resolved_ai` when the company turned auto-accept on and the confidence reaches the threshold); anything else stays `missing` and the refused suggestion is kept with `evidenceVerified: false`.
     Body `{ ai: false }` = code only. AI off, failing or over quota: the check is still returned with `ai.unavailable` + `ai.reason`; the gaps stay missing and are asked next time.
     A person's `provided` value and a verified AI value survive re-runs; a change of the field source, product or line resets them.
+    A5 tier I (company setting `allowProductInference`, off by default): after the gap call, ONE `CERT_PRODUCT_INFER` call for missing product facts whose field policy allows inference. The model must quote the value from the product's own record, or name an allow-listed derivation (unit_conversion, select_from_list, join_list, normalize_case) that code re-runs and must reproduce; anything else is refused. Verified → status `inferred` (provenance `tier: "I"`), always confirmed by a person. Statuses `inferred` and `web_found` block generation like `needs_confirmation`. The view adds `summary.inferred`, `summary.webFound` and `tiers: { inference, web, webEligible }`.
     Permission: `update_invoices`. Invoice status review/ready/generated/partially_failed, else 409 INVOICE_NOT_REVIEWED.
   parameters:
     - $ref: "./_shared.yaml#/parameters/Id"
@@ -44,6 +45,7 @@ patch:
     `edit` — the person's value (→ `provided`, provenance `manual`; an AI suggestion becomes `edited`/`accepted`). `applyTo: "line"` also sets every other open value of the same line with the same label ("use for all certificates of this product"). Dates are stored as ISO when unambiguous. Empty → 422 VALUE_REQUIRED.
     `reject` — the AI value is wrong (→ missing, suggestion `rejected`, not asked again).
     `reset` — forget the decision; recomputed (and asked again) by the next check.
+    A5: `accept` also confirms `inferred` / `web_found` values; with `saveToProduct: true` the confirmed tier I/W value is written into the product field the template reads (the next invoice reads it by code), and a web fact's cache entry becomes `approved`. `reject` on a web fact marks its cache entry `rejected`.
     Permission: `update_invoices`. → `{ check }`.
   parameters:
     - $ref: "./_shared.yaml#/parameters/Id"

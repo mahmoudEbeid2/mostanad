@@ -136,4 +136,13 @@ export const MODELS = {
   // Human labels/synonyms for opaque JSON keys (ws_period → "Withdrawal
   // period"), one call per dictionary rebuild; suggestions only.
   CERT_DICTIONARY: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  // A5 tier I (plan.md §14.2): a missing product fact quoted from, or derived by
+  // an allow-listed transformation of, the product's own record — code re-runs
+  // the derivation and must reproduce the value exactly. One call per invoice.
+  CERT_PRODUCT_INFER: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  // A5 tier W (§14.3): Google-Search-grounded lookup of a product fact with
+  // citations; the server fetches every cited page and checks the quote and the
+  // product's identity there. Its own name (not WEB_SEARCH, the label engine's)
+  // so the two can be tuned independently. One call per product per 90 days.
+  CERT_WEB_LOOKUP: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
 };

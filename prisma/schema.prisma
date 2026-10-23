@@ -856,6 +856,7 @@ model TemplateField {
   mappingSuggestionId String?         @map("mapping_suggestion_id") // the AiSuggestion it came from (ai)
   mappingConfirmed    Boolean         @default(true) @map("mapping_confirmed") // false while an AI mapping awaits a person (activation refused)
   dataCategory        String?         @map("data_category") // product_data | invoice_line | invoice_header | company | constant | batch_data | unknown
+  inferencePolicy     String          @default("never") @map("inference_policy") // never | product_facts | product_facts_and_web (A5, plan.md §14.1)
 
   @@unique([versionId, key])
   @@map("template_fields")

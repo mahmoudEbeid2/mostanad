@@ -219,6 +219,9 @@ export const aiSchemas = {
         allowSynonyms: z.boolean().optional(),
         allowInvoiceGapFill: z.boolean().optional(),
         allowAiMatching: z.boolean().optional(),
+        allowProductInference: z.boolean().optional(),
+        allowWebLookup: z.boolean().optional(),
+        webDomainAllowList: z.array(z.string().max(260)).max(50).optional(),
         companyId: uuid.optional(),
       })
       .strict(),
@@ -272,6 +275,7 @@ export const dataNeedSchemas = {
             action: z.enum(["accept", "edit", "reject", "reset"]),
             value: z.string().max(500).nullable().optional(),
             applyTo: z.enum(["need", "line"]).optional(),
+            saveToProduct: z.boolean().optional(),
           })
         )
         .min(1)

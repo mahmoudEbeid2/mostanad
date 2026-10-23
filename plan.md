@@ -29,6 +29,15 @@
 
 **العلاج الحقيقي لمشكلة الـ JSON** (في المرحلة A4، ومتتأجلش كتير): فورم المنتج يبقى فيه خانات ثابتة للحاجات المهمة، زي مواصفة pH وAssay والمكوّنات كقايمة، بدل JSON حر. ساعتها الـ AI مش هيحتاج يقرا الـ JSON غير للمنتجات القديمة.
 
+**إضافة A5 (استنتاج + بحث على النت):** لو قيمة لسه ناقصة بعد كل ده، الـ AI يحاول يستنتجها من **كل بيانات المنتج**، ولو ملقاش يدوّر عليها **على النت**. بس فيه قواعد:
+
+- الاستنتاج لازم يبقى من بيانات مكتوبة فعلاً، أو تحويل بسيط ليها الكود يقدر يعيده ويطلّع نفس النتيجة، زي تحويل وحدة.
+- أي قيمة من النت لازم يبقى معاها **لينك وجملة**. والسيرفر يفتح اللينك ويتأكد إن الجملة مكتوبة فيه فعلاً، وإن الصفحة عن **نفس المنتج**.
+- **ممنوع نهائياً** لنتايج التحاليل والتشغيلة والتواريخ والكميات. دي قيم بتتقاس لكل تشغيلة، وجيبها من النت يبقى تزوير للشهادة.
+- كل قيمة جاية من استنتاج أو من النت **لازم إنت تأكّدها بنفسك**. وتقدر تحفظها في بيانات المنتج، فمنحتاجش ندوّر تاني.
+
+**إضافة A6 (الكتالوج كمرجع):** الكتالوج اللي إنتوا بترفعوه بيتحفظ كمستند رسمي للشركة، والمنتجات بتطلع منه **منتج منتج**، وكل قيمة بالجملة اللي جاية منها. الأرقام الملخبطة زي `200.000` بتتعلّم عشان تتأكّد منها. وكود المنتج (زي AKS012) بيتحفظ عشان مطابقة الفواتير تبقى دقيقة. ولو الكتالوج اتحدّث، بيطلعلك مقارنة توافق عليها. وفي الشهادات بقى فيه مصدر جديد بين الداتابيز والنت: **الكتالوج**. ومعاه بحث في الكتالوجات.
+
 **الترتيب:**
 
 1. الأساس: القاموس + طريقة كتابة المسارات + تسجيل كل طلب AI.
@@ -456,6 +465,8 @@ All AI UI states must handle: loading, unavailable (quota/outage → "Continue m
 | **A2 · Invoice intelligence** | data needs, gap resolution with evidence, review panel, batch-data form, extractor guided by data needs, synonym learning                                                                                 | §6.4 met on 3 golden invoices                                                                                                                            |
 | **A3 · Matching**             | aliases, AI matching for ambiguous items, contradiction checks, UI                                                                                                                                        | §7 acceptance met                                                                                                                                        |
 | **A4 · Advanced**             | dictionary health, completeness,**structured product data entry**, eval dashboard, optional`Batch`entity                                                                                                  | owner sign-off per item                                                                                                                                  |
+| **A5 · Inference & web**      | §14: inference policy per field, tier I (product data) and tier W (web with verified citations), cache, save-to-product, toggles, UI badges                                                               | §14.6 met                                                                                                                                                |
+| **A6 · Catalogue as source**  | §15: block extraction with verified quotes, number normalisation, product codes, versioned catalogues + diff, tier C in certificates, catalogue search; replaces V1 catalog upload                        | §15.9 met                                                                                                                                                |
 
 Each phase: backend + frontend + tests + PROGRESS.md entry + demo. **Do not start a phase before the previous is approved.**
 
@@ -463,13 +474,17 @@ Each phase: backend + frontend + tests + PROGRESS.md entry + demo. **Do not star
 
 ## 12. Decisions needed from the owner
 
-| #   | Question                                                                                                   | Default if unanswered                                                                       |
-| --- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Q1  | Auto-accept threshold — 0.90, or require confirmation for every AI suggestion at first?                    | **Confirm everything for the first 2 weeks**, then 0.90                                     |
-| Q2  | Lab results (pH, Assay, …): enter per invoice review (A2), or build the`Batch`entity now?                  | Per invoice review now; decide on`Batch`after A2                                            |
-| Q3  | May the AI propose synonyms that then apply company-wide automatically, or only after a user accepts each? | User accepts each                                                                           |
-| Q4  | Can the invoice text (supplier/customer names, prices) be sent to Gemini? (It already is for extraction.)  | Yes, same as today                                                                          |
-| Q5  | Gemini billing: the free tier (8 RPM, daily caps) will limit A1–A3. Enable billing?                        | Plan works on the free tier through batching, but enabling billing is recommended before A2 |
+| #   | Question                                                                                                   | Default if unanswered                                                                                                 |
+| --- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Auto-accept threshold — 0.90, or require confirmation for every AI suggestion at first?                    | **Confirm everything for the first 2 weeks**, then 0.90                                                               |
+| Q2  | Lab results (pH, Assay, …): enter per invoice review (A2), or build the`Batch`entity now?                  | Per invoice review now; decide on`Batch`after A2                                                                      |
+| Q3  | May the AI propose synonyms that then apply company-wide automatically, or only after a user accepts each? | User accepts each                                                                                                     |
+| Q4  | Can the invoice text (supplier/customer names, prices) be sent to Gemini? (It already is for extraction.)  | Yes, same as today                                                                                                    |
+| Q6  | Enable tier I (inference from product data) and tier W (web lookup)?                                       | Built, both**off**by default; the owner enables them per company                                                      |
+| Q7  | Which web sources count as trusted?                                                                        | manufacturer and official registry accepted, distributor with a warning, everything else rejected unless allow-listed |
+| Q8  | Do invoices carry the catalogue product code (e.g. AKS012)?                                                | Assumed sometimes; code match is tried first, then name                                                               |
+| Q9  | Can one manufacturer catalogue serve several client companies?                                             | Each upload targets one company; a "copy to company" action can come later                                            |
+| Q5  | Gemini billing: the free tier (8 RPM, daily caps) will limit A1–A3. Enable billing?                        | Plan works on the free tier through batching, but enabling billing is recommended before A2                           |
 
 ---
 
@@ -482,3 +497,259 @@ Each phase: backend + frontend + tests + PROGRESS.md entry + demo. **Do not star
 | Wrong mapping auto-accepted silently              | Q1 default (confirm all initially), plausibility check against a sample product, evaluation dashboard |
 | Quota / outage                                    | P8: everything degrades to manual; no hard dependency                                                 |
 | Messy product JSON keeps growing                  | dictionary synonyms + health report (A4) + completeness view; never mutate data automatically         |
+
+---
+
+## 14. Phase A5 — Inference from product data & web lookup (added 2026-10-22)
+
+**Owner request:** when a value a certificate needs is still missing after A2 (no DB path, not in the invoice), the system should try to **infer it from everything we know about the product**, and if that fails, **look it up on the web**.
+
+This deliberately extends principle P1/P2, so it gets its own rules. It follows the same idea the label engine already uses, a tier ladder where every value carries its tier and evidence, and reuses its parts where they fit: `ExternalKnowledgeCache`, the `WEB_SEARCH` registry entry, and `services/label/knowledge/*`. Verify those against the code before reusing them.
+
+### 14.1 Hard line: what may NEVER be inferred or fetched
+
+A certificate of analysis states **measured, batch-specific facts**. Filling any of these from inference or the internet would make the certificate false, so they are **blocked in code, not by prompt**:
+
+- lab/analysis **results** (pH result, assay %, appearance result, sterility/pyrogen results, any field the template classifies as `batch_data`);
+- batch number, production date, expiry date, quantities, invoice/document numbers;
+- registration numbers, **unless** they come from an official registry page (§14.3, tier W) and the user confirms them.
+
+**Enforcement**
+
+- Each `TemplateField` gets `inferencePolicy`, with the values `never | product_facts | product_facts_and_web`.
+- Its default is derived from the field's category:
+  - `batch_data`, `invoice_line` and `invoice_header` → `never`;
+  - `product_data` → `product_facts_and_web`;
+  - `company` / `constant` → `never`.
+- The user can tighten a field's policy but cannot loosen one that defaults to `never`.
+- A test proves that a `never` field can't reach tiers I/W even if the model returns a value for it.
+
+### 14.2 Tier I — inference from the product's own data
+
+For missing `product_data` fields:
+
+1. **Call `CERT_PRODUCT_INFER`**, one call per invoice, batched with the A2 gap call when possible.
+   - **Input:** the product's **complete** record: every column, every JSON column (≤ 16 KB), category, brand, plus the field's label and expected format.
+   - **Output per field:**`{ found, value, derivation: "quoted" | "derived", evidence: [{ path, quote }], reasoning, confidence }`.
+     - `quoted`: the value appears verbatim in a product field. It is verified exactly like `product_json_text` (P2).
+     - `derived`: the value is a **deterministic transformation** of quoted facts. Only an allow-listed set of derivations is accepted:
+       - unit / format conversion (e.g. "120 g/L" → "120000 mg per litre");
+       - selecting one item from a list (e.g. the target species from `targetSpecies[]`);
+       - joining listed values (e.g. active ingredients as "A 10 %, B 5 %");
+       - case / format normalisation.
+     - Free-form reasoning ("this kind of product is usually stored at…") is **not** an accepted derivation.
+2. **Code checks**
+   - Every evidence quote must be verbatim in the stated product path.
+   - For `derived`, code re-runs the named derivation on the quoted inputs and must reproduce the value **exactly**. Otherwise the value is rejected.
+3. **Status:**`inferred`, with tier `I`, evidence and derivation stored in provenance.
+
+### 14.3 Tier W — web lookup with citations
+
+Only for fields whose policy is `product_facts_and_web`, and only if tier I found nothing.
+
+1. **Call `CERT_WEB_LOOKUP`** with Gemini Google-Search grounding, through the `WEB_SEARCH` entry or a new registry entry. One call per product, covering all its missing web-eligible fields at once.
+   - **Query input:** product name, manufacturer, brand, origin, the active ingredients if known, and the field labels.
+   - **Never sent:** the invoice, customer data, prices or other tenant data.
+2. **Output per field:**`{ found, value, citations: [{ url, title, quote }], sourceType: manufacturer | official_registry | distributor | other }`.
+3. **Code verification (the key safeguard)**
+   - **Fetch each cited URL server-side**: through the existing outbound path, with a timeout, size cap and `text/html|pdf` only.
+   - **Check that the quote appears verbatim** in the fetched page text (normalised), **and that the value appears inside the quote**. No verifiable citation means the value is rejected.
+   - **Source ranking:**`manufacturer` and `official_registry` are accepted; `distributor` is accepted with a warning badge; `other` (blogs, marketplaces, forums) is rejected unless the company allow-lists the domain.
+   - **Product identity check:** the page must also mention the product name (or a confirmed alias) **and** the manufacturer or brand. This prevents a correct fact being taken from a _different_ product.
+4. **Cache** in `ExternalKnowledgeCache`:
+   - `kind`: `cert_product_fact`
+   - `lookupKey`: `companyId|productId|fieldLabelNorm`, scoped per company so one tenant's lookups never reveal another's products
+   - expiry: 90 days
+   - `status`: `unreviewed` until a user confirms
+5. **Status:**`web_found`, tier `W`, with citations.
+
+### 14.4 How tiers I/W values are treated
+
+- **Always confirmed by a human**, whatever the auto-accept setting or confidence. They show in the "Certificate data check" panel:
+  - an `Inferred from product data` badge, with the quotes and the derivation;
+  - or a `From web` badge, with clickable source links, the quote, and the domain's source type.
+- **The PDF never shows the tier;** the certificate prints the value. But `CertificateVersion.values[key].provenance` keeps the tier, evidence and citations forever, and finalize records who confirmed each one.
+- **"Save to product" on confirm** (off by default): writes the confirmed value into a proper product field (A4 structured inputs), recording that it came from tier I/W and who approved it. The next invoice then finds it at tier 1 with no AI and no web. This is the long-term fix: every web lookup should happen **once per product**.
+- **Settings:** per-company toggles `allowProductInference`, `allowWebLookup` (both default **off** until the owner enables them), plus the domain allow-list.
+- **Cost / limits:** at most 1 inference call per invoice and 1 web call per product per 90 days. Web lookup runs only after the user opens the data check, never during upload.
+
+### 14.5 Data model additions
+
+- `TemplateField.inferencePolicy String @default("never")`, back-filled from the category by the migration.
+- `CertificateDataNeed.status` gains the values `inferred` and `web_found`; `provenance.tier` is one of `path | invoice | I | W | manual`.
+- `Company.aiSettings` gains `allowProductInference`, `allowWebLookup` and `webDomainAllowList[]`.
+- `modelRegistry.js`: `CERT_PRODUCT_INFER` (thinkingBudget 1024, temperature 0), and reuse or add `CERT_WEB_LOOKUP` (grounded search).
+- `AiSuggestion.kind` gains the values `product_infer` and `web_lookup`.
+
+### 14.6 Acceptance (Phase A5)
+
+- **Blocking:**
+  - a stub model returning values for `batch_data` / `never` fields → 0 reach a certificate;
+  - a citation whose page lacks the quote → rejected;
+  - a page about a different product → rejected;
+  - a `derived` value that the code can't reproduce → rejected;
+  - a blocked domain → rejected.
+- **Golden set:** 10 product-fact gaps (storage conditions, indications, packaging, target species, manufacturer address…) on seeded products with incomplete data.
+  - Live eval (opt-in): ≥ 70 % filled with verified evidence.
+  - 0 unverified or false values.
+- **Second run:** the same invoice → 0 web calls (cache), and 0 AI calls for fields saved to the product.
+- **Toggles off:** behaviour is identical to A2.
+- **Tenant isolation:** web query payloads contain no invoice or customer data; the cache keys are company-scoped.
+
+---
+
+## 15. Phase A6 — The product catalogue as a source document (added 2026-10-22)
+
+**Context.** The platform team (admins, not the companies) uploads manufacturer catalogues, such as `Agrikima_Catalogue_2022-new_-_feed.pdf`, and products are created from them.
+
+What the sample shows:
+
+- **Live text** (InDesign → PDF, 18 pages). Every word can be verified verbatim, like invoices.
+- **Two products per page** (left/right halves of a spread), about 30 products.
+- **A consistent section set per product:** name, form ("Liquid Oral Solution"), subtitle, BENEFITS, ACTIVE INGREDIENTS, COMPOSITION ("Each 1 Litre contains: …"), DOSAGE, WITHDRAWAL TIMES, PRECAUTIONS, STORAGE, PACKING, FORM, **CODE** (`AKS012`), and sometimes a **SPECIFICATIONS** table (Betaine 50 %: `Assay, % ≥ 50`, `Loss on drying, % ≤ 2.0`).
+- **Inconsistent number formats:**`200.000 mg` (European thousands), `2300 mg`, `70.000 mg`, `1.000 mL`, `100 000 000 I.U.`
+
+### 15.1 Goals
+
+1. Products are extracted **per product block**, with every value verified against that block's text, ambiguous numbers flagged, and the product code captured.
+2. The catalogue is **kept as an authoritative source** (versioned, with page/position citations). Certificates can then resolve missing product facts from it at a new tier **C (catalogue)**, placed between the DB and the web:
+   - **Order:** DB path → invoice → **catalogue (C)** → product inference (I) → web (W).
+   - Tier C needs no web call and no reasoning: it's the company's own supplier document.
+3. Re-uploading a newer catalogue produces a **reviewable diff**, never a silent overwrite.
+4. Catalogue content is **searchable** (products, ingredients, sections).
+
+### 15.2 Upload & ownership
+
+- **Who uploads:** an admin, who picks the target **company** (required), plus a brand and manufacturer name (optional). This uses the existing system-user company picker pattern.
+- **Access:**
+  - The catalogue file and its extracted blocks belong to that company (tenant-scoped like everything else).
+  - A company user can view their catalogues and search them.
+  - Upload, re-extraction and applying a diff need a new permission `manage_catalogues` (system users only by default).
+- **One company can have several catalogues** (one per manufacturer/year). Each upload is a `CatalogueVersion` under a `Catalogue` (manufacturer + company).
+
+### 15.3 Extraction pipeline
+
+1. **Text with positions.** Read the text layer with coordinates (pdf.js or the renderer). Reject or flag pages without a text layer (scanned catalogues → OCR is out of scope; show a warning).
+2. **Block segmentation (code).**
+   - Split each page into product blocks: spread halves, then large-font product titles as block starts. The sample's titles are ≥ 2× body size.
+   - Each block keeps `{ page, bbox, text }`.
+   - The admin can fix the segmentation in the review screen: merge or split blocks.
+3. **Structuring (AI, `CATALOGUE_EXTRACT`, one call per block, batched where the RPM allows).**
+   - **Output:** a schema-constrained product record mapped to the Product model and the A4 structured certificate inputs:
+     - `name`, `productCode`, `physicalForm`, `subtitle/category`
+     - `indications` ← BENEFITS
+     - `activeIngredients[] {name, amountRaw, amount, unit, basis}`, where basis comes from "Each 1 Litre contains"
+     - `dosage`, `withdrawalPeriod`, `userSafety` ← PRECAUTIONS
+     - `storage`, `packaging`
+     - `specifications[] {item, specRaw}`
+     - `producer` / `origin` (from the cover/back page, applied to every block)
+   - **Evidence per value:** a `quote` from the block.
+4. **Verification (code, same rule as P2).**
+   - Every quote must appear verbatim in **that block's** text; the value must appear inside its quote. Anything unverified is dropped and listed as "needs manual entry".
+   - Values are never taken from a neighbouring block.
+5. **Number normalisation (code, not AI).**
+   - Keep `amountRaw` always. Parse with explicit rules:
+     - a space or `,` before three digits, or `.` before exactly three digits, means a **thousands separator**;
+     - a single `.` followed by 1–2 digits means a decimal.
+   - Patterns that can be read both ways (`70.000 mg`, `1.000 mL`) are parsed with the catalogue-level majority convention **and flagged `ambiguous_number`**. The admin confirms once per catalogue ("in this catalogue `.` is a thousands separator"), and the choice re-parses every flagged value.
+   - Unit sanity check: an amount larger than its basis (`70,000 mg` per 1 L is plausible, but `70,000 g` per 1 L is not) is flagged.
+6. **Review screen (admin).**
+   - The PDF page sits beside the extracted record, and every field highlights its quote on the page.
+   - The admin accepts per product or in bulk. A product with no flags can be bulk-accepted.
+7. **Apply.**
+   - Products are created or updated. Matching is by `productCode` first, then normalised name, within the company.
+   - Each product stores `catalogueRef {catalogueVersionId, blockId}`, and every field written from the catalogue stores its provenance: tier `C`, page and quote.
+   - Product codes from the catalogue become the primary invoice-matching key (A3 step 2), so invoices that carry the code need no AI matching.
+
+### 15.4 Re-upload → diff
+
+- A newer version of the same catalogue is extracted the same way, then compared with the products currently linked to the previous version:
+  - **new products;**
+  - **removed products** (never auto-deleted, only flagged);
+  - **changed fields**, with old → new values side by side and the quotes.
+- Fields a user edited by hand after the import are shown as **conflicts**. They are never overwritten without an explicit choice.
+- Nothing is applied until the admin approves the diff, per product or per field.
+
+### 15.5 Tier C in certificates (extends A2/A5)
+
+- When a `product_data` field is still missing after the DB path, the resolver looks in the product's linked catalogue block with code-only matching: the section heading plus the field label or synonyms. Example: field "Storage conditions" → STORAGE section.
+- If code can't decide, the A2 gap call also receives the block text, with evidence type `catalogue_text {catalogueVersionId, blockId, quote}`, verified verbatim against the block.
+- **SPECIFICATIONS rows** feed template fields of the specification kind (e.g. "Assay ≥ 50"). This fills specification columns legitimately. **Results columns stay `batch_data` and are never filled from the catalogue (§14.1).**
+- A catalogue value used in a certificate can be saved to the product with one click, which promotes it to the DB path. It needs confirmation like tier I/W unless it was already applied in §15.3 step 7.
+
+### 15.6 Search
+
+- **Full-text search over catalogue blocks.** Postgres FTS plus `pg_trgm` for fuzzy product names, scoped per company.
+- **UI:** "Search catalogues" on the Products page, with results showing the product, page and highlighted snippet, linked to the PDF page. Examples: "Vitamin E", "withdrawal none", "AKS0".
+- **Invoice matching (A3)** uses the same index as an extra candidate source, so invoice names that differ from the DB product name but match catalogue text become candidates.
+- **Semantic search** (embeddings) is **out of scope**; reconsider it if FTS proves insufficient.
+
+### 15.7 Data model (additive)
+
+```prisma
+model Catalogue {
+  id            String  @id @default(uuid())
+  companyId     String  @map("company_id")
+  manufacturer  String
+  brandId       String? @map("brand_id")
+  versions      CatalogueVersion[]
+  createdAt     DateTime @default(now()) @map("created_at")
+  @@unique([companyId, manufacturer])
+  @@map("catalogues")
+}
+
+model CatalogueVersion {
+  id            String   @id @default(uuid())
+  catalogueId   String   @map("catalogue_id")
+  label         String                         // "2025–2026"
+  sourceFileId  String   @map("source_file_id") // StoredFile (kept forever)
+  status        String   @default("uploaded")  // uploaded|extracting|review|applied|failed
+  numberConvention Json? @map("number_convention") // { thousands: ".", decimal: "," } confirmed by admin
+  pages         Int
+  blocks        CatalogueBlock[]
+  uploadedByUserId String? @map("uploaded_by_user_id")
+  appliedAt     DateTime? @map("applied_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  @@map("catalogue_versions")
+}
+
+model CatalogueBlock {
+  id            String  @id @default(uuid())
+  versionId     String  @map("version_id")
+  page          Int
+  bbox          Json
+  text          String  @db.Text
+  extracted     Json?                          // structured record + per-field quotes + flags
+  status        String  @default("pending")    // pending|accepted|rejected|applied
+  productId     String? @map("product_id")
+  // + tsvector column for FTS, created in raw SQL with a GIN index; trigram index on the extracted name
+  @@index([versionId])
+  @@map("catalogue_blocks")
+}
+```
+
+Further additions:
+
+- `Product.catalogueRef Json?`.
+- Provenance values gain tier `C`.
+- `modelRegistry.js`: `CATALOGUE_EXTRACT` (thinkingBudget 0, temperature 0).
+- Permission: `manage_catalogues`.
+
+### 15.8 Replaces V1 catalog upload
+
+The current `catalogService.js` / `catalogWorker.js` use the deprecated SDK and a hardcoded model (V1 audit). A6 replaces them:
+
+- the old route keeps working until A6 is live, then it is retired;
+- existing products are untouched, and they can be linked to a catalogue retroactively with the §15.4 diff flow.
+
+### 15.9 Acceptance (Phase A6)
+
+- **On `Agrikima_Catalogue_2022-new_-_feed.pdf`** (add it to `fixtures/catalogues/`):
+  - Every product block is found, with segmentation errors ≤ 1, fixable in the UI.
+  - Every `productCode` is captured.
+  - For every active ingredient, `amountRaw` equals the catalogue text, and every ambiguous number is flagged; none is silently mis-parsed.
+  - 0 values without a verified quote.
+- **Diff:** re-uploading the same file gives 0 changes. A copy with one edited composition line gives exactly 1 changed field.
+- **Tier C:** a certificate field "Storage conditions" for an Agrikima product with empty `storage` in the DB resolves from the catalogue with a page-cited quote. A results field never resolves from the catalogue.
+- **Search:** "Vitamin E" returns every block containing it, company-scoped.
+- **Live eval** (opt-in): `npm run eval:catalogue` scores the extraction against a hand-checked golden JSON for the sample.

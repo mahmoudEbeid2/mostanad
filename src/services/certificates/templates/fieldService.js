@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { policyToStore } from "../inference/policy.js";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
@@ -124,6 +125,7 @@ export function validateFieldList(input, lines, groups = []) {
       mappingSuggestionId: typeof raw.mappingSuggestionId === "string" && raw.mappingSuggestionId ? raw.mappingSuggestionId : null,
       mappingConfirmed: true,
       dataCategory: DATA_CATEGORIES.includes(raw.dataCategory) ? raw.dataCategory : null,
+      inferencePolicy: typeof raw.inferencePolicy === "string" ? raw.inferencePolicy : undefined, // clamped on save (A5)
     };
     const p = (message) => problems.push({ key: f.key || `#${i + 1}`, message });
     if (!KEY_RE.test(f.key)) p("key must be snake_case (a-z, 0-9, _), starting with a letter");
@@ -281,6 +283,8 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         mappingSuggestionId: f.mappingSuggestionId,
         mappingConfirmed: f.mappingConfirmed,
         dataCategory: f.dataCategory,
+        // A5 (plan.md §14.1): a person may tighten, never loosen past the category's default
+        inferencePolicy: policyToStore(f, f.inferencePolicy),
       })),
     }),
     prisma.templateGroup.createMany({

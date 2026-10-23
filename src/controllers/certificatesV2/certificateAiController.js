@@ -98,3 +98,8 @@ export const saveProductData = catchAsync(async (req, res) => {
 export const getAiStats = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { stats: await aiStats(companyFor(req), { days: req.query.days }) } });
 });
+
+// ── A5: web lookup on request (plan.md §14.3) ────────────────────────────────
+export const webLookup = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { check: await dataNeeds.webLookupNeeds(req.params.id, scopeOf(req)) } });
+});

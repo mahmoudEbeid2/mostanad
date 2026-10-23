@@ -66,7 +66,8 @@ card.totals = {
   invalid: sum("invalid"),
   aiCallsPerTemplate: sum("aiCalls") / t.length,
 };
-const previous = fs.readdirSync(DIR).filter((f) => /^ai-eval-\d{4}-\d{2}-\d{2}\.json$/.test(f)) // A2/A3 cards are ai-eval-gaps-* / ai-eval-match-*.sort().pop();
+// only this script's cards (A2–A5 write ai-eval-gaps-* / -match-* / -inference-*)
+const previous = fs.readdirSync(DIR).filter((f) => /^ai-eval-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().pop();
 fs.writeFileSync(path.join(DIR, `ai-eval-${card.date.slice(0, 10)}.json`), JSON.stringify(card, null, 2));
 console.log("totals", card.totals);
 

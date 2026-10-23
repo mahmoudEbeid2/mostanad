@@ -1,0 +1,52 @@
+{
+  "$comment": "A5 golden set (plan.md §14.6): 10 product-fact gaps on seeded products with incomplete data. Tier I gaps are provable from the product's own record (exact expected value). Tier W gaps are on real, widely documented products; their pages were NOT checked when this set was written, so `accept` is a loose pattern that only catches an obviously false value — review the scorecard's citations by hand after a live run. `accept` = case-insensitive regexes, all must match. A filled value that fails them is a FALSE value (the bar is 0).",
+  "products": [
+    {
+      "key": "vitaplus",
+      "brand": "ADDvet",
+      "data": {
+        "name": "VITAPLUS E",
+        "producer": "AFAQ Additives Feed Company",
+        "origin": "JORDAN",
+        "description": "Oral solution for poultry. Store below 25 °C in a dry place, away from light. Packed in 1 L HDPE bottles.",
+        "appearance": "light yellow liquid",
+        "targetSpecies": ["Poultry", "Cattle"],
+        "activeIngredients": [{ "name": "Vitamin E", "concentration": "120 g/L" }, { "name": "Selenium", "concentration": "0.5 g/L" }],
+        "specifications": { "values": { "Vitamin E": "120 g/L" } }
+      }
+    },
+    {
+      "key": "baytril",
+      "brand": "Bayer",
+      "data": { "name": "Baytril 10% Oral Solution", "producer": "Bayer Animal Health", "activeIngredients": [{ "name": "Enrofloxacin", "concentration": "100 mg/ml" }] }
+    },
+    {
+      "key": "amoxinsol",
+      "brand": "Vetoquinol",
+      "data": { "name": "Amoxinsol 50", "producer": "Vetoquinol", "activeIngredients": [{ "name": "Amoxicillin trihydrate", "concentration": "500 mg/g" }] }
+    }
+  ],
+  "fields": [
+    { "key": "storage", "label": "Storage", "path": "storage" },
+    { "key": "species", "label": "Species", "path": "specifications.values.species" },
+    { "key": "composition", "label": "Composition", "path": "specifications.values.composition" },
+    { "key": "vit_e_mg", "label": "Vitamin E (mg/L)", "path": "specifications.values.vitEmgL" },
+    { "key": "appearance_caps", "label": "Appearance (capitals)", "path": "specifications.values.appearanceCaps" },
+    { "key": "packaging", "label": "Packaging", "path": "packaging" },
+    { "key": "target_species", "label": "Target species", "path": "specifications.values.targetSpeciesText" },
+    { "key": "withdrawal", "label": "Withdrawal period", "path": "withdrawalPeriod" },
+    { "key": "indications", "label": "Indications", "path": "indications" }
+  ],
+  "gaps": [
+    { "product": "vitaplus", "field": "storage", "tier": "I", "accept": ["below 25\\s*°?\\s*C"] },
+    { "product": "vitaplus", "field": "species", "tier": "I", "accept": ["^(poultry|cattle)$"] },
+    { "product": "vitaplus", "field": "composition", "tier": "I", "accept": ["vitamin e", "selenium"] },
+    { "product": "vitaplus", "field": "vit_e_mg", "tier": "I", "accept": ["^120000\\s*mg\\s*/\\s*l"] },
+    { "product": "vitaplus", "field": "appearance_caps", "tier": "I", "accept": ["^LIGHT YELLOW LIQUID$"] },
+    { "product": "vitaplus", "field": "packaging", "tier": "I", "accept": ["1\\s*l", "hdpe|bottle"] },
+    { "product": "baytril", "field": "target_species", "tier": "W", "accept": ["chicken|turkey|poultry|calves|cattle|pig|swine"] },
+    { "product": "baytril", "field": "storage", "tier": "W", "accept": ["\\d+\\s*°?\\s*c|store|light|freez"] },
+    { "product": "amoxinsol", "field": "withdrawal", "tier": "W", "accept": ["\\d+\\s*(day|d\\b)"] },
+    { "product": "amoxinsol", "field": "indications", "tier": "W", "accept": ["infection|amoxicillin|bacteria"] }
+  ]
+}

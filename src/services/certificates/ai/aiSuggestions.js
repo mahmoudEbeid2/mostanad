@@ -7,7 +7,7 @@ import { initialStatus } from "./aiSettings.js";
 // The layers (A1–A3) create them through recordSuggestion(); a person's
 // decision goes through decideSuggestion().
 
-export const SUGGESTION_KINDS = ["field_map", "field_label", "invoice_gap", "product_match", "dictionary_synonym", "group_binding"];
+export const SUGGESTION_KINDS = ["field_map", "field_label", "invoice_gap", "product_match", "dictionary_synonym", "group_binding", "product_infer", "web_lookup"];
 export const ENTITY_TYPES = ["template_field", "invoice_item", "certificate_field", "product", "dictionary_entry"];
 export const DECISIONS = ["accepted", "edited", "rejected"];
 

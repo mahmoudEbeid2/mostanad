@@ -12,6 +12,10 @@ import { getAiSettings, aiAllowed } from "../ai/aiSettings.js";
 import { logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, decideSuggestion } from "../ai/aiSuggestions.js";
 import { locateItemSpans } from "./itemSpans.js";
+import { allowsInference, allowsWeb } from "../inference/policy.js";
+import { askInference } from "../inference/productInference.js";
+import { lookupProduct, cachedFact, storeFact, CACHE_KIND } from "../inference/webLookup.js";
+import { saveProductData } from "../insights/productNeeds.js";
 import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } from "./gapResolver.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
@@ -26,9 +30,24 @@ import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } fr
 // Generation reads `provided` / `resolved_ai` first (batchService). Group
 // cells are not needs: a group's rows come from its declared list.
 
-export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable"];
-export const BLOCKING = ["missing", "needs_confirmation"];
+// A5 (plan.md §14): inferred (tier I) and web_found (tier W) always wait for a person
+export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found"];
+export const AWAITING = ["needs_confirmation", "inferred", "web_found"]; // an AI value a person must accept
+export const BLOCKING = ["missing", ...AWAITING];
 export const USABLE = ["provided", "resolved_ai"]; // what generation takes from the check
+const AI_VALUE = ["resolved_ai", ...AWAITING];
+
+// Which AI steps already looked at a need with its current basis: aiAskedBasis =
+// basis (the A2 gap call) + "|I" (tier I) + "|W" (tier W). The same gap is never asked twice.
+const askedBy = (row, step) => {
+  const a = row.aiAskedBasis || "";
+  if (!row.basis || !a.startsWith(row.basis)) return false;
+  return step === "gap" ? true : a.slice(row.basis.length).split("|").includes(step);
+};
+const markAsked = (row, step) => {
+  const a = row.aiAskedBasis && row.basis && row.aiAskedBasis.startsWith(row.basis) ? row.aiAskedBasis : row.basis;
+  return step === "gap" || a.split("|").includes(step) ? a : `${a}|${step}`;
+};
 const CHECKABLE = ["review", "ready", "generated", "partially_failed"];
 const MAX_VALUE = 500;
 
@@ -138,7 +157,7 @@ async function computeCode(invoice, ctx) {
       if (prev && prev.basis === basis) {
         if (prev.status === "provided") data = {}; // a person's value stands
         else if (code.status === "resolved") data = { ...code, suggestionId: null, aiAskedBasis: null }; // closed by code: if it reopens, it is a new gap
-        else if (["resolved_ai", "needs_confirmation"].includes(prev.status)) data = {}; // verified AI value stands until decided
+        else if (AI_VALUE.includes(prev.status)) data = {}; // a verified AI value stands until decided
         else data = code;
       } else data = { ...code, aiAskedBasis: null, suggestionId: null, decidedByUserId: null, decidedAt: null };
       const base = { label: field.label, category: field.dataCategory || null, required: field.required, templateVersionId: entry.templateVersionId, invoiceItemId: itemId, productId: entry.productId, basis };
@@ -161,7 +180,7 @@ async function computeCode(invoice, ctx) {
 /** The AI step: one call for every missing need not asked with this basis before. */
 async function fillGaps(invoice, ctx, rows, { generate, settings }) {
   const ai = { used: false, calls: 0, asked: 0, filled: 0, rejected: 0 };
-  const open = rows.filter((x) => x.row.status === "missing" && x.row.aiAskedBasis !== x.row.basis);
+  const open = rows.filter((x) => x.row.status === "missing" && !askedBy(x.row, "gap"));
   if (!open.length) return ai;
   if (!aiAllowed(settings, "allowInvoiceGapFill")) {
     ai.unavailable = true;
@@ -269,7 +288,7 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
       }
     }
     for (const x of g.needs) {
-      const data = { aiAskedBasis: x.row.basis };
+      const data = { aiAskedBasis: markAsked(x.row, "gap") };
       if (verdict.verified && suggestion) {
         const value = storedValue(x.field, verdict.value);
         Object.assign(data, {
@@ -309,7 +328,54 @@ export async function computeNeeds(invoiceId, companyScope, opts = {}) {
   return serialized(invoiceId, () => computeNeedsNow(invoiceId, companyScope, opts));
 }
 
-async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate } = {}) {
+// ── A5 tier I: inference from the product's own data (plan.md §14.2) ─────────
+async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
+  const out = { used: false, calls: 0, asked: 0, inferred: 0, rejected: 0 };
+  if (!aiAllowed(settings) || !settings.allowProductInference) return { ...out, off: true };
+  const productOf = (row) => ctx.items.find((i) => i.id === row.invoiceItemId)?.product || null;
+  const open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsInference(x.field) && !askedBy(x.row, "I"));
+  if (!open.length) return out;
+  const groups = new Map();
+  for (const x of open) {
+    const product = productOf(x.row);
+    const sig = `${product.id}|${normLabel(x.field.label)}|${stableStringify(x.field.source)}`;
+    if (!groups.has(sig)) groups.set(sig, { gap: { gapId: `I${groups.size + 1}`, field: x.field, label: x.field.label, expectedType: isDateField(x.field) ? "date" : sourceType(x.field.source || { kind: "manual" }), ...(x.field.format?.date ? { dateFormat: x.field.format.date } : {}), product }, needs: [] });
+    groups.get(sig).needs.push(x);
+  }
+  let res;
+  try {
+    res = await askInference({ companyId: invoice.companyId, invoiceId: invoice.id, gaps: [...groups.values()].map((g) => g.gap) }, { generate });
+  } catch (err) {
+    return { ...out, unavailable: true, reason: err.message };
+  }
+  Object.assign(out, { used: true, calls: 1, asked: res.sent.length });
+  for (const g of groups.values()) {
+    const got = res.answers.get(g.gap.gapId);
+    let suggestion = null;
+    if (got) {
+      // §14.4: always a person's decision, whatever the auto-accept setting
+      suggestion = await recordSuggestion(
+        { companyId: invoice.companyId, kind: "product_infer", entityType: "certificate_field", entityId: g.needs[0].row.id, proposal: { label: g.gap.label, needIds: g.needs.map((x) => x.row.id), answer: got.answer, verifiedValue: got.verdict.ok ? got.verdict.value : null }, evidence: got.answer.evidence || [], evidenceVerified: got.verdict.ok, confidence: got.answer.found ? got.answer.confidence : 0, modelKind: "CERT_PRODUCT_INFER", promptHash: res.run?.promptHash || "-", inputHash: res.inputHash, aiRunId: res.run?.id },
+        { ...settings, autoAccept: false }
+      );
+      if (!got.verdict.ok) {
+        await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "rejected", finalValue: { reason: got.verdict.reason } } });
+        if (got.answer.found) out.rejected++;
+      }
+    }
+    for (const x of g.needs) {
+      const data = { aiAskedBasis: markAsked(x.row, "I") };
+      if (got?.verdict.ok) {
+        Object.assign(data, { status: "inferred", value: storedValue(x.field, got.verdict.value), provenance: { ...got.verdict.provenance, suggestionId: suggestion.id, confidence: got.answer.confidence, ...(got.answer.reasoning ? { reasoning: got.answer.reasoning } : {}) }, suggestionId: suggestion.id });
+      } else if (suggestion) data.suggestionId = suggestion.id;
+      x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data });
+    }
+    if (got?.verdict.ok) out.inferred++;
+  }
+  return out;
+}
+
+async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate, inferGenerate } = {}) {
   const invoice = await loadInvoice(invoiceId, companyScope);
   if (!CHECKABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to check for an invoice that is ${invoice.status}`, 409);
   const ctx = await loadContext(invoice);
@@ -321,8 +387,98 @@ async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate } 
   if (ai) {
     const settings = await getAiSettings(invoice.companyId);
     aiOut = await fillGaps(invoice, ctx, rows, { generate, settings });
+    aiOut.inference = await inferProductFacts(invoice, ctx, rows, { generate: inferGenerate, settings });
   }
   return buildView(invoice, ctx, aiOut);
+}
+
+// ── A5 tier W: web lookup with verified citations (plan.md §14.3) ─────────────
+/**
+ * POST /invoices/:id/data-needs/web-lookup — only on a person's request from
+ * the data check, never during upload (§14.4). ONE call per product for its
+ * missing web-eligible facts; a fact looked up in the last 90 days comes from
+ * the company's cache (0 calls). → the view, with ai.web
+ * deps (tests): { search, fetchPage }
+ */
+export async function webLookupNeeds(invoiceId, companyScope, deps = {}) {
+  return serialized(invoiceId, () => webLookupNow(invoiceId, companyScope, deps));
+}
+
+async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {}) {
+  const invoice = await loadInvoice(invoiceId, companyScope);
+  if (!CHECKABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to check for an invoice that is ${invoice.status}`, 409);
+  const ctx = await loadContext(invoice);
+  const settings = await getAiSettings(invoice.companyId);
+  const web = { used: false, calls: 0, fromCache: 0, found: 0, rejected: 0, products: 0 };
+  if (!aiAllowed(settings) || !settings.allowWebLookup) {
+    web.unavailable = true;
+    web.reason = settings.enabled ? "Web lookup is turned off for this company" : "AI is turned off for this company";
+    return buildView(invoice, ctx, { web });
+  }
+  const rows = await computeCode(invoice, ctx);
+  const productOf = (row) => ctx.items.find((i) => i.id === row.invoiceItemId)?.product || null;
+  const open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsWeb(x.field) && !askedBy(x.row, "W"));
+  const byProduct = new Map();
+  for (const x of open) {
+    const p = productOf(x.row);
+    if (!byProduct.has(p.id)) byProduct.set(p.id, { product: p, labels: new Map() });
+    const k = normLabel(x.field.label);
+    const b = byProduct.get(p.id);
+    if (!b.labels.has(k)) b.labels.set(k, { label: x.field.label, labelNorm: k, field: x.field, needs: [] });
+    b.labels.get(k).needs.push(x);
+  }
+  const apply = async (entry, verdictValue, provenance, suggestionId) => {
+    for (const x of entry.needs) {
+      const data = { aiAskedBasis: markAsked(x.row, "W") };
+      if (verdictValue !== null) Object.assign(data, { status: "web_found", value: storedValue(x.field, verdictValue), provenance, suggestionId });
+      x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data });
+    }
+  };
+  for (const { product, labels } of byProduct.values()) {
+    web.products++;
+    const ask = [];
+    for (const entry of labels.values()) {
+      const cached = await cachedFact(invoice.companyId, product.id, entry.labelNorm);
+      if (!cached) {
+        ask.push(entry);
+        continue;
+      }
+      web.fromCache++;
+      const c = cached.citations?.[0];
+      await apply(entry, cached.payload?.found ? cached.payload.value : null, cached.payload?.found ? { tier: "W", kind: "web", citations: cached.citations, sourceType: c?.sourceType || cached.sourceType, ...(c?.warning ? { warning: c.warning } : {}), cacheId: cached.id, fromCache: true } : null, null);
+      if (cached.payload?.found) web.found++;
+    }
+    if (!ask.length) continue;
+    let res;
+    try {
+      res = await lookupProduct({ companyId: invoice.companyId, invoiceId: invoice.id, product, fields: ask, allowList: settings.webDomainAllowList }, { search, fetchPage });
+    } catch (err) {
+      // P8: by hand; asked again next time
+      web.unavailable = true;
+      web.reason = err.message;
+      continue;
+    }
+    web.used = true;
+    web.calls++;
+    for (const entry of ask) {
+      const { answer, verdict } = res.results.get(entry.labelNorm);
+      const cache = await storeFact(invoice.companyId, product.id, entry.labelNorm, verdict.ok ? { found: true, value: verdict.value, citation: verdict.citation, label: entry.label } : { found: false, label: entry.label, reason: verdict.reason });
+      let suggestion = null;
+      if (answer) {
+        suggestion = await recordSuggestion(
+          { companyId: invoice.companyId, kind: "web_lookup", entityType: "certificate_field", entityId: entry.needs[0].row.id, proposal: { label: entry.label, needIds: entry.needs.map((x) => x.row.id), query: res.query, answer, verifiedValue: verdict.ok ? verdict.value : null, checks: verdict.checks }, evidence: answer.citations || [], evidenceVerified: verdict.ok, confidence: answer.found ? answer.confidence : 0, modelKind: "CERT_WEB_LOOKUP", promptHash: res.run?.promptHash || "-", inputHash: res.run?.inputHash || "-", aiRunId: res.run?.id },
+          { ...settings, autoAccept: false }
+        );
+        if (!verdict.ok) {
+          await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "rejected", finalValue: { reason: verdict.reason, checks: verdict.checks } } });
+          if (answer.found) web.rejected++;
+        }
+      }
+      await apply(entry, verdict.ok ? verdict.value : null, verdict.ok ? { tier: "W", kind: "web", citations: [verdict.citation], sourceType: verdict.citation.sourceType, ...(verdict.citation.warning ? { warning: verdict.citation.warning } : {}), cacheId: cache.id, suggestionId: suggestion?.id, confidence: answer?.confidence ?? null } : null, verdict.ok ? suggestion?.id ?? null : null);
+      if (verdict.ok) web.found++;
+    }
+  }
+  return buildView(invoice, ctx, { web });
 }
 
 /**
@@ -343,8 +499,8 @@ export async function refreshIfChecked(invoice) {
 /** → { missing, needsConfirmation } counts of required needs that block generation. */
 export async function blockingCounts(invoiceId) {
   const rows = await prisma.certificateDataNeed.groupBy({ by: ["status"], where: { invoiceId, required: true, status: { in: BLOCKING } }, _count: { _all: true } });
-  const n = (s) => rows.find((r) => r.status === s)?._count._all || 0;
-  return { missing: n("missing"), needsConfirmation: n("needs_confirmation") };
+  const n = (st) => rows.find((r) => r.status === st)?._count._all || 0;
+  return { missing: n("missing"), needsConfirmation: AWAITING.reduce((a, st) => a + n(st), 0) };
 }
 
 /** Generation (batchService): planKey → { fieldKey → need } of the values the check settled. */
@@ -420,6 +576,10 @@ async function buildView(invoice, ctx, ai = null) {
     }));
   const count = (s) => rows.filter((r) => r.status === s).length;
   const blocking = rows.filter((r) => r.required && BLOCKING.includes(r.status)).length;
+  // A5: what the panel may offer (web lookup only on request, only where policy allows)
+  const settings = await getAiSettings(invoice.companyId);
+  const fieldOf = (r) => (ctx.fields.get(r.templateVersionId) || []).find((f) => f.key === r.fieldKey);
+  const webEligible = rows.filter((r) => r.status === "missing" && r.invoiceItemId && fieldOf(r) && allowsWeb(fieldOf(r)) && !askedBy(r, "W")).length;
   return {
     summary: {
       certificates: certificates.length,
@@ -428,11 +588,14 @@ async function buildView(invoice, ctx, ai = null) {
       resolved: count("resolved"),
       resolvedAi: count("resolved_ai"),
       provided: count("provided"),
-      needsConfirmation: count("needs_confirmation"),
+      needsConfirmation: count("needs_confirmation") + count("inferred") + count("web_found"),
+      inferred: count("inferred"),
+      webFound: count("web_found"),
       missing: count("missing"),
       notApplicable: count("not_applicable"),
       blocking,
     },
+    tiers: { inference: aiAllowed(settings) && settings.allowProductInference, web: aiAllowed(settings) && settings.allowWebLookup, webEligible },
     certificates,
     batchData,
     unassigned: ctx.plan.unassigned,
@@ -473,9 +636,18 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
     if (!need) throw notFound("Data need");
     switch (d.action) {
       case "accept": {
-        if (!["needs_confirmation", "resolved_ai"].includes(need.status)) throw new CertError("NOTHING_TO_ACCEPT", `“${need.label}” has no AI value waiting for confirmation`, 409);
-        await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "resolved_ai", decidedByUserId: userId, decidedAt: now } });
-        if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "accepted", finalValue: { value: need.value }, userId });
+        if (!AI_VALUE.includes(need.status)) throw new CertError("NOTHING_TO_ACCEPT", `“${need.label}” has no AI value waiting for confirmation`, 409);
+        // A5 §14.4 "save to product": the confirmed tier I/W value becomes product data, so the next invoice reads it by code
+        let savedTo = null;
+        if (d.saveToProduct) {
+          const field = fieldFor(need);
+          if (!["inferred", "web_found"].includes(need.status) || field.source?.kind !== "product" || !need.productId) throw new CertError("CANNOT_SAVE_TO_PRODUCT", `“${need.label}” isn't a product fact found by inference or on the web`, 409);
+          savedTo = canonicalFull(fromSource(field.source)).slice("product.".length);
+          await saveProductData(need.productId, invoice.companyId, { values: { [savedTo]: need.value } });
+        }
+        await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "resolved_ai", decidedByUserId: userId, decidedAt: now, ...(savedTo ? { provenance: { ...(need.provenance || {}), savedToProduct: savedTo } } : {}) } });
+        if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "accepted", finalValue: { value: need.value, ...(savedTo ? { savedToProduct: savedTo } : {}) }, userId });
+        if (need.provenance?.cacheId) await prisma.externalKnowledgeCache.updateMany({ where: { id: need.provenance.cacheId, kind: CACHE_KIND }, data: { status: "approved", reviewedByUserId: userId } });
         break;
       }
       case "edit": {
@@ -487,14 +659,16 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
           const value = storedValue(fieldFor(n), d.value);
           if (value === null) throw new CertError("VALUE_REQUIRED", `Type a value for “${n.label}” (or reset it)`, 422);
           await prisma.certificateDataNeed.update({ where: { id: n.id }, data: { status: "provided", value, provenance: { kind: "manual" }, decidedByUserId: userId, decidedAt: now } });
-          if (n.suggestionId && ["needs_confirmation", "resolved_ai"].includes(n.status)) await decideSuggestion(invoice.companyId, n.suggestionId, { decision: n.value === value ? "accepted" : "edited", finalValue: { value }, userId });
+          if (n.suggestionId && AI_VALUE.includes(n.status)) await decideSuggestion(invoice.companyId, n.suggestionId, { decision: n.value === value ? "accepted" : "edited", finalValue: { value }, userId });
         }
         break;
       }
       case "reject": {
-        if (!["needs_confirmation", "resolved_ai"].includes(need.status)) throw new CertError("NOTHING_TO_REJECT", `“${need.label}” has no AI value to reject`, 409);
+        if (!AI_VALUE.includes(need.status)) throw new CertError("NOTHING_TO_REJECT", `“${need.label}” has no AI value to reject`, 409);
         await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: need.required ? "missing" : "not_applicable", value: null, provenance: null, decidedByUserId: userId, decidedAt: now } });
         if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "rejected", userId });
+        // a rejected web fact is not served from the cache again
+        if (need.provenance?.cacheId) await prisma.externalKnowledgeCache.updateMany({ where: { id: need.provenance.cacheId, kind: CACHE_KIND }, data: { status: "rejected", reviewedByUserId: userId } });
         break;
       }
       case "reset":
