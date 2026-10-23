@@ -23,6 +23,7 @@ const pdf = fs.readFileSync(path.join(process.cwd(), "fixtures", "catalogues", "
 const GOLDEN = JSON.parse(fs.readFileSync(path.join(process.cwd(), "fixtures", "catalogues", "agrikima.golden.json"), "utf8"));
 const co = await createCompany("a6r");
 const other = await createCompany("a6r2");
+const manualCo = await createCompany("a6r3"); // P8 block: a company with no products yet, so its Toxinil is new
 const ts = Date.now();
 const created = { categories: [], roles: [], users: [] };
 
@@ -269,6 +270,29 @@ try {
   for (const b of afterAll.filter((x) => x.status === "pending")) await api("POST", `/catalogue-blocks/${b.id}/reject`, asAdmin);
   const done = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   assert("all decided → version applied (appliedAt set)", done.status === "applied" && !!done.appliedAt);
+
+  console.log("\n✍️ P8 — AI unavailable: products entered by hand");
+  {
+    const up = await api("POST", "/catalogues", asAdmin, form({ companyId: manualCo.id, manufacturer: "Manual entry test", extract: "false" }, { buffer: pdf, name: "m.pdf", type: "application/pdf" }));
+    await pollTask(up.data.data.jobId, asAdmin);
+    const mv = up.data.data.versionId;
+    const mb = (await prisma.catalogueBlock.findMany({ where: { versionId: mv, kind: "product" }, orderBy: { seq: "asc" } }))[GOLDEN.products.findIndex((p) => p.name === "Toxinil")];
+    r = await api("POST", `/catalogue-blocks/${mb.id}/accept`, asAdmin);
+    assert("a never-extracted block can't be accepted empty (409)", r.status === 409);
+    r = await api("PATCH", `/catalogue-blocks/${mb.id}`, asAdmin, { values: { name: "Toxinil", productCode: "AKF029", storage: "Typed from the page." } });
+    const mex = r.data?.data?.extracted;
+    assert("typing into it starts a manual record: no AI values, flagged manual_entry", r.status === 200 && mex.manualOnly && !Object.keys(mex.record).length && !Object.keys(mex.estimated).length && mex.flags.some((f) => f.code === "manual_entry"), mex);
+    r = await api("GET", `/catalogue-versions/${mv}/review`, asAdmin);
+    assert("…not bulk-acceptable (a person accepts it alone)", !r.data.data.blocks.find((b) => b.id === mb.id).bulkAcceptable);
+    // a later extraction (AI back) keeps what the person typed
+    const golden1 = new Map([[mb.id, GOLDEN.products.find((p) => p.name === "Toxinil")]]);
+    await runExtractJob(mv, undefined, { generate: extractModel(golden1), infer: false, blockIds: [mb.id] });
+    const reEx = (await prisma.catalogueBlock.findUnique({ where: { id: mb.id } })).extracted;
+    assert("a later extraction keeps the typed values", reEx.manual?.storage?.value === "Typed from the page." && reEx.record?.name === "Toxinil");
+    r = await api("POST", `/catalogue-blocks/${mb.id}/accept`, asAdmin);
+    const mp = r.data?.data?.product;
+    assert("accept → product from the typed values (tier manual), linked to its page", r.status === 201 && mp.storage === "Typed from the page." && mp.fieldProvenance.storage.tier === "manual" && mp.catalogueRef.blockId === mb.id, r.data);
+  }
 } catch (e) {
   assert(`suite crashed: ${e.message}`, false, e.stack);
 }
@@ -276,6 +300,7 @@ try {
 await finish(counts, async () => {
   await cleanupCompany(co.id);
   await cleanupCompany(other.id);
+  await cleanupCompany(manualCo.id);
   if (created.users.length) await prisma.user.deleteMany({ where: { id: { in: created.users } } });
   for (const id of created.roles) {
     await prisma.rolePermission.deleteMany({ where: { roleId: id } });

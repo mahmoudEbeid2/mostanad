@@ -132,8 +132,18 @@ export async function editBlock(blockId, companyScope, { values = {}, categoryId
   const block = await loadBlock(blockId, companyScope);
   if (block.kind !== "product") throw new CertError("NOT_A_PRODUCT_BLOCK", "Only a product block can be edited", 409);
   if (block.status !== "pending") throw new CertError("BLOCK_DECIDED", `This block is already ${block.status}`, 409);
-  if (!block.extracted) throw new CertError("NOT_EXTRACTED", "Extract this block before editing it", 409);
-  const ex = { ...block.extracted, manual: { ...(block.extracted.manual || {}) } };
+  // P8 — everything degrades to manual: a block the AI didn't (or couldn't) read is
+  // entered by hand. Nothing is filled in for the person; every value is "manual".
+  const base = block.extracted || {
+    isProduct: true,
+    record: {},
+    quotes: {},
+    estimated: {},
+    flags: [{ code: "manual_entry", message: "Not read by AI — every value of this product is typed by a person" }],
+    category: null,
+    manualOnly: true,
+  };
+  const ex = { ...base, manual: { ...(base.manual || {}) } };
   const at = new Date().toISOString();
   for (const [field, value] of Object.entries(values)) {
     if (!EDITABLE.has(field)) throw new CertError("NOT_EDITABLE", `"${field}" can't be typed here (amounts and specifications come from the catalogue only)`, 400);

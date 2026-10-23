@@ -197,6 +197,8 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
               modelId: MODELS.CATALOGUE_EXTRACT.id,
               promptHash: EXTRACT_HASH,
               extractedAt: at,
+              // values a person typed before this run (e.g. while AI was unavailable) are kept
+              ...(b.extracted?.manual ? { manual: b.extracted.manual } : {}),
             },
           },
         });
