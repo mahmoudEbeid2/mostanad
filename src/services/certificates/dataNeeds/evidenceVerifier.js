@@ -10,7 +10,10 @@ import { resolve } from "../paths/sourcePath.js";
 //   product_path       — code reads the path on the matched product; the value
 //                        must exist and CODE's value replaces the model's;
 //   product_json_text  — code reads the path to a string on the matched
-//                        product; the quote is in that string and the value in the quote.
+//                        product; the quote is in that string and the value in the quote;
+//   catalogue_text     — (A6, tier C) the quote is in the matched product's OWN linked
+//                        catalogue block and the value in the quote; refused outright for
+//                        a field that never comes from a catalogue (batch data / results).
 // Pure: no I/O, never throws on bad input.
 
 const DASHES = /[‐-―−﹘﹣－]/;
@@ -137,6 +140,21 @@ export function verifyEvidence(ev, ctx) {
       if (!normalizeEvidence(quote).includes(normalizeEvidence(value))) return { ok: false, reason: "the value is not inside the quote" };
       return { ok: true, value, provenance: { kind: "product_json_text", path: r.path, quote } };
     }
+    case "catalogue_text": {
+      if (!ctx.catalogueAllowed) return { ok: false, reason: "this field never comes from a catalogue (batch data, results, invoice values)" };
+      const block = ctx.catalogueBlock;
+      if (!block?.text) return { ok: false, reason: "the product has no linked catalogue block" };
+      const quote = String(ev.quote ?? "").trim();
+      if (!quote || !value) return { ok: false, reason: "a quote and a value are needed" };
+      if (!normalizeEvidence(quote).includes(normalizeEvidence(value))) return { ok: false, reason: "the value is not inside the quote" };
+      const occ = findOccurrences(block.text, quote);
+      if (!occ.length) return { ok: false, reason: "the quote is not in this product's catalogue block" };
+      return {
+        ok: true,
+        value,
+        provenance: { tier: "C", kind: "catalogue_text", via: "gap_call", catalogueVersionId: block.versionId, blockId: block.id, page: block.page, quote: block.text.slice(occ[0].start, occ[0].end) },
+      };
+    }
     default:
       return { ok: false, reason: `unknown evidence type "${ev?.type}"` };
   }
@@ -145,15 +163,17 @@ export function verifyEvidence(ev, ctx) {
 /**
  * A gap answer → { verified, value?, provenance?, checks[] }. The value is
  * accepted when at least one evidence entry proves it; every entry's result is
- * kept (P7). A product_path proof wins: code's DB value is what gets used.
+ * kept (P7). Proofs rank in the owner's order: the DB (product_path — code's DB
+ * value is what gets used) → the invoice → the product's text → its catalogue.
  */
+const PROOF_ORDER = ["product_path", "invoice_text", "product_json_text", "catalogue_text"];
 export function verifyAnswer(answer, ctx) {
   const evidence = Array.isArray(answer?.evidence) ? answer.evidence.slice(0, 5) : [];
   if (!answer?.found) return { verified: false, checks: [], reason: "not found" };
   if (!evidence.length) return { verified: false, checks: [], reason: "no evidence" };
   const normText = ctx.textContent ? normalizeWithMap(ctx.textContent) : null;
   const checks = evidence.map((ev) => ({ type: ev?.type, ...verifyEvidence(ev, { ...ctx, normText, value: answer.value }) }));
-  const proof = checks.find((c) => c.ok && c.type === "product_path") || checks.find((c) => c.ok);
+  const proof = PROOF_ORDER.map((t) => checks.find((c) => c.ok && c.type === t)).find(Boolean) || checks.find((c) => c.ok);
   if (!proof) return { verified: false, checks, reason: checks.map((c) => c.reason).join("; ") };
   return { verified: true, value: proof.value, provenance: proof.provenance, checks };
 }

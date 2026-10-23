@@ -12,7 +12,9 @@ import { getAiSettings, aiAllowed } from "../ai/aiSettings.js";
 import { logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, decideSuggestion } from "../ai/aiSuggestions.js";
 import { locateItemSpans } from "./itemSpans.js";
-import { allowsInference, allowsWeb } from "../inference/policy.js";
+import { allowsInference, allowsWeb, allowsCatalogue } from "../inference/policy.js";
+import { findCatalogueValue, verifyBlockQuote } from "../../catalogues/catalogueSections.js";
+import { maskEstimates, provenanceFor, isUnconfirmedEstimate } from "../../catalogues/fieldProvenance.js";
 import { askInference } from "../inference/productInference.js";
 import { lookupProduct, cachedFact, storeFact, CACHE_KIND } from "../inference/webLookup.js";
 import { saveProductData } from "../insights/productNeeds.js";
@@ -30,23 +32,39 @@ import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } fr
 // Generation reads `provided` / `resolved_ai` first (batchService). Group
 // cells are not needs: a group's rows come from its declared list.
 
-// A5 (plan.md §14): inferred (tier I) and web_found (tier W) always wait for a person
-export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found"];
-export const AWAITING = ["needs_confirmation", "inferred", "web_found"]; // an AI value a person must accept
+// A5 (plan.md §14): inferred (tier I) and web_found (tier W) always wait for a person.
+// A6 (plan.md §15.5): catalogue_found (tier C) — the product's own catalogue block, found by
+// code — waits for a person too, and so does an estimated product value (status inferred).
+export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found", "catalogue_found"];
+export const AWAITING = ["needs_confirmation", "inferred", "web_found", "catalogue_found"]; // a value a person must accept
 export const BLOCKING = ["missing", ...AWAITING];
 export const USABLE = ["provided", "resolved_ai"]; // what generation takes from the check
 const AI_VALUE = ["resolved_ai", ...AWAITING];
 
-// Which AI steps already looked at a need with its current basis: aiAskedBasis =
-// basis (the A2 gap call) + "|I" (tier I) + "|W" (tier W). The same gap is never asked twice.
-const askedBy = (row, step) => {
+// Which steps already looked at a need with its current basis: aiAskedBasis =
+// basis (the A2 gap call) + "|I" (tier I) + "|W" (tier W) + "|C" (tier C, A6) + "|E" (an
+// estimated product value offered, A6). The same gap is never asked twice, and a
+// value a person rejected is never offered again.
+// The bare basis means "the gap call asked" (A2); I and W were only ever added
+// after it. The code steps C and E (A6) don't imply it, so a row carrying only
+// them records the gap call explicitly as "G".
+const CODE_STEPS = new Set(["C", "E"]);
+const stepsOf = (row) => {
   const a = row.aiAskedBasis || "";
-  if (!row.basis || !a.startsWith(row.basis)) return false;
-  return step === "gap" ? true : a.slice(row.basis.length).split("|").includes(step);
+  if (!row.basis || !a.startsWith(row.basis)) return null;
+  return a.slice(row.basis.length).split("|").filter(Boolean);
+};
+const askedBy = (row, step) => {
+  const steps = stepsOf(row);
+  if (!steps) return false;
+  if (step === "gap") return steps.length === 0 || steps.some((s) => !CODE_STEPS.has(s));
+  return steps.includes(step);
 };
 const markAsked = (row, step) => {
-  const a = row.aiAskedBasis && row.basis && row.aiAskedBasis.startsWith(row.basis) ? row.aiAskedBasis : row.basis;
-  return step === "gap" || a.split("|").includes(step) ? a : `${a}|${step}`;
+  const steps = stepsOf(row);
+  if (!steps) return step === "gap" ? row.basis : `${row.basis}|${step}`;
+  if (askedBy(row, step)) return row.aiAskedBasis;
+  return `${row.aiAskedBasis}|${step === "gap" ? "G" : step}`;
 };
 const CHECKABLE = ["review", "ready", "generated", "partially_failed"];
 const MAX_VALUE = 500;
@@ -100,8 +118,12 @@ async function loadContext(invoice) {
   const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { id: true, name: true, address: true, phone: true, email: true } });
   const invoiceBrand = invoice.brandId ? await prisma.brand.findUnique({ where: { id: invoice.brandId }, select: { id: true, name: true } }) : null;
   const dict = await getDictionary(invoice.companyId);
-  return { plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries };
+  // tier C (plan.md §15.5): each matched product's linked catalogue block — that block only, the company's own
+  const blockIds = [...new Set(items.map((it) => it.product?.catalogueRef?.blockId).filter(Boolean))];
+  const blocks = blockIds.length ? await prisma.catalogueBlock.findMany({ where: { id: { in: blockIds }, companyId: invoice.companyId, kind: "product" } }) : [];
+  return { plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries, blocks: new Map(blocks.map((b) => [b.id, b])) };
 }
+const blockOf = (ctx, product) => (product?.catalogueRef?.blockId ? ctx.blocks?.get(product.catalogueRef.blockId) || null : null);
 
 /** Item row spans in the invoice text (plan.md §6.1 row scope). Extraction stores them;
  *  for lines without one (older invoices, lines added by hand) code locates them once. */
@@ -122,12 +144,13 @@ const spanOf = (it) => (it?.textSpan && !it.textSpan.none ? it.textSpan : null);
 function entryContext(entry, ctx, invoice) {
   const lines = entry.invoiceItemIds.map((id) => ctx.items.find((i) => i.id === id)).filter(Boolean);
   const c = { invoice: invoice.header || {}, company: ctx.company, today: new Date(), pathSynonyms: ctx.pathSynonyms };
-  c.lines = lines.map((l) => ({ ...(l.data || {}), product: l.product || {} }));
+  // an unconfirmed estimated product value is not a value until a person signs for it (A6)
+  c.lines = lines.map((l) => ({ ...(l.data || {}), product: maskEstimates(l.product) || {} }));
   if (entry.scope === "per_product") {
     const line = lines[0];
     c.item = line?.data || {};
     if (line?.product) {
-      c.product = line.product;
+      c.product = maskEstimates(line.product);
       c.brand = line.product.brand || null;
     }
   } else c.brand = ctx.versions.get(entry.templateVersionId)?.template?.brand || ctx.invoiceBrand || null;
@@ -149,17 +172,22 @@ async function computeCode(invoice, ctx) {
       keep.add(key);
       const r = resolveField(field, rctx);
       const basis = sha16(stableStringify({ source: field.source, required: field.required, productId: entry.productId, itemId, category: field.dataCategory }));
-      const code = r.resolved !== ""
+      const prev = byKey.get(key);
+      let code = r.resolved !== ""
         ? { status: "resolved", value: r.resolved, provenance: codeProvenance(field, r) }
         : { status: field.required ? "missing" : "not_applicable", value: null, provenance: null };
-      const prev = byKey.get(key);
+      if (r.resolved === "") {
+        const offer = codeOffer(field, entry, ctx, rctx);
+        const seen = { basis, aiAskedBasis: prev && prev.basis === basis ? prev.aiAskedBasis : null };
+        if (offer && !askedBy(seen, offer.step)) code = { status: offer.status, value: storedValue(field, offer.value), provenance: offer.provenance, aiAskedBasis: markAsked(seen, offer.step) };
+      }
       let data;
       if (prev && prev.basis === basis) {
         if (prev.status === "provided") data = {}; // a person's value stands
         else if (code.status === "resolved") data = { ...code, suggestionId: null, aiAskedBasis: null }; // closed by code: if it reopens, it is a new gap
         else if (AI_VALUE.includes(prev.status)) data = {}; // a verified AI value stands until decided
         else data = code;
-      } else data = { ...code, aiAskedBasis: null, suggestionId: null, decidedByUserId: null, decidedAt: null };
+      } else data = { aiAskedBasis: null, suggestionId: null, decidedByUserId: null, decidedAt: null, ...code };
       const base = { label: field.label, category: field.dataCategory || null, required: field.required, templateVersionId: entry.templateVersionId, invoiceItemId: itemId, productId: entry.productId, basis };
       const row = prev
         ? await prisma.certificateDataNeed.update({ where: { id: prev.id }, data: { ...base, ...data } })
@@ -175,6 +203,42 @@ async function computeCode(invoice, ctx) {
   const stale = existing.filter((n) => !keep.has(`${n.planKey}|${n.fieldKey}`)).map((n) => n.id);
   if (stale.length) await prisma.certificateDataNeed.deleteMany({ where: { id: { in: stale } } });
   return out;
+}
+
+/**
+ * What code can offer for a field its source left empty (A6, no AI), in the
+ * owner's order DB path → invoice → catalogue → inference → web:
+ *  - an ESTIMATED value already on the product (tier I, status inferred): it is
+ *    the product's data, but a person must sign for it before any certificate uses it;
+ *  - else the product's own catalogue block (tier C, status catalogue_found): the
+ *    section the field names, a verbatim slice verified against that block only.
+ * Never for batch data / results / invoice values (allowsCatalogue — the hard line).
+ * → { status, value, provenance, step } | null
+ */
+function codeOffer(field, entry, ctx, rctx) {
+  if (entry.scope !== "per_product") return null;
+  const raw = ctx.items.find((i) => i.id === entry.invoiceItemIds[0])?.product;
+  if (!raw) return null;
+  if (field.source?.kind === "product") {
+    const unmasked = resolveField(field, { ...rctx, product: raw });
+    const path = canonicalFull(fromSource(field.source));
+    const prov = unmasked.resolved !== "" ? provenanceFor(raw, path) : null;
+    if (prov && isUnconfirmedEstimate(prov)) {
+      const { path: p, estimated, basis, modelId, promptHash, at } = prov;
+      return { status: "inferred", value: unmasked.resolved, step: "E", provenance: { tier: "I", kind: "product_estimate", estimated, path: p, basis, modelId, promptHash, at } };
+    }
+  }
+  if (!allowsCatalogue(field)) return null;
+  const block = blockOf(ctx, raw);
+  const hit = block ? findCatalogueValue(field, block) : null;
+  const ok = hit ? verifyBlockQuote(block, hit.quote, hit.value) : null;
+  if (!ok?.ok) return null;
+  return {
+    status: "catalogue_found",
+    value: hit.value,
+    step: "C",
+    provenance: { tier: "C", kind: "catalogue_text", via: "code", catalogueVersionId: block.versionId, blockId: block.id, page: block.page, section: hit.section, quote: ok.quote },
+  };
 }
 
 /** The AI step: one call for every missing need not asked with this basis before. */
@@ -206,7 +270,7 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
           const ref = `P${productRefs.size + 1}`;
           productRefs.set(item.product.id, ref);
           const empty = ctx.dictEntries.filter((e) => e.root === "product" && e.pickable !== false && e.type !== "collection" && !resolve({ product: item.product }, e.path).found).map((e) => e.path.slice("product.".length));
-          products.set(ref, { product: item.product, emptyPaths: empty, nearMisses: [] });
+          products.set(ref, { product: item.product, emptyPaths: empty, nearMisses: [], block: blockOf(ctx, item.product) });
         }
         productRef = productRefs.get(item.product.id);
       }
@@ -244,7 +308,20 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
   const gapCtx = new Map(
     groups.map((g) => {
       const item = g.itemId ? ctx.items.find((i) => i.id === g.itemId) : null;
-      return [g.gap.gapId, { textContent: invoice.textContent, scope: g.itemId ? "item" : "header", span: spanOf(item), otherSpans: allSpans, singleItem: activeItems.length === 1, product: g.product }];
+      return [
+        g.gap.gapId,
+        {
+          textContent: invoice.textContent,
+          scope: g.itemId ? "item" : "header",
+          span: spanOf(item),
+          otherSpans: allSpans,
+          singleItem: activeItems.length === 1,
+          product: g.product,
+          // tier C: that product's block only, and only when every field of the gap may come from a catalogue
+          catalogueBlock: blockOf(ctx, g.product),
+          catalogueAllowed: g.needs.every((x) => allowsCatalogue(x.field)),
+        },
+      ];
     })
   );
   let res;
@@ -588,9 +665,10 @@ async function buildView(invoice, ctx, ai = null) {
       resolved: count("resolved"),
       resolvedAi: count("resolved_ai"),
       provided: count("provided"),
-      needsConfirmation: count("needs_confirmation") + count("inferred") + count("web_found"),
+      needsConfirmation: count("needs_confirmation") + count("inferred") + count("web_found") + count("catalogue_found"),
       inferred: count("inferred"),
       webFound: count("web_found"),
+      catalogueFound: count("catalogue_found"),
       missing: count("missing"),
       notApplicable: count("not_applicable"),
       blocking,
@@ -609,6 +687,22 @@ export async function getNeeds(invoiceId, companyScope) {
   const invoice = await loadInvoice(invoiceId, companyScope);
   const ctx = await loadContext(invoice);
   return buildView(invoice, ctx);
+}
+
+// ── product provenance (A6) ──────────────────────────────────────────────────
+async function recordFieldProvenance(productId, companyId, path, entry) {
+  const p = await prisma.product.findFirst({ where: { id: productId, companyId }, select: { id: true, fieldProvenance: true } });
+  if (!p) throw notFound("Product");
+  const { tier, kind, catalogueVersionId, blockId, page, quote, section, confirmedByUserId, confirmedAt } = entry;
+  await prisma.product.update({ where: { id: p.id }, data: { fieldProvenance: { ...(p.fieldProvenance || {}), [path]: { tier, kind, catalogueVersionId, blockId, page, quote, section, at: new Date().toISOString(), confirmedByUserId, confirmedAt } } } });
+}
+
+async function confirmEstimate(productId, companyId, path, userId) {
+  const p = await prisma.product.findFirst({ where: { id: productId, companyId }, select: { id: true, fieldProvenance: true } });
+  if (!p) throw notFound("Product");
+  const fp = p.fieldProvenance || {};
+  if (!fp[path]) throw new CertError("CANNOT_SAVE_TO_PRODUCT", "This product value is no longer an estimate", 409);
+  await prisma.product.update({ where: { id: p.id }, data: { fieldProvenance: { ...fp, [path]: { ...fp[path], confirmedByUserId: userId, confirmedAt: new Date().toISOString() } } } });
 }
 
 // ── a person's decisions (§6.2) ──────────────────────────────────────────────
@@ -641,9 +735,15 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
         let savedTo = null;
         if (d.saveToProduct) {
           const field = fieldFor(need);
-          if (!["inferred", "web_found"].includes(need.status) || field.source?.kind !== "product" || !need.productId) throw new CertError("CANNOT_SAVE_TO_PRODUCT", `“${need.label}” isn't a product fact found by inference or on the web`, 409);
+          if (!["inferred", "web_found", "catalogue_found"].includes(need.status) || field.source?.kind !== "product" || !need.productId) throw new CertError("CANNOT_SAVE_TO_PRODUCT", `“${need.label}” isn't a product fact found in the catalogue, by inference or on the web`, 409);
           savedTo = canonicalFull(fromSource(field.source)).slice("product.".length);
-          await saveProductData(need.productId, invoice.companyId, { values: { [savedTo]: need.value } });
+          if (need.provenance?.kind === "product_estimate") {
+            // the value already is the product's: the person signs for the estimate there (A6)
+            await confirmEstimate(need.productId, invoice.companyId, need.provenance.path || savedTo, userId);
+          } else {
+            await saveProductData(need.productId, invoice.companyId, { values: { [savedTo]: need.value } });
+            if (need.status === "catalogue_found") await recordFieldProvenance(need.productId, invoice.companyId, savedTo, { ...need.provenance, confirmedByUserId: userId, confirmedAt: now.toISOString() });
+          }
         }
         await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "resolved_ai", decidedByUserId: userId, decidedAt: now, ...(savedTo ? { provenance: { ...(need.provenance || {}), savedToProduct: savedTo } } : {}) } });
         if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "accepted", finalValue: { value: need.value, ...(savedTo ? { savedToProduct: savedTo } : {}) }, userId });

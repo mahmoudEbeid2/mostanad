@@ -25,7 +25,9 @@ const INSTRUCTIONS = [
   "- invoice_text: `quote` = an exact passage copied from the invoice text (a few words around the value, as printed), `page` = its page number;",
   "  a line-level gap (scope \"line\") must be quoted from THAT line's own row/block of the invoice, never from another line;",
   "- product_path: `path` = a path in the gap's product JSON (e.g. specifications.values[\"PH value\"]) whose value IS the answer — use it when the product holds the value under a differently named key;",
-  "- product_json_text: `path` = a product path holding free text and `quote` = the exact passage of that text containing the value.",
+  "- product_json_text: `path` = a product path holding free text and `quote` = the exact passage of that text containing the value;",
+  "- catalogue_text: `quote` = an exact passage of the product's own catalogue page (products[].catalogue.text) containing the value — product facts only, never lab results, batch values, dates or quantities.",
+  "Prefer evidence in this order: the product's data, the invoice, the product's text, its catalogue.",
   "`value`: the value exactly as written inside the quote/path. found=false when it is not written anywhere you were given.",
   "confidence 0–1. note: one short sentence.",
 ].join("\n");
@@ -46,7 +48,7 @@ const RESPONSE_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                type: { type: "string", enum: ["invoice_text", "product_path", "product_json_text"] },
+                type: { type: "string", enum: ["invoice_text", "product_path", "product_json_text", "catalogue_text"] },
                 quote: { type: "string", nullable: true },
                 page: { type: "integer", nullable: true },
                 path: { type: "string", nullable: true },
@@ -117,7 +119,7 @@ export function nearMisses(product, wantedPath, jsonColumns) {
 /**
  * Builds the prompt payload.
  * gaps: [{ gapId, fieldKey, label, category, expectedType, dateFormat?, scope, lineNo?, productRef?, wantedPath? }]
- * products: Map(productRef → { product, emptyPaths, nearMisses })
+ * products: Map(productRef → { product, emptyPaths, nearMisses, block? }) — block: the product's linked catalogue block (A6)
  */
 export function buildPayload({ invoice, items, gaps, products, jsonColumns }) {
   return {
@@ -130,6 +132,8 @@ export function buildPayload({ invoice, items, gaps, products, jsonColumns }) {
       json: Object.fromEntries(jsonColumns.filter((c) => p.product[c] !== null && p.product[c] !== undefined).map((c) => [c, truncate(p.product[c])])),
       // the product's own text columns too: a value may be written inside one (product_json_text)
       text: truncate(Object.fromEntries(Object.entries(p.product).filter(([k, v]) => typeof v === "string" && v.trim() && !TEXT_SKIP.has(k)))),
+      // A6 tier C: the product's own catalogue block, as printed (catalogue_text evidence is verified against it)
+      ...(p.block ? { catalogue: { page: p.block.page, text: p.block.text.slice(0, MAX_PRODUCT_JSON) } } : {}),
     })),
     gaps,
   };

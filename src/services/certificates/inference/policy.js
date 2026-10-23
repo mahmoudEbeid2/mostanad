@@ -52,6 +52,16 @@ export const allowsInference = (field) => RANK[effectivePolicy(field)] >= RANK.p
 export const allowsWeb = (field) => effectivePolicy(field) === "product_facts_and_web";
 
 /**
+ * May this field use tier C (the product's own catalogue block, plan.md §15.5)?
+ * Product data only — by category, and the same hard line in code: batch data /
+ * lab results, invoice values, dates, quantities and document numbers never come
+ * from a catalogue, whatever the field's category says. A catalogue is the
+ * supplier's document, not inference, so a person's inference policy doesn't
+ * turn it off; registration numbers printed in it are fine.
+ */
+export const allowsCatalogue = (field) => !hardNever(field) && defaultPolicy(field) !== "never";
+
+/**
  * The policy to store for a field a person saved (PUT …/fields): their choice,
  * clamped so it is never looser than the default. → policy
  */

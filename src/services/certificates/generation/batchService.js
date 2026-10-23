@@ -9,6 +9,7 @@ import { computePlan } from "./planService.js";
 import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
 import { refreshIfChecked, blockingCounts, usableNeeds } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
+import { maskEstimates } from "../../catalogues/fieldProvenance.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -171,7 +172,10 @@ async function loadProductCtx(cache, companyId, productId) {
   if (!cache.has(productId)) {
     cache.set(
       productId,
-      prisma.product.findFirst({ where: { id: productId, companyId }, include: { category: { select: { id: true, name: true } }, brand: { select: { id: true, name: true } } } })
+      prisma.product
+        .findFirst({ where: { id: productId, companyId }, include: { category: { select: { id: true, name: true } }, brand: { select: { id: true, name: true } } } })
+        // an unconfirmed estimated value is never printed until a person signed for it (A6) — the data check offers it for confirmation
+        .then(maskEstimates)
     );
   }
   return cache.get(productId);

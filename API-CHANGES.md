@@ -327,3 +327,11 @@ Additive. The V1 `POST /products/upload-catalog` is unchanged and keeps working 
 - **Product:** two nullable columns returned with every product — `catalogueRef` `{ catalogueId, catalogueVersionId, blockId, page }` and `fieldProvenance` (per field `{ tier: "C"|"I", … }`, written from A6.3).
 - **Errors:** 400 `COMPANY_REQUIRED`, `BRAND_NOT_IN_COMPANY`, `FILE_REQUIRED`; 409 `NOT_A_PRODUCT_BLOCK`; 413 `FILE_TOO_LARGE` (60 MB); 415 `NOT_A_PDF`.
 - Migration `20261023160000_catalogues` (3 tables, 2 nullable product columns). Permission seeded in `prisma/seed.js`.
+
+## Certificate AI layers (plan.md) — Phase A6.2 Tier C in certificates (2026-10-23)
+
+Additive; no new endpoint, no migration.
+- **Data check** (`GET/POST/PATCH /invoices/:id/data-needs`): new need status **`catalogue_found`** — a product-data value read by code from the line's product's linked catalogue block; provenance `{ tier: "C", kind: "catalogue_text", via: "code"|"gap_call", catalogueVersionId, blockId, page, section?, quote }`. Blocks generation like `needs_confirmation` until accepted. `summary.catalogueFound`; `summary.needsConfirmation` includes it.
+- **Estimated product values:** a product field whose `fieldProvenance[path]` is `{ estimated: true }` without `confirmedAt` is never used by generation; the check returns it as `inferred` with provenance `{ tier: "I", kind: "product_estimate", estimated: true, path, basis, modelId, promptHash }`.
+- **`PATCH …/data-needs` accept + `saveToProduct: true`:** now also for `catalogue_found` (writes the value + `product.fieldProvenance[path]` with tier C, block, page, quote, `confirmedAt`) and for estimates (sets `fieldProvenance[path].confirmedAt`; value unchanged). `CANNOT_SAVE_TO_PRODUCT` otherwise, as before.
+- **Gap call evidence:** new type `catalogue_text { quote }` (verified against the product's own block; refused for batch data / results / invoice values).
