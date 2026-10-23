@@ -3,6 +3,7 @@ import { CertError, notFound } from "../certificates/errors.js";
 import { scheduleDictionaryRebuild } from "../certificates/dictionary/rebuildScheduler.js";
 import { catalogueRefOf } from "./catalogueService.js";
 import { matchContext, matchBlock } from "./productMatch.js";
+import { presentError } from "../ai/aiErrorMessage.js";
 
 // The admin's review of an extracted catalogue (plan.md §15.3 steps 6–7; A6.4).
 //  - Accepting a block CREATES a product for the version's company from the
@@ -124,7 +125,7 @@ export async function reviewVersion(versionId, companyScope) {
     if (flags.some((f) => f.code === "ambiguous_number")) counts.ambiguous++;
     out.push({ id: b.id, seq: b.seq, kind: b.kind, page: b.page, bbox: b.bbox, title: b.title, status: b.status, productId: b.productId, lines: (b.lines || []).map((l) => l.t), extracted: ex, highlights: ex ? highlightsOf(b) : {}, categoryId: categoryFor(ex), match, bulkAcceptable: b.status === "pending" && !!ex && !flags.length && !match });
   }
-  return { version: { id: version.id, label: version.label, status: version.status, pages: version.pages, numberConvention: version.numberConvention, extraction: version.extraction, error: version.error, catalogue: { id: version.catalogue.id, manufacturer: version.catalogue.manufacturer, brand: version.catalogue.brand } }, counts, categories, blocks: out };
+  return { version: { id: version.id, label: version.label, status: version.status, pages: version.pages, numberConvention: version.numberConvention, extraction: version.extraction, ...presentError({ error: version.error }), catalogue: { id: version.catalogue.id, manufacturer: version.catalogue.manufacturer, brand: version.catalogue.brand } }, counts, categories, blocks: out };
 }
 
 /** PATCH /catalogue-blocks/:id { values?: { field: value|null }, categoryId? } — a person's corrections before accepting. */

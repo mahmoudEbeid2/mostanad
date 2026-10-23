@@ -11,6 +11,7 @@ import { rememberAlias } from "../matching/productAliases.js";
 import { decideSuggestion } from "../ai/aiSuggestions.js";
 import { extractionHints } from "../dataNeeds/extractionHints.js";
 import { locateItemSpans } from "../dataNeeds/itemSpans.js";
+import { presentError } from "../../ai/aiErrorMessage.js";
 
 // Invoices (CERTIFICATES_V2_PLAN.md §9): upload → extract (AI) → review →
 // confirm → ready. Extraction output is frozen in headerExtracted /
@@ -230,7 +231,7 @@ export async function listInvoices(companyId, { status, q, page = 1, limit = 20 
     const g = groups.filter((x) => x.invoiceId === id);
     return { total: g.reduce((n, x) => n + x._count._all, 0), final: g.filter((x) => x.status === "final").reduce((n, x) => n + x._count._all, 0) };
   };
-  return { total, invoices: rows.map((r) => ({ ...r, certificateCounts: countsFor(r.id) })) };
+  return { total, invoices: rows.map((r) => presentError({ ...r, certificateCounts: countsFor(r.id) })) };
 }
 
 export async function getInvoice(id, companyId) {
@@ -245,7 +246,8 @@ export async function getInvoice(id, companyId) {
   });
   const source = await prisma.storedFile.findUnique({ where: { id: inv.sourceFileId }, select: { mimeType: true, originalName: true, sizeBytes: true } });
   const counts = inv.items.reduce((acc, it) => ({ ...acc, [it.matchStatus]: (acc[it.matchStatus] || 0) + 1 }), {});
-  return { ...inv, source, counts };
+  // P8: a stored AI failure is shown as a sentence; the raw text stays in the row
+  return presentError({ ...inv, source, counts });
 }
 
 export async function getSource(id, companyId) {

@@ -4,6 +4,7 @@ import { prisma } from "../../../lib/prisma.js";
 import { aiAllowed } from "../ai/aiSettings.js";
 import { runLogged, logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, clampConfidence } from "../ai/aiSuggestions.js";
+import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // AI product matching (plan.md §7 step 5, Phase A3): ONE CERT_PRODUCT_MATCH
 // call per invoice, only for the lines code left ambiguous. The model may only
@@ -132,7 +133,7 @@ export async function aiMatch(invoice, pending, products, settings, { generate =
   } catch (err) {
     // P8: the candidates stay; the user matches by hand; the lines are asked again next time
     ai.unavailable = true;
-    ai.reason = err.message;
+    ai.reason = publicAiError(err);
     return { picks, ai };
   }
   ai.used = true;

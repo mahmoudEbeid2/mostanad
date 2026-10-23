@@ -169,7 +169,7 @@ async function run() {
   const { status: s3, data: d3Raw } = await sendLabelRequest(form3);
   assert("Status is 202", s3 === 202, `Got ${s3}. Response: ${JSON.stringify(d3Raw)}`);
   const task3 = await pollTask(d3Raw?.data?.jobId);
-  assert("Queued job fails loudly at the Gemini guard", task3?.status === "failed" && /GEMINI_DISABLED/.test(task3?.error || ""), `Status: ${task3?.status}, Error: ${task3?.error}`);
+  assert("Queued job fails loudly at the Gemini guard (shown as a sentence)", task3?.status === "failed" && task3.errorCode === "AI_DISABLED" && !/GEMINI/.test(task3.error || ""), `Status: ${task3?.status}, Error: ${task3?.error}`);
   assert("Guarded job has no result", task3?.result == null, JSON.stringify(task3?.result));
 
   log("   [Test] Running the verify flow in-process with the fixed extraction...", "cyan");

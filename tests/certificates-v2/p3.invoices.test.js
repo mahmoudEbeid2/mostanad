@@ -84,7 +84,7 @@ try {
   const task = await pollTask(r.data.data.taskId, A);
   assert("extraction task failed (Gemini disabled in tests)", task?.status === "failed", task?.status);
   r = await api("GET", `/invoices/${failedId}`, A);
-  assert("invoice failed with the real reason, zero items", r.data?.data?.invoice?.status === "failed" && /EXTRACTION_FAILED/.test(r.data.data.invoice.error) && /GEMINI_DISABLED/.test(r.data.data.invoice.error) && r.data.data.invoice.items.length === 0, r.data?.data?.invoice);
+  assert("invoice failed, zero items; the API says why in a sentence (no env flags), the row keeps the real reason", r.data?.data?.invoice?.status === "failed" && r.data.data.invoice.errorCode === "AI_DISABLED" && !/GEMINI|EXTRACTION_FAILED/.test(r.data.data.invoice.error) && r.data.data.invoice.items.length === 0 && /EXTRACTION_FAILED.*GEMINI_DISABLED/.test((await prisma.invoice.findUnique({ where: { id: failedId } })).error), r.data?.data?.invoice);
   assert("country from upload normalised", r.data.data.invoice.country === "SA");
   r = await api("POST", `/invoices/${failedId}/confirm`, A);
   assert("a failed invoice cannot be confirmed", r.status === 409, r.status);
@@ -94,7 +94,7 @@ try {
   assert("retry a failed invoice → 202 + new task", r.status === 202 && r.data?.data?.taskId, r.data);
   const retryTask = await pollTask(r.data.data.taskId, A);
   r = await api("GET", `/invoices/${failedId}`, A);
-  assert("retry ran the same extraction: failed again with the real reason, zero items", retryTask?.status === "failed" && r.data.data.invoice.status === "failed" && /GEMINI_DISABLED/.test(r.data.data.invoice.error) && r.data.data.invoice.items.length === 0, r.data.data.invoice);
+  assert("retry ran the same extraction: failed again with the real reason, zero items", retryTask?.status === "failed" && r.data.data.invoice.status === "failed" && r.data.data.invoice.errorCode === "AI_DISABLED" && r.data.data.invoice.items.length === 0, r.data.data.invoice);
 
   console.log("\n🧪 Review flow (extraction result stored as the job stores it)");
   const brand = await prisma.brand.create({ data: { companyId: coA.id, name: "ADDvet" } });

@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../utils/appError.js";
 import { scopeFor, isVisibleTo } from "../utils/tenantScope.js";
+import { presentError } from "../services/ai/aiErrorMessage.js";
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.get("/:id", catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: "success",
-    data: task,
+    data: presentError(task), // P8: an AI failure reads as a sentence; the raw text stays in the row
   });
 }));
 

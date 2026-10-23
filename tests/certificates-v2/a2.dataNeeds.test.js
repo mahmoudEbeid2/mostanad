@@ -129,7 +129,7 @@ try {
   assert("… recorded as disabled in ai_runs", (await prisma.aiRun.count({ where: { companyId: cid, kind: "CERT_INVOICE_GAPS", outcome: "disabled" } })) >= 1);
   await api("PATCH", "/certificate-ai-settings", A, { allowInvoiceGapFill: true });
   check = await computeNeeds(invOff.id, cid, { generate: async () => { throw Object.assign(new Error("429 RESOURCE_EXHAUSTED quota"), { statusCode: 429 }); } });
-  assert("model over quota → unavailable with the provider's message, gaps missing", check.ai.unavailable && /RESOURCE_EXHAUSTED/.test(check.ai.reason) && check.summary.missing === 4, check.ai);
+  assert("model over quota → unavailable, said as a sentence, gaps missing", check.ai.unavailable && /usage limit/.test(check.ai.reason) && !/RESOURCE_EXHAUSTED/.test(check.ai.reason) && check.summary.missing === 4, check.ai);
   const retry = [];
   check = await computeNeeds(invOff.id, cid, { generate: goldenModel(exp("INV_B"), { calls: retry }) });
   assert("a failed call is asked again next time", retry.length === 1 && check.summary.needsConfirmation === 2, check.summary);

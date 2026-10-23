@@ -5,6 +5,7 @@ import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
 import { readPdfLayout } from "./pdfLayout.js";
 import { segment, SEGMENTER_VERSION } from "./segmenter.js";
+import { presentError } from "../ai/aiErrorMessage.js";
 
 // Product catalogues as source documents (plan.md §15.2, §15.7; Phase A6.1).
 //  - A system user (manage_catalogues) uploads a manufacturer's catalogue FOR a
@@ -180,7 +181,7 @@ export async function listCatalogues(companyScope) {
     include: { brand: { select: { id: true, name: true } }, company: { select: { id: true, name: true } }, versions: { select: versionSummary, orderBy: { createdAt: "desc" } } },
     orderBy: { updatedAt: "desc" },
   });
-  return rows;
+  return rows.map((c) => ({ ...c, versions: c.versions.map(presentError) }));
 }
 
 export async function getCatalogue(id, companyScope) {
@@ -189,7 +190,7 @@ export async function getCatalogue(id, companyScope) {
     include: { brand: { select: { id: true, name: true } }, company: { select: { id: true, name: true } }, versions: { select: versionSummary, orderBy: { createdAt: "desc" } } },
   });
   if (!visible(row, companyScope)) throw notFound("Catalogue");
-  return row;
+  return { ...row, versions: row.versions.map(presentError) };
 }
 
 async function loadVersion(id, companyScope) {
@@ -206,7 +207,7 @@ export async function getVersion(id, companyScope) {
     select: { id: true, seq: true, kind: true, page: true, bbox: true, title: true, text: true, status: true, productId: true, extracted: true },
     orderBy: { seq: "asc" },
   });
-  return { ...version, blocks };
+  return presentError({ ...version, blocks });
 }
 
 /** GET /catalogue-versions/:id/file — the kept PDF. → { row, stream } */

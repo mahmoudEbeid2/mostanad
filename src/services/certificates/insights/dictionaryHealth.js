@@ -7,6 +7,7 @@ import { getAiSettings, aiAllowed } from "../ai/aiSettings.js";
 import { runLogged, logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, decideSuggestion, clampConfidence } from "../ai/aiSuggestions.js";
 import { neededProductPaths } from "./productNeeds.js";
+import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // Dictionary health (plan.md §9, A4) — what is messy in a company's product
 // JSON, and what to do about it WITHOUT rewriting any product:
@@ -142,7 +143,7 @@ export async function suggestSynonyms(companyId, { generate = defaultGenerate } 
     ));
   } catch (err) {
     ai.unavailable = true;
-    ai.reason = err.message;
+    ai.reason = publicAiError(err);
     return { asked: 0, suggested: 0, ai };
   }
   ai.used = true;

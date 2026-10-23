@@ -226,7 +226,7 @@ try {
   const down = await runExtractJob(r2.data.data.versionId, undefined, { generate: extractModel(golden2, [], { mutate: false }), inferGenerate: async () => { throw new Error("Gemini quota exhausted (daily/project limit)"); } });
   const v2 = await prisma.catalogueVersion.findUnique({ where: { id: r2.data.data.versionId } });
   const b2 = await prisma.catalogueBlock.findMany({ where: { versionId: v2.id, kind: "product" } });
-  assert("the job completes, version in review, the failure recorded with the real reason", down.inference.failed && v2.status === "review" && /quota/.test(v2.extraction.inference.reason));
+  assert("the job completes, version in review, the failure recorded as a sentence", down.inference.failed && v2.status === "review" && /usage limit/.test(v2.extraction.inference.reason));
   assert("…every product keeps its verified values, no estimates", b2.every((b) => b.extracted.record.name && Object.keys(b.extracted.estimated).length === 0));
   // §15.9 on this clean run (a correct model, nothing injected): all 24 codes, all 176 amounts, nothing unverified
   const E2 = (name) => b2.find((b) => b.id === blocks2[GOLDEN.products.findIndex((p) => p.name === name)].id).extracted;
@@ -241,7 +241,7 @@ try {
   assert("without extract=false the segment job queues the extraction", !!t3.result?.extractJobId);
   const t3e = await pollTask(t3.result.extractJobId, asAdmin);
   const v3 = await prisma.catalogueVersion.findUnique({ where: { id: r3.data.data.versionId } });
-  assert("…which fails loudly here (GEMINI_DISABLED), version back to segmented with the error", t3e.status === "failed" && /GEMINI_DISABLED/.test(t3e.error) && v3.status === "segmented" && /GEMINI_DISABLED/.test(v3.error) && (await prisma.catalogueBlock.count({ where: { versionId: v3.id } })) === 33, { t3e, status: v3.status });
+  assert("…which fails loudly here (GEMINI_DISABLED), version back to segmented with the error", t3e.status === "failed" && t3e.errorCode === "AI_DISABLED" && !/GEMINI/.test(t3e.error) && v3.status === "segmented" && /GEMINI_DISABLED/.test(v3.error) && (await prisma.catalogueBlock.count({ where: { versionId: v3.id } })) === 33, { t3e, status: v3.status });
   r = await api("POST", `/catalogue-versions/${v3.id}/extract`, asAdmin, {});
   assert("POST …/extract re-queues it (202)", r.status === 202 && r.data.data.jobId);
   await pollTask(r.data.data.jobId, asAdmin);

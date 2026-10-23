@@ -7,6 +7,7 @@ import { extractGroup, BLOCKS_PER_CALL, PROMPT_HASH as EXTRACT_HASH } from "./ca
 import { verifyRecord, renormalise, basisOf, compositionText } from "./recordVerifier.js";
 import { estimateMissing, missingFields, FLAGGED_WHEN_ESTIMATED, PROMPT_HASH as INFER_HASH } from "./catalogueInference.js";
 import { blockEvidence, majorityConvention } from "./numbers.js";
+import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // The catalogue extraction job (plan.md §15.3 steps 3–5; A6.3). Per version:
 //  1. code reads each product block's own number evidence and the catalogue majority;
@@ -175,7 +176,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
         }
       } catch (err) {
         // owner rule: the product is still created with the verified values only — recorded, never silent
-        inference = { calls: 1, estimated: 0, failed: true, reason: err.message };
+        inference = { calls: 1, estimated: 0, failed: true, reason: publicAiError(err) };
       }
     }
 

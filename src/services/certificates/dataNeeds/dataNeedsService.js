@@ -19,6 +19,7 @@ import { askInference } from "../inference/productInference.js";
 import { lookupProduct, cachedFact, storeFact, CACHE_KIND } from "../inference/webLookup.js";
 import { saveProductData } from "../insights/productNeeds.js";
 import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } from "./gapResolver.js";
+import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
 //   plan (templateSelector) × each template field → one CertificateDataNeed:
@@ -330,7 +331,7 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
   } catch (err) {
     // P8: the check still works by hand; the gaps are asked again next time
     ai.unavailable = true;
-    ai.reason = err.message;
+    ai.reason = publicAiError(err);
     return ai;
   }
   ai.used = true;
@@ -423,7 +424,7 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   try {
     res = await askInference({ companyId: invoice.companyId, invoiceId: invoice.id, gaps: [...groups.values()].map((g) => g.gap) }, { generate });
   } catch (err) {
-    return { ...out, unavailable: true, reason: err.message };
+    return { ...out, unavailable: true, reason: publicAiError(err) };
   }
   Object.assign(out, { used: true, calls: 1, asked: res.sent.length });
   for (const g of groups.values()) {
@@ -532,7 +533,7 @@ async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {})
     } catch (err) {
       // P8: by hand; asked again next time
       web.unavailable = true;
-      web.reason = err.message;
+      web.reason = publicAiError(err);
       continue;
     }
     web.used = true;

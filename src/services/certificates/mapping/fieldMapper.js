@@ -13,6 +13,7 @@ import { recallMapping } from "./mappingMemory.js";
 import { matchLabel, sampleAgrees } from "./dictionaryMatch.js";
 import { inferFormat } from "./formatInference.js";
 import { looksLikeBatchResult } from "./labelProposal.js";
+import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // Template field mapping (plan.md §5.2, §5.3). Per field, in order — each
 // step short-circuits (P3):
@@ -462,7 +463,7 @@ export async function mapFields(versionId, scopeCompanyId, input, { userId = nul
       } catch (err) {
         // P8: the AI path never blocks the wizard — what code resolved stands
         ai.unavailable = true;
-        ai.reason = err.message;
+        ai.reason = publicAiError(err);
       }
     }
   }

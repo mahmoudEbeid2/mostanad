@@ -176,7 +176,7 @@ async function run() {
       // the job at the Gemini guard and write no products. The success path
       // below only runs against a Gemini-enabled stack (outside npm test).
       if (process.env.GEMINI_DISABLED === "true") {
-        assert("Task failed at the Gemini guard", task?.status === "failed" && /GEMINI_DISABLED/.test(task?.error || ""), `Status: ${task?.status}, Error: ${task?.error}`);
+        assert("Task failed at the Gemini guard (user-facing message; the raw reason stays in the row)", task?.status === "failed" && task.errorCode === "AI_DISABLED" && !/GEMINI/.test(task.error) && /GEMINI_DISABLED/.test((await prisma.backgroundTask.findUnique({ where: { id: task.id } })).error || ""), `Status: ${task?.status}, Error: ${task?.error}`);
         const written = await prisma.product.count({ where: { companyId: testCompanyId } });
         assert("Guarded job wrote no products", written === 0, `${written} products`);
       } else {

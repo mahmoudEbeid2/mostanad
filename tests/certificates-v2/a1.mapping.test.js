@@ -71,7 +71,7 @@ try {
   console.log("\n🧪 AI unavailable (Gemini disabled in tests) → code still maps (P8)");
   r = await api("POST", `/template-versions/${addvet.id}/map-fields`, A, { fields: addFields, sampleProductId: products["ADD-E120"].id });
   m = r.data?.data?.mappings || {};
-  assert("200, ai.unavailable with the provider's reason", r.status === 200 && r.data.data.ai.unavailable === true && /GEMINI_DISABLED|disabled/i.test(r.data.data.ai.reason), r.data?.data?.ai);
+  assert("200, ai.unavailable with a user-facing reason (no env flags or model ids)", r.status === 200 && r.data.data.ai.unavailable === true && /switched off/.test(r.data.data.ai.reason) && !/GEMINI|gemini-/.test(r.data.data.ai.reason), r.data?.data?.ai);
   assert("code mappings still returned", m.batch_no?.source?.path === "batchNo" && m.product_name?.confidence === 0.98, m.product_name);
   assert("the failed call is in ai_runs", (await prisma.aiRun.count({ where: { companyId: company.id, kind: "CERT_FIELD_MAP", outcome: "failed" } })) === 1);
 
@@ -122,11 +122,11 @@ try {
   o = await run(async () => {
     throw new Error("Gemini quota exhausted (daily/project limit, not per-minute) for gemini-2.5-flash");
   });
-  assert("quota error → ai.unavailable, code mappings kept, nothing thrown", o.ai.unavailable && /quota/.test(o.ai.reason) && o.mappings.expiry.origin === "dictionary" && o.mappings.constituent_amount.status === "unmapped");
+  assert("quota error → ai.unavailable (said as a sentence), code mappings kept, nothing thrown", o.ai.unavailable && /usage limit/.test(o.ai.reason) && !/gemini/i.test(o.ai.reason) && o.mappings.expiry.origin === "dictionary" && o.mappings.constituent_amount.status === "unmapped");
   o = await run(async () => {
     throw new Error("Gemini API call failed for gemini-2.5-flash after 5 attempts (last status 503): timeout");
   });
-  assert("timeout/outage → same", o.ai.unavailable && /503/.test(o.ai.reason));
+  assert("timeout/outage → same (\"busy\", no status codes)", o.ai.unavailable && /busy/.test(o.ai.reason) && !/503/.test(o.ai.reason));
   o = await run(stub(() => ({ fields: [] })));
   assert("no answer for a field → unmapped, not invented", o.mappings.constituent_amount.status === "unmapped");
 

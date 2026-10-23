@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import AppError from "../utils/appError.js";
+import { describeAiError } from "../services/ai/aiErrorMessage.js";
 
 const handlePrismaUniqueConstraintError = (err) => {
   const fields = err.meta?.target || [];
@@ -45,6 +46,14 @@ const sendErrorProd = (err, res) => {
 const globalErrorHandler = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
+
+  // P8: an AI failure reaches the user as a sentence, never as Google's raw
+  // text or our env flags / model ids (those are logged here and kept in ai_runs)
+  const ai = describeAiError(err.message);
+  if (ai) {
+    console.error(`[AI error → ${ai.code}] ${req.method} ${req.originalUrl}: ${err.message}`);
+    return res.status(err.statusCode).json({ status: err.status, code: ai.code, message: ai.message });
+  }
 
   if (process.env.NODE_ENV === "development") {
     sendErrorDev(err, res);
