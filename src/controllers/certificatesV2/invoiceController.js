@@ -9,8 +9,10 @@ export const uploadInvoice = catchAsync(async (req, res) => {
     file: req.file,
     brandId: req.body.brandId,
     country: req.body.country,
+    extract: req.body.extract !== "false",
   });
-  res.status(202).json({ status: "accepted", data });
+  // read by AI → 202 + taskId; entered by hand (extract=false) → 201, already under review
+  res.status(data.taskId ? 202 : 201).json({ status: data.taskId ? "accepted" : "success", data });
 });
 
 export const listInvoices = catchAsync(async (req, res) => {

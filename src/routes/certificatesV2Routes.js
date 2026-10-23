@@ -77,7 +77,8 @@ router.post("/certificate-data-dictionary/synonym-suggestions/:id", guard("updat
 router.get("/certificate-product-completeness", guard("read_products"), validate(aiSchemas.company), certificateAi.getCompleteness);
 router.get("/certificate-products/:id/data", guard("read_products"), validate(insightSchemas.productById), certificateAi.getProductData);
 router.patch("/certificate-products/:id/data", guard("update_products"), validate(insightSchemas.saveProductData), certificateAi.saveProductData);
-router.get("/certificate-ai-stats", guard("read_certificate_templates"), validate(insightSchemas.stats), certificateAi.getAiStats);
+router.get("/ai-status", guard("read_products"), certificateAi.aiStatus); // plan.md P8 — banner + AI buttons
+router.get("/certificate-ai-stats",guard("read_certificate_templates"), validate(insightSchemas.stats), certificateAi.getAiStats);
 router.get("/certificate-ai-settings", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getSettings);
 router.patch("/certificate-ai-settings", guard("update_certificate_templates"), validate(aiSchemas.updateSettings), certificateAi.updateSettings);
 router.get("/certificate-products", guard("read_products"), validate(productSearchSchema), templates.productSearch);

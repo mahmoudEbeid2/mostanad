@@ -151,7 +151,7 @@ const itemData = z.record(z.string(), cell);
 const itemParams = z.object({ id: uuid, itemId: uuid });
 
 export const invoiceSchemas = {
-  upload: { query: companyQuery, body: z.object({ brandId: optionalUuid, country: optionalCountry, companyId: uuid.optional() }) },
+  upload: { query: companyQuery, body: z.object({ brandId: optionalUuid, country: optionalCountry, companyId: uuid.optional(), extract: z.enum(["true", "false"]).optional() }) },
   list: {
     query: companyQuery.extend({
       status: z.string().max(30).optional(),

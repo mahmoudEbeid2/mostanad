@@ -211,6 +211,15 @@ try {
   assert("a line typed by hand, matched by the person", r.status === 201 && r.data.data.item.lineNo === 1 && r.data.data.item.matchMethod === "user", r.data);
   r = await api("POST", `/invoices/${failedId}/confirm`, A);
   assert("confirm → ready", r.status === 200 && r.data.data.invoice.status === "ready", r.data);
+
+  console.log("\n✍️ P8 — AI unavailable at upload: extract=false opens it for manual entry straight away");
+  const aiRunsBefore = await prisma.aiRun.count({ where: { companyId: coA.id } });
+  r = await api("POST", "/invoices", A, form({ extract: "false" }, { field: "invoice", buffer: fixture("outlined_text.pdf"), name: "by-hand.pdf", type: "application/pdf" }));
+  assert("upload extract=false → 201, no task", r.status === 201 && r.data?.data?.invoiceId && r.data.data.taskId === null, r.data);
+  r = await api("GET", `/invoices/${r.data.data.invoiceId}`, A);
+  const hInv = r.data?.data?.invoice;
+  assert("…under review, no lines, nothing filled in, marked manual, original kept", hInv.status === "review" && hInv.items.length === 0 && !Object.keys(hInv.header).length && hInv.extraction.manual === true && !!hInv.sourceFileId, hInv);
+  assert("…and no AI was asked", (await prisma.aiRun.count({ where: { companyId: coA.id } })) === aiRunsBefore);
 } catch (err) {
   console.error("Fatal:", err);
   counts.failed++;

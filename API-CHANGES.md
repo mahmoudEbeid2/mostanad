@@ -374,3 +374,10 @@ Additive; no migration.
 
 Additive; no migration.
 - **New:** `POST /invoices/:id/manual` (update_invoices) — a `failed` invoice moves to `review` with no lines and nothing filled in (`extraction: { manual: true, byUserId, at, reason }`, `error` cleared); the person types the header and lines with the existing review endpoints. 409 `INVOICE_NOT_FAILED` otherwise. Before this, an invoice that couldn't be read (AI unavailable) could only be retried — there was no manual path.
+
+## P8 — AI unavailable, said up front (2026-10-23)
+
+Additive; no migration.
+- **New:** `GET /ai-status` (read_products; company accounts too) → `{ available, reason: null|"disabled"|"no_key"|"quota", message, since }`. The UI shows a global banner and disables AI buttons from it. `quota` = the latest real AI attempt (any company — the key is shared) failed on the daily quota and nothing succeeded since; re-probed after 6 h.
+- **`POST /invoices`:** optional `extract: "false"` → no extraction job; the invoice is created under `review` with no lines (`extraction.manual: true`) and the response is **201** `{ invoiceId, taskId: null }` (default stays 202 + taskId).
+- **`POST /catalogues`, `POST /catalogues/:id/versions`:** the UI now sends the existing `extract: "false"` while AI is unavailable (split only; products typed in the review).

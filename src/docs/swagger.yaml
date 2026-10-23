@@ -269,6 +269,8 @@ paths:
     $ref: './paths/certificates-v2/certificate-product-completeness.yaml'
   /certificate-products/{id}/data:
     $ref: './paths/certificates-v2/certificate-products-id-data.yaml'
+  /ai-status:
+    $ref: './paths/certificates-v2/ai-status.yaml'
   /certificate-ai-stats:
     $ref: './paths/certificates-v2/certificate-ai-stats.yaml'
   /certificate-ai-settings:

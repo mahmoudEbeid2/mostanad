@@ -49,15 +49,30 @@ async function assertBrand(companyId, brandId) {
 const normCountry = (c) => (c ? String(c).trim().toUpperCase() : null);
 
 /** POST /invoices → { invoiceId, taskId } */
-export async function uploadInvoice({ companyId, userId, file, brandId = null, country = null }) {
+/**
+ * extract=false (P8: AI unavailable) keeps the original and opens it under
+ * review for manual entry straight away — no extraction job, no failed state
+ * to come back from. → { invoiceId, taskId: null }
+ */
+export async function uploadInvoice({ companyId, userId, file, brandId = null, country = null, extract = true }) {
   const { ext, mimeType } = detectInvoiceFormat(file?.buffer);
   await assertBrand(companyId, brandId);
   const invoice = await prisma.$transaction(async (tx) => {
     const src = await fileStore.putFile({ companyId, kind: "invoice_source", buffer: file.buffer, mimeType, originalName: file.originalname || null, ext, tx });
     return tx.invoice.create({
-      data: { companyId, brandId: brandId || null, country: normCountry(country), status: "uploaded", sourceFileId: src.id, uploadedByUserId: userId || null },
+      data: {
+        companyId,
+        brandId: brandId || null,
+        country: normCountry(country),
+        sourceFileId: src.id,
+        uploadedByUserId: userId || null,
+        ...(extract
+          ? { status: "uploaded" }
+          : { status: "review", header: {}, extraction: { manual: true, byUserId: userId || null, at: new Date().toISOString(), reason: "entered by hand at upload", warnings: [] } }),
+      },
     });
   });
+  if (!extract) return { invoiceId: invoice.id, taskId: null };
   const task = await enqueueTask({
     queueName: QUEUES.invoice,
     jobName: "extract",

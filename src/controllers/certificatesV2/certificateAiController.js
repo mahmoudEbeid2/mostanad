@@ -7,7 +7,13 @@ import * as dataNeeds from "../../services/certificates/dataNeeds/dataNeedsServi
 import * as health from "../../services/certificates/insights/dictionaryHealth.js";
 import * as productNeeds from "../../services/certificates/insights/productNeeds.js";
 import { aiStats } from "../../services/certificates/insights/aiStats.js";
+import { getAiStatus } from "../../services/ai/aiStatus.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
+
+/** GET /ai-status — P8: can AI answer right now? (the UI banner and AI buttons read it) */
+export const aiStatus = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await getAiStatus() });
+});
 
 // Certificate AI layers — foundations (plan.md §3, Phase A0). Thin: the
 // dictionary and the settings live in services/certificates/{dictionary,ai}.
