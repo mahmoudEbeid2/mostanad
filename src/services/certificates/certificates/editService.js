@@ -219,6 +219,7 @@ export async function listVersions(id, companyId) {
     createdAt: r.createdAt,
     hasPdf: !!r.pdfFileId,
     flagCount: countBlocking(r.values),
+    values: r.values, // the editor shows a viewed old version's own values (read-only), not the current ones
   }));
 }
 

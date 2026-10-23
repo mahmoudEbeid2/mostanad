@@ -119,6 +119,7 @@ try {
   r = await api("GET", `/certificates/${add.certId}/versions`, A);
   const versions = r.data?.data?.versions || [];
   assert("versions: 5, newest first, with their change source", versions.map((v) => v.versionNumber).join() === "5,4,3,2,1" && versions.map((v) => v.changeSource).join() === "regenerate_field,user_edit,user_edit,user_edit,generation", versions.map((v) => v.changeSource));
+  assert("each version carries its own values (v1 = as generated, v5 = current)", versions.find((v) => v.versionNumber === 1)?.values?.batch_no?.value === "AVVS1124011" && versions.find((v) => v.versionNumber === 5)?.values?.product_name?.value === "ADD-E120", versions.map((v) => v.values && Object.keys(v.values).length));
   r = await api("POST", `/certificates/${add.certId}/versions/1/restore`, A, { expectedVersion: 5 });
   c = await getCert(add.certId);
   const vRows = await prisma.certificateVersion.findMany({ where: { certificateId: add.certId }, orderBy: { versionNumber: "asc" } });
