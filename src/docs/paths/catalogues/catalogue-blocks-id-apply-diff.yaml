@@ -1,0 +1,18 @@
+# /catalogue-blocks/{id}/apply-diff (A6.5).
+post:
+  tags: ["Catalogues"]
+  summary: Approve one block's diff, per product or per field
+  description: |
+    Body `{ fields?: string[], productId?: uuid }`. Without `fields`: every non-conflict change. With `fields`: exactly those (a conflict only when named; `[]` = link without changes). Changes not taken are remembered as declined for this catalogue and value. `productId` picks one of several matches (never a product outside them). → `{ blockId, productId, applied, skipped, keptConflicts, product }`. 400 NOT_A_CHANGE; 409 NO_EXISTING_PRODUCT / PICK_PRODUCT / PRODUCT_TAKEN / CONFIRM_NUMBER_CONVENTION / BLOCK_DECIDED / NOT_EXTRACTED. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    content: { application/json: { schema: { type: object, properties: { fields: { type: array, items: { type: string } }, productId: { type: string, format: uuid } } } } }
+  responses:
+    "200": { description: "{ blockId, productId, applied, skipped, keptConflicts, product }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: NOT_A_CHANGE }
+    "409": { description: NO_EXISTING_PRODUCT / PICK_PRODUCT / PRODUCT_TAKEN / CONFIRM_NUMBER_CONVENTION / BLOCK_DECIDED }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

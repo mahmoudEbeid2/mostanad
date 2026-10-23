@@ -3,6 +3,7 @@ import { scopeFor, assertCompanyAccess } from "../utils/tenantScope.js";
 import * as catalogues from "../services/catalogues/catalogueService.js";
 import { setNumberConvention } from "../services/catalogues/extraction/extractionService.js";
 import * as review from "../services/catalogues/reviewService.js";
+import * as diff from "../services/catalogues/diffService.js";
 
 // Product catalogues as source documents (plan.md §15, A6). Thin: every rule
 // and every tenant check is in services/catalogues/catalogueService.js.
@@ -38,6 +39,11 @@ export const rejectBlock = catchAsync(async (req, res) => ok(res, await review.r
 export const acceptUnflagged = catchAsync(async (req, res) => ok(res, await review.acceptUnflagged(req.params.id, scopeFor(req), actor(req))));
 export const mergeBlocks = catchAsync(async (req, res) => ok(res, await review.mergeBlocks(req.params.id, scopeFor(req), req.body.blockIds)));
 export const splitBlock = catchAsync(async (req, res) => ok(res, await review.splitBlock(req.params.id, scopeFor(req), req.body.atLine)));
+
+// A6.5 — the re-upload diff (plan §15.4)
+export const getDiff = catchAsync(async (req, res) => ok(res, await diff.versionDiff(req.params.id, scopeFor(req))));
+export const applyBlockDiff = catchAsync(async (req, res) => ok(res, await diff.applyBlockDiff(req.params.id, scopeFor(req), req.body || {}, actor(req))));
+export const applyVersionDiff = catchAsync(async (req, res) => ok(res, await diff.applyVersionDiff(req.params.id, scopeFor(req), actor(req))));
 
 export const getVersionFile = catchAsync(async (req, res) => {
   const { row, stream } = await catalogues.versionFile(req.params.id, scopeFor(req));

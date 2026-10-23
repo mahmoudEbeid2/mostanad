@@ -327,6 +327,12 @@ paths:
     $ref: './paths/catalogues/catalogue-blocks-id-reject.yaml'
   /catalogue-blocks/{id}/split:
     $ref: './paths/catalogues/catalogue-blocks-id-split.yaml'
+  /catalogue-versions/{id}/diff:
+    $ref: './paths/catalogues/catalogue-versions-id-diff.yaml'
+  /catalogue-versions/{id}/apply-diff:
+    $ref: './paths/catalogues/catalogue-versions-id-apply-diff.yaml'
+  /catalogue-blocks/{id}/apply-diff:
+    $ref: './paths/catalogues/catalogue-blocks-id-apply-diff.yaml'
   /certificate-batches/{id}:
     $ref: './paths/certificates-v2/certificate-batches-id.yaml'
   /certificate-batches/{id}/export:

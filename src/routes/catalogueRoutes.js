@@ -35,6 +35,10 @@ router.patch("/catalogue-blocks/:id", guard("manage_catalogues"), validate(catal
 router.post("/catalogue-blocks/:id/accept", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.acceptBlock);
 router.post("/catalogue-blocks/:id/reject", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.rejectBlock);
 router.post("/catalogue-blocks/:id/split", guard("manage_catalogues"), validate(catalogueSchemas.split), catalogues.splitBlock);
+// A6.5: re-upload diff — existing products change only here, per product or per field
+router.get("/catalogue-versions/:id/diff", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getDiff);
+router.post("/catalogue-versions/:id/apply-diff", guard("manage_catalogues"), validate(catalogueSchemas.decide), catalogues.applyVersionDiff);
+router.post("/catalogue-blocks/:id/apply-diff", guard("manage_catalogues"), validate(catalogueSchemas.applyDiff), catalogues.applyBlockDiff);
 
 // Coded errors: { status, code, message, ...extra } (same contract as the certificates router).
 router.use((err, req, res, next) => {

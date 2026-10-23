@@ -40,4 +40,6 @@ export const catalogueSchemas = {
   decide: { params: idParams, query: companyQuery },
   merge: { params: idParams, query: companyQuery, body: z.object({ blockIds: z.array(uuid).length(2) }) },
   split: { params: idParams, query: companyQuery, body: z.object({ atLine: z.number().int().min(1) }) },
+  // A6.5 re-upload diff: per product (no fields → every non-conflict change) or per field
+  applyDiff: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(z.string().max(40)).max(40).optional(), productId: uuid.optional() }).optional() },
 };

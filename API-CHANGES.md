@@ -355,3 +355,11 @@ Additive; no migration.
 - **Accept never updates an existing product** (409 `EXISTING_PRODUCT` with `match`) — existing products change only through the re-upload diff (A6.5). An ambiguous "." + 3 digits → 409 `CONFIRM_NUMBER_CONVENTION` until the convention is set.
 - **Products created from a catalogue:** `fieldProvenance[field]` = `{ tier: "C", catalogueVersionId, blockId, page, quote, at }` | `{ tier: "I", estimated: true, basis, modelId, promptHash, at }` | `{ tier: "manual", by, at }`; `activeIngredients` items `{ name, concentration, amountRaw, amount, unit, basis }` (`concentration` = the printed text, null when nothing is printed).
 - **`PATCH /products/:id`:** ingredient items now accept (and keep) `amountRaw`, `amount`, `unit`, `basis`, `readAs`; `concentration` is optional/nullable. A changed field that carried a catalogue/estimate provenance becomes `{ tier: "manual", at, replaced }` — the "Estimated" badge goes and certificates may use the value.
+
+## Certificate AI layers (plan.md) — Phase A6.5 Re-upload diff (2026-10-23)
+
+Additive; no migration.
+- **New:** `GET /catalogue-versions/:id/diff` (read_products) → `{ version, summary, items, removed }`; `POST /catalogue-blocks/:id/apply-diff` `{ fields?, productId? }` and `POST /catalogue-versions/:id/apply-diff` (manage_catalogues). Shapes in the OpenAPI docs.
+- **Changed matching** (review and diff): a code printed for several products of one version is never used to match (the name decides); among several hits the products already linked to this catalogue win; a product already linked to another block of the version is never matched twice. An ambiguous `match` now carries `candidates [{ id, name, productCode }]`.
+- **New version:** inherits the catalogue's last admin-confirmed `numberConvention` (`inheritedFromVersionId`) — confirmed once per catalogue.
+- **Product `fieldProvenance`:** applied diff values carry `appliedByUserId` and `replacedValue`; a change not taken carries `declined { catalogueId, catalogueVersionId, value, byUserId, at }` (a pre-catalogue value then becomes `tier: "manual"`).

@@ -1,8 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
 import { CertError, notFound } from "../certificates/errors.js";
 import { scheduleDictionaryRebuild } from "../certificates/dictionary/rebuildScheduler.js";
-import { normalizeName } from "../certificates/matching/productMatcher.js";
 import { catalogueRefOf } from "./catalogueService.js";
+import { matchContext, matchBlock } from "./productMatch.js";
 
 // The admin's review of an extracted catalogue (plan.md §15.3 steps 6–7; A6.4).
 //  - Accepting a block CREATES a product for the version's company from the
@@ -27,22 +27,6 @@ async function loadBlock(id, companyScope) {
   const block = await prisma.catalogueBlock.findUnique({ where: { id }, include: { version: { include: { catalogue: true } } } });
   if (!block || (companyScope && block.companyId !== companyScope)) throw notFound("Catalogue block");
   return block;
-}
-
-/** The existing product this block would update (by code, else by normalised name). */
-async function existingMatch(companyId, record, cache = null) {
-  const products = cache || (await prisma.product.findMany({ where: { companyId }, select: { id: true, name: true, productCode: true } }));
-  const code = String(record?.productCode || "").trim().toLowerCase();
-  if (code) {
-    const hits = products.filter((p) => String(p.productCode || "").trim().toLowerCase() === code);
-    if (hits.length === 1) return { productId: hits[0].id, name: hits[0].name, by: "code" };
-    if (hits.length > 1) return { productId: null, ambiguous: hits.map((h) => h.id), by: "code" };
-  }
-  const name = normalizeName(record?.name);
-  const hits = name ? products.filter((p) => normalizeName(p.name) === name) : [];
-  if (hits.length === 1) return { productId: hits[0].id, name: hits[0].name, by: "name" };
-  if (hits.length > 1) return { productId: null, ambiguous: hits.map((h) => h.id), by: "name" };
-  return null;
 }
 
 const quoteOf = (q) => (Array.isArray(q) ? q[0] : q) || null;
@@ -119,7 +103,7 @@ export async function reviewVersion(versionId, companyScope) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, include: { catalogue: { include: { brand: { select: { id: true, name: true } } } } } });
   if (!version || (companyScope && version.companyId !== companyScope)) throw notFound("Catalogue version");
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
-  const products = await prisma.product.findMany({ where: { companyId: version.companyId }, select: { id: true, name: true, productCode: true } });
+  const mctx = await matchContext(version, blocks);
   const categories = await prisma.category.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
   const out = [];
   const counts = { products: 0, pending: 0, flagged: 0, unflagged: 0, accepted: 0, applied: 0, rejected: 0, existing: 0, ambiguous: 0, notExtracted: 0 };
@@ -131,7 +115,7 @@ export async function reviewVersion(versionId, companyScope) {
     counts.products++;
     const ex = b.extracted;
     const flags = ex?.flags || [];
-    const match = ex && b.status === "pending" ? await existingMatch(version.companyId, ex.record, products) : null;
+    const match = ex && b.status === "pending" ? matchBlock(mctx, b) : null;
     if (b.status === "pending") counts.pending++;
     else counts[b.status] = (counts[b.status] || 0) + 1;
     if (!ex) counts.notExtracted++;
@@ -169,7 +153,7 @@ export async function editBlock(blockId, companyScope, { values = {}, categoryId
 /** The category a product gets: the admin's pick, else an EXISTING category whose name is the proposal. Never a new one. */
 const categoryFor = (ex) => (ex?.category && "chosenCategoryId" in ex.category ? ex.category.chosenCategoryId : ex?.category?.existingCategoryId) || null;
 
-async function applyOne(block, userId, productsCache) {
+async function applyOne(block, userId, mctx = null) {
   if (block.kind !== "product") throw new CertError("NOT_A_PRODUCT_BLOCK", "Only a product block can be accepted", 409);
   if (block.status !== "pending") throw new CertError("BLOCK_DECIDED", `This block is already ${block.status}`, 409);
   const ex = block.extracted;
@@ -177,8 +161,8 @@ async function applyOne(block, userId, productsCache) {
   const blocking = (ex.flags || []).filter((f) => BLOCKING_FLAGS.has(f.code));
   if (blocking.some((f) => f.code === "ambiguous_number")) throw new CertError("CONFIRM_NUMBER_CONVENTION", "Confirm how this catalogue writes \".\" + three digits before accepting (a number on this page reads two ways)", 409);
   if (blocking.length && !ex.manual?.name) throw new CertError("NAME_REQUIRED", "Type the product name before accepting", 409);
-  const record = { ...ex.record, ...(ex.manual?.name ? { name: ex.manual.name.value } : {}), ...(ex.manual?.productCode ? { productCode: ex.manual.productCode.value } : {}) };
-  const match = await existingMatch(block.companyId, record, productsCache);
+  const ctx = mctx || (await matchContext(block.version));
+  const match = matchBlock(ctx, block);
   if (match) throw new CertError("EXISTING_PRODUCT", match.productId ? `"${match.name}" already exists in this company — its changes go through the catalogue diff` : "Several existing products match this block — resolve it in the catalogue diff", 409, { match });
   const { data, fieldProvenance } = productFromBlock(block, { categoryId: categoryFor(ex), brandId: block.version.catalogue.brandId || null });
   if (!data.name) throw new CertError("NAME_REQUIRED", "Type the product name before accepting", 409);
@@ -190,7 +174,8 @@ async function applyOne(block, userId, productsCache) {
     if (count !== 1) throw new CertError("BLOCK_DECIDED", "This block was decided meanwhile", 409);
     return created;
   });
-  productsCache?.push({ id: product.id, name: product.name, productCode: product.productCode });
+  ctx.products.push({ id: product.id, name: product.name, productCode: product.productCode, catalogueRef });
+  ctx.taken.set(product.id, block.id);
   return product;
 }
 
@@ -213,7 +198,7 @@ export async function acceptUnflagged(versionId, companyScope, userId = null) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version || (companyScope && version.companyId !== companyScope)) throw notFound("Catalogue version");
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product", status: "pending" }, include: { version: { include: { catalogue: true } } }, orderBy: { seq: "asc" } });
-  const cache = await prisma.product.findMany({ where: { companyId: version.companyId }, select: { id: true, name: true, productCode: true } });
+  const mctx = await matchContext(version);
   const created = [];
   const skipped = { flagged: 0, existing: 0, notExtracted: 0 };
   for (const b of blocks) {
@@ -225,11 +210,11 @@ export async function acceptUnflagged(versionId, companyScope, userId = null) {
       skipped.flagged++;
       continue;
     }
-    if (await existingMatch(version.companyId, b.extracted.record, cache)) {
+    if (matchBlock(mctx, b)) {
       skipped.existing++;
       continue;
     }
-    const p = await applyOne(b, userId, cache);
+    const p = await applyOne(b, userId, mctx);
     created.push({ blockId: b.id, productId: p.id, name: p.name });
   }
   if (created.length) await afterApply(version);

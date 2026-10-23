@@ -1,0 +1,14 @@
+# /catalogue-versions/{id}/diff (plan.md §15.4, A6.5).
+get:
+  tags: ["Catalogues"]
+  summary: What this version would change in existing products
+  description: |
+    Computed on demand. `items[]` per pending product block: `kind` new (no product — accept it) | changed | unchanged | ambiguous (`match.candidates`, or `match.takenByBlockId`). For changed/unchanged: `product`, `matchedBy` (code, else name; a code printed for several products of the version is never used), `changes[] { field, old, new, tier, estimated?, basis?, quote, page, conflict, reason }`, `unchanged[]`, `declined[]` (a value the admin declined earlier for this catalogue — not proposed again), `flags`. An estimate only fills an empty field; catalogue silence never clears one. Conflict = the current value was typed by a person (tier manual, a confirmed estimate) or predates the catalogue (no provenance). `removed[]`: products linked to this catalogue (an earlier version) that no block matches — listed, never deleted. `summary { new, changed, unchanged, ambiguous, removed, changedFields, conflicts, applied, notExtracted }`. Permission: `read_products`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ version, summary, items, removed }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

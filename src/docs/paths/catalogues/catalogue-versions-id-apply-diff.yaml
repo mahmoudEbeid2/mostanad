@@ -1,0 +1,14 @@
+# /catalogue-versions/{id}/apply-diff (A6.5).
+post:
+  tags: ["Catalogues"]
+  summary: Approve every change without conflicts
+  description: |
+    For each pending block that matches exactly one product, has no flag and no conflict: its changes are written (tier C provenance with the replaced value; unchanged tier-C values and `catalogueRef` move to this version) — an unchanged block is just linked. New, ambiguous, flagged and conflicting blocks wait. → `{ applied, changedFields, products, skipped: { new, ambiguous, flagged, conflicts, notExtracted } }`. Permission: `manage_catalogues`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ applied, changedFields, products, skipped }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }
