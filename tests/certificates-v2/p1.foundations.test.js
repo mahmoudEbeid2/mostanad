@@ -100,7 +100,7 @@ try {
 
   console.log("\n🧪 Explicit conversion failures");
   r = await uploadTemplate(coA.id, { file: "outlined_text.pdf", name: "Outlined", certificateTypeId: coaType.id, country: "EG" });
-  assert("outlined text → task failed NO_LIVE_TEXT", r.task?.status === "failed" && /NO_LIVE_TEXT/.test(r.task?.error || ""), r.task?.error);
+  assert("outlined text → task failed NO_LIVE_TEXT", r.task?.status === "failed" && r.task?.errorCode === "NO_LIVE_TEXT" && /outlines/.test(r.task?.error || ""), r.task);
   assert("outlined text → version failed with reason", r.version?.status === "failed" && /outlines/.test(r.version?.error || ""), r.version?.error);
 
   console.log("\n🧪 Malicious .html upload is neutralised");
