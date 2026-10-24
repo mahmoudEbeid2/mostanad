@@ -4,6 +4,7 @@ import { getAiSettings, updateAiSettings } from "../../services/certificates/ai/
 import * as fieldService from "../../services/certificates/templates/fieldService.js";
 import * as fieldMapper from "../../services/certificates/mapping/fieldMapper.js";
 import * as dataNeeds from "../../services/certificates/dataNeeds/dataNeedsService.js";
+import { diagnoseInvoice } from "../../services/certificates/dataNeeds/diagnosis.js";
 import * as health from "../../services/certificates/insights/dictionaryHealth.js";
 import * as productNeeds from "../../services/certificates/insights/productNeeds.js";
 import { aiStats } from "../../services/certificates/insights/aiStats.js";
@@ -106,6 +107,11 @@ export const getAiStats = catchAsync(async (req, res) => {
 });
 
 // ── A5: web lookup on request (plan.md §14.3) ────────────────────────────────
+/** GET /invoices/:id/data-needs/diagnosis — why each value is missing, grouped by what fixes it (read-only). */
+export const diagnoseDataNeeds = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { diagnosis: await diagnoseInvoice(req.params.id, scopeOf(req)) } });
+});
+
 export const webLookup = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { check: await dataNeeds.webLookupNeeds(req.params.id, scopeOf(req)) } });
 });

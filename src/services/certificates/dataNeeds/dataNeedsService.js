@@ -12,7 +12,7 @@ import { getAiSettings, aiAllowed } from "../ai/aiSettings.js";
 import { logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, decideSuggestion } from "../ai/aiSuggestions.js";
 import { locateItemSpans } from "./itemSpans.js";
-import { allowsInference, allowsWeb, allowsCatalogue } from "../inference/policy.js";
+import { allowsInference, allowsWeb, allowsCatalogue, isLabResult } from "../inference/policy.js";
 import { findCatalogueValue, verifyBlockQuote } from "../../catalogues/catalogueSections.js";
 import { maskEstimates, provenanceFor, isUnconfirmedEstimate } from "../../catalogues/fieldProvenance.js";
 import { askInference } from "../inference/productInference.js";
@@ -293,6 +293,7 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
           ...(itemId ? { lineNo: lineNo(itemId) } : {}),
           ...(productRef ? { productRef } : {}),
           ...(wantedPath ? { wantedPath } : {}),
+          ...(isLabResult(x.field) ? { labResult: true } : {}),
         },
         itemId,
         product: item?.product || null,
@@ -321,6 +322,8 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
           // tier C: that product's block only, and only when every field of the gap may come from a catalogue
           catalogueBlock: blockOf(ctx, g.product),
           catalogueAllowed: g.needs.every((x) => allowsCatalogue(x.field)),
+          // a lab result: the invoice text only (never the product, its text or its catalogue)
+          labResult: g.needs.some((x) => isLabResult(x.field)),
         },
       ];
     })
@@ -627,7 +630,7 @@ async function buildView(invoice, ctx, ai = null) {
     });
   // batch data (lab results): one input per line and label, whatever the number of certificate types needing it
   const batch = new Map();
-  for (const r of rows.filter((x) => x.category === "batch_data" && x.invoiceItemId)) {
+  for (const r of rows.filter((x) => x.invoiceItemId && (x.category === "batch_data" || isLabResult(fieldFor(x))))) {
     const item = itemById.get(r.invoiceItemId);
     if (!batch.has(r.invoiceItemId)) batch.set(r.invoiceItemId, { invoiceItemId: r.invoiceItemId, lineNo: item?.lineNo ?? null, productName: item?.product?.name || item?.data?.name || null, batchNo: item?.data?.batchNo || null, fields: new Map() });
     const fields = batch.get(r.invoiceItemId).fields;

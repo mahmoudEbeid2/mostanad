@@ -20,14 +20,31 @@ const REGISTRATION_LABEL = /\b(registration|reg\.?\s*(no|number|#)|licen[cs]e\s*
 
 /** The default for a field (§14.1): product data → product_facts_and_web; everything else → never. */
 export function defaultPolicy(field) {
+  if (isLabResult(field)) return "never";
   const category = field?.dataCategory ?? null;
   if (category && NEVER_CATEGORIES.has(category)) return "never";
   if (category === "product_data") return "product_facts_and_web";
   return ["product", "brand"].includes(field?.source?.kind) ? "product_facts_and_web" : "never";
 }
 
+// The owner's lab-result pre-set (2026-10-24): a label naming a result, an
+// assay or a pass/fail word is a per-batch analysis result until the owner
+// unticks it in "Mark fields". Same rule as the migration's backfill.
+const LAB_RESULT_LABEL = /\b(results?|assay|complies|conforms?)\b/i;
+
+/** The pre-set for a field whose owner hasn't decided yet: batch data, or a result-like label. */
+export const defaultIsLabResult = (field) => field?.dataCategory === "batch_data" || LAB_RESULT_LABEL.test(String(field?.label || ""));
+
+/**
+ * A per-batch analysis result: measured once per batch, so it only ever comes from
+ * a supplier COA, a previous result of the same batch, or a person. The stored flag
+ * decides; batch_data is a lab result whatever the flag says (the category predates it).
+ */
+export const isLabResult = (field) => field?.isLabResult === true || field?.dataCategory === "batch_data";
+
 /** Code's hard line: true when nothing may be inferred or fetched for this field, whatever is stored. */
 export function hardNever(field) {
+  if (isLabResult(field)) return true;
   if (["item", "invoice", "company", "today", "static"].includes(field?.source?.kind)) return true;
   if (field?.groupKey) return true; // group cells come from their declared list
   if (field?.source?.kind === "template" && /\{\{\s*(item|invoice)\b/.test(String(field.source.template || ""))) return true;
@@ -66,6 +83,7 @@ export const allowsCatalogue = (field) => !hardNever(field) && defaultPolicy(fie
  * clamped so it is never looser than the default. → policy
  */
 export function policyToStore(field, requested) {
+  if (isLabResult(field)) return "never";
   const d = defaultPolicy(field);
   if (!POLICIES.includes(requested)) return d;
   return stricter(requested, d);

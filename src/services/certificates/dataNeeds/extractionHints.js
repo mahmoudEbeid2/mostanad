@@ -12,7 +12,7 @@ import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "../invoices/invoiceS
 export async function extractionHints(companyId) {
   const templates = await prisma.certificateTemplate.findMany({ where: { companyId, archivedAt: null, activeVersionId: { not: null } }, select: { activeVersionId: true } });
   if (!templates.length) return null;
-  const fields = await prisma.templateField.findMany({ where: { versionId: { in: templates.map((t) => t.activeVersionId) } }, select: { source: true, label: true, dataCategory: true } });
+  const fields = await prisma.templateField.findMany({ where: { versionId: { in: templates.map((t) => t.activeVersionId) } }, select: { source: true, label: true, dataCategory: true, isLabResult: true, groupKey: true } });
   const line = new Set();
   const header = new Set();
   const perLine = new Set();
@@ -23,7 +23,7 @@ export async function extractionHints(companyId) {
       if (r.kind === "item" && r.path) line.add(r.path.split(/[.[]/)[0]);
       if (r.kind === "invoice" && r.path) header.add(r.path.split(/[.[]/)[0]);
     }
-    if (f.dataCategory === "batch_data" && f.label) perLine.add(f.label.replace(/\s+result$/i, "").trim());
+    if ((f.dataCategory === "batch_data" || f.isLabResult) && !f.groupKey && f.label) perLine.add(f.label.replace(/\s+result$/i, "").trim());
   }
   const describe = (defs, set) => defs.filter((d) => set.has(d.path) && d.path !== "lineNo").map((d) => ({ path: d.path, label: d.label, synonyms: d.synonyms || [] }));
   const extraPaths = [...line].filter((p) => p === "extra");

@@ -102,6 +102,7 @@ const fieldDraft = z
     sortOrder: z.number().int().optional(),
     page: z.number().int().optional(),
     groupKey: z.string().max(60).nullable().optional(),
+    isLabResult: z.boolean().optional(), // owner-set (Mark fields); omitted = keep the stored flag
   })
   .passthrough();
 

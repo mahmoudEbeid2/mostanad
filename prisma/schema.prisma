@@ -864,6 +864,10 @@ model TemplateField {
   mappingConfirmed    Boolean         @default(true) @map("mapping_confirmed") // false while an AI mapping awaits a person (activation refused)
   dataCategory        String?         @map("data_category") // product_data | invoice_line | invoice_header | company | constant | batch_data | unknown
   inferencePolicy     String          @default("never") @map("inference_policy") // never | product_facts | product_facts_and_web (A5, plan.md §14.1)
+  // A per-batch analysis result (owner, 2026-10-24): never inferred, never from the web, a
+  // catalogue or a product profile — only a supplier COA, a previous result of the same batch
+  // or a person. Owner-set in "Mark fields"; pre-set for result / assay / complies / conforms labels.
+  isLabResult         Boolean         @default(false) @map("is_lab_result")
 
   @@unique([versionId, key])
   @@map("template_fields")

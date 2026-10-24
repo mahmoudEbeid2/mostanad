@@ -299,6 +299,8 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-generate.yaml'
   /invoices/{id}/data-needs:
     $ref: './paths/certificates-v2/invoices-id-data-needs.yaml'
+  /invoices/{id}/data-needs/diagnosis:
+    $ref: './paths/certificates-v2/invoices-id-data-needs-diagnosis.yaml'
   /invoices/{id}/data-needs/web-lookup:
     $ref: './paths/certificates-v2/invoices-id-data-needs-web-lookup.yaml'
   /catalogues:

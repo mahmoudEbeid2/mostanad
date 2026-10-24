@@ -92,11 +92,14 @@ const inside = (occ, span) => span && occ.start >= span.start && occ.end <= span
 /**
  * Verifies one evidence entry.
  * ev:  { type, quote?, page?, path? }
- * ctx: { value, textContent, normText?, scope: "item"|"header", span?, otherSpans[], singleItem, product }
+ * ctx: { value, textContent, normText?, scope: "item"|"header", span?, otherSpans[], singleItem, product, labResult? }
  * → { ok: true, value, provenance } | { ok: false, reason }
  */
 export function verifyEvidence(ev, ctx) {
   const value = ctx.value === null || ctx.value === undefined ? "" : String(ctx.value).trim();
+  // a per-batch lab result is measured, not product data: only the invoice's own text may prove it
+  // (catalogue evidence is refused below: catalogueAllowed is false for a lab result)
+  if (ctx.labResult && ["product_path", "product_json_text"].includes(ev?.type)) return { ok: false, reason: "a lab result is only taken from the document printing it (invoice / supplier COA), never from product data" };
   switch (ev?.type) {
     case "invoice_text": {
       if (!ctx.textContent) return { ok: false, reason: "the invoice has no stored text to check against" };

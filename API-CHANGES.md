@@ -386,3 +386,16 @@ Additive; no migration.
   - `GET /background-tasks/:id`, `GET /invoices[/:id]`, `GET /catalogues`, `GET /catalogue-versions/:id[/review]`: a stored AI `error` is returned as that sentence plus `errorCode`; a coded non-AI error (`"UNSUPPORTED_FORMAT: …"`) loses the prefix, which moves to `errorCode`;
   - every `ai.reason` / `web.reason` / `inference.reason` (data check, mapping, matching, synonyms, catalogue inference) is the sentence.
   The raw text is unchanged in the database (`error` columns, `ai_runs.error`) and the server log — the maintenance report still reads it there.
+
+## Certificates — fill automatically, item 1: lab-result flag + diagnosis (2026-10-24)
+
+- `TemplateField.isLabResult` — **new** boolean (migration `20261025100000_cert_lab_result_flag`, default false;
+  backfill pre-sets `batch_data` fields and labels matching result / assay / complies / conforms). Returned by every
+  field read. `PUT /template-versions/:id/fields` accepts `isLabResult` per field (optional: omitted = keep the stored
+  value, or the pre-set for a new field). A lab-result field's `inferencePolicy` is always stored `never`.
+  Hard line in code: a lab result is never filled from a catalogue, inference, the web, or product data in the A2 gap
+  call — only the invoice text (and, from item 4, a supplier COA / an earlier result of the same batch / a person).
+  The A2 gap payload marks such gaps `labResult: true`.
+- `GET /invoices/:id/data-needs/diagnosis` — **new**, `read_invoices`, read-only: every missing value with its template
+  field, source path and reason, grouped `template_mapping | product_data | lab_result | invoice_data`, plus
+  `staleVersions` when the stored needs were computed against a version that is no longer active.

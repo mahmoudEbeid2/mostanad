@@ -1,0 +1,19 @@
+# /invoices/{id}/data-needs/diagnosis — fill automatically, item 1 (owner, 2026-10-24).
+get:
+  tags: ["Invoices"]
+  summary: Why each certificate value is missing (read-only)
+  description: |
+    Every `missing` need of the invoice's certificate data check, with its template field, source path and the reason, grouped by what fixes it:
+    `template_mapping` (no source, an unnamed field, a product path no product of the company has), `product_data` (the template is right, this product lacks the value),
+    `lab_result` (a field flagged `isLabResult`: only a supplier COA, an earlier result of the same product + batch, or a person fills it — the reason says whether the line has a batch number),
+    `invoice_data` (the invoice line / header / company profile lacks it). Nothing is computed by AI and nothing is changed.
+    → `{ diagnosis: { summary: { certificates, values, missing, byGroup }, groups: { [group]: [{ templateName, versionId, versionStatus, fieldKey, label, sourcePath, reason, count, certificates: [{ planKey, lineNo, productName }] }] }, entries: [{ needId, planKey, lineNo, productName, templateName, fieldKey, label, sourcePath, group, reason }], staleVersions? } }`.
+    `staleVersions` lists template versions the stored needs were computed against that are no longer their template's active version (run the check again). Permission: `read_invoices`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "`{ diagnosis }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

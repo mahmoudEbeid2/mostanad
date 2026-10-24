@@ -41,11 +41,12 @@ export async function seedTemplate(companyId, t) {
       lineId: `l${i}`,
       charStart: 0,
       charEnd: 1,
-      sampleValue: "x",
+      sampleValue: f.sample ?? "x",
       source: f.source,
       format: f.format ?? undefined,
       required: f.required ?? true,
       dataCategory: f.category || null,
+      isLabResult: f.isLabResult ?? false,
       sortOrder: i,
     })),
   });

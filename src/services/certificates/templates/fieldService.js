@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { policyToStore } from "../inference/policy.js";
+import { policyToStore, defaultIsLabResult } from "../inference/policy.js";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
@@ -126,6 +126,8 @@ export function validateFieldList(input, lines, groups = []) {
       mappingConfirmed: true,
       dataCategory: DATA_CATEGORIES.includes(raw.dataCategory) ? raw.dataCategory : null,
       inferencePolicy: typeof raw.inferencePolicy === "string" ? raw.inferencePolicy : undefined, // clamped on save (A5)
+      // the owner's tick in "Mark fields"; undefined = keep what is stored (replaceFields), else the pre-set
+      isLabResult: typeof raw.isLabResult === "boolean" ? raw.isLabResult : undefined,
     };
     const p = (message) => problems.push({ key: f.key || `#${i + 1}`, message });
     if (!KEY_RE.test(f.key)) p("key must be snake_case (a-z, 0-9, _), starting with a letter");
@@ -232,9 +234,11 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
   }
   // review #10: a stored suggested/detected field can't become "manual" (and so
   // confirmed) by re-sending it; its confirmation is the one /fields/confirm stored
-  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true } })).map((s) => [s.key, s]));
+  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true } })).map((s) => [s.key, s]));
   for (const f of fields) {
     const s = stored.get(f.key);
+    // a client that doesn't send the lab-result tick (older UI, autosave of other edits) never resets the owner's choice
+    if (f.isLabResult === undefined) f.isLabResult = s ? s.isLabResult : defaultIsLabResult(f);
     if (s && s.origin !== "manual") {
       f.origin = s.origin;
       f.confirmed = s.confirmed === true;
@@ -285,6 +289,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         dataCategory: f.dataCategory,
         // A5 (plan.md §14.1): a person may tighten, never loosen past the category's default
         inferencePolicy: policyToStore(f, f.inferencePolicy),
+        isLabResult: f.isLabResult === true,
       })),
     }),
     prisma.templateGroup.createMany({

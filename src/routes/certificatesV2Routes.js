@@ -116,6 +116,7 @@ router.post("/invoices/:id/generate", guard("create_certificates"), validate(inv
 router.get("/invoices/:id/data-needs", guard("read_invoices"), validate(invoiceSchemas.byId), certificateAi.getDataNeeds);
 router.post("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.compute), certificateAi.computeDataNeeds);
 router.patch("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.decide), certificateAi.decideDataNeeds);
+router.get("/invoices/:id/data-needs/diagnosis", guard("read_invoices"), validate(invoiceSchemas.byId), certificateAi.diagnoseDataNeeds);
 router.post("/invoices/:id/data-needs/web-lookup", guard("update_invoices"), validate(invoiceSchemas.byId), certificateAi.webLookup); // A5 §14.3
 router.get("/certificate-batches/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getBatch);
 router.get("/certificates", guard("read_certificates"), validate(certificateSchemas.list), certificates.listCertificates);
