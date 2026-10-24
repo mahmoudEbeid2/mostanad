@@ -59,12 +59,14 @@ const alnum = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").t
 const tokens = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 4 && !GENERIC.has(t));
 const hostIn = (host, domain) => host === domain || host.endsWith(`.${domain}`);
 
-/** Does the page talk about THIS product? Its name, and its manufacturer or brand (§14.3 identity check). */
+/** Does the page talk about THIS product? Its name, and its manufacturer, brand or product code (§14.3 identity check; owner 2026-10-24: "name + code or manufacturer"). */
 export function identityOk(pageText, product) {
   const page = alnum(pageText);
   const name = alnum(product.name);
   if (!name || !page.includes(name)) return false;
+  const code = alnum(product.productCode);
   const marks = [product.brand?.name, ...tokens(product.producer)].map(alnum).filter((x) => x.length >= 4);
+  if (code.length >= 3 && code !== name) marks.push(code);
   return marks.length > 0 && marks.some((m) => page.includes(m));
 }
 

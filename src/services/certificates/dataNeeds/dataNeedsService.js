@@ -19,6 +19,7 @@ import { askInference } from "../inference/productInference.js";
 import { lookupProduct, cachedFact, storeFact, CACHE_KIND } from "../inference/webLookup.js";
 import { saveProductData } from "../insights/productNeeds.js";
 import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } from "./gapResolver.js";
+import { loadProfiles, profileValue, rememberValue, profileAllowed } from "./productProfile.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
@@ -36,10 +37,15 @@ import { publicAiError } from "../../ai/aiErrorMessage.js";
 // A5 (plan.md §14): inferred (tier I) and web_found (tier W) always wait for a person.
 // A6 (plan.md §15.5): catalogue_found (tier C) — the product's own catalogue block, found by
 // code — waits for a person too, and so does an estimated product value (status inferred).
-export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found", "catalogue_found"];
+// Fill automatically (owner, 2026-10-24, item 3): `reused` — a value code read from the
+// product's certificate profile (proven or confirmed before) — needs nobody and no AI.
+// A value proven by a verbatim quote is filled directly (resolved_ai, provenance
+// filled: "direct") when the company's fillVerifiedDirectly is on (default); estimates
+// stay inferred / web_found (provenance estimated: true) until a person confirms them.
+export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found", "catalogue_found", "reused"];
 export const AWAITING = ["needs_confirmation", "inferred", "web_found", "catalogue_found"]; // a value a person must accept
 export const BLOCKING = ["missing", ...AWAITING];
-export const USABLE = ["provided", "resolved_ai"]; // what generation takes from the check
+export const USABLE = ["provided", "resolved_ai", "reused"]; // what generation takes from the check
 const AI_VALUE = ["resolved_ai", ...AWAITING];
 
 // Which steps already looked at a need with its current basis: aiAskedBasis =
@@ -122,8 +128,15 @@ async function loadContext(invoice) {
   // tier C (plan.md §15.5): each matched product's linked catalogue block — that block only, the company's own
   const blockIds = [...new Set(items.map((it) => it.product?.catalogueRef?.blockId).filter(Boolean))];
   const blocks = blockIds.length ? await prisma.catalogueBlock.findMany({ where: { id: { in: blockIds }, companyId: invoice.companyId, kind: "product" } }) : [];
-  return { plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries, blocks: new Map(blocks.map((b) => [b.id, b])) };
+  const settings = await getAiSettings(invoice.companyId);
+  // item 3: each matched product's certificate profile (the company's own rows only)
+  const profiles = settings.rememberProductValues ? await loadProfiles(invoice.companyId, items.map((it) => it.product?.id)) : new Map();
+  return { plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries, blocks: new Map(blocks.map((b) => [b.id, b])), settings, profiles };
 }
+
+/** A verified (quoted) value: filled directly, or waiting for a person when the company turned direct filling off. */
+const directStatus = (settings, fallback) => (settings?.fillVerifiedDirectly !== false ? "resolved_ai" : fallback);
+const direct = (settings) => settings?.fillVerifiedDirectly !== false;
 const blockOf = (ctx, product) => (product?.catalogueRef?.blockId ? ctx.blocks?.get(product.catalogueRef.blockId) || null : null);
 
 /** Item row spans in the invoice text (plan.md §6.1 row scope). Extraction stores them;
@@ -180,12 +193,18 @@ async function computeCode(invoice, ctx) {
       if (r.resolved === "") {
         const offer = codeOffer(field, entry, ctx, rctx);
         const seen = { basis, aiAskedBasis: prev && prev.basis === basis ? prev.aiAskedBasis : null };
-        if (offer && !askedBy(seen, offer.step)) code = { status: offer.status, value: storedValue(field, offer.value), provenance: offer.provenance, aiAskedBasis: markAsked(seen, offer.step) };
+        // item 3: the product's certificate profile — proven or confirmed before, so nobody and no AI is asked again
+        const saved = entry.productId ? profileValue(ctx.profiles, entry.productId, field) : null;
+        if (saved) code = { status: "reused", value: storedValue(field, saved.value), provenance: { kind: "profile", profileId: saved.id, estimated: saved.estimated, confirmedByUserId: saved.confirmedByUserId, confirmedAt: saved.confirmedAt, from: saved.provenance } };
+        else if (offer && !askedBy(seen, offer.step)) {
+          code = { status: offer.status, value: storedValue(field, offer.value), provenance: offer.provenance, aiAskedBasis: markAsked(seen, offer.step) };
+          if (offer.status === "resolved_ai") await rememberValue({ companyId: invoice.companyId, productId: entry.productId, field, value: offer.value, provenance: offer.provenance, invoiceId: invoice.id });
+        }
       }
       let data;
       if (prev && prev.basis === basis) {
         if (prev.status === "provided") data = {}; // a person's value stands
-        else if (code.status === "resolved") data = { ...code, suggestionId: null, aiAskedBasis: null }; // closed by code: if it reopens, it is a new gap
+        else if (["resolved", "reused"].includes(code.status)) data = { ...code, suggestionId: null, aiAskedBasis: null }; // closed by code: if it reopens, it is a new gap
         else if (AI_VALUE.includes(prev.status)) data = {}; // a verified AI value stands until decided
         else data = code;
       } else data = { aiAskedBasis: null, suggestionId: null, decidedByUserId: null, decidedAt: null, ...code };
@@ -234,11 +253,12 @@ function codeOffer(field, entry, ctx, rctx) {
   const hit = block ? findCatalogueValue(field, block) : null;
   const ok = hit ? verifyBlockQuote(block, hit.quote, hit.value) : null;
   if (!ok?.ok) return null;
+  // the product's own catalogue, quoted verbatim: filled directly (item 3) unless the company turned that off
   return {
-    status: "catalogue_found",
+    status: directStatus(ctx.settings, "catalogue_found"),
     value: hit.value,
     step: "C",
-    provenance: { tier: "C", kind: "catalogue_text", via: "code", catalogueVersionId: block.versionId, blockId: block.id, page: block.page, section: hit.section, quote: ok.quote },
+    provenance: { tier: "C", kind: "catalogue_text", via: "code", catalogueVersionId: block.versionId, blockId: block.id, page: block.page, section: hit.section, quote: ok.quote, ...(direct(ctx.settings) ? { filled: "direct" } : {}) },
   };
 }
 
@@ -361,7 +381,8 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
           dictionaryVersion: dict.version,
           aiRunId: res.run?.id,
         },
-        settings
+        // item 3: a verified quote is filled directly (recorded as auto-accepted)
+        direct(settings) ? { ...settings, autoAccept: true, autoAcceptThreshold: 0 } : settings
       );
       if (!verdict.verified) {
         await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "rejected", finalValue: { reason: verdict.reason, checks: verdict.checks } } });
@@ -372,12 +393,15 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
       const data = { aiAskedBasis: markAsked(x.row, "gap") };
       if (verdict.verified && suggestion) {
         const value = storedValue(x.field, verdict.value);
+        const auto = suggestion.status === "auto_accepted";
         Object.assign(data, {
-          status: suggestion.status === "auto_accepted" ? "resolved_ai" : "needs_confirmation",
+          status: auto ? "resolved_ai" : "needs_confirmation",
           value,
-          provenance: { ...verdict.provenance, suggestionId: suggestion.id, confidence: answer.confidence, ...(answer.note ? { note: String(answer.note).slice(0, 200) } : {}) },
+          provenance: { ...verdict.provenance, suggestionId: suggestion.id, confidence: answer.confidence, ...(answer.note ? { note: String(answer.note).slice(0, 200) } : {}), ...(auto && direct(settings) ? { filled: "direct" } : {}) },
           suggestionId: suggestion.id,
         });
+        // a product fact proven by a quote: the product's profile keeps it for the next invoice
+        if (auto && x.row.productId && profileAllowed(x.field)) await rememberValue({ companyId: invoice.companyId, productId: x.row.productId, field: x.field, value, provenance: data.provenance, invoiceId: invoice.id });
       } else if (suggestion) data.suggestionId = suggestion.id;
       x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data });
     }
@@ -447,11 +471,20 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
     for (const x of g.needs) {
       const data = { aiAskedBasis: markAsked(x.row, "I") };
       if (got?.verdict.ok) {
-        Object.assign(data, { status: "inferred", value: storedValue(x.field, got.verdict.value), provenance: { ...got.verdict.provenance, suggestionId: suggestion.id, confidence: got.answer.confidence, ...(got.answer.reasoning ? { reasoning: got.answer.reasoning } : {}) }, suggestionId: suggestion.id });
+        // item 3: a quoted / code-reproduced value is a fact of the product → filled directly; an estimate waits for a person
+        const fill = !got.verdict.estimated && direct(settings);
+        const value = storedValue(x.field, got.verdict.value);
+        const provenance = { ...got.verdict.provenance, suggestionId: suggestion.id, confidence: got.answer.confidence, ...(got.answer.reasoning ? { reasoning: got.answer.reasoning } : {}), ...(fill ? { filled: "direct" } : {}) };
+        Object.assign(data, { status: fill ? "resolved_ai" : "inferred", value, provenance, suggestionId: suggestion.id });
+        if (fill && x.row.productId) await rememberValue({ companyId: invoice.companyId, productId: x.row.productId, field: x.field, value, provenance, invoiceId: invoice.id });
       } else if (suggestion) data.suggestionId = suggestion.id;
       x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data });
     }
-    if (got?.verdict.ok) out.inferred++;
+    if (got?.verdict.ok) {
+      out.inferred++;
+      if (got.verdict.estimated) out.estimated = (out.estimated || 0) + 1;
+    }
+    if (got?.verdict.ok && !got.verdict.estimated && direct(settings) && suggestion) await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "auto_accepted" } });
   }
   return out;
 }
@@ -508,13 +541,25 @@ async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {})
     if (!b.labels.has(k)) b.labels.set(k, { label: x.field.label, labelNorm: k, field: x.field, needs: [] });
     b.labels.get(k).needs.push(x);
   }
-  const apply = async (entry, verdictValue, provenance, suggestionId) => {
+  // item 3: the manufacturer's own page or an official registry, about this product, quoted
+  // verbatim → filled directly; a distributor's or an allow-listed page → filled, marked
+  // estimated, a person confirms. The product's profile keeps a directly filled value.
+  const OWN_SOURCES = ["manufacturer", "official_registry"];
+  const apply = async (entry, product, verdictValue, provenance, suggestionId) => {
+    const fill = verdictValue !== null && OWN_SOURCES.includes(provenance?.sourceType) && direct(settings);
+    const prov = verdictValue === null ? null : { ...provenance, ...(fill ? { filled: "direct" } : { estimated: true, estimateBasis: `a ${String(provenance?.sourceType || "third-party").replace(/_/g, " ")} page, not the manufacturer's` }) };
     for (const x of entry.needs) {
       const data = { aiAskedBasis: markAsked(x.row, "W") };
-      if (verdictValue !== null) Object.assign(data, { status: "web_found", value: storedValue(x.field, verdictValue), provenance, suggestionId });
+      if (verdictValue !== null) Object.assign(data, { status: fill ? "resolved_ai" : "web_found", value: storedValue(x.field, verdictValue), provenance: prov, suggestionId });
       x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data });
     }
+    if (fill) await rememberValue({ companyId: invoice.companyId, productId: product.id, field: entry.field, value: verdictValue, provenance: prov, invoiceId: invoice.id });
+    return fill;
   };
+  // cost limits (item 3): products asked per check, and calls per company per day (UTC)
+  const dayStart = new Date(new Date().toISOString().slice(0, 10));
+  let callsToday = await prisma.aiRun.count({ where: { companyId: invoice.companyId, kind: "CERT_WEB_LOOKUP", outcome: { in: ["ok", "failed"] }, createdAt: { gte: dayStart } } });
+  let asked = 0;
   for (const { product, labels } of byProduct.values()) {
     web.products++;
     const ask = [];
@@ -526,10 +571,18 @@ async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {})
       }
       web.fromCache++;
       const c = cached.citations?.[0];
-      await apply(entry, cached.payload?.found ? cached.payload.value : null, cached.payload?.found ? { tier: "W", kind: "web", citations: cached.citations, sourceType: c?.sourceType || cached.sourceType, ...(c?.warning ? { warning: c.warning } : {}), cacheId: cached.id, fromCache: true } : null, null);
+      const filled = await apply(entry, product, cached.payload?.found ? cached.payload.value : null, cached.payload?.found ? { tier: "W", kind: "web", citations: cached.citations, sourceType: c?.sourceType || cached.sourceType, ...(c?.warning ? { warning: c.warning } : {}), cacheId: cached.id, fromCache: true } : null, null);
       if (cached.payload?.found) web.found++;
+      if (filled) web.filled = (web.filled || 0) + 1;
     }
     if (!ask.length) continue;
+    if (asked >= settings.webLookupMaxProductsPerCheck || callsToday >= settings.webLookupDailyLimit) {
+      web.limited = (web.limited || 0) + 1;
+      web.limitReason = callsToday >= settings.webLookupDailyLimit ? `the company's daily web lookup limit (${settings.webLookupDailyLimit}) is reached` : `at most ${settings.webLookupMaxProductsPerCheck} product(s) are looked up per check`;
+      continue;
+    }
+    asked++;
+    callsToday++;
     let res;
     try {
       res = await lookupProduct({ companyId: invoice.companyId, invoiceId: invoice.id, product, fields: ask, allowList: settings.webDomainAllowList }, { search, fetchPage });
@@ -555,8 +608,12 @@ async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {})
           if (answer.found) web.rejected++;
         }
       }
-      await apply(entry, verdict.ok ? verdict.value : null, verdict.ok ? { tier: "W", kind: "web", citations: [verdict.citation], sourceType: verdict.citation.sourceType, ...(verdict.citation.warning ? { warning: verdict.citation.warning } : {}), cacheId: cache.id, suggestionId: suggestion?.id, confidence: answer?.confidence ?? null } : null, verdict.ok ? suggestion?.id ?? null : null);
+      const filled = await apply(entry, product, verdict.ok ? verdict.value : null, verdict.ok ? { tier: "W", kind: "web", citations: [verdict.citation], sourceType: verdict.citation.sourceType, ...(verdict.citation.warning ? { warning: verdict.citation.warning } : {}), cacheId: cache.id, suggestionId: suggestion?.id, confidence: answer?.confidence ?? null } : null, verdict.ok ? suggestion?.id ?? null : null);
       if (verdict.ok) web.found++;
+      if (filled) {
+        web.filled = (web.filled || 0) + 1;
+        if (suggestion) await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "auto_accepted" } });
+      }
     }
   }
   return buildView(invoice, ctx, { web });
@@ -608,7 +665,7 @@ async function buildView(invoice, ctx, ai = null) {
   const needView = (r) => {
     const f = fieldFor(r);
     const display = r.value !== null && f ? applyFormat(r.value, f.format).value : r.value;
-    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt };
+    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt, estimated: r.provenance?.estimated === true, labResult: isLabResult(f) };
   };
   const certificates = ctx.plan.entries
     .filter((e) => byPlan.has(e.planKey))
@@ -665,7 +722,10 @@ async function buildView(invoice, ctx, ai = null) {
     summary: {
       certificates: certificates.length,
       values: rows.length,
-      ready: count("resolved") + count("resolved_ai") + count("provided"),
+      ready: count("resolved") + count("resolved_ai") + count("provided") + count("reused"),
+      reused: count("reused"),
+      filledDirectly: rows.filter((r) => r.status === "resolved_ai" && r.provenance?.filled === "direct").length,
+      estimated: rows.filter((r) => AWAITING.includes(r.status) && r.provenance?.estimated === true).length,
       resolved: count("resolved"),
       resolvedAi: count("resolved_ai"),
       provided: count("provided"),
@@ -729,7 +789,12 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
   const byId = new Map(all.map((n) => [n.id, n]));
   const fieldFor = (n) => (ctx.fields.get(n.templateVersionId) || []).find((f) => f.key === n.fieldKey) || { source: { kind: "manual" } };
   const now = new Date();
-  for (const d of decisions) {
+  // "Confirm all" (item 3): every value of the invoice still waiting for a person, accepted as it is
+  const expanded = decisions.flatMap((d) => (d.action === "confirm_all" ? all.filter((n) => AWAITING.includes(n.status) && n.value !== null).map((n) => ({ needId: n.id, action: "accept" })) : [d]));
+  // a person's value is the product's from now on (its certificate profile), unless it is per batch / per invoice
+  const remember = (n, value, provenance, estimated = false) =>
+    n.productId ? rememberValue({ companyId: invoice.companyId, productId: n.productId, field: fieldFor(n), value, provenance, estimated, userId: userId || "person", invoiceId: invoice.id }) : null;
+  for (const d of expanded) {
     const need = byId.get(d.needId);
     if (!need) throw notFound("Data need");
     switch (d.action) {
@@ -750,6 +815,7 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
           }
         }
         await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "resolved_ai", decidedByUserId: userId, decidedAt: now, ...(savedTo ? { provenance: { ...(need.provenance || {}), savedToProduct: savedTo } } : {}) } });
+        await remember(need, need.value, need.provenance || { kind: "accepted" }, need.provenance?.estimated === true || ["inferred", "web_found"].includes(need.status));
         if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "accepted", finalValue: { value: need.value, ...(savedTo ? { savedToProduct: savedTo } : {}) }, userId });
         if (need.provenance?.cacheId) await prisma.externalKnowledgeCache.updateMany({ where: { id: need.provenance.cacheId, kind: CACHE_KIND }, data: { status: "approved", reviewedByUserId: userId } });
         break;
@@ -763,6 +829,7 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
           const value = storedValue(fieldFor(n), d.value);
           if (value === null) throw new CertError("VALUE_REQUIRED", `Type a value for “${n.label}” (or reset it)`, 422);
           await prisma.certificateDataNeed.update({ where: { id: n.id }, data: { status: "provided", value, provenance: { kind: "manual" }, decidedByUserId: userId, decidedAt: now } });
+          await remember(n, value, { kind: "manual", invoiceId: invoice.id });
           if (n.suggestionId && AI_VALUE.includes(n.status)) await decideSuggestion(invoice.companyId, n.suggestionId, { decision: n.value === value ? "accepted" : "edited", finalValue: { value }, userId });
         }
         break;

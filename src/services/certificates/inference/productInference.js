@@ -12,8 +12,10 @@ import { allowsInference } from "./policy.js";
 // after A2, inferred from the product's OWN complete record. ONE
 // CERT_PRODUCT_INFER call per invoice. The model must either quote the value
 // verbatim from a product field ("quoted") or name an allow-listed derivation
-// of quoted inputs ("derived") that CODE re-runs and must reproduce. Free-form
-// reasoning is never an accepted derivation. Fields whose policy forbids
+// of quoted inputs ("derived") that CODE re-runs and must reproduce — both are
+// facts, filled directly. Since the owner's 2026-10-24 decision a third answer
+// is accepted: "estimate" — a value inferred from facts of THIS product, each
+// quoted verbatim; it is filled marked estimated and a person confirms it. Fields whose policy forbids
 // inference never reach the prompt, and an answer for one is ignored anyway.
 
 const MAX_PRODUCT_JSON = 16384;
@@ -28,7 +30,9 @@ const INSTRUCTIONS = [
   "  select_from_list (evidence path = a list field; the value is one item of it),",
   "  join_list (evidence path = a list field; params.fields = the keys to print for object items, params.separator),",
   "  normalize_case (params.case = upper|lower|title; the quote is exactly the input text).",
-  "Anything else (typical values, what such products usually are) is NOT allowed: answer found=false.",
+  "- derivation \"estimate\": the value is NOT written in the record but follows from facts that are (e.g. appearance from the form and the ingredients).",
+  "  evidence = every fact you used, each [{ path, quote }] with an exact quote; reasoning = how the value follows from them. It is shown to a person as an estimate to confirm.",
+  "  Never estimate from what such products usually are without a fact of THIS product; then answer found=false.",
   "confidence 0–1; reasoning: one short sentence.",
 ].join("\n");
 
@@ -43,7 +47,7 @@ const RESPONSE_SCHEMA = {
           gapId: { type: "string" },
           found: { type: "boolean" },
           value: { type: "string", nullable: true },
-          derivation: { type: "string", enum: ["quoted", "derived"], nullable: true },
+          derivation: { type: "string", enum: ["quoted", "derived", "estimate"], nullable: true },
           derivationKind: { type: "string", enum: DERIVATIONS, nullable: true },
           params: {
             type: "object",
@@ -119,7 +123,14 @@ export function verifyInference(answer, product) {
     if (!v.ok) return { ok: false, reason: v.reason };
     return { ok: true, value: v.computed, provenance: { tier: "I", kind: "product_inference", derivation: "derived", derivationKind: kind, params: answer.params || {}, evidence: checked.map(({ path, quote }) => ({ path, quote })) } };
   }
-  return { ok: false, reason: "derivation must be quoted or derived" };
+  if (answer.derivation === "estimate") {
+    // an estimate: no verifiable value, but every fact it rests on is a verified quote of this product
+    const basis = String(answer.reasoning || "").trim();
+    if (!basis) return { ok: false, reason: "an estimate needs its reasoning" };
+    if (!checked.every((c) => c.quote)) return { ok: false, reason: "every fact of an estimate needs an exact quote" };
+    return { ok: true, value, estimated: true, provenance: { tier: "I", kind: "product_inference", derivation: "estimate", estimated: true, estimateBasis: basis.slice(0, 300), evidence: checked.map(({ path, quote }) => ({ path, quote })) } };
+  }
+  return { ok: false, reason: "derivation must be quoted, derived or estimate" };
 }
 
 /**

@@ -301,6 +301,10 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-generate.yaml'
   /invoices/{id}/data-needs:
     $ref: './paths/certificates-v2/invoices-id-data-needs.yaml'
+  /certificate-products/{id}/profile:
+    $ref: './paths/certificates-v2/certificate-products-id-profile.yaml'
+  /certificate-product-values/{id}:
+    $ref: './paths/certificates-v2/certificate-product-values-id.yaml'
   /invoices/{id}/data-needs/diagnosis:
     $ref: './paths/certificates-v2/invoices-id-data-needs-diagnosis.yaml'
   /invoices/{id}/data-needs/web-lookup:

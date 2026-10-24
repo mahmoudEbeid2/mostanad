@@ -80,6 +80,17 @@ export async function createCompany(label = "cv2") {
   });
 }
 
+/**
+ * The certificate AI behaviour before "fill automatically" (owner, 2026-10-24): every AI
+ * value waits for a person, no inference / web lookup unless a suite turns them on, no
+ * product profile. Suites that test those confirm-first mechanics pin their companies to it.
+ */
+export const CONFIRM_FIRST = { fillVerifiedDirectly: false, allowProductInference: false, allowWebLookup: false, rememberProductValues: false };
+export async function confirmFirst(companyId, extra = {}) {
+  const c = await prisma.company.findUnique({ where: { id: companyId }, select: { aiSettings: true } });
+  await prisma.company.update({ where: { id: companyId }, data: { aiSettings: { ...(c?.aiSettings || {}), ...CONFIRM_FIRST, ...extra } } });
+}
+
 /** Removes every Certificates V2 row and file a test company owns, then the company. */
 export async function cleanupCompany(companyId) {
   const tables = await prisma.$queryRaw`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
@@ -104,6 +115,7 @@ export async function cleanupCompany(companyId) {
   await del("ai_runs", `DELETE FROM ai_runs WHERE company_id = $1`);
   // AI cost ledger: no FK (it outlives what it mentions in production), but a test's rows are scratch data
   await del("ai_calls", `DELETE FROM ai_calls WHERE company_id = $1`);
+  await del("product_certificate_values", `DELETE FROM product_certificate_values WHERE company_id = $1`);
   // product catalogues (plan.md §15): blocks cascade with their version; versions and catalogues are Restrict
   await del("catalogue_blocks", `DELETE FROM catalogue_blocks WHERE company_id = $1`);
   await del("catalogue_versions", `DELETE FROM catalogue_versions WHERE company_id = $1`);

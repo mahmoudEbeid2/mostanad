@@ -10,7 +10,7 @@
 // Needs the guarded stack (npm run dev:test).
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, prisma, FIXTURES } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, prisma, confirmFirst, FIXTURES } from "./helpers.js";
 import { seedGoldenCompany, goldenModel, golden } from "./invoiceGoldenHarness.js";
 import { runExtractJob } from "../../src/services/certificates/invoices/invoiceService.js";
 import { assertDataCheckGate } from "../../src/services/certificates/generation/batchService.js";
@@ -22,6 +22,8 @@ const seed = await seedGoldenCompany("pa4");
 const cid = seed.company.id;
 const A = asCompany(cid);
 const empty = await createCompany("pa4e");
+// post-A4 confirm-first behaviour; "fill automatically" is proven in b3
+for (const c of [cid, empty.id]) await confirmFirst(c);
 const PDF = fs.readFileSync(path.join(FIXTURES, "outlined_text.pdf"));
 
 // the extractor's output for INV_A plus a third line code can't match on its own

@@ -80,6 +80,8 @@ router.post("/certificate-data-dictionary/synonym-suggestions/:id", guard("updat
 router.get("/certificate-product-completeness", guard("read_products"), validate(aiSchemas.company), certificateAi.getCompleteness);
 router.get("/certificate-products/:id/data", guard("read_products"), validate(insightSchemas.productById), certificateAi.getProductData);
 router.patch("/certificate-products/:id/data", guard("update_products"), validate(insightSchemas.saveProductData), certificateAi.saveProductData);
+router.get("/certificate-products/:id/profile", guard("read_products"), validate(insightSchemas.productById), certificateAi.getProductProfile); // item 3
+router.delete("/certificate-product-values/:id", guard("update_products"), validate(insightSchemas.productById), certificateAi.forgetProductValue);
 router.get("/ai-status", guard("read_products"), certificateAi.aiStatus); // plan.md P8 — banner + AI buttons
 router.get("/certificate-ai-stats",guard("read_certificate_templates"), validate(insightSchemas.stats), certificateAi.getAiStats);
 // AI cost ledger (every Gemini attempt, all features) — reports. read_ai_costs

@@ -413,3 +413,28 @@ Additive; no migration.
   lab-result field that prints its row's specification instead; `PUT …/fields` accepts both and keeps the field's
   source/format equal to the specification field's (422 when `specFieldKey` doesn't name another plain field).
 - Renderer: `POST /v1/inspect` accepts `lineCells: true` → also returns every line's cells (offsets, x-range, font).
+
+## Certificates — fill automatically, item 3: product data on by default (2026-10-24)
+
+- **Behaviour change (defaults):** `allowProductInference` and `allowWebLookup` now default **true**. New settings
+  `fillVerifiedDirectly` (true), `rememberProductValues` (true), `webLookupMaxProductsPerCheck` (10, 0–100),
+  `webLookupDailyLimit` (30 per company per UTC day, 0–1000) on `GET/PATCH /certificate-ai-settings`. A company whose
+  stored settings name a key keeps its value.
+- Data check: a value proven by a verbatim quote — product data (`product_path` / `product_json_text`), the invoice
+  text, the product's catalogue (tier C, code or gap call), tier I `quoted` / `derived`, a manufacturer or official
+  registry page (tier W) — is filled directly: status `resolved_ai`, provenance `filled: "direct"`, its suggestion
+  `auto_accepted`. Estimates are filled marked `provenance.estimated: true` (+ `estimateBasis`) and wait for a person:
+  tier I `derivation: "estimate"` (new: a value inferred from facts of THIS product, each quoted and verified) and a
+  distributor / allow-listed web page. With `fillVerifiedDirectly: false` the previous confirm-first statuses apply.
+- New need status **`reused`** (usable by generation): a value read by code from the product's certificate profile
+  (`provenance: { kind: "profile", profileId, estimated, confirmedByUserId, from }`). Summary gains `reused`,
+  `filledDirectly`, `estimated`; each need gains `estimated`, `labResult`.
+- `ProductCertificateValue` (table `product_certificate_values`, migration `20261025120000_cert_product_profile`):
+  written when a value is filled directly or a person accepts / edits one (never for lab results, invoice / batch
+  values, dates, quantities); a person's value is never overwritten by an automatic one.
+- `PATCH /invoices/:id/data-needs` accepts `{ action: "confirm_all" }` (no `needId`): accepts every value waiting for a
+  person.
+- `GET /certificate-products/:id/profile` (`read_products`) and `DELETE /certificate-product-values/:id`
+  (`update_products`) — **new**, tenant-scoped.
+- Web lookup: identity also accepts the product code as the second mark (name + manufacturer, brand or code); the
+  per-check and per-day limits add `ai.web.limited` / `limitReason`; directly filled facts are counted in `ai.web.filled`.

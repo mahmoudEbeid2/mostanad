@@ -16,7 +16,7 @@
 // Stand-in models only (npm test never calls a paid API). Needs `npm run dev:test`.
 import fs from "fs";
 import path from "path";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, confirmFirst } from "./helpers.js";
 import { seedTemplate } from "./invoiceGoldenHarness.js";
 import { computeNeeds, decideNeeds, blockingCounts } from "../../src/services/certificates/dataNeeds/dataNeedsService.js";
 import { verifyAnswer } from "../../src/services/certificates/dataNeeds/evidenceVerifier.js";
@@ -29,6 +29,8 @@ const { assert, counts } = makeAssert();
 const pdf = fs.readFileSync(path.join(process.cwd(), "fixtures", "catalogues", "Agrikima_Catalogue_2022-new_-_feed.pdf"));
 const co = await createCompany("a6c");
 const coB = await createCompany("a6d");
+// tier C waiting for a person (A6.2); "fill automatically" is proven in b3
+for (const c of [co.id, coB.id]) await confirmFirst(c);
 
 const FIELDS = [
   { key: "storage", label: "Storage conditions", source: { kind: "product", path: "storage" }, category: "product_data" },

@@ -17,7 +17,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service (generation part).
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmFirst } from "./helpers.js";
 import { seedGoldenCompany, seedTemplate, loadGoldenInvoice, runGoldenInvoice, goldenModel, golden, needFor, INVOICES } from "./invoiceGoldenHarness.js";
 import { computeNeeds } from "../../src/services/certificates/dataNeeds/dataNeedsService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
@@ -30,6 +30,8 @@ const coG = await createCompany("a2g");
 const A = asCompany(seed.company.id);
 const B = asCompany(coB.id);
 const G = asCompany(coG.id);
+// these suites test the confirm-first mechanics (A2); "fill automatically" defaults are proven in b3
+for (const c of [seed.company.id, coB.id, coG.id]) await confirmFirst(c);
 const cid = seed.company.id;
 const exp = (name) => golden(name).expected;
 const gapOf = (check, inv, line, field) => needFor(check, inv, seed.templates, { line, field });

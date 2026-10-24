@@ -32,7 +32,7 @@ const FIELDS = [
   { key: "stability", label: "Stability", source: { kind: "product", path: "storage" }, category: "product_data", isLabResult: true },
   { key: "batch_no", label: "Batch No.", source: { kind: "item", path: "batchNo" }, category: "invoice_line" },
 ];
-const setAi = (c, s) => prisma.company.update({ where: { id: c.id }, data: { aiSettings: { enabled: true, allowInvoiceGapFill: false, allowProductInference: false, allowWebLookup: false, ...s } } });
+const setAi = (c, s) => prisma.company.update({ where: { id: c.id }, data: { aiSettings: { enabled: true, allowInvoiceGapFill: false, allowProductInference: false, allowWebLookup: false, fillVerifiedDirectly: false, rememberProductValues: false, ...s } } });
 const needs = async (invoiceId) => Object.fromEntries((await prisma.certificateDataNeed.findMany({ where: { invoiceId } })).map((n) => [n.fieldKey, n]));
 
 async function invoice(c, product, no, { batch = "B-77", text } = {}) {

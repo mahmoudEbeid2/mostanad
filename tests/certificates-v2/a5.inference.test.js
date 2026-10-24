@@ -13,7 +13,7 @@
 //  - cache: the same fact → 0 web calls; company-scoped; no invoice data in the query
 //  - toggles off → identical to A2; web lookup never during the check/upload
 // Needs the guarded stack (npm run dev:test).
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, prisma, confirmFirst } from "./helpers.js";
 import { seedTemplate } from "./invoiceGoldenHarness.js";
 import { computeNeeds, webLookupNeeds, decideNeeds, blockingCounts } from "../../src/services/certificates/dataNeeds/dataNeedsService.js";
 import { defaultPolicy, effectivePolicy, policyToStore, hardNever, allowsInference, allowsWeb } from "../../src/services/certificates/inference/policy.js";
@@ -27,6 +27,8 @@ const co = await createCompany("a5a");
 const coB = await createCompany("a5b");
 const A = asCompany(co.id);
 const B = asCompany(coB.id);
+// A5's confirm-first behaviour (always a person, web only on request); "fill automatically" is proven in b3
+for (const c of [co.id, coB.id]) await confirmFirst(c);
 
 const PRODUCT = {
   name: "VITAPLUS E",
@@ -238,7 +240,7 @@ try {
   r = await api("PATCH", "/certificate-ai-settings", A, { webDomainAllowList: ["https://www.Vetblog.example/x"] });
   assert("… stored as a bare domain", r.status === 200 && r.data.data.settings.webDomainAllowList.join() === "vetblog.example", r.data);
   r = await api("GET", "/certificate-ai-settings", B);
-  assert("defaults for a new company: inference and web OFF (§12 Q6)", r.data.data.settings.allowProductInference === false && r.data.data.settings.webDomainAllowList.length === 0);
+  assert("company B (pinned confirm-first) keeps inference off and its own empty allow-list", r.data.data.settings.allowProductInference === false && r.data.data.settings.webDomainAllowList.length === 0);
   r = await api("GET", `/invoices/${inv.id}/data-needs`, A);
   assert("the view reports the tiers and counts", r.status === 200 && "inferred" in r.data.data.check.summary && "webFound" in r.data.data.check.summary && r.data.data.check.tiers, r.data?.data?.check?.summary);
 } finally {

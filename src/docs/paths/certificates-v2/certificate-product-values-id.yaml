@@ -1,0 +1,13 @@
+# /certificate-product-values/{id} — fill automatically, item 3.
+delete:
+  tags: ["Certificate AI"]
+  summary: Forget one profile value
+  description: The next invoice fills it again (catalogue → gap call → inference → web). Tenant-scoped. Permission `update_products`. → 204.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "204": { description: Forgotten }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

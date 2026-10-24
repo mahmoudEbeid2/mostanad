@@ -1,0 +1,16 @@
+# /certificate-products/{id}/profile — fill automatically, item 3 (owner, 2026-10-24).
+get:
+  tags: ["Certificate AI"]
+  summary: A product's certificate profile
+  description: |
+    The product values certificates needed that were proven by a verbatim quote (filled directly) or that a person confirmed / typed — read by code on the next invoice (status `reused`, no AI, no web).
+    Keyed by the field's product path, else its label. Never a lab result, an invoice / batch value, a date or a quantity.
+    → `{ product: { id, companyId, name }, values: [{ id, key, label, value, provenance, estimated, confirmedByUserId, confirmedAt, sourceInvoiceId, updatedAt }] }`. Tenant-scoped (another company → 404). Permission: `read_products`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "`{ product, values }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

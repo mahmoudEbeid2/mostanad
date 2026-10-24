@@ -5,6 +5,9 @@ import * as fieldService from "../../services/certificates/templates/fieldServic
 import * as fieldMapper from "../../services/certificates/mapping/fieldMapper.js";
 import * as dataNeeds from "../../services/certificates/dataNeeds/dataNeedsService.js";
 import { diagnoseInvoice } from "../../services/certificates/dataNeeds/diagnosis.js";
+import { listProfile, forgetValue } from "../../services/certificates/dataNeeds/productProfile.js";
+import { prisma } from "../../lib/prisma.js";
+import { notFound } from "../../services/certificates/errors.js";
 import * as health from "../../services/certificates/insights/dictionaryHealth.js";
 import * as productNeeds from "../../services/certificates/insights/productNeeds.js";
 import { aiStats } from "../../services/certificates/insights/aiStats.js";
@@ -100,6 +103,22 @@ export const getProductData = catchAsync(async (req, res) => {
 export const saveProductData = catchAsync(async (req, res) => {
   const { companyId: _ignored, ...body } = req.body;
   res.status(200).json({ status: "success", data: await productNeeds.saveProductData(req.params.id, scopeOf(req), body) });
+});
+
+/** GET /certificate-products/:id/profile — the product's certificate profile (item 3), tenant-scoped. */
+export const getProductProfile = catchAsync(async (req, res) => {
+  const scope = scopeOf(req);
+  const product = await prisma.product.findFirst({ where: { id: req.params.id, ...(scope ? { companyId: scope } : {}) }, select: { id: true, companyId: true, name: true } });
+  if (!product) throw notFound("Product");
+  res.status(200).json({ status: "success", data: { product, values: await listProfile(product.companyId, product.id) } });
+});
+
+/** DELETE /certificate-product-values/:id — forget one profile value; the next invoice fills it again. */
+export const forgetProductValue = catchAsync(async (req, res) => {
+  const scope = scopeOf(req);
+  const row = await prisma.productCertificateValue.findFirst({ where: { id: req.params.id, ...(scope ? { companyId: scope } : {}) }, select: { id: true, companyId: true } });
+  if (!row || !(await forgetValue(row.companyId, row.id))) throw notFound("Profile value");
+  res.status(204).end();
 });
 
 export const getAiStats = catchAsync(async (req, res) => {

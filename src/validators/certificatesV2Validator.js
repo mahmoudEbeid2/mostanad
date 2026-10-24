@@ -236,6 +236,10 @@ export const aiSchemas = {
         allowAiMatching: z.boolean().optional(),
         allowProductInference: z.boolean().optional(),
         allowWebLookup: z.boolean().optional(),
+        fillVerifiedDirectly: z.boolean().optional(),
+        rememberProductValues: z.boolean().optional(),
+        webLookupMaxProductsPerCheck: z.number().int().min(0).max(100).optional(),
+        webLookupDailyLimit: z.number().int().min(0).max(1000).optional(),
         webDomainAllowList: z.array(z.string().max(260)).max(50).optional(),
         companyId: uuid.optional(),
       })
@@ -285,13 +289,16 @@ export const dataNeedSchemas = {
     body: z.object({
       decisions: z
         .array(
-          z.object({
-            needId: uuid,
-            action: z.enum(["accept", "edit", "reject", "reset"]),
-            value: z.string().max(500).nullable().optional(),
-            applyTo: z.enum(["need", "line"]).optional(),
-            saveToProduct: z.boolean().optional(),
-          })
+          z
+            .object({
+              // confirm_all (item 3): every estimated value of the invoice at once — no needId
+              needId: uuid.optional(),
+              action: z.enum(["accept", "edit", "reject", "reset", "confirm_all"]),
+              value: z.string().max(500).nullable().optional(),
+              applyTo: z.enum(["need", "line"]).optional(),
+              saveToProduct: z.boolean().optional(),
+            })
+            .refine((d) => d.action === "confirm_all" || !!d.needId, { message: "needId is required", path: ["needId"] })
         )
         .min(1)
         .max(200),

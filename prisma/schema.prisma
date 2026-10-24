@@ -98,6 +98,7 @@ model Company {
   fieldMappingMemory   FieldMappingMemory[]
   productAliases       ProductAlias[]
   catalogues           Catalogue[]
+  certificateValues    ProductCertificateValue[]
 
   @@map("companies")
 }
@@ -174,11 +175,12 @@ model Product {
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  generatedLabels GeneratedLabel[]
-  invoiceItems    InvoiceItem[]
-  certificates    Certificate[]
-  aliases         ProductAlias[]
-  catalogueBlocks CatalogueBlock[]
+  generatedLabels   GeneratedLabel[]
+  invoiceItems      InvoiceItem[]
+  certificates      Certificate[]
+  aliases           ProductAlias[]
+  catalogueBlocks   CatalogueBlock[]
+  certificateValues ProductCertificateValue[]
 
   @@map("products")
 }
@@ -1219,6 +1221,35 @@ model CertificateDataNeed {
   @@unique([invoiceId, planKey, fieldKey])
   @@index([companyId, status])
   @@map("certificate_data_needs")
+}
+
+// A product's certificate profile (fill automatically, item 3, owner 2026-10-24): every
+// product value a certificate needed that was proven (a verbatim quote of the product's
+// data, the invoice, its catalogue, the manufacturer's site / a registry) or that a person
+// confirmed / typed. The next invoice reads it by code — no AI call, no web lookup.
+// Keyed by the field's product path when it has one, else its normalised label. Never a
+// lab result (those are per batch: BatchResult), never an invoice or batch value.
+model ProductCertificateValue {
+  id                String    @id @default(uuid())
+  companyId         String    @map("company_id")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId         String    @map("product_id")
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  key               String // "path:product.specifications.values.Sterility" | "label:sterility"
+  label             String
+  value             String
+  provenance        Json // the evidence it was filled from: { tier, kind, quote?, page?, url?, citations?, evidence? … }
+  estimated         Boolean   @default(false) // an estimate a person confirmed (provenance keeps its basis)
+  confirmedByUserId String?   @map("confirmed_by_user_id") // null = filled directly from verified evidence
+  confirmedAt       DateTime? @map("confirmed_at")
+  sourceInvoiceId   String?   @map("source_invoice_id")
+  timesUsed         Int       @default(0) @map("times_used")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([companyId, productId, key])
+  @@index([productId])
+  @@map("product_certificate_values")
 }
 
 // Learned invoice name → product, per company (plan.md §4, §7; Phase A3).
