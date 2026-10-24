@@ -3,7 +3,11 @@
 // Drives the real mostanad_front pages in headless Chromium. NOT part of
 // `npm test` (needs the Vite dev server): run it by hand.
 //
-//   node tests/certificates-v2/ui-smoke.mjs --user <username> --password-file <file> [--phase 1..7] [--shots <dir>]
+//   node tests/certificates-v2/ui-smoke.mjs --user <username> --password-file <file> [--phase 1..8] [--shots <dir>] [--as company]
+//
+// --as company: every phase runs logged in as the throwaway company itself
+// (its password hash is swapped for the run and put back after, asserted).
+// Setup done through the API/DB stays admin; everything clicked is the company.
 //
 // Needs: npm run dev:test (API + workers), pdf2htmlex, and `npx vite` in
 // mostanad_front on :5173. The login is a local QA user (Admin role); the
@@ -22,6 +26,7 @@ const USER = arg("user");
 const PASSWORD = arg("password-file") ? fs.readFileSync(arg("password-file"), "utf8").trim() : process.env.QA_PASSWORD;
 const PHASE = Number(arg("phase", 99));
 const SHOTS = arg("shots");
+const AS_COMPANY = arg("as", "admin") === "company";
 if (!USER || !PASSWORD) {
   console.error("usage: --user <username> --password-file <file>");
   process.exit(2);
@@ -132,7 +137,8 @@ async function audit(name) {
 }
 
 const company = await createCompany("ui");
-export const ctx = { allowConsole: [], page, company, waitForText, clickText, textOf, shot, sleep, assert, audit, FRONT, FIXTURES, api, asAdmin, prisma };
+let originalHash = null;
+export const ctx = { asCompany: AS_COMPANY, allowConsole: [], page, company, waitForText, clickText, textOf, shot, sleep, assert, audit, FRONT, FIXTURES, api, asAdmin, prisma };
 
 try {
   console.log("\n🧪 Login");
@@ -142,6 +148,22 @@ try {
   await Promise.all([page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {}), page.click('form button[type="submit"]')]);
   assert("logged in (left /login)", !page.url().includes("/login"), page.url());
   await page.evaluate((id) => localStorage.setItem("certificates.companyId", id), company.id);
+
+  if (AS_COMPANY) {
+    console.log("\n🧪 Switch to the company account");
+    const bcrypt = (await import("bcryptjs")).default;
+    const pw = `ui-${Date.now()}`;
+    originalHash = (await prisma.company.findUnique({ where: { id: company.id }, select: { password: true } })).password;
+    await prisma.company.update({ where: { id: company.id }, data: { password: await bcrypt.hash(pw, 8) } });
+    const login = await api("POST", "/companies/login", {}, { username: company.username, password: pw });
+    const token = login.data?.data?.token;
+    const me = await api("GET", "/auth/me", { Authorization: `Bearer ${token}` });
+    assert("company login → token", !!token && !!me.data?.data?.user, login.data);
+    await page.evaluate((t, u) => {
+      localStorage.setItem("token", t);
+      localStorage.setItem("user", JSON.stringify(u));
+    }, token, me.data?.data?.user);
+  }
 
   const phases = (await import("./ui-smoke.phases.mjs")).default;
   for (const [n, run] of phases) {
@@ -160,6 +182,10 @@ const relevantErrors = consoleErrors.filter((e) => !/favicon|DevTools|React Rout
 assert("zero console errors", relevantErrors.length === 0, relevantErrors.slice(0, 5));
 
 await browser.close();
+if (originalHash) {
+  await prisma.company.update({ where: { id: company.id }, data: { password: originalHash } });
+  assert("company account: original password hash restored", (await prisma.company.findUnique({ where: { id: company.id }, select: { password: true } })).password === originalHash);
+}
 await cleanupCompany(company.id);
 await prisma.$disconnect();
 console.log(`\n📊 RESULTS: ${counts.passed} passed / ${counts.failed} failed / ${counts.passed + counts.failed} total\n`);

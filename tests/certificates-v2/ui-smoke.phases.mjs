@@ -22,7 +22,8 @@ async function phase1(ctx) {
   await page.goto(`${FRONT}/certificates/templates`, { waitUntil: "networkidle2" });
   assert("templates: empty state", await waitForText("No templates yet"));
   const adminView = await page.evaluate(() => ({ banner: document.querySelector('[data-testid="role-banner"]')?.innerText || "", picker: !!document.querySelector('select[aria-label="Company"]') }));
-  assert("templates: system admin banner + company picker (A1)", adminView.banner.includes("System admin") && adminView.picker, adminView);
+  if (ctx.asCompany) assert("templates: company banner, no picker (A1)", adminView.banner.includes("Company account") && adminView.banner.includes(company.name) && !adminView.picker, adminView);
+  else assert("templates: system admin banner + company picker (A1)", adminView.banner.includes("System admin") && adminView.picker, adminView);
   await clickText("a, button", "Upload template");
   await page.waitForSelector('input[type="file"]');
   const input = await page.$('input[type="file"]');
@@ -61,6 +62,9 @@ async function phase1(ctx) {
   assert("templates list: thumbnail loaded through the API", thumbs >= 1, thumbs);
   await shot("p1-templates");
   await ctx.audit("templates list (A1)");
+
+  // the whole run is the company account already (--as company)
+  if (ctx.asCompany) return;
 
   // Company account: no picker — its own name, read-only, where system users pick (A1/A2)
   const adminSession = await page.evaluate(() => ({ token: localStorage.getItem("token"), user: localStorage.getItem("user") }));
@@ -153,6 +157,15 @@ async function selectInFrame(page, lineId, value, { ctrl = false, toLineId = nul
     toLineId,
     toValue
   );
+}
+
+// Every confirmation is an in-page dialog (P8): wait for it, press its confirm button.
+async function confirmDialog(page, timeout = 5000) {
+  const ok = await page.waitForSelector('[data-testid="confirm-dialog-ok"]', { timeout }).catch(() => null);
+  if (!ok) return false;
+  await ok.click();
+  await page.waitForFunction(() => !document.querySelector('[data-testid="confirm-dialog"]'), { timeout }).catch(() => {});
+  return true;
 }
 
 const clickExact = async (page, text) => {
@@ -269,20 +282,39 @@ async function phase3(ctx) {
   const fileStore = await import("../../src/services/certificates/storage/fileStore.js");
 
   // Empty state → upload in the UI. Gemini is disabled on the test stack, so
-  // extraction must fail explicitly, with the real reason, and zero lines.
+  // (P8) the AI banner says so and the upload opens the invoice for manual
+  // entry instead of producing a failed invoice first.
   await page.goto(`${FRONT}/invoices`, { waitUntil: "networkidle2" });
   assert("invoices: empty state says what to do", await waitForText("No invoices yet"));
   assert("invoices: upload panel on the same page (B1)", !!(await page.$('input[type="file"]')) && (await waitForText("Destination country", 2000)));
+  assert("AI unavailable banner shown (P8)", !!(await page.waitForSelector('[data-testid="ai-unavailable-banner"]', { timeout: 10000 }).catch(() => null)));
   await (await page.$('input[type="file"]')).uploadFile(path.join(FIXTURES, "outlined_text.pdf"));
   await page.waitForFunction(() => document.body.innerText.includes("outlined_text.pdf"));
-  await clickText("button", "Upload & read invoice");
+  await clickText("button", "Upload & enter it by hand");
   await page.waitForFunction(() => /\/invoices\/[0-9a-f-]{36}/.test(location.pathname), { timeout: 15000 });
   assert("upload redirects to the review page", /\/invoices\/[0-9a-f-]{36}/.test(page.url()), page.url());
-  assert("failed extraction shown with the real reason", await waitForText("Couldn’t read this invoice:", 60000) && (await waitForText("GEMINI_DISABLED", 2000)) && (await waitForText("No certificates were created.", 1000)));
+  const manualId = page.url().match(/invoices\/([0-9a-f-]{36})/)?.[1];
+  assert("AI off: opens for manual entry, typed by you, no lines", (await waitForText("Typed by you — nothing was read automatically", 15000)) && (await waitForText("No lines yet — add each line from the original.", 5000)));
+  const manualRow = await prisma.invoice.findUnique({ where: { id: manualId }, include: { items: true } });
+  assert("DB: review, extraction.manual, zero items", manualRow?.status === "review" && manualRow.extraction?.manual === true && manualRow.items.length === 0, manualRow?.status);
+  await shot("p3-manual-upload");
+
+  // A failed invoice (as a failed extract job leaves it): a sentence, never the raw internal text
+  const failed = await prisma.invoice.create({
+    data: { companyId: company.id, status: "failed", sourceFileId: manualRow.sourceFileId, header: {}, error: "EXTRACTION_FAILED: Gemini calls are disabled in this process (GEMINI_DISABLED=true); geminiClient.generateContent(gemini-2.5-flash) sent no request." },
+  });
+  await page.goto(`${FRONT}/invoices/${failed.id}`, { waitUntil: "networkidle2" });
+  assert("failed invoice: failure card", (await waitForText("Couldn’t read this invoice:", 15000)) && (await waitForText("No certificates were created.", 1000)));
+  const failText = await page.$eval('[data-testid="extraction-failed"]', (e) => e.innerText).catch(() => "");
+  assert("failure says a sentence, no internals (P8)", !/GEMINI_DISABLED|geminiClient|EXTRACTION_FAILED|gemini-2/.test(failText), failText);
+  assert("Try again disabled while AI is unavailable, reason as tooltip (P8)", await page.evaluate(() => {
+    const b = document.querySelector('[data-testid="retry-extraction"]');
+    return !!b && b.disabled && /AI unavailable/.test(b.closest('[data-testid="ai-action-off"]')?.title || "");
+  }));
   await shot("p3-failed");
   await ctx.audit("failed extraction");
-  await clickText("button", "Try again");
-  assert("Try again re-reads it: the loader, then the same explicit failure", (await page.waitForSelector('[data-testid="extracting"], [data-testid="extraction-failed"]', { timeout: 10000 }).then(() => true, () => false)) && (await waitForText("Couldn’t read this invoice:", 60000)));
+  await clickText("button", "Enter it by hand");
+  assert("Enter it by hand → manual entry", await waitForText("Typed by you — nothing was read automatically", 15000));
 
   // A review-state invoice, stored exactly as the extract job stores it.
   const brand = await prisma.brand.create({ data: { companyId: company.id, name: "ADDvet UI" } });
@@ -342,7 +374,9 @@ async function phase3(ctx) {
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector('tr[data-line="2"]')?.innerText.includes("✓ you"), { timeout: 10000 }).catch(() => {});
   assert("line 2 matched by the user", (await page.$eval('tr[data-line="2"]', (r) => r.innerText)).includes("✓ you"));
-  await page.click('tr[data-line="3"] button[title="Ignore this line"]');
+  // the table re-renders after the match: click the live node, not a stale handle
+  await page.waitForSelector('tr[data-line="3"] button[title="Ignore this line"]', { visible: true, timeout: 10000 });
+  await page.evaluate(() => document.querySelector('tr[data-line="3"] button[title="Ignore this line"]')?.click());
   assert("line 3 ignored", await waitForText("no certificate for this line", 10000));
   await shot("p3-review");
   await ctx.audit("review & match (B3)");
@@ -392,11 +426,17 @@ async function phase4(ctx) {
   assert("plan preview on the confirmed invoice", await waitForText("Plan preview", 10000));
   const planText = await page.$eval('[data-testid="plan-preview"]', (e) => e.innerText).catch(() => "");
   assert("plan: 2 COA certificates, one per product, from the active template", planText.includes("COA") && planText.includes("2 certificates · one per product"), planText);
-  const genLabel = await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.startsWith("Generate"))?.innerText.trim());
-  assert("Generate button names the count", genLabel === "Generate 2 certificates", genLabel);
+  const gen = await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll("button")).find((x) => x.innerText.trim().startsWith("Generate ") && !x.innerText.includes("anyway"));
+    return b && { label: b.innerText.trim(), disabled: b.disabled, title: b.title || b.parentElement?.title || "" };
+  });
+  assert("Generate button names the count", gen?.label === "Generate 2 certificates", gen);
+  // the dates on the template are not on line 2 — the data check holds Generate and says why (A2)
+  assert("Generate held by the data check, with the reason", gen?.disabled && /Complete the certificate data check first/.test(gen.title), gen);
   await shot("p4-plan");
 
-  await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.startsWith("Generate"))?.click());
+  await page.click('[data-testid="generate-anyway"]');
+  assert("Generate anyway asks in an in-page dialog", await confirmDialog(page));
   await page.waitForSelector('[data-testid="batch-view"]', { timeout: 15000 });
   assert("batch view replaces the review (B4)", await waitForText("Certificates for INV-UI-1A", 5000));
   const finished = await page.waitForFunction(() => ["done", "partially_failed", "failed"].includes(document.querySelector('[data-testid="batch-view"]')?.dataset.status), { timeout: 120000 }).then(() => true, () => false);
@@ -455,13 +495,19 @@ async function phase5(ctx) {
   const version = async () => (await prisma.certificate.findUnique({ where: { id: certId } })).currentVersion;
   const frameText = () => page.evaluate(() => document.querySelector("iframe")?.contentDocument?.body?.innerText || "");
 
+  const otherId = ctx.state.certificateIds.find((x) => x !== certId);
+  await page.goto(`${FRONT}/certificates/${otherId}`, { waitUntil: "networkidle2" });
+  await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.querySelector("[data-field]"), { timeout: 20000 });
+  const issues = await page.waitForSelector('[data-testid="issues-left"]', { timeout: 10000 }).then((e) => e.evaluate((x) => x.innerText), () => "");
+  assert("line 2 (no production date): finalize disabled, issue named under it", issues === "1 issue left" && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled)), issues);
+
   await page.goto(`${FRONT}/certificates/${certId}`, { waitUntil: "networkidle2" });
   await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.querySelector("[data-field]"), { timeout: 20000 });
   const titleText = await page.$eval('[data-testid="editor-title"]', (e) => e.innerText);
   assert("editor: title, status and version (B5)", titleText.includes("COA · ADD-E120") && /draft/i.test(titleText) && titleText.includes("v1"), titleText);
   assert("editor: the server render is in the sandboxed frame", (await frameText()).includes("AVVS1124011") && (await page.$eval("iframe", (f) => f.getAttribute("sandbox"))) === "allow-same-origin");
-  const issues = await page.$eval('[data-testid="issues-left"]', (e) => e.innerText).catch(() => "");
-  assert("finalize disabled, issues named under it", issues === "2 issues left" && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled)), issues);
+  // A1: the dictionary mapped both dates to the invoice line, so line 1's certificate is complete
+  assert("all three values from the line: no issues, finalize enabled", !(await page.$('[data-testid="issues-left"]')) && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled === false)));
   assert("source chips shown (Invoice line · Batch number)", await waitForText("Invoice line · Batch number", 3000));
   await shot("p5-editor");
   await ctx.audit("certificate editor (B5)");
@@ -474,19 +520,14 @@ async function phase5(ctx) {
   await sleep(1500);
   assert("Esc reverts the value; no new version", (await batchInput.evaluate((e) => e.value)) === "AVVS1124011" && (await version()) === 1);
 
-  // fix the two missing values: instant (ephemeral) preview, then autosave → server render
-  const missingKeys = fields.filter((f) => f.key !== "batch_no").map((f) => f.key);
-  for (const key of missingKeys) {
-    const sample = fields.find((f) => f.key === key).sampleValue;
-    await page.click(`input[data-key="${key}"]`);
-    await page.keyboard.type(sample);
-  }
-  const sample0 = fields.find((f) => f.key === missingKeys[0]).sampleValue;
-  const instant = await page.evaluate((k) => document.querySelector("iframe").contentDocument.querySelector(`[data-field="${k}"]`)?.textContent, missingKeys[0]);
+  // overwrite one value: instant (ephemeral) preview, then autosave → server render
+  const key0 = fields.find((f) => f.key !== "batch_no").key;
+  const sample0 = fields.find((f) => f.key === key0).sampleValue;
+  await retype(page, await page.$(`input[data-key="${key0}"]`), sample0);
+  const instant = await page.evaluate((k) => document.querySelector("iframe").contentDocument.querySelector(`[data-field="${k}"]`)?.textContent, key0);
   assert("typing updates the field in the frame instantly", instant === sample0, instant);
   assert("autosave after 1 s → saved", await saved());
-  await page.waitForFunction(() => !document.querySelector('[data-testid="issues-left"]'), { timeout: 15000 }).catch(() => {});
-  assert("server re-rendered v2, issues gone, finalize enabled", (await version()) === 2 && !(await page.$('[data-testid="issues-left"]')) && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled === false)));
+  assert("server saved v2, finalize still enabled", (await version()) === 2 && (await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.disabled === false)));
 
   // someone else saves meanwhile → conflict dialog → overwrite with mine
   ctx.allowConsole.push(/status of 409 \(Conflict\)/); // the conflict below is deliberate
@@ -520,6 +561,7 @@ async function phase5(ctx) {
   await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.body?.innerText.includes("AVVS1124011") && !document.querySelector("iframe").contentDocument.body.innerText.includes("AVVS1124011-C"), { timeout: 15000 }).catch(() => {});
   assert("the frame shows v1's stored HTML", !(await frameText()).includes("AVVS1124011-C"));
   await page.evaluate(() => Array.from(document.querySelectorAll('[data-version="2"] button')).find((b) => b.innerText === "Restore")?.click());
+  assert("restore asks in an in-page dialog", await confirmDialog(page));
   await page.waitForFunction(() => document.querySelector('[data-testid="editor-title"]')?.innerText.includes("v5"), { timeout: 15000 }).catch(() => {});
   assert("restore v2 → v5 (forward-only)", (await version()) === 5 && (await page.$eval('input[data-key="batch_no"]', (e) => e.value)) === "AVVS1124011");
   await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === "Close")?.click());
@@ -532,6 +574,7 @@ async function phase5(ctx) {
 
   // finalize → final, read-only; duplicate as draft
   await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Finalize")?.click());
+  assert("finalize asks in an in-page dialog, not window.confirm", await confirmDialog(page));
   assert("finalize → final, read-only", (await waitForText("Final since", 20000)) && (await page.$eval('input[data-key="batch_no"]', (e) => e.disabled)));
   assert("DB: final with a frozen PDF", !!(await prisma.certificate.findUnique({ where: { id: certId } })).finalPdfFileId);
   await shot("p5-final");
@@ -688,6 +731,41 @@ async function phase7(ctx) {
   await sleep(200);
 }
 
+// Phase 8 — "Map all" (AI plan §5.2) with the AI off: memory → dictionary,
+// no AI call. Its own ADDVET draft (country TR, a free slot) with three fields
+// typed by hand through the API; Map all in the UI gives each a source.
+async function phase8(ctx) {
+  const { page, FRONT, assert, waitForText, shot, api, asAdmin, company, prisma } = ctx;
+  const q = `companyId=${company.id}`;
+  const coa = ((await api("GET", `/certificate-types?${q}`, asAdmin)).data?.data?.types || []).find((t) => t.code === "COA");
+  const up = await api("POST", `/certificate-templates?${q}`, asAdmin, form({ name: "ADDVET map all", certificateTypeId: coa?.id, country: "TR", scope: "per_product" }, { buffer: fixture("ADDVET_COA.ai"), name: "ADDVET_COA.ai" }));
+  await pollTask(up.data?.data?.taskId, asAdmin, { timeoutMs: 90_000 });
+  const { templateId, versionId } = up.data?.data || {};
+  const version = (await api("GET", `/template-versions/${versionId}?${q}`, asAdmin)).data?.data?.version;
+  const at = (lineId, value, key, label) => {
+    const start = version.lines.find((l) => l.id === lineId).text.indexOf(value);
+    return { key, label, lineId, charStart: start, charEnd: start + value.length, sampleValue: value, source: { kind: "manual" }, required: true, origin: "manual", confirmed: true, mappingOrigin: "manual" };
+  };
+  const fields = [at("p1-l11", "AVVS1122005", "batch_no", "Batch No."), at("p1-l12", "11/2022", "production_date", "Production Date"), at("p1-l13", "11/2025", "expiry_date", "Expiry Date")];
+  const put = await api("PUT", `/template-versions/${versionId}/fields?${q}`, asAdmin, { fields });
+  assert("setup: three fields typed by hand", put.status === 200, put.data);
+  const runsBefore = await prisma.aiRun.count({ where: { companyId: company.id } });
+
+  await page.goto(`${FRONT}/certificates/templates/${templateId}/versions/${versionId}?step=fields`, { waitUntil: "networkidle2" });
+  await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.querySelector('[data-line="p1-l11"]'), { timeout: 20000 });
+  assert("Map all offered and enabled with the AI off (code runs first)", await page.evaluate(() => Array.from(document.querySelectorAll("button")).some((b) => b.innerText.trim() === "Map all" && !b.disabled)));
+  await page.evaluate(() => Array.from(document.querySelectorAll("button")).find((b) => b.innerText.trim() === "Map all")?.click());
+  assert("Map all reports what it mapped", await waitForText("3 fields mapped", 20000));
+  assert("source chips show the invoice line", (await waitForText("Invoice line · Batch number", 5000)) && (await waitForText("Invoice line · Expiry date", 2000)));
+  const saved = await page.waitForFunction(() => document.querySelector('[data-testid="save-state"]')?.innerText.includes("All changes saved"), { timeout: 30000 }).then(() => true, () => false);
+  const db = await prisma.templateField.findMany({ where: { versionId }, orderBy: { sortOrder: "asc" } });
+  const got = Object.fromEntries(db.map((f) => [f.key, `${f.source?.kind}:${f.source?.path || f.source?.field || ""}:${f.mappingOrigin}`]));
+  assert("DB: every field mapped from memory/dictionary to the invoice line", saved && db.length === 3 && db.every((f) => f.source?.kind === "item" && ["memory", "dictionary"].includes(f.mappingOrigin)), got);
+  assert("no AI run recorded by Map all", (await prisma.aiRun.count({ where: { companyId: company.id } })) === runsBefore);
+  await shot("p8-map-all");
+  await ctx.audit("fields after Map all");
+}
+
 export default [
   [1, phase1],
   [2, phase2],
@@ -695,4 +773,5 @@ export default [
   [4, phase4],
   [5, phase5],
   [7, phase7],
+  [8, phase8],
 ];
