@@ -64,6 +64,8 @@ router.get("/template-versions/:id/prepare-diff", guard("read_certificate_templa
 router.post("/template-versions/:id/preview", guard("read_certificate_templates"), validate(versionSchemas.preview), templates.previewVersion);
 router.post("/template-versions/:id/activate", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.activateVersion);
 router.post("/template-versions/:id/new-version", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.newVersion);
+router.get("/template-versions/:id/repair", guard("read_certificate_templates"), validate(versionSchemas.byId), templates.getRepairPlan);
+router.post("/template-versions/:id/repair", guard("update_certificate_templates"), validate(versionSchemas.repair), templates.startRepair);
 router.post("/template-versions/:id/enable-groups", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.enableGroups);
 router.get("/certificate-field-sources", guard("read_certificate_templates"), validate(aiSchemas.company), templates.getFieldSources);
 

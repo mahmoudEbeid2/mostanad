@@ -121,7 +121,7 @@ function entryFor(entries, path) {
   return child && child.type !== "collection" ? { ...child, path: canon, label: canon, pickable: true } : null;
 }
 
-function sourceFromPath(path) {
+export function sourceFromPath(path) {
   const p = parse(path);
   return { kind: p.root, path: String(path).slice(p.root.length + 1) };
 }
@@ -218,7 +218,7 @@ function requiredFor(source, entries) {
   return !(e && typeof e.coverage === "number" && e.coverage < REQUIRED_MIN_COVERAGE);
 }
 
-function codeCategory(source) {
+export function codeCategory(source) {
   switch (source.kind) {
     case "item":
       return "invoice_line";

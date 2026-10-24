@@ -128,6 +128,9 @@ export function validateFieldList(input, lines, groups = []) {
       inferencePolicy: typeof raw.inferencePolicy === "string" ? raw.inferencePolicy : undefined, // clamped on save (A5)
       // the owner's tick in "Mark fields"; undefined = keep what is stored (replaceFields), else the pre-set
       isLabResult: typeof raw.isLabResult === "boolean" ? raw.isLabResult : undefined,
+      // owner setting: print the row's specification instead of a measured result
+      showSpecInstead: raw.showSpecInstead === true,
+      specFieldKey: raw.showSpecInstead === true && typeof raw.specFieldKey === "string" ? raw.specFieldKey : null,
     };
     const p = (message) => problems.push({ key: f.key || `#${i + 1}`, message });
     if (!KEY_RE.test(f.key)) p("key must be snake_case (a-z, 0-9, _), starting with a letter");
@@ -164,6 +167,17 @@ export function validateFieldList(input, lines, groups = []) {
     }
     return f;
   });
+  // "show the specification instead": the field prints exactly what its specification field prints
+  for (const f of fields.filter((x) => x.showSpecInstead)) {
+    const spec = fields.find((x) => x.key === f.specFieldKey);
+    if (f.groupKey) problems.push({ key: f.key, message: "a group cell can't show a specification instead of its result" });
+    else if (!spec || spec.groupKey || spec.showSpecInstead || spec.key === f.key) problems.push({ key: f.key, message: `“show the specification instead” needs specFieldKey naming another plain field of this version (got "${f.specFieldKey ?? ""}")` });
+    else {
+      f.source = spec.source;
+      f.format = spec.format ?? null;
+      f.isLabResult = true;
+    }
+  }
   // no overlapping ranges on the same line
   const sorted = fields.filter((f) => Number.isInteger(f.charStart)).sort((a, b) => (a.lineId === b.lineId ? a.charStart - b.charStart : a.lineId < b.lineId ? -1 : 1));
   for (let i = 1; i < sorted.length; i++) {
@@ -290,6 +304,8 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         // A5 (plan.md §14.1): a person may tighten, never loosen past the category's default
         inferencePolicy: policyToStore(f, f.inferencePolicy),
         isLabResult: f.isLabResult === true,
+        showSpecInstead: f.showSpecInstead === true,
+        specFieldKey: f.showSpecInstead ? f.specFieldKey : null,
       })),
     }),
     prisma.templateGroup.createMany({

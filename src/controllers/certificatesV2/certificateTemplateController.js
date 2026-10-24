@@ -3,6 +3,7 @@ import * as templateService from "../../services/certificates/templates/template
 import * as fieldService from "../../services/certificates/templates/fieldService.js";
 import * as prepareService from "../../services/certificates/templates/prepareService.js";
 import * as assistService from "../../services/certificates/templates/assistService.js";
+import * as repairService from "../../services/certificates/templates/repairService.js";
 import { getSourceCatalogue } from "../../services/certificates/templates/sourceCatalogue.js";
 import { companySourceCatalogue } from "../../services/certificates/dictionary/dataDictionary.js";
 import { searchProducts } from "../../services/certificates/matching/productSearch.js";
@@ -113,6 +114,17 @@ export const previewVersion = catchAsync(async (req, res) => {
 export const activateVersion = catchAsync(async (req, res) => {
   const data = await prepareService.activateVersion(req.params.id, scopeOf(req), actorId(req));
   res.status(200).json({ status: "success", data });
+});
+
+/** GET /template-versions/:id/repair — the "Fix this template" checklist (read-only). */
+export const getRepairPlan = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { plan: await repairService.getRepairPlan(req.params.id, scopeOf(req)) } });
+});
+
+/** POST /template-versions/:id/repair — the ticked changes as a new version (convert if needed → apply → prepare). */
+export const startRepair = catchAsync(async (req, res) => {
+  const data = await repairService.startRepair(req.params.id, scopeOf(req), actorId(req), req.body.decisions);
+  res.status(202).json({ status: "accepted", data });
 });
 
 export const newVersion = catchAsync(async (req, res) => {

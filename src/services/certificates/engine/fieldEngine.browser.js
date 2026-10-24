@@ -359,6 +359,58 @@
     return { columnHeader: columnHeader || null, rowCells, rowIndex };
   }
 
+  // ── line cells (template repair, owner 2026-10-24) ─────────────────────────
+  // Read-only. Every line split into its cells by glyph geometry: a new cell
+  // starts where the gap to the previous printed character is a column gap
+  // (the segmentsOf rule) or where the text jumps back left. Offsets are code
+  // units of the line's textContent, so a cell is directly a field range.
+  // → [{ id, page, y, h, cells: [{ start, end, text, x0, x1, font }] }]
+  function lineCells() {
+    const out = [];
+    for (const el of document.querySelectorAll("[data-line]")) {
+      const pageEl = pageOf(el);
+      if (!pageEl) continue;
+      const text = el.textContent;
+      const chars = [];
+      let pos = 0;
+      for (const n of textNodes(el)) {
+        for (let i = 0; i < n.data.length; i++) {
+          if (/\s/.test(n.data[i])) continue;
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + 1);
+          const rect = relRect(r.getBoundingClientRect(), pageEl);
+          if (rect.w < 0.01 || rect.h < 0.01) continue;
+          chars.push({ o: pos + i, x: rect.x, r: rect.x + rect.w, y: rect.y, h: rect.h, el: n.parentElement });
+        }
+        pos += n.data.length;
+      }
+      if (!chars.length) continue;
+      const cells = [];
+      let cur = null;
+      for (const ch of chars) {
+        const gap = cur ? ch.x - cur.x1 : Infinity;
+        // kerning makes neighbouring glyph boxes overlap a little; a real jump back left starts a new cell
+        if (cur && gap >= -ch.h * 0.5 && gap <= Math.max(4, ch.h * 0.8)) {
+          cur.end = ch.o + 1;
+          cur.x1 = Math.max(cur.x1, ch.r);
+        } else {
+          cur = { start: ch.o, end: ch.o + 1, x0: ch.x, x1: ch.r, font: fontKey(ch.el) };
+          cells.push(cur);
+        }
+      }
+      const ys = chars.map((c) => c.y);
+      out.push({
+        id: el.getAttribute("data-line"),
+        page: pageNo(pageEl),
+        y: round(Math.min(...ys)),
+        h: round(Math.max(...chars.map((c) => c.y + c.h)) - Math.min(...ys)),
+        cells: cells.map((c) => ({ start: c.start, end: c.end, text: text.slice(c.start, c.end), x0: round(c.x0), x1: round(c.x1), font: c.font })),
+      });
+    }
+    return out;
+  }
+
   function inspect(fields) {
     const out = {};
     const runsByPage = new Map();
@@ -1494,6 +1546,7 @@
     analyse,
     markGenericLines,
     inspect,
+    lineCells,
     clear,
     fill,
     measure,

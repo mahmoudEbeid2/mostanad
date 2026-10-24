@@ -1,0 +1,38 @@
+# /template-versions/{id}/repair — "Fix this template" (fill automatically, item 2, owner 2026-10-24).
+get:
+  tags: ["Certificate templates"]
+  summary: The template repair checklist (read-only)
+  description: |
+    Scans the version's design (every line split into cells by glyph geometry in the renderer) and returns what could make certificates print one product's or one batch's text for every product:
+    - `constituent_group`: the analysis table's "Constituents / Composition …" row and the rows under it → ONE repeating group bound to `product.activeIngredients` (cells: name ← `name`, amount ← `concentration`; a result column beside them → a lab-result cell). `removes` lists the fields that hard-code one product's list.
+    - `fixed_to_field`: fixed text that changes per product or batch — a specification cell of the table, or a "Label: value" outside it — with a `suggestion` `{ source, format, ambiguousDate?, category, isLabResult, origin: memory|rule|dictionary|specification|none, why }`.
+    - `fixed_result`: fixed RESULT text (“Conforms”, “102.7%”) with `choices` (`keep_fixed | lab_result_field | show_specification`) and `default: null` — never decided automatically.
+    - `unnamed_field`: a field labelled “Field N”: what it prints and what becomes of it (`absorbedBy` a group, `rename`, or `remove`).
+    → `{ plan: { versionId, versionNumber, status, templateName, needsSvg, summary, table: { columns, rows }, items } }`. Permission: `read_certificate_templates`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "`{ plan }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: VERSION_NOT_CONVERTED }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }
+post:
+  tags: ["Certificate templates"]
+  summary: Apply the ticked repairs as a new version
+  description: |
+    Body `{ decisions: [{ id, apply?: boolean, choice?: keep_fixed|lab_result_field|show_specification }] }` — ids from the GET. Fixed results without a choice stay fixed.
+    Creates version N+1 based on this one (this version is never changed): re-converted with a vector (SVG) background when a group is added, then a `repair` job applies the changes and runs prepare. The new version ends `ready` (gate passed) or `draft` with the gate's report; activation stays the owner's step.
+    `show_specification` adds the result field with `showSpecInstead: true` and `specFieldKey` (its row's specification field is added too, even if not ticked).
+    → 202 `{ templateId, versionId, versionNumber, taskId, applied, reconverted }`. 422 `INVALID_REPAIR` (unknown id, invalid choice) / `NOTHING_TO_REPAIR`; 409 `TEMPLATE_ARCHIVED`, `GROUPS_NEED_PDF`. Permission: `update_certificate_templates`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "202": { description: "`{ templateId, versionId, versionNumber, taskId, applied, reconverted }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "422": { description: INVALID_REPAIR | NOTHING_TO_REPAIR }
+    "409": { description: TEMPLATE_ARCHIVED | GROUPS_NEED_PDF }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

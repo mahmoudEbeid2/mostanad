@@ -125,8 +125,22 @@ const groupDraft = z
 const rowCells = z.record(z.string().max(60), z.union([z.string().max(2000), z.number(), z.null()]));
 const groupRows = z.array(rowCells).max(200);
 
+// "Fix this template" (item 2): the owner's decision per checklist item; the service validates it against the plan
+const repairDecision = z
+  .object({
+    id: z.string().max(120),
+    apply: z.boolean().optional(),
+    choice: z.enum(["keep_fixed", "lab_result_field", "show_specification"]).optional(),
+    source: z.object({ kind: z.string().max(20) }).passthrough().optional(),
+    format: z.record(z.string(), z.any()).nullable().optional(),
+    category: z.string().max(30).optional(),
+    isLabResult: z.boolean().optional(),
+  })
+  .strict();
+
 export const versionSchemas = {
   byId: { params: idParams, query: companyQuery },
+  repair: { params: idParams, query: companyQuery, body: z.object({ decisions: z.array(repairDecision).max(300) }) },
   html: { params: idParams, query: companyQuery.extend({ variant: z.enum(["sanitized", "prepared", "sample"]).default("sanitized") }) },
   fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200), groups: z.array(groupDraft).max(20).optional() }) },
   confirm: { params: idParams, query: companyQuery, body: z.object({ keys: z.array(z.string().max(60)).min(1).max(200) }) },

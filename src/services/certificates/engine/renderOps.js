@@ -47,13 +47,14 @@ export const fill = (html, { values, defs, fontCoverage = null, groups = [], thu
     { label }
   );
 
-/** measure fields and detect groups without mutation (§8.2) → { fields, groups } */
-export const inspect = (html, { fields, inspectDefs = [] }) =>
+/** measure fields and detect groups without mutation (§8.2) → { fields, groups, lineCells? } (lineCells: template repair) */
+export const inspect = (html, { fields, inspectDefs = [], lineCells = false }) =>
   renderer.withDocument(
     html,
     async (page) => ({
-      fields: await renderer.engine(page, "inspect", fields),
+      fields: fields?.length ? await renderer.engine(page, "inspect", fields) : {},
       groups: inspectDefs.length ? await renderer.engine(page, "inspectGroups", inspectDefs) : {},
+      ...(lineCells ? { lineCells: await renderer.engine(page, "lineCells") } : {}),
     }),
     { label: "fields:inspect" }
   );

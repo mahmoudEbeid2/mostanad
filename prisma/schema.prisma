@@ -868,6 +868,11 @@ model TemplateField {
   // catalogue or a product profile — only a supplier COA, a previous result of the same batch
   // or a person. Owner-set in "Mark fields"; pre-set for result / assay / complies / conforms labels.
   isLabResult         Boolean         @default(false) @map("is_lab_result")
+  // Owner setting (never automatic): this lab-result field prints its row's specification
+  // instead of a measured value. specFieldKey names that specification field (same version);
+  // the server keeps this field's source/format equal to it.
+  showSpecInstead     Boolean         @default(false) @map("show_spec_instead")
+  specFieldKey        String?         @map("spec_field_key")
 
   @@unique([versionId, key])
   @@map("template_fields")

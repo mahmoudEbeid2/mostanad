@@ -399,3 +399,17 @@ Additive; no migration.
 - `GET /invoices/:id/data-needs/diagnosis` — **new**, `read_invoices`, read-only: every missing value with its template
   field, source path and reason, grouped `template_mapping | product_data | lab_result | invoice_data`, plus
   `staleVersions` when the stored needs were computed against a version that is no longer active.
+
+## Certificates — fill automatically, item 2: "Fix this template" (2026-10-24)
+
+- `GET /template-versions/:id/repair` — **new**, `read_certificate_templates`: the repair checklist (constituent group over
+  `product.activeIngredients`, fixed text → fields with a suggested source, fixed results for the owner to decide per row,
+  unnamed fields explained). Read-only.
+- `POST /template-versions/:id/repair` — **new**, `update_certificate_templates`: `{ decisions }` → 202; a new version based on
+  this one (re-converted with an SVG background when a group is added), the ticked changes applied, prepare re-run by the
+  new `repair` job on the template queue (task type `certificate_template_repair`). The new version's `conversion.repair`
+  records `{ basedOn, applied, byUserId, at }`.
+- `TemplateField.showSpecInstead` / `specFieldKey` — **new** (migration `20261025110000_cert_show_spec_instead`): a
+  lab-result field that prints its row's specification instead; `PUT …/fields` accepts both and keeps the field's
+  source/format equal to the specification field's (422 when `specFieldKey` doesn't name another plain field).
+- Renderer: `POST /v1/inspect` accepts `lineCells: true` → also returns every line's cells (offsets, x-range, font).

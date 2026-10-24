@@ -2,6 +2,7 @@ import { startWorker } from "../services/certificates/jobs/taskRunner.js";
 import { QUEUES, scheduleRepeating } from "../services/certificates/jobs/queues.js";
 import { convertVersion } from "../services/certificates/templates/templateService.js";
 import { runPrepareJob } from "../services/certificates/templates/prepareService.js";
+import { runRepairJob } from "../services/certificates/templates/repairService.js";
 import { buildDictionary } from "../services/certificates/dictionary/dataDictionary.js";
 import { rebuildAllDictionaries } from "../services/certificates/dictionary/rebuildScheduler.js";
 
@@ -11,6 +12,8 @@ import { rebuildAllDictionaries } from "../services/certificates/dictionary/rebu
 const handlers = {
   convert: ({ versionId }, ctx) => convertVersion(versionId, ctx),
   prepare: ({ versionId }, ctx) => runPrepareJob(versionId, ctx),
+  // "Fix this template" (item 2): convert (vector background) → apply the ticked changes → prepare
+  repair: (data, ctx) => runRepairJob(data, ctx),
   // company data dictionary (plan.md §3.2): after product changes, and nightly
   rebuildDictionary: async ({ companyId }) => {
     const row = await buildDictionary(companyId);
