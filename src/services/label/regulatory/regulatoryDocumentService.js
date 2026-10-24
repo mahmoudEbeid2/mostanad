@@ -1,3 +1,4 @@
+import { assignAiContext } from "../../ai/aiContext.js";
 import crypto from "crypto";
 import { prisma } from "../../../lib/prisma.js";
 import AppError from "../../../utils/appError.js";
@@ -132,6 +133,7 @@ export const getDocumentById = async (id) => {
  * never persisted — only reported back.
  */
 export const compileRulesFor = async (documentId) => {
+  assignAiContext({ entityType: "regulatory_document", entityId: documentId }); // AI cost ledger
   const document = await prisma.regulatoryDocument.findUnique({ where: { id: documentId } });
   if (!document) throw new AppError("No regulatory document found with that ID", 404);
   if (!document.extractedText) throw new AppError("This document has no extracted text yet.", 400);
@@ -178,6 +180,7 @@ export const compileRulesFor = async (documentId) => {
  * them to decide full vs partial activationMode (severity, never access).
  */
 export const auditCoverageFor = async (documentId) => {
+  assignAiContext({ entityType: "regulatory_document", entityId: documentId }); // AI cost ledger
   const document = await prisma.regulatoryDocument.findUnique({ where: { id: documentId }, include: { rules: true } });
   if (!document) throw new AppError("No regulatory document found with that ID", 404);
 

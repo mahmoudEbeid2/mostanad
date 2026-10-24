@@ -87,6 +87,7 @@ export async function suggestFields(versionId, companyId) {
     { companyId: version.template.companyId, kind: "CERT_ASSIST", promptHash, input: text, entityType: "template_version", entityId: versionId, reason: "suggest fields" },
     () =>
       geminiClient.generateJson({
+        ledger: { feature: "certificates.assist" },
         model: MODELS.CERT_ASSIST.id,
         temperature: MODELS.CERT_ASSIST.temperature,
         thinkingBudget: MODELS.CERT_ASSIST.thinkingBudget,

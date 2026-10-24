@@ -102,6 +102,8 @@ export async function cleanupCompany(companyId) {
   // certificate AI layers (plan.md §4): audit rows are Restrict on the company
   await del("ai_suggestions", `DELETE FROM ai_suggestions WHERE company_id = $1`);
   await del("ai_runs", `DELETE FROM ai_runs WHERE company_id = $1`);
+  // AI cost ledger: no FK (it outlives what it mentions in production), but a test's rows are scratch data
+  await del("ai_calls", `DELETE FROM ai_calls WHERE company_id = $1`);
   // product catalogues (plan.md §15): blocks cascade with their version; versions and catalogues are Restrict
   await del("catalogue_blocks", `DELETE FROM catalogue_blocks WHERE company_id = $1`);
   await del("catalogue_versions", `DELETE FROM catalogue_versions WHERE company_id = $1`);

@@ -104,6 +104,7 @@ async function callGeminiWithRetry(parts, label = "Gemini") {
   const modelSpec = MODELS.EXTRACT;
   try {
     const response = await geminiClient.generateContentWithRetry({
+      ledger: { feature: "labels.extraction" },
       model: modelSpec.id,
       contents: parts,
       config: { temperature: modelSpec.temperature, thinkingConfig: { thinkingBudget: modelSpec.thinkingBudget } },

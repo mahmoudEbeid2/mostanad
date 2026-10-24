@@ -100,6 +100,7 @@ Set found:false if you cannot locate a genuinely authoritative source for THIS s
   `.trim();
 
   const response = await geminiClient.generateContentWithRetry({
+    ledger: { feature: "labels.generation" },
     model: MODELS.WEB_SEARCH.id,
     contents: prompt,
     config: { temperature: 0, tools: [{ googleSearch: {} }] },

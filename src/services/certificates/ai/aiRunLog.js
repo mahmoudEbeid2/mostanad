@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { prisma } from "../../../lib/prisma.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { withGenerationMetrics, generationMetricsSnapshot } from "../../ai/generationMetrics.js";
+import { withAiContext } from "../../ai/aiContext.js";
+import { FEATURE_BY_RUN_KIND } from "../../ai/aiLedger.js";
 
 // aiRunLog (plan.md §3.3): every certificate-AI model call is recorded — kind,
 // company, entity, inputHash, promptHash, modelId, tokens, ms, outcome — in
@@ -37,7 +39,9 @@ async function writeRun(data) {
 
 /**
  * Runs `fn` (which makes the geminiClient call) and records it.
- * opts: { companyId, kind (a MODELS key), promptHash, input?, inputHash?, entityType?, entityId?, reason? }
+ * opts: { companyId, kind (a MODELS key), promptHash, input?, inputHash?, entityType?, entityId?, parentType?, parentId?, reason? }
+ * The call runs inside an AI-ledger context (company, feature, entity, this
+ * run's id), so every attempt geminiClient makes is tagged with them.
  * → { result, run } — `run` is the ai_runs row (or null when it couldn't be written).
  * A failing fn is recorded as `failed` and its error rethrown unchanged.
  */
@@ -45,6 +49,7 @@ export async function runLogged(opts, fn) {
   const model = MODELS[opts.kind];
   if (!model) throw new Error(`aiRunLog: unknown model kind "${opts.kind}"`);
   const base = {
+    id: crypto.randomUUID(), // known before the call, so ledger rows can point at it
     companyId: opts.companyId,
     kind: opts.kind,
     entityType: opts.entityType ?? null,
@@ -55,7 +60,8 @@ export async function runLogged(opts, fn) {
     reason: opts.reason ?? null,
   };
   const t0 = Date.now();
-  return withGenerationMetrics(async () => {
+  const ledger = { companyId: opts.companyId, feature: FEATURE_BY_RUN_KIND[opts.kind], entityType: base.entityType, entityId: base.entityId, parentType: opts.parentType, parentId: opts.parentId, aiRunId: base.id };
+  return withAiContext(ledger, () => withGenerationMetrics(async () => {
     const usage = () => {
       const m = generationMetricsSnapshot() || {};
       return {
@@ -76,7 +82,7 @@ export async function runLogged(opts, fn) {
     }
     const run = await writeRun({ ...base, ...usage(), outcome: "ok" });
     return { result, run };
-  });
+  }));
 }
 
 /** Records a call that was not made: outcome "disabled" (company setting) or "skipped" (nothing to ask). */

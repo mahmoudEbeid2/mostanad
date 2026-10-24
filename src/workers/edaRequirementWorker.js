@@ -1,3 +1,4 @@
+import { withAiJobContext } from "../services/ai/aiContext.js";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -30,7 +31,8 @@ const connection = getRedisConfig();
 // re-running a single stage; nothing depends on a human pressing them.
 const worker = new Worker(
   "edaRequirementQueue",
-  async (job) => {
+  // AI cost ledger: every Gemini call this job makes is billed to its company/user
+  (job) => withAiJobContext(job, async () => {
     const { country, fileBufferBase64, fileName, mimeType, companyId, title, authority, productScope, sourceUrl, documentVersion } = job.data;
     const taskId = job.opts.jobId;
 
@@ -88,7 +90,7 @@ const worker = new Worker(
       if (error instanceof AppError) throw error;
       throw error;
     }
-  },
+  }),
   { connection, concurrency: 2, name: geminiWorkerName("edaRequirementQueue") }
 );
 

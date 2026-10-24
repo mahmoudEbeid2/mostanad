@@ -111,7 +111,7 @@ const RESPONSE_SCHEMA = {
   required: ["keys"],
 };
 export const SYNONYM_PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "certificates.dictionary" } });
 
 /**
  * POST /certificate-data-dictionary/synonym-suggestions — ONE call for the keys

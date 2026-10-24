@@ -176,6 +176,7 @@ export const processCatalogPDF = async (companyId, fileBuffer, fileName = "catal
     const model = MODELS.CATALOGUE_LEGACY;
     console.log(`[CatalogService] Calling ${model.id} through geminiClient...`);
     extractedProducts = await geminiClient.generateJson({
+      ledger: { feature: "catalogue.legacy" },
       model: model.id,
       temperature: model.temperature,
       thinkingBudget: model.thinkingBudget,

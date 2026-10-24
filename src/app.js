@@ -6,6 +6,7 @@ import path from "path";
 import routes from "./routes/index.js";
 import globalErrorHandler from "./middleware/errorMiddleware.js";
 import AppError from "./utils/appError.js";
+import { aiRequestContext } from "./services/ai/aiContext.js";
 
 const app = express();
 
@@ -18,6 +19,9 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Serve static uploaded files
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+// AI cost ledger: each request gets its own AI context; `protect` fills in the caller
+app.use(aiRequestContext);
 
 // Use the defined routes
 app.use("/api/v1", routes);

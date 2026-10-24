@@ -61,7 +61,7 @@ const RESPONSE_SCHEMA = {
   required: ["gaps"],
 };
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "certificates.inference" } });
 
 /** The product's complete record for the prompt (§14.2 input): every column, JSON ≤ 16 KB, category, brand. */
 export function productRecord(product) {

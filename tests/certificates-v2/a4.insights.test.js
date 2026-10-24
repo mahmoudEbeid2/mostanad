@@ -14,7 +14,6 @@ import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, pris
 import { seedTemplate } from "./invoiceGoldenHarness.js";
 import { suggestSynonyms } from "../../src/services/certificates/insights/dictionaryHealth.js";
 import { looksDuplicate } from "../../src/services/certificates/insights/dictionaryHealth.js";
-import { costUsd } from "../../src/services/certificates/insights/aiStats.js";
 import { buildDictionary } from "../../src/services/certificates/dictionary/dataDictionary.js";
 
 const { assert, counts } = makeAssert();
@@ -144,7 +143,12 @@ try {
   await Promise.all([mkS("field_map", "accepted", 0.95), mkS("field_map", "accepted", 0.92), mkS("field_map", "edited", 0.6), mkS("field_map", "rejected", 0.3, false), mkS("field_map", "pending", 0.8), mkS("invoice_gap", "auto_accepted", 0.97)]);
   await prisma.aiRun.deleteMany({ where: { companyId: co.id } });
   const run = (kind, entityId, daysAgo, tokens = {}) => prisma.aiRun.create({ data: { companyId: co.id, kind, entityType: "x", entityId, modelId: "m", promptHash: "p", outcome: "ok", calls: 1, inputTokens: 1000, outputTokens: 100, thinkingTokens: 50, cachedTokens: 200, ms: 1200, createdAt: new Date(Date.now() - daysAgo * 86_400_000), ...tokens } });
-  await Promise.all([run("CERT_FIELD_MAP", "t1", 14), run("CERT_FIELD_MAP", "t2", 14), run("CERT_FIELD_MAP", "t3", 0), run("CERT_INVOICE_GAPS", "i1", 0), run("INVOICE_EXTRACT", "i1", 0), run("CERT_PRODUCT_MATCH", "i1", 0)]);
+  const okRuns = await Promise.all([run("CERT_FIELD_MAP", "t1", 14), run("CERT_FIELD_MAP", "t2", 14), run("CERT_FIELD_MAP", "t3", 0), run("CERT_INVOICE_GAPS", "i1", 0), run("INVOICE_EXTRACT", "i1", 0), run("CERT_PRODUCT_MATCH", "i1", 0)]);
+  // the cost is the AI cost ledger's: one priced ai_calls row per run (0.001 USD each), one unpriced
+  await prisma.aiCall.deleteMany({ where: { companyId: { in: [co.id, coB.id] } } });
+  await prisma.aiCall.createMany({ data: okRuns.map((x) => ({ companyId: co.id, feature: "certificates.mapping", aiRunId: x.id, modelId: "m", attempt: 1, outcome: "ok", costUsd: 0.001 })) });
+  await prisma.aiCall.create({ data: { companyId: co.id, feature: "certificates.mapping", aiRunId: okRuns[0].id, modelId: "m", attempt: 2, outcome: "ok", costUsd: null } });
+  await prisma.aiCall.create({ data: { companyId: coB.id, feature: "certificates.mapping", aiRunId: okRuns[0].id, modelId: "m", attempt: 1, outcome: "ok", costUsd: 5 } });
   await prisma.aiRun.create({ data: { companyId: co.id, kind: "CERT_FIELD_MAP", modelId: "m", promptHash: "p", outcome: "disabled" } });
   // P8: a run the guard blocked (failed, nothing sent) vs one whose request went out and failed (429)
   await prisma.aiRun.create({ data: { companyId: co.id, kind: "CERT_FIELD_MAP", modelId: "m", promptHash: "p", outcome: "failed", calls: 0, error: "Gemini calls are disabled in this process" } });
@@ -158,8 +162,7 @@ try {
   assert("calibration: ≥ 0.90 bucket 3/3 kept (incl. auto-accepted); < 0.50 0/1", top.decided === 3 && top.correctRate === 1 && s.calibration.find((b) => b.bucket === "< 0.50").correctRate === 0, s.calibration);
   const fmRuns = s.runs.find((k) => k.kind === "CERT_FIELD_MAP");
   assert("runs per kind: calls = requests actually sent (3 ok + 2 sent-and-failed); blocked and disabled are notSent; tokens summed", fmRuns.calls === 5 && fmRuns.notSent === 2 && fmRuns.disabled === 1 && fmRuns.failed === 2 && fmRuns.inputTokens === 3000, fmRuns);
-  const each = costUsd({ inputTokens: 1000, outputTokens: 100, thinkingTokens: 50, cachedTokens: 200 });
-  assert("cost estimate = (800×0.30 + 200×0.075 + 150×2.50) / 1M per call", Math.abs(each - (800 * 0.3 + 200 * 0.075 + 150 * 2.5) / 1e6) < 1e-12 && Math.abs(s.cost.totalUsd - each * 6) < 1e-6 && s.cost.estimate === true, s.cost);
+  assert("cost = the ledger rows of these runs (6 × 0.001; the unpriced one counted apart; another company's row ignored)", Math.abs(s.cost.totalUsd - 0.006) < 1e-9 && s.cost.unpricedAttempts === 1 && s.cost.source === "ledger" && !("prices" in s.cost), s.cost);
   const tWeeks = s.weekly.filter((w) => w.per === "template");
   assert("calls per template per week (2 weeks; this week t3 = 1 ok + 2 sent-and-failed)", tWeeks.length === 2 && tWeeks[0].callsPerEntity === 1 && tWeeks[1].calls === 3 && tWeeks[1].entities === 1, s.weekly);
   const inv = s.weekly.find((w) => w.per === "invoice");

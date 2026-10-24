@@ -1,3 +1,4 @@
+import { withAiJobContext } from "../../ai/aiContext.js";
 import { Worker } from "bullmq";
 import io from "socket.io-client";
 import { getRedisConfig } from "../../../lib/redis.js";
@@ -23,7 +24,8 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
 
   const worker = new Worker(
     queueName,
-    async (job) => {
+    // AI cost ledger: calls outside runLogged are still billed to the job's company
+    (job) => withAiJobContext(job, async () => {
       const handler = handlers[job.name];
       if (!handler) throw new Error(`[${label}] no handler for job "${job.name}"`);
       const { taskId = null, companyId = null } = job.data;
@@ -60,7 +62,7 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
         console.error(`[${label}] ${JSON.stringify({ job: job.name, entity: job.data.entity, id: job.data.entityId, companyId, ms, outcome: "failed", error: message })}`);
         throw err;
       }
-    },
+    }),
     { connection: getRedisConfig(), concurrency, name: geminiWorkerName(queueName) }
   );
 

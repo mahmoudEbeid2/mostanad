@@ -67,7 +67,7 @@ const RESPONSE_SCHEMA = {
 };
 
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "certificates.gaps" } });
 
 const truncate = (v) => {
   const s = JSON.stringify(v);

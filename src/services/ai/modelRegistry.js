@@ -20,15 +20,22 @@
 // token count), which 2.5-flash does accept. Re-map to `thinkingLevel` if/when
 // a later phase moves these to a 3.x model family that supports it.
 
+// The model IDs themselves, named once. MODELS below and the price table
+// (modelPrices.js) both refer to these — no other file spells a model ID.
+export const MODEL_IDS = {
+  GEMINI_2_5_FLASH: "gemini-2.5-flash",
+  GEMINI_2_5_PRO: "gemini-2.5-pro",
+};
+
 export const MODELS = {
   // Mechanical extraction: PDF/DOCX -> raw text, raw text -> structured JSON.
   // No judgement involved, so thinking is disabled (§9.3: "minimal").
-  EXTRACT: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  EXTRACT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
 
   // Reference label ingestion: structuring an approved label into reusable
   // style/regulatory guidance. More interpretation than EXTRACT, less than
   // generation, so a small fixed budget (§9.3: "استيعاب مرجع -> low").
-  INGEST: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  INGEST: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
 
   // Label generation drafting (formulation -> label JSON). Balances three
   // conflicting contexts (regulatory text, references, product data), so a
@@ -37,17 +44,17 @@ export const MODELS = {
   // multi-context balancing this task requires). Small nonzero temperature:
   // the doc's own registry example (§9.2) uses 0.1 here, not 0 — drafting
   // language allows a little more variance than pure extraction.
-  LABEL_GENERATE: { id: "gemini-2.5-flash", thinkingBudget: 8192, temperature: 0.1 },
+  LABEL_GENERATE: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 8192, temperature: 0.1 },
 
   // Steps 3.5/3.6 in labelGeneratorWorker (compliance re-check, self-review).
   // These are removed in Phase 2 (G3 — a second generation pass masquerading
   // as validation); kept on record here only so Phase 0 doesn't leave any
   // Gemini call without an explicit model/temperature/thinking budget.
-  LABEL_REVIEW: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
+  LABEL_REVIEW: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: -1, temperature: 0 },
 
   // Web-grounded search fallback for country regulatory requirements
   // (labelGeneratorWorker Step 2.6). Simple retrieval + summarization.
-  WEB_SEARCH: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  WEB_SEARCH: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
 
   // Phase 4 — regulatory document ingestion's combined text+catalog extraction
   // (MOSTANAD ingestion overhaul §2). Replaces the old plain-text-only EXTRACT
@@ -65,7 +72,7 @@ export const MODELS = {
   // model this codebase has verified working end-to-end — keeping the "high"
   // thinking weight via thinkingBudget. Re-promote to a pro-tier model once
   // one is confirmed reachable on this key.
-  EXTRACT_WITH_CATALOG: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+  EXTRACT_WITH_CATALOG: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 16384, temperature: 0 },
 
   // Phase 3 — regulatory rule compilation (§9.3: "تجميع القواعد -> high", called
   // out as the hardest task in the whole system: translating legal text into
@@ -73,13 +80,13 @@ export const MODELS = {
   // a rule extraction that changes between runs on the same document is unusable.
   // 2026-09-13: same gemini-2.5-pro 404 as EXTRACT_WITH_CATALOG above — see
   // that comment. Falls back to gemini-2.5-flash for the same reason.
-  RULE_COMPILE: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+  RULE_COMPILE: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 16384, temperature: 0 },
 
   // Phase 3 — coverage auditor (§7.5): the reverse pass over the same document,
   // checking which clauses produced no rule. Same reasoning weight as compilation
   // since it's re-reading the whole document with equal scrutiny.
   // 2026-09-13: same gemini-2.5-pro 404 as EXTRACT_WITH_CATALOG above.
-  COVERAGE_AUDIT: { id: "gemini-2.5-flash", thinkingBudget: 16384, temperature: 0 },
+  COVERAGE_AUDIT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 16384, temperature: 0 },
 
   // Phase 5 — adversarial auditor (§14.1). §9.2's own invariant: "generator and
   // auditor MUST be different model families." This environment has ONLY a
@@ -97,12 +104,12 @@ export const MODELS = {
   // currently unverified/likely broken on this key (untested this session —
   // out of scope for the ingestion work that surfaced the other three) —
   // needs its own fix decision, not a silent one bundled in here.
-  AUDITOR: { id: "gemini-2.5-pro", thinkingBudget: 16384, temperature: 0 },
+  AUDITOR: { id: MODEL_IDS.GEMINI_2_5_PRO, thinkingBudget: 16384, temperature: 0 },
 
   // Phase 6 — chat agent (§9.3: "تصنيف نية الشات -> minimal" for intent
   // classification; patch proposal gets a bit more room to reason since it's
   // producing structured content, not a one-word label).
-  CHAT_AGENT: { id: "gemini-2.5-flash", thinkingBudget: 2048, temperature: 0.2 },
+  CHAT_AGENT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 2048, temperature: 0.2 },
 
   // §14.5.7 — plausibility layer's "is this worth flagging at all" judgment
   // (concentration/dose/compatibility/withdrawal-period suspicion, before any
@@ -110,15 +117,15 @@ export const MODELS = {
   // from WEB_SEARCH even though the values currently match — this call never
   // touches the googleSearch tool, and giving it its own name lets the two be
   // tuned independently later without an unrelated caller silently following.
-  PLAUSIBILITY_JUDGE: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  PLAUSIBILITY_JUDGE: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
 
   // Certificates V2 (CERTIFICATES_V2_PLAN.md §5.1). Invoice extraction is the
   // ONLY AI call in the certificate pipeline: a mechanical read of one
   // invoice file into a fixed responseSchema — thinking off, temperature 0.
-  INVOICE_EXTRACT: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  INVOICE_EXTRACT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
   // Optional field suggestions (§8.3): receives template line TEXT only (never
   // HTML) and proposes values/names/sources the user accepts one by one.
-  CERT_ASSIST: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  CERT_ASSIST: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
 
   // Certificate AI layers (plan.md §3.3). gemini-2.5-flash: the only model
   // verified end-to-end on this key (see EXTRACT_WITH_CATALOG above).
@@ -126,36 +133,36 @@ export const MODELS = {
   // with verbatim evidence that code checks — never free data (plan.md P1/P2).
   // Template field → source path mapping, batched per template (A1): picks
   // from the company's data dictionary, so a little reasoning room.
-  CERT_FIELD_MAP: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  CERT_FIELD_MAP: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
   // Missing certificate values found in the invoice text / product JSON, with
   // quotes (A2): one call per invoice.
-  CERT_INVOICE_GAPS: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  CERT_INVOICE_GAPS: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
   // Invoice line → one of ≤ 10 given candidates (A3): a ranking, thinking off.
-  CERT_PRODUCT_MATCH: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  CERT_PRODUCT_MATCH: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
   // Human labels/synonyms for opaque JSON keys (ws_period → "Withdrawal
   // period"), one call per dictionary rebuild; suggestions only.
-  CERT_DICTIONARY: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  CERT_DICTIONARY: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
   // A5 tier I (plan.md §14.2): a missing product fact quoted from, or derived by
   // an allow-listed transformation of, the product's own record — code re-runs
   // the derivation and must reproduce the value exactly. One call per invoice.
-  CERT_PRODUCT_INFER: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  CERT_PRODUCT_INFER: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
   // A5 tier W (§14.3): Google-Search-grounded lookup of a product fact with
   // citations; the server fetches every cited page and checks the quote and the
   // product's identity there. Its own name (not WEB_SEARCH, the label engine's)
   // so the two can be tuned independently. One call per product per 90 days.
-  CERT_WEB_LOOKUP: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  CERT_WEB_LOOKUP: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
 
   // Product catalogues as source documents (plan.md §15, A6).
   // Block text → a schema-bound product record where every value carries a
   // quote that code verifies against THAT block (§15.3 steps 3–4): copying, not
   // reasoning — thinking off, as §15.7 specifies. Several blocks per call.
-  CATALOGUE_EXTRACT: { id: "gemini-2.5-flash", thinkingBudget: 0, temperature: 0 },
+  CATALOGUE_EXTRACT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
   // Owner rule (A6.3): product facts the catalogue does NOT print are estimated
   // for the fields still empty — stored apart, marked estimated, never for
   // composition/codes/specifications/registration. One call per catalogue version.
-  CATALOGUE_INFER: { id: "gemini-2.5-flash", thinkingBudget: 1024, temperature: 0 },
+  CATALOGUE_INFER: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
   // The V1 upload (catalogService.processCatalogPDF), kept working until A6 is
   // live (§15.8): same model and behaviour as before (no thinking budget was
   // set, i.e. the model's dynamic default), now through geminiClient.
-  CATALOGUE_LEGACY: { id: "gemini-2.5-flash", thinkingBudget: -1, temperature: 0 },
+  CATALOGUE_LEGACY: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: -1, temperature: 0 },
 };

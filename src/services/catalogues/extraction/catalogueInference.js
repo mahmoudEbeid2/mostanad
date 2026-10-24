@@ -50,7 +50,7 @@ export const RESPONSE_SCHEMA = {
   required: ["products"],
 };
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "catalogue.infer" } });
 
 const isEmpty = (v) => v === null || v === undefined || (Array.isArray(v) ? v.length === 0 : !String(v).trim());
 

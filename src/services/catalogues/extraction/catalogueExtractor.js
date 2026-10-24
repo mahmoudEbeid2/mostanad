@@ -56,7 +56,7 @@ export const RESPONSE_SCHEMA = {
 
 export const SCALAR_FIELDS = SCALARS;
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "catalogue.extract" } });
 
 /**
  * One call for a group of product blocks (+ the context blocks on the first call).

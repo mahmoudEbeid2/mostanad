@@ -45,7 +45,7 @@ const RESPONSE_SCHEMA = {
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
 export const AI_CANDIDATES = 10;
 const CONTRADICTION_FACTOR = 0.5;
-const defaultGenerate = (args) => geminiClient.generateJson(args);
+const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "certificates.matching" } });
 
 // ── contradiction checks (code) ──────────────────────────────────────────────
 const UNIT = { kg: ["g", 1000], kgs: ["g", 1000], g: ["g", 1], gr: ["g", 1], grs: ["g", 1], gm: ["g", 1], gms: ["g", 1], gram: ["g", 1], grams: ["g", 1], mg: ["g", 0.001], l: ["ml", 1000], lt: ["ml", 1000], ltr: ["ml", 1000], litre: ["ml", 1000], liter: ["ml", 1000], ml: ["ml", 1] };

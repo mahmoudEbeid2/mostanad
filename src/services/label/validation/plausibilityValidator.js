@@ -28,6 +28,7 @@ const JUDGE_SCHEMA = {
 
 async function defaultJudge(prompt) {
   return geminiClient.generateJson({
+    ledger: { feature: "labels.validation" },
     model: MODELS.PLAUSIBILITY_JUDGE.id,
     contents: prompt,
     schema: JUDGE_SCHEMA,

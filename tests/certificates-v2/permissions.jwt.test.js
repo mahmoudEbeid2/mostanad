@@ -37,8 +37,13 @@ function routeTable() {
   return [...src.matchAll(re)].map(([, method, path, permission]) => ({ method: method.toUpperCase(), path, permission }));
 }
 
+// Routes a company may never use, by design: reconciliation with the Google
+// Cloud bill covers the whole project (AI cost ledger). A company token must
+// get 403 there; everywhere else it passes.
+const SYSTEM_ONLY = new Set(["manage_ai_billing"]);
+
 const FAKE = "00000000-0000-4000-8000-000000000000";
-const fill = (path) => path.replace(/:id|:itemId/g, FAKE).replace(":key", "batch_no").replace(":n", "1");
+const fill = (path) => path.replace(/:id|:itemId/g, FAKE).replace(":key", "batch_no").replace(":n", "1").replace(":month", "2026-01");
 
 async function call(method, path, token, body) {
   const headers = { Authorization: `Bearer ${token}`, "x-force-auth": "true" };
@@ -88,7 +93,9 @@ async function run() {
   const slugs = [...new Set(routes.map((r) => r.permission))].sort();
   const perms = new Map((await prisma.permission.findMany({ where: { slug: { in: slugs } }, select: { id: true, slug: true } })).map((p) => [p.slug, p.id]));
   assert("every permission the routes use is seeded", slugs.every((s) => perms.has(s)), slugs.filter((s) => !perms.has(s)));
-  assert("every V2 permission is in the company allowlist", slugs.every((s) => COMPANY_ALLOWED_MODULES.includes(permissionModule(s))), slugs.filter((s) => !COMPANY_ALLOWED_MODULES.includes(permissionModule(s))));
+  const companySlugs = slugs.filter((s) => !SYSTEM_ONLY.has(s));
+  assert("every V2 permission except the system-only ones is in the company allowlist", companySlugs.every((s) => COMPANY_ALLOWED_MODULES.includes(permissionModule(s))), companySlugs.filter((s) => !COMPANY_ALLOWED_MODULES.includes(permissionModule(s))));
+  assert("system-only permissions are NOT in the company allowlist", [...SYSTEM_ONLY].every((s) => !COMPANY_ALLOWED_MODULES.includes(permissionModule(s))));
   console.log(`  ${routes.length} routes, ${slugs.length} permissions: ${slugs.join(", ")}`);
 
   const password = `Pw-${ts}-x`;
@@ -111,16 +118,18 @@ async function run() {
   let before = failed;
   for (const r of routes) {
     const res = await call(r.method, r.path, companyToken, {});
-    assert(`company token: ${r.method} ${r.path} is not refused`, !isAuthFailure(res), `${res.status} ${res.data?.message}`);
+    if (SYSTEM_ONLY.has(r.permission)) assert(`company token: ${r.method} ${r.path} → 403 (system only)`, isPermissionDenial(res), `${res.status} ${res.data?.message}`);
+    else assert(`company token: ${r.method} ${r.path} is not refused`, !isAuthFailure(res), `${res.status} ${res.data?.message}`);
   }
-  section(`company token passes protect + permission on all ${routes.length} routes`, before);
+  section(`company token passes protect + permission on every company route, 403 on the ${SYSTEM_ONLY.size} system-only one(s)`, before);
 
   // GET /auth/me reports what the gate actually allows (close-out #4) — the
   // frontend gates on this list with no company special case
   before = failed;
   const me = await call("GET", "/auth/me", companyToken);
   const mine = me.data?.data?.user?.role?.permissions || [];
-  assert("company /auth/me: every V2 route permission is listed", slugs.every((s) => mine.includes(s)), slugs.filter((s) => !mine.includes(s)));
+  assert("company /auth/me: every company V2 route permission is listed", companySlugs.every((s) => mine.includes(s)), companySlugs.filter((s) => !mine.includes(s)));
+  assert("company /auth/me: no system-only permission listed", [...SYSTEM_ONLY].every((s) => !mine.includes(s)), mine);
   assert("company /auth/me: nothing listed that the gate refuses (except the read_dashboard landing page)", mine.every((s) => s === "read_dashboard" || COMPANY_ALLOWED_MODULES.includes(permissionModule(s))), mine.filter((s) => s !== "read_dashboard" && !COMPANY_ALLOWED_MODULES.includes(permissionModule(s))));
   assert("company /auth/me: no stale hard-coded slug (manage_company_brands)", !mine.includes("manage_company_brands"), mine);
   const seeded = (await prisma.permission.findMany({ select: { slug: true } })).map((p) => p.slug);

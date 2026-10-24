@@ -28,6 +28,7 @@ Set found:false if you cannot locate a genuinely authoritative source — do not
   `.trim();
 
   const response = await geminiClient.generateContentWithRetry({
+    ledger: { feature: "labels.knowledge" },
     model: MODELS.WEB_SEARCH.id,
     contents: prompt,
     config: { temperature: 0, tools: [{ googleSearch: {} }] },

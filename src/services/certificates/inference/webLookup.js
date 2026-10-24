@@ -41,6 +41,7 @@ export const PROMPT_HASH = sha16(INSTRUCTIONS);
 /** The real call: grounded search, JSON parsed from the text (search grounding can't use a response schema). */
 async function defaultSearch({ contents }) {
   const res = await geminiClient.generateContentWithRetry({
+    ledger: { feature: "certificates.web_lookup" },
     model: MODELS.CERT_WEB_LOOKUP.id,
     contents,
     config: { temperature: MODELS.CERT_WEB_LOOKUP.temperature, thinkingConfig: { thinkingBudget: MODELS.CERT_WEB_LOOKUP.thinkingBudget }, tools: [{ googleSearch: {} }] },
@@ -169,7 +170,7 @@ export async function lookupProduct({ companyId, invoiceId, product, fields, all
   const query = queryFor(product, fields);
   const contents = [INSTRUCTIONS, `Product and fields:\n${JSON.stringify(query)}`];
   const { result, run } = await runLogged(
-    { companyId, kind: "CERT_WEB_LOOKUP", promptHash: PROMPT_HASH, inputHash: sha16(stableStringify(query)), entityType: "product", entityId: product.id, reason: `${fields.length} product fact(s) missing for invoice ${invoiceId}` },
+    { companyId, kind: "CERT_WEB_LOOKUP", promptHash: PROMPT_HASH, inputHash: sha16(stableStringify(query)), entityType: "product", entityId: product.id, parentType: "invoice", parentId: invoiceId, reason: `${fields.length} product fact(s) missing for invoice ${invoiceId}` },
     () => search({ contents, query })
   );
   const results = new Map();

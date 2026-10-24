@@ -308,3 +308,17 @@ export const insightSchemas = {
   },
   stats: { query: companyQuery.extend({ days: z.coerce.number().int().min(1).max(730).optional() }) },
 };
+
+// AI cost ledger reports (Certificates → AI). Dates are YYYY-MM-DD (UTC days).
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
+const costRange = companyQuery.extend({ from: day.optional(), to: day.optional() });
+export const aiCostSchemas = {
+  summary: { query: costRange },
+  top: { query: costRange.extend({ limit: z.coerce.number().int().min(1).max(100).optional() }) },
+  entity: { query: companyQuery.extend({ type: z.enum(["invoice", "template", "catalogue", "label"]), id: uuid }) },
+  reconciliation: { query: z.object({ months: z.coerce.number().int().min(1).max(36).optional() }).passthrough() },
+  setBilled: {
+    params: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "use YYYY-MM") }),
+    body: z.object({ billedUsd: z.coerce.number().min(0).max(1e9), note: z.string().trim().max(500).nullable().optional() }),
+  },
+};

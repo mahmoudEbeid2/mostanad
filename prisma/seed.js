@@ -106,6 +106,12 @@ export const permissions = [
   // Module "catalogues" is deliberately NOT in COMPANY_ALLOWED_MODULES — system
   // users only. Companies read their catalogues under read_products.
   { name: "Manage Catalogues", slug: "manage_catalogues", module: "catalogues" },
+
+  // AI cost ledger. "ai_costs" is in COMPANY_ALLOWED_MODULES (a company reads its
+  // own costs); "ai_billing" is not — reconciliation with the Google Cloud bill
+  // covers the whole project, system users only.
+  { name: "Read AI Costs", slug: "read_ai_costs", module: "ai_costs" },
+  { name: "Manage AI Billing", slug: "manage_ai_billing", module: "ai_billing" },
 ];
 
 async function main() {

@@ -143,6 +143,7 @@ Return ONLY the JSON object matching the schema. No markdown, no commentary.
   `.trim();
 
   const response = await geminiClient.generateJson({
+    ledger: { feature: "regulatory.compile" },
     model: MODELS.RULE_COMPILE.id,
     contents: prompt,
     schema: RULE_SCHEMA,

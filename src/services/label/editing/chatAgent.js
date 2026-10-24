@@ -24,6 +24,7 @@ const INTENT_SCHEMA = {
 
 export async function classifyIntent(message) {
   const response = await geminiClient.generateJson({
+    ledger: { feature: "labels.chat" },
     model: MODELS.CHAT_AGENT.id,
     contents: `Classify this user message about an existing product label into exactly one intent.
 - "question": asking about the label's current content (read-only).
@@ -58,6 +59,7 @@ Answer directly and specifically, citing the actual verdict/rule/citation where 
   `.trim();
 
   const response = await geminiClient.generateContentWithRetry({
+    ledger: { feature: "labels.chat" },
     model: MODELS.LABEL_REVIEW.id,
     contents: prompt,
     config: { temperature: 0.2 },
@@ -103,6 +105,7 @@ Return ONLY the JSON object. No markdown, no commentary.
   `.trim();
 
   return geminiClient.generateJson({
+    ledger: { feature: "labels.chat" },
     model: MODELS.CHAT_AGENT.id,
     contents: prompt,
     schema: PATCH_SCHEMA,

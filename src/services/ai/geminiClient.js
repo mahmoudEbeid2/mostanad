@@ -3,6 +3,7 @@ import { GeminiRateLimiter } from "./rateLimiter.js";
 import { parseGeminiError } from "./geminiErrors.js";
 import { recordGeminiCall, recordGeminiFailedCall } from "./generationMetrics.js";
 import { assertGeminiEnabled } from "./geminiGuard.js";
+import { recordAttempt } from "./aiLedger.js";
 
 // CLAUDE.md "SHARED RATE LIMITER — the real fix": this is the ONLY place a
 // GoogleGenAI client is constructed in this codebase. Every worker and
@@ -47,8 +48,13 @@ class GeminiClient {
    *     not transient — surfaced on the first attempt, never retried.
    * Every failed attempt is logged with Google's real status/message/retry
    * metadata (item 3) — nothing here collapses to "API busy (503/429)".
+   *
+   * AI cost ledger: every attempt that reached Google — answered or failed,
+   * first try or retry — writes exactly one ai_calls row (aiLedger), tagged
+   * with `ledger` ({ feature, entityType, entityId, companyId, … }) over the
+   * async AI context. A call the guard blocked writes none: nothing was sent.
    */
-  async generateContentWithRetry({ model, contents, systemInstruction, config = {} }, retries = 5) {
+  async generateContentWithRetry({ model, contents, systemInstruction, config = {}, ledger = {} }, retries = 5) {
     let lastParsed = null;
     // Checked before the limiter so a blocked call never waits for a slot.
     assertGeminiEnabled(`geminiClient.generateContent(${model})`);
@@ -63,13 +69,17 @@ class GeminiClient {
           config: systemInstruction ? { systemInstruction, ...config } : config,
         });
         this.limiter.release();
-        recordGeminiCall(response.usageMetadata, Date.now() - startedAt);
+        const latencyMs = Date.now() - startedAt;
+        recordGeminiCall(response.usageMetadata, latencyMs);
+        await recordAttempt({ ledger, modelId: model, attempt, ok: true, usage: response.usageMetadata, latencyMs });
         return response;
       } catch (error) {
         this.limiter.release();
-        recordGeminiFailedCall(Date.now() - startedAt); // the request went out (the guard runs before the loop)
+        const latencyMs = Date.now() - startedAt;
+        recordGeminiFailedCall(latencyMs); // the request went out (the guard runs before the loop)
         const parsed = parseGeminiError(error);
         lastParsed = parsed;
+        await recordAttempt({ ledger, modelId: model, attempt, ok: false, httpStatus: parsed.httpStatus ?? null, error: parsed.googleMessage, latencyMs });
         console.error(
           `[GeminiClient] ${model} attempt ${attempt}/${retries} failed — ` +
             `status=${parsed.httpStatus ?? "unknown"} quotaScope=${parsed.quotaScope ?? "n/a"} ` +
@@ -111,12 +121,12 @@ class GeminiClient {
   /**
    * Plain text generation (no forced JSON), e.g. raw document text extraction.
    */
-  async generateText({ model, contents, systemInstruction, config = {} }, retries = 5) {
-    const response = await this.generateContentWithRetry({ model, contents, systemInstruction, config }, retries);
+  async generateText({ model, contents, systemInstruction, config = {}, ledger }, retries = 5) {
+    const response = await this.generateContentWithRetry({ model, contents, systemInstruction, config, ledger }, retries);
     return response.text;
   }
 
-  async generateJson({ model, contents, systemInstruction, schema, maxOutputTokens = 8192, temperature = 0, thinkingBudget }, retries = 5) {
+  async generateJson({ model, contents, systemInstruction, schema, maxOutputTokens = 8192, temperature = 0, thinkingBudget, ledger }, retries = 5) {
     const config = {
       temperature,
       maxOutputTokens,
@@ -127,7 +137,7 @@ class GeminiClient {
       config.thinkingConfig = { thinkingBudget };
     }
 
-    const response = await this.generateContentWithRetry({ model, contents, systemInstruction, config }, retries);
+    const response = await this.generateContentWithRetry({ model, contents, systemInstruction, config, ledger }, retries);
     const text = response.text;
 
     try {

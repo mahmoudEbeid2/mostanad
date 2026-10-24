@@ -4,12 +4,13 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
 import * as certificates from "../controllers/certificatesV2/certificateController.js";
 import * as certificateAi from "../controllers/certificatesV2/certificateAiController.js";
+import * as aiCosts from "../controllers/certificatesV2/aiCostController.js";
 import { MAX_INVOICE_BYTES } from "../services/certificates/invoices/invoiceService.js";
 
 // Certificates V2 API (CERTIFICATES_V2_PLAN.md §12). Every route: protect +
@@ -79,6 +80,15 @@ router.get("/certificate-products/:id/data", guard("read_products"), validate(in
 router.patch("/certificate-products/:id/data", guard("update_products"), validate(insightSchemas.saveProductData), certificateAi.saveProductData);
 router.get("/ai-status", guard("read_products"), certificateAi.aiStatus); // plan.md P8 — banner + AI buttons
 router.get("/certificate-ai-stats",guard("read_certificate_templates"), validate(insightSchemas.stats), certificateAi.getAiStats);
+// AI cost ledger (every Gemini attempt, all features) — reports. read_ai_costs
+// is open to companies (their own rows only); reconciliation against the Google
+// Cloud bill is the whole project's, so system users only (manage_ai_billing).
+router.get("/ai-costs/summary", guard("read_ai_costs"), validate(aiCostSchemas.summary), aiCosts.summary);
+router.get("/ai-costs/top", guard("read_ai_costs"), validate(aiCostSchemas.top), aiCosts.top);
+router.get("/ai-costs/entity", guard("read_ai_costs"), validate(aiCostSchemas.entity), aiCosts.entity);
+router.get("/ai-costs/export.csv", guard("read_ai_costs"), validate(aiCostSchemas.summary), aiCosts.exportCsv);
+router.get("/ai-costs/reconciliation", guard("manage_ai_billing"), validate(aiCostSchemas.reconciliation), aiCosts.reconciliation);
+router.put("/ai-costs/reconciliation/:month", guard("manage_ai_billing"), validate(aiCostSchemas.setBilled), aiCosts.setBilled);
 router.get("/certificate-ai-settings", guard("read_certificate_templates"), validate(aiSchemas.company), certificateAi.getSettings);
 router.patch("/certificate-ai-settings", guard("update_certificate_templates"), validate(aiSchemas.updateSettings), certificateAi.updateSettings);
 router.get("/certificate-products", guard("read_products"), validate(productSearchSchema), templates.productSearch);

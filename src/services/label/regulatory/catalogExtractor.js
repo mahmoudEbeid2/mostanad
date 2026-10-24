@@ -212,6 +212,7 @@ Return ONLY the JSON object matching the schema. No markdown, no commentary.
 export async function extractTextAndCatalog(fileInlineDataPart, { title, authority, country } = {}) {
   const contents = [fileInlineDataPart, { text: buildPrompt({ title, authority, country }) }];
   const response = await geminiClient.generateJson({
+    ledger: { feature: "regulatory.ingest" },
     model: MODELS.EXTRACT_WITH_CATALOG.id,
     contents,
     schema: EXTRACTION_SCHEMA,

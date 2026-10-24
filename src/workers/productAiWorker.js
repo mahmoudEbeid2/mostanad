@@ -1,3 +1,4 @@
+import { withAiJobContext } from "../services/ai/aiContext.js";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -21,7 +22,8 @@ socket.on("connect", () => {
 
 const productAiWorker = new Worker(
   "productAiQueue",
-  async (job) => {
+  // AI cost ledger: every Gemini call this job makes is billed to its company/user
+  (job) => withAiJobContext(job, async () => {
     const { rawText, companyId, brandId, categoryId, taskId } = job.data;
     
     console.log(`[ProductAiWorker] Processing task ${taskId} for company ${companyId}`);
@@ -78,6 +80,7 @@ const productAiWorker = new Worker(
       });
 
       const responseText = await geminiClient.generateText({
+        ledger: { feature: "products.ai" },
         model: MODELS.EXTRACT.id,
         contents: prompt,
         config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
@@ -162,7 +165,7 @@ const productAiWorker = new Worker(
 
       throw error;
     }
-  },
+  }),
   { connection: redisConfig, concurrency: 2, name: geminiWorkerName("productAiQueue") }
 );
 

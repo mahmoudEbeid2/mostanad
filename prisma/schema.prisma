@@ -1104,6 +1104,61 @@ model AiRun {
   @@map("ai_runs")
 }
 
+// AI cost ledger: one row per request attempt sent to Gemini (retries
+// included — each is billed), written by geminiClient, the single choke point.
+// The cost is computed when the row is written, with the price in effect at
+// that moment (modelPrices.js), and the price used is stored next to it — a
+// later price change never rewrites an old row. No FK on company/user: the
+// ledger is billing history and outlives the rows it mentions.
+model AiCall {
+  id                 String    @id @default(uuid())
+  companyId          String?   @map("company_id")
+  userId             String?   @map("user_id")
+  feature            String // labels.generation | regulatory.compile | catalogue.extract | certificates.mapping | … (aiLedger.FEATURES)
+  entityType         String?   @map("entity_type")
+  entityId           String?   @map("entity_id")
+  parentType         String?   @map("parent_type") // the business object a call served when the entity is a part of it (web lookup → invoice)
+  parentId           String?   @map("parent_id")
+  aiRunId            String?   @map("ai_run_id") // the ai_runs row of a certificate/catalogue operation, when there is one
+  modelId            String    @map("model_id")
+  attempt            Int // 1 = first try; retries count up
+  outcome            String // ok | quota (429) | error
+  httpStatus         Int?      @map("http_status")
+  error              String?
+  inputTokens        Int       @default(0) @map("input_tokens") // promptTokenCount (cached tokens included)
+  cachedTokens       Int       @default(0) @map("cached_tokens")
+  outputTokens       Int       @default(0) @map("output_tokens") // candidatesTokenCount
+  thinkingTokens     Int       @default(0) @map("thinking_tokens") // thoughtsTokenCount — billed as output
+  latencyMs          Int       @default(0) @map("latency_ms")
+  costUsd            Decimal?  @map("cost_usd") @db.Decimal(18, 10) // null = no price configured for this model at call time
+  priceEffectiveFrom DateTime? @map("price_effective_from")
+  priceInputPerM     Decimal?  @map("price_input_per_m") @db.Decimal(12, 6)
+  priceCachedPerM    Decimal?  @map("price_cached_per_m") @db.Decimal(12, 6)
+  priceOutputPerM    Decimal?  @map("price_output_per_m") @db.Decimal(12, 6)
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId, createdAt])
+  @@index([feature, createdAt])
+  @@index([entityType, entityId])
+  @@index([parentType, parentId])
+  @@index([aiRunId])
+  @@index([createdAt])
+  @@map("ai_calls")
+}
+
+// Reconciliation: what Google Cloud billing actually charged for a month,
+// entered by a system user, next to the ledger's own total for that month.
+model AiBillingMonth {
+  month           String   @id // YYYY-MM (UTC)
+  billedUsd       Decimal  @map("billed_usd") @db.Decimal(14, 4)
+  note            String?
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_billing_months")
+}
+
 // Learned label → source, per company (plan.md §4, §5.1 step 7). Written when
 // a version is activated (every field) and when an AI mapping is confirmed.
 // Read first in the mapping chain (§5.2 step 1): a hit never calls the AI.

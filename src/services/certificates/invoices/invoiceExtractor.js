@@ -138,6 +138,7 @@ export async function extractInvoice(buffer, mimeType, log = null, hints = null)
   const hint = hintText(hints);
   const call = () =>
     geminiClient.generateJson({
+      ledger: { feature: "certificates.invoice" },
       model: MODELS.INVOICE_EXTRACT.id,
       temperature: MODELS.INVOICE_EXTRACT.temperature,
       thinkingBudget: MODELS.INVOICE_EXTRACT.thinkingBudget,

@@ -1,3 +1,4 @@
+import { assignAiContext } from "../ai/aiContext.js";
 import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
 import { validate } from "./validation/validationEngine.js";
@@ -93,6 +94,7 @@ export const runValidation = async (id, { companyId } = {}) => {
   if (!label || (companyId && label.companyId !== companyId)) {
     throw new AppError("No generated label found with that ID", 404);
   }
+  assignAiContext({ companyId: label.companyId, entityType: "label", entityId: id }); // AI cost ledger
 
   const rules = await getApprovedRulesForCountry(label.country, { companyId: label.companyId });
   const report = await validate(label.labelData, { rules, extractionMeta: label.extractionMeta });
@@ -159,6 +161,7 @@ export const runAudit = async (id, { companyId } = {}) => {
   if (!label || (companyId && label.companyId !== companyId)) {
     throw new AppError("No generated label found with that ID", 404);
   }
+  assignAiContext({ companyId: label.companyId, entityType: "label", entityId: id }); // AI cost ledger
 
   const latestReport = await prisma.validationReport.findFirst({ where: { labelId: id }, orderBy: { createdAt: "desc" } });
   if (!latestReport) throw new AppError("This label has not been validated yet — POST /labels/:id/validate first.", 400);
@@ -247,6 +250,7 @@ async function loadLabelForChat(id, companyId) {
   if (!label || (companyId && label.companyId !== companyId)) {
     throw new AppError("No generated label found with that ID", 404);
   }
+  assignAiContext({ companyId: label.companyId, entityType: "label", entityId: id }); // AI cost ledger
   const report = await prisma.validationReport.findFirst({ where: { labelId: id }, orderBy: { createdAt: "desc" } });
   return { label, report };
 }

@@ -1,3 +1,5 @@
+import { withAiJobContext, assignAiContext } from "../services/ai/aiContext.js";
+import { linkTaskCalls } from "../services/ai/aiLedger.js";
 import { Worker } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
@@ -102,7 +104,8 @@ export const labelGeneratorWorker = new Worker(
   // CLAUDE.md item 5: withGenerationMetrics gives every geminiClient call made
   // anywhere during this job (extraction, generation, and anything future
   // steps add) a shared bucket to record into — see generationMetrics.js.
-  (job) => withGenerationMetrics(async () => {
+  // AI cost ledger: every Gemini call this job makes is billed to its company/user
+  (job) => withAiJobContext(job, () => withGenerationMetrics(async () => {
     const { taskId, companyId, createdByUserId, productId, formulationText, country, language, aimOfUseHint, targetSpeciesHint, directionOfUseHint } = job.data;
 
     console.log(`[Label Generator] Started task: ${taskId} for Country: ${country}, Language: ${language}`);
@@ -133,6 +136,7 @@ export const labelGeneratorWorker = new Worker(
         socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 20, message: "Extracting active ingredients..." });
         try {
           const extractText = await geminiClient.generateText({
+            ledger: { feature: "labels.generation" },
             model: MODELS.EXTRACT.id,
             contents: `Extract the primary active ingredient names from this formulation text as a comma-separated list, nothing else:\n${formulationText}`,
             config: { temperature: MODELS.EXTRACT.temperature, thinkingConfig: { thinkingBudget: MODELS.EXTRACT.thinkingBudget } },
@@ -214,6 +218,10 @@ export const labelGeneratorWorker = new Worker(
         matchTier,
         generationMeta,
       });
+      // AI cost ledger: generation ran before the label existed — attribute its calls to it,
+      // and bill what this job still does (validation) to the label directly
+      await linkTaskCalls(taskId, "label", label.id);
+      assignAiContext({ entityType: "label", entityId: label.id });
 
       // Step 6: engine unification closes the loop — a schema-conformant label
       // gets an initial ValidationReport immediately, same validationEngine
@@ -263,7 +271,7 @@ export const labelGeneratorWorker = new Worker(
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "failed", progress: 0, error: error.message, message: error.message });
       throw error;
     }
-  }),
+  })),
   { connection, concurrency: 2, name: geminiWorkerName("labelGeneratorQueue") }
 );
 

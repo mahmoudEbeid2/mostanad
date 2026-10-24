@@ -7,21 +7,10 @@ import { SUGGESTION_KINDS } from "../ai/aiSuggestions.js";
 //   calibration — confidence buckets vs how often a person kept the answer;
 //   calls — per model kind, and per template / per invoice per week (should
 //           fall as mapping memory and aliases grow);
-//   cost — an ESTIMATE from the token counts the provider reported.
+//   cost — the AI cost ledger's own rows for these runs (ai_calls, priced at
+//          call time with modelPrices.js); this file holds no price.
 // "Correct" = accepted or auto-accepted; "wrong" = edited or rejected (a pick
 // code refused counts as wrong). Pending suggestions are not judged.
-
-const num = (v, d) => (Number.isFinite(Number(v)) && v !== "" && v !== undefined ? Number(v) : d);
-/** USD per 1M tokens; defaults = Gemini 2.5 Flash list prices. Thinking tokens bill as output. */
-export const prices = () => ({
-  inputPerM: num(process.env.CERT_AI_PRICE_INPUT_PER_M, 0.3),
-  outputPerM: num(process.env.CERT_AI_PRICE_OUTPUT_PER_M, 2.5),
-  cachedPerM: num(process.env.CERT_AI_PRICE_CACHED_PER_M, 0.075),
-});
-export function costUsd({ inputTokens = 0, outputTokens = 0, thinkingTokens = 0, cachedTokens = 0 }, p = prices()) {
-  const fresh = Math.max(0, inputTokens - cachedTokens);
-  return (fresh * p.inputPerM + cachedTokens * p.cachedPerM + (outputTokens + thinkingTokens) * p.outputPerM) / 1e6;
-}
 
 const BUCKETS = [
   [0, 0.5, "< 0.50"],
@@ -40,7 +29,7 @@ export async function aiStats(companyId, { days = 90 } = {}) {
   const since = new Date(Date.now() - Math.min(Math.max(Number(days) || 90, 1), 730) * 86_400_000);
   const [suggestions, runs] = await Promise.all([
     prisma.aiSuggestion.findMany({ where: { companyId, createdAt: { gte: since } }, select: { kind: true, status: true, confidence: true, decidedByUserId: true } }),
-    prisma.aiRun.findMany({ where: { companyId, createdAt: { gte: since } }, select: { kind: true, outcome: true, calls: true, entityType: true, entityId: true, inputTokens: true, outputTokens: true, thinkingTokens: true, cachedTokens: true, ms: true, createdAt: true } }),
+    prisma.aiRun.findMany({ where: { companyId, createdAt: { gte: since } }, select: { id: true, kind: true, outcome: true, calls: true, entityType: true, entityId: true, inputTokens: true, outputTokens: true, thinkingTokens: true, cachedTokens: true, ms: true, createdAt: true } }),
   ]);
 
   const kinds = SUGGESTION_KINDS.map((kind) => {
@@ -68,7 +57,12 @@ export async function aiStats(companyId, { days = 90 } = {}) {
     return { bucket: label, decided: d.length, correct, correctRate: rate(correct, d.length) };
   });
 
-  const p = prices();
+  // the cost of each run = the sum of its ledger rows (one per attempt sent)
+  const costRows = runs.length
+    ? await prisma.aiCall.groupBy({ by: ["aiRunId"], where: { companyId, aiRunId: { in: runs.map((r) => r.id) } }, _sum: { costUsd: true }, _count: { _all: true } })
+    : [];
+  const costOfRun = new Map(costRows.map((g) => [g.aiRunId, Number(g._sum.costUsd ?? 0)]));
+  const unpriced = runs.length ? await prisma.aiCall.count({ where: { companyId, aiRunId: { in: runs.map((r) => r.id) }, costUsd: null } }) : 0;
   const byKind = new Map();
   for (const r of runs) {
     if (!byKind.has(r.kind)) byKind.set(r.kind, { kind: r.kind, calls: 0, notSent: 0, ok: 0, failed: 0, disabled: 0, skipped: 0, inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cachedTokens: 0, ms: 0, costUsd: 0, sentRuns: 0 });
@@ -87,7 +81,7 @@ export async function aiStats(companyId, { days = 90 } = {}) {
     k.thinkingTokens += r.thinkingTokens;
     k.cachedTokens += r.cachedTokens;
     k.ms += r.ms;
-    k.costUsd += costUsd(r, p);
+    k.costUsd += costOfRun.get(r.id) ?? 0;
   }
   const runsView = [...byKind.values()].map(({ sentRuns, ...k }) => ({ ...k, avgMs: sentRuns ? Math.round(k.ms / sentRuns) : null, costUsd: Math.round(k.costUsd * 1e6) / 1e6 }));
 
@@ -106,7 +100,7 @@ export async function aiStats(companyId, { days = 90 } = {}) {
     const w = weeks.get(key);
     w.calls += r.calls;
     if (r.entityId) w.entities.add(r.entityId);
-    w.costUsd += costUsd(r, p);
+    w.costUsd += costOfRun.get(r.id) ?? 0;
   }
   const weekly = [...weeks.values()]
     .map((w) => ({ week: w.week, per: w.per, calls: w.calls, entities: w.entities.size, callsPerEntity: w.entities.size ? Math.round((w.calls / w.entities.size) * 100) / 100 : null, costUsd: Math.round(w.costUsd * 1e6) / 1e6 }))
@@ -119,6 +113,6 @@ export async function aiStats(companyId, { days = 90 } = {}) {
     calibration,
     runs: runsView,
     weekly,
-    cost: { totalUsd: Math.round(totalCost * 1e6) / 1e6, prices: p, estimate: true },
+    cost: { totalUsd: Math.round(totalCost * 1e6) / 1e6, unpricedAttempts: unpriced, source: "ledger" },
   };
 }

@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 import catchAsync from "../utils/catchAsync.js";
 import { isBypassed } from "./testBypass.js";
+import { setAiActor } from "../services/ai/aiContext.js";
 
 /**
  * Protect middleware: Verifies JWT token and attaches user/company details to request
@@ -24,6 +25,7 @@ export const protect = catchAsync(async (req, res, next) => {
       const userId = req.headers["x-bypass-id"] || "test-bypass-user-id";
       req.user = { id: userId, name: "Test Bypass Admin", role: { name: "admin", permissions: [] } };
     }
+    setAiActor({ companyId: req.company?.id || req.query?.companyId || req.body?.companyId, userId: req.company ? null : req.user?.id });
     return next();
   }
 
@@ -83,6 +85,10 @@ export const protect = catchAsync(async (req, res, next) => {
     req.user = user;
   }
 
+  // AI cost ledger: bill this request's Gemini calls to its caller. A system
+  // user acting for a company names it (?companyId= / body); call sites that
+  // know the entity's own company (runLogged) override this.
+  setAiActor({ companyId: req.company?.id || req.query?.companyId || req.body?.companyId, userId: req.company ? null : req.user?.id });
   next();
 });
 
@@ -97,6 +103,7 @@ export const COMPANY_ALLOWED_MODULES = [
   "certificate_types",
   "certificate_templates",
   "invoices",
+  "ai_costs", // its own AI cost ledger rows only (the reports force the company)
 ];
 
 /**
