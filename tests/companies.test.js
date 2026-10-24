@@ -1,5 +1,6 @@
 import { BYPASS } from "./testBypass.js";
 const BASE_URL = "http://127.0.0.1:3000/api/v1";
+const scratchCompanyIds = [];
 
 const colors = {
   green: "\x1b[32m",
@@ -108,7 +109,7 @@ separator();
 log("📋 TEST 4: POST /companies — Duplicate username", "bold");
 {
   const username = `dupco_${Date.now()}`;
-  await request("POST", "/companies", {
+  const first = await request("POST", "/companies", {
     name: "First Co",
     username,
     password: "pass123",
@@ -120,6 +121,7 @@ log("📋 TEST 4: POST /companies — Duplicate username", "bold");
   });
   assert("Status is 400", status === 400, `Got ${status}`);
   assert("Error about username", data?.message?.toLowerCase().includes("username"), data?.message);
+  scratchCompanyIds.push(first.data?.data?.company?.id);
   log(`  Response: ${JSON.stringify(data)}`, "white");
 }
 
@@ -130,7 +132,7 @@ separator();
 log("📋 TEST 5: POST /companies — Duplicate email", "bold");
 {
   const email = `dupemail_${Date.now()}@example.com`;
-  await request("POST", "/companies", {
+  const coA = await request("POST", "/companies", {
     name: "Co A",
     username: `coa_${Date.now()}`,
     password: "pass123",
@@ -144,6 +146,7 @@ log("📋 TEST 5: POST /companies — Duplicate email", "bold");
   });
   assert("Status is 400", status === 400, `Got ${status}`);
   assert("Error about email", data?.message?.toLowerCase().includes("email"), data?.message);
+  scratchCompanyIds.push(coA.data?.data?.company?.id);
   log(`  Response: ${JSON.stringify(data)}`, "white");
 }
 
@@ -315,6 +318,9 @@ log("📋 TEST 17: DELETE /companies/:id — Not found", "bold");
   assert("Status is 'fail'", data?.status === "fail", JSON.stringify(data));
   log(`  Response: ${JSON.stringify(data)}`, "white");
 }
+
+// the companies the duplicate tests (4, 5) created are not test subjects — remove them
+for (const id of scratchCompanyIds.filter(Boolean)) await request("DELETE", `/companies/${id}`);
 
 // ─────────────────────────────────────────────────────
 // SUMMARY
