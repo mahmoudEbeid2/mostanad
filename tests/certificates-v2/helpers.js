@@ -116,6 +116,8 @@ export async function cleanupCompany(companyId) {
   // AI cost ledger: no FK (it outlives what it mentions in production), but a test's rows are scratch data
   await del("ai_calls", `DELETE FROM ai_calls WHERE company_id = $1`);
   await del("product_certificate_values", `DELETE FROM product_certificate_values WHERE company_id = $1`);
+  // per-company knowledge cache rows (web facts, "came back empty") carry the company in their key
+  await del("external_knowledge_cache", `DELETE FROM external_knowledge_cache WHERE kind IN ('cert_product_fact', 'cert_gap_not_found') AND lookup_key LIKE $1 || '|%'`);
   // product catalogues (plan.md §15): blocks cascade with their version; versions and catalogues are Restrict
   await del("catalogue_blocks", `DELETE FROM catalogue_blocks WHERE company_id = $1`);
   await del("catalogue_versions", `DELETE FROM catalogue_versions WHERE company_id = $1`);

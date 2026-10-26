@@ -485,3 +485,11 @@ Additive; no migration.
   migration `20261027100000_cert_alias_confirmation`). The matcher reads confirmed aliases only: rows written before
   this change (no `confirmedAt`) are never used.
 
+## Certificates — "asked, came back empty" is not asked again (2026-10-27)
+
+- Data check: a product fact the gap call (`CERT_INVOICE_GAPS`) or inference (`CERT_PRODUCT_INFER`) was asked for and
+  that came back without a usable value is not sent again for the same company + product + field on later invoices,
+  until the product's data (its record or its linked catalogue block) changes. `ai.knownEmpty` /
+  `ai.inference.knownEmpty` count the values skipped this way. Lab results and invoice / batch values are never
+  skipped (a new invoice may print them). Stored in `external_knowledge_cache`, kind `cert_gap_not_found`.
+

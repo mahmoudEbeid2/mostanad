@@ -22,6 +22,7 @@ import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } fr
 import { loadProfiles, profileValue, rememberValue, profileAllowed } from "./productProfile.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
 import { loadBatchResults, batchValue, reusedProvenance, rememberBatchResult, batchOf } from "../labResults/batchResults.js";
+import { productFingerprint, knownEmpty, isKnownEmpty, rememberEmpty } from "./negativeCache.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
 //   plan (templateSelector) × each template field → one CertificateDataNeed:
@@ -309,7 +310,16 @@ function codeOffer(field, entry, ctx, rctx) {
 async function fillGaps(invoice, ctx, rows, { generate, settings }) {
   const ai = { used: false, calls: 0, asked: 0, filled: 0, rejected: 0 };
   // a field printing its specification is never asked for (it follows its specification field)
-  const open = rows.filter((x) => x.row.status === "missing" && !x.field.showSpecInstead && !askedBy(x.row, "gap"));
+  let open = rows.filter((x) => x.row.status === "missing" && !x.field.showSpecInstead && !askedBy(x.row, "gap"));
+  if (!open.length) return ai;
+  // a product fact this step already came back empty for, with the same product data, isn't asked again
+  const productOfRow = (row) => ctx.items.find((i) => i.id === row.invoiceItemId)?.product || null;
+  const fpOf = (product) => productFingerprint(product, blockOf(ctx, product));
+  const known = await knownEmpty(invoice.companyId, "G", open.map((x) => ({ productId: x.row.productId, field: x.field, fingerprint: fpOf(productOfRow(x.row)) })));
+  const skip = open.filter((x) => isKnownEmpty(known, invoice.companyId, "G", x.row.productId, x.field));
+  for (const x of skip) x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data: { aiAskedBasis: markAsked(x.row, "gap") } });
+  if (skip.length) ai.knownEmpty = skip.length;
+  open = open.filter((x) => !skip.includes(x));
   if (!open.length) return ai;
   if (!aiAllowed(settings, "allowInvoiceGapFill")) {
     ai.unavailable = true;
@@ -433,6 +443,8 @@ async function fillGaps(invoice, ctx, rows, { generate, settings }) {
         if (answer.found) ai.rejected++;
       }
     }
+    // came back empty (nothing usable): remembered for this product's data, not asked on the next invoice
+    if (!verdict.verified && g.product) for (const x of g.needs) await rememberEmpty(invoice.companyId, "G", g.product.id, x.field, fpOf(g.product), { invoiceId: invoice.id, reason: verdict.reason });
     for (const x of g.needs) {
       const data = { aiAskedBasis: markAsked(x.row, "gap") };
       if (verdict.verified && suggestion) {
@@ -482,7 +494,15 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   const out = { used: false, calls: 0, asked: 0, inferred: 0, rejected: 0 };
   if (!aiAllowed(settings) || !settings.allowProductInference) return { ...out, off: true };
   const productOf = (row) => ctx.items.find((i) => i.id === row.invoiceItemId)?.product || null;
-  const open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsInference(x.field) && !askedBy(x.row, "I"));
+  let open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsInference(x.field) && !askedBy(x.row, "I"));
+  if (!open.length) return out;
+  // inferred before from the same product data and nothing came of it → not asked again
+  const fpOf = (product) => productFingerprint(product, blockOf(ctx, product));
+  const known = await knownEmpty(invoice.companyId, "I", open.map((x) => ({ productId: productOf(x.row).id, field: x.field, fingerprint: fpOf(productOf(x.row)) })));
+  const skip = open.filter((x) => isKnownEmpty(known, invoice.companyId, "I", productOf(x.row).id, x.field));
+  for (const x of skip) x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data: { aiAskedBasis: markAsked(x.row, "I") } });
+  if (skip.length) out.knownEmpty = skip.length;
+  open = open.filter((x) => !skip.includes(x));
   if (!open.length) return out;
   const groups = new Map();
   for (const x of open) {
@@ -500,6 +520,7 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   Object.assign(out, { used: true, calls: 1, asked: res.sent.length });
   for (const g of groups.values()) {
     const got = res.answers.get(g.gap.gapId);
+    if (!got?.verdict.ok) for (const x of g.needs) await rememberEmpty(invoice.companyId, "I", g.gap.product.id, x.field, fpOf(g.gap.product), { invoiceId: invoice.id, reason: got?.verdict.reason || "no answer" });
     let suggestion = null;
     if (got) {
       // §14.4: always a person's decision, whatever the auto-accept setting
