@@ -130,6 +130,8 @@ router.get("/invoices/:id/lab-results", guard("read_invoices"), validate(labResu
 router.put("/invoices/:id/lab-results", guard("update_invoices"), validate(labResultSchemas.save), labResults.saveGrid);
 router.post("/invoices/:id/supplier-coas", guard("update_invoices"), uploadCoa.array("files", MAX_COA_FILES), validate(labResultSchemas.upload), labResults.uploadCoas);
 router.delete("/invoices/:id/supplier-coas/:coaId", guard("update_invoices"), validate(labResultSchemas.coaById), labResults.deleteCoa);
+// item 5: "Prepare certificates" (one background job, named stages)
+router.post("/invoices/:id/prepare", guard("update_invoices"), validate(invoiceSchemas.byId), labResults.prepare);
 router.get("/certificate-batches/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getBatch);
 router.get("/certificates", guard("read_certificates"), validate(certificateSchemas.list), certificates.listCertificates);
 router.get("/certificates/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getCertificate);

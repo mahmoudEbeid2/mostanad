@@ -315,6 +315,8 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-supplier-coas.yaml'
   /invoices/{id}/supplier-coas/{coaId}:
     $ref: './paths/certificates-v2/invoices-id-supplier-coas-coaId.yaml'
+  /invoices/{id}/prepare:
+    $ref: './paths/certificates-v2/invoices-id-prepare.yaml'
   /catalogues:
     $ref: './paths/catalogues/catalogues.yaml'
   /catalogues/{id}:

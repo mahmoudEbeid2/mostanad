@@ -467,3 +467,11 @@ Additive; no migration.
   `DELETE /invoices/:id/supplier-coas/:coaId` (`update_invoices`) — **new**. `SupplierCoa` (table `supplier_coas`).
   Job `coa` on the invoice queue (task type `supplier_coa_extract`); AI kind `CERT_COA_EXTRACT`, ledger feature
   `certificates.coa`. The daily orphan-file sweep keeps a COA's file while its upload exists.
+
+## Certificates — fill automatically, item 5: "Prepare certificates" (2026-10-26)
+
+- `POST /invoices/:id/prepare` (`update_invoices`) — **new**: 202 `{ taskId, stages }`; one job runs matching →
+  product data (data check + web where allowed) → batch-result reuse → unread supplier COAs, with named stages and
+  progress; the result says what still needs a person (`prepared.toConfirm`, `missingLabResults`, `canGenerate`) and
+  the invoice's AI cost so far. Task type `certificate_prepare`; job `prepare` on the invoice queue.
+

@@ -1,0 +1,18 @@
+# /invoices/{id}/prepare — fill automatically, item 5 (owner 2026-10-26): "Prepare certificates".
+post:
+  tags: ["Invoices"]
+  summary: Prepare certificates (matching → product data → batch results → supplier COAs)
+  description: |
+    One background job (`certificate_prepare`, invoice queue) running, in order, the named stages `matching` (lines still without a product; skipped when there are none), `product_data` (the data check: DB → invoice → catalogue → inference, then the web for what is still missing where the company allows it), `batch_results` (lab results of the same company + product + batch reused by code) and `supplier_coa` (uploaded COAs not read yet; skipped when there are none).
+    → 202 `{ taskId, stages: [{ key, label }] }`. Progress on the socket (`job_status_update` with `stage` and `stages`); the task result: `{ stages: [{ key, label, status: done | skipped | failed, detail, error?, ai? }], prepared, cost }`. A failing stage is reported with its error and the next stages still run.
+    `prepared`: what still needs a person — `toConfirm[{ needId, label, value, status, estimated, estimateBasis }]` (accept them with `PATCH …/data-needs { action: "confirm_all" }`), `estimated`, `missing`, `missingLabResults` (the results grid), `missingOther`, `unmatchedLines`, `open: { missing, needsConfirmation }`, and `canGenerate` (nothing required open and every line matched or ignored). `cost`: the invoice's AI cost from the ledger so far (`attempts`, `costUsd`, `byFeature`).
+    Permission: `update_invoices`. 409 `INVOICE_NOT_REVIEWED` before the invoice is under review.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "202": { description: "`{ taskId, stages }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: INVOICE_NOT_REVIEWED }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }
