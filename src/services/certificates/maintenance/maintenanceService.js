@@ -37,7 +37,8 @@ async function referencedFileIds() {
     UNION SELECT thumbnail_file_id FROM certificate_versions
     UNION SELECT final_pdf_file_id FROM certificates
     UNION SELECT zip_file_id FROM certificate_batches
-    UNION SELECT source_file_id FROM catalogue_versions`; // a catalogue is kept forever (plan.md §15.7)
+    UNION SELECT source_file_id FROM catalogue_versions
+    UNION SELECT file_id FROM supplier_coas`; // a catalogue is kept forever (plan.md §15.7); a supplier COA while its upload exists (item 4)
   return new Set(rows.map((r) => r.id).filter(Boolean));
 }
 

@@ -151,6 +151,10 @@ export const MODELS = {
   // product's identity there. Its own name (not WEB_SEARCH, the label engine's)
   // so the two can be tuned independently. One call per product per 90 days.
   CERT_WEB_LOOKUP: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 1024, temperature: 0 },
+  // Item 4: a supplier COA / lab report (the file itself, natively) -> per batch, the
+  // printed results with verbatim quotes that code checks against the document's text.
+  // Copying, not reasoning: thinking off. One call per uploaded document.
+  CERT_COA_EXTRACT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 0, temperature: 0 },
 
   // Product catalogues as source documents (plan.md §15, A6).
   // Block text → a schema-bound product record where every value carries a

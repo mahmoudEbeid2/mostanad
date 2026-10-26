@@ -21,6 +21,7 @@ import { saveProductData } from "../insights/productNeeds.js";
 import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } from "./gapResolver.js";
 import { loadProfiles, profileValue, rememberValue, profileAllowed } from "./productProfile.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
+import { loadBatchResults, batchValue, reusedProvenance, rememberBatchResult, batchOf } from "../labResults/batchResults.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
 //   plan (templateSelector) × each template field → one CertificateDataNeed:
@@ -42,6 +43,8 @@ import { publicAiError } from "../../ai/aiErrorMessage.js";
 // A value proven by a verbatim quote is filled directly (resolved_ai, provenance
 // filled: "direct") when the company's fillVerifiedDirectly is on (default); estimates
 // stay inferred / web_found (provenance estimated: true) until a person confirms them.
+// Item 4 (owner, 2026-10-26): a lab result confirmed for the same company + product + batch
+// number (a person, or a verified supplier COA) is `reused` too (provenance kind batch_result).
 export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found", "catalogue_found", "reused"];
 export const AWAITING = ["needs_confirmation", "inferred", "web_found", "catalogue_found"]; // a value a person must accept
 export const BLOCKING = ["missing", ...AWAITING];
@@ -73,7 +76,7 @@ const markAsked = (row, step) => {
   if (askedBy(row, step)) return row.aiAskedBasis;
   return `${row.aiAskedBasis}|${step === "gap" ? "G" : step}`;
 };
-const CHECKABLE = ["review", "ready", "generated", "partially_failed"];
+export const CHECKABLE = ["review", "ready", "generated", "partially_failed"];
 const MAX_VALUE = 500;
 
 const normLabel = (s) =>
@@ -131,7 +134,9 @@ async function loadContext(invoice) {
   const settings = await getAiSettings(invoice.companyId);
   // item 3: each matched product's certificate profile (the company's own rows only)
   const profiles = settings.rememberProductValues ? await loadProfiles(invoice.companyId, items.map((it) => it.product?.id)) : new Map();
-  return { plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries, blocks: new Map(blocks.map((b) => [b.id, b])), settings, profiles };
+  // item 4: lab results already confirmed for these lines' (product, batch number) pairs
+  const batchResults = await loadBatchResults(invoice.companyId, items.filter((it) => it.product));
+  return { batchResults, plan, items, versions: new Map(versions.map((v) => [v.id, v])), fields, company, invoiceBrand, pathSynonyms: pathSynonymMap(dict.entries), dictEntries: dict.entries, blocks: new Map(blocks.map((b) => [b.id, b])), settings, profiles };
 }
 
 /** A verified (quoted) value: filled directly, or waiting for a person when the company turned direct filling off. */
@@ -171,6 +176,31 @@ function entryContext(entry, ctx, invoice) {
   return c;
 }
 
+// ── lab results (item 4, owner 2026-10-26) ───────────────────────────────────
+// A field marked lab result is NEVER filled by inference or the web, on any path: not by
+// the inference / web tiers (policy), not by an estimate on the product, not by a product
+// value that inference or the web put there, even one a person confirmed later.
+const inferredOrigin = (p) => !!p && (["I", "W"].includes(p.tier) || p.estimated === true || ["web", "product_estimate"].includes(p.kind));
+export const fromInferenceOrWeb = (p) => inferredOrigin(p) || inferredOrigin(p?.from);
+
+/** A lab-result field's code value read from a product path that inference or the web filled → not a value. */
+function guardLabResult(field, r, rawProduct) {
+  if (!isLabResult(field) || r.resolved === "" || field.source?.kind !== "product" || !rawProduct) return r;
+  const prov = provenanceFor(rawProduct, canonicalFull(fromSource(field.source)));
+  return inferredOrigin(prov) ? { ...r, resolved: "", refused: true } : r;
+}
+
+/**
+ * "Show the specification instead": the field prints what its specification field
+ * holds and never asks for a result. → the need it mirrors, or null (it stays missing)
+ * — never a specification inference or the web produced.
+ */
+function specMirror(field, specRow) {
+  if (!specRow || specRow.value === null) return null;
+  if (!["resolved", ...USABLE].includes(specRow.status) || fromInferenceOrWeb(specRow.provenance)) return null;
+  return { status: "reused", value: specRow.value, provenance: { kind: "spec_instead", specFieldKey: field.specFieldKey, from: specRow.provenance } };
+}
+
 // ── compute ──────────────────────────────────────────────────────────────────
 /** Code resolution of every need of the invoice, merged with what was already decided. → rows */
 async function computeCode(invoice, ctx) {
@@ -181,21 +211,31 @@ async function computeCode(invoice, ctx) {
   for (const entry of ctx.plan.entries) {
     const rctx = entryContext(entry, ctx, invoice);
     const itemId = entry.scope === "per_product" ? entry.invoiceItemIds[0] : null;
-    for (const field of ctx.fields.get(entry.templateVersionId) || []) {
+    const item = itemId ? ctx.items.find((i) => i.id === itemId) : null;
+    // a field showing its specification follows that field, so it is computed after the others
+    const versionFields = ctx.fields.get(entry.templateVersionId) || [];
+    const entryRows = new Map(); // fieldKey → this entry's row
+    for (const field of [...versionFields.filter((f) => !f.showSpecInstead), ...versionFields.filter((f) => f.showSpecInstead)]) {
       const key = `${entry.planKey}|${field.key}`;
       keep.add(key);
-      const r = resolveField(field, rctx);
+      const r = guardLabResult(field, resolveField(field, rctx), item?.product);
       const basis = sha16(stableStringify({ source: field.source, required: field.required, productId: entry.productId, itemId, category: field.dataCategory }));
       const prev = byKey.get(key);
       let code = r.resolved !== ""
         ? { status: "resolved", value: r.resolved, provenance: codeProvenance(field, r) }
         : { status: field.required ? "missing" : "not_applicable", value: null, provenance: null };
-      if (r.resolved === "") {
+      if (r.resolved === "" && field.showSpecInstead) {
+        // refused: the specification on the product came from inference / the web → not printed as a result
+        if (!r.refused) code = specMirror(field, entryRows.get(field.specFieldKey)) || code;
+      } else if (r.resolved === "") {
         const offer = codeOffer(field, entry, ctx, rctx);
         const seen = { basis, aiAskedBasis: prev && prev.basis === basis ? prev.aiAskedBasis : null };
+        // item 4: a lab result of the same product + batch, confirmed before (a person or a verified supplier COA)
+        const batchHit = item ? batchValue(ctx.batchResults, item, field) : null;
         // item 3: the product's certificate profile — proven or confirmed before, so nobody and no AI is asked again
-        const saved = entry.productId ? profileValue(ctx.profiles, entry.productId, field) : null;
-        if (saved) code = { status: "reused", value: storedValue(field, saved.value), provenance: { kind: "profile", profileId: saved.id, estimated: saved.estimated, confirmedByUserId: saved.confirmedByUserId, confirmedAt: saved.confirmedAt, from: saved.provenance } };
+        const saved = !batchHit && entry.productId ? profileValue(ctx.profiles, entry.productId, field) : null;
+        if (batchHit) code = { status: "reused", value: storedValue(field, batchHit.value), provenance: reusedProvenance(batchHit) };
+        else if (saved) code = { status: "reused", value: storedValue(field, saved.value), provenance: { kind: "profile", profileId: saved.id, estimated: saved.estimated, confirmedByUserId: saved.confirmedByUserId, confirmedAt: saved.confirmedAt, from: saved.provenance } };
         else if (offer && !askedBy(seen, offer.step)) {
           code = { status: offer.status, value: storedValue(field, offer.value), provenance: offer.provenance, aiAskedBasis: markAsked(seen, offer.step) };
           if (offer.status === "resolved_ai") await rememberValue({ companyId: invoice.companyId, productId: entry.productId, field, value: offer.value, provenance: offer.provenance, invoiceId: invoice.id });
@@ -217,6 +257,7 @@ async function computeCode(invoice, ctx) {
             create: { companyId: invoice.companyId, invoiceId: invoice.id, planKey: entry.planKey, fieldKey: field.key, ...base, ...code },
             update: {},
           });
+      entryRows.set(field.key, row);
       out.push({ row, field, entry });
     }
   }
@@ -237,6 +278,8 @@ async function computeCode(invoice, ctx) {
  */
 function codeOffer(field, entry, ctx, rctx) {
   if (entry.scope !== "per_product") return null;
+  // item 4: never an estimate (or a catalogue value) for a lab result
+  if (isLabResult(field)) return null;
   const raw = ctx.items.find((i) => i.id === entry.invoiceItemIds[0])?.product;
   if (!raw) return null;
   if (field.source?.kind === "product") {
@@ -265,7 +308,8 @@ function codeOffer(field, entry, ctx, rctx) {
 /** The AI step: one call for every missing need not asked with this basis before. */
 async function fillGaps(invoice, ctx, rows, { generate, settings }) {
   const ai = { used: false, calls: 0, asked: 0, filled: 0, rejected: 0 };
-  const open = rows.filter((x) => x.row.status === "missing" && !askedBy(x.row, "gap"));
+  // a field printing its specification is never asked for (it follows its specification field)
+  const open = rows.filter((x) => x.row.status === "missing" && !x.field.showSpecInstead && !askedBy(x.row, "gap"));
   if (!open.length) return ai;
   if (!aiAllowed(settings, "allowInvoiceGapFill")) {
     ai.unavailable = true;
@@ -634,6 +678,19 @@ export async function refreshIfChecked(invoice) {
   return true;
 }
 
+/**
+ * Code-only recheck after values were written outside a check (results grid, supplier COA):
+ * batch results are re-read, so every line of a batch gets them. No AI. → the view
+ */
+export async function recheckCode(invoiceId, companyScope) {
+  return serialized(invoiceId, async () => {
+    const invoice = await loadInvoice(invoiceId, companyScope);
+    const ctx = await loadContext(invoice);
+    await computeCode(invoice, ctx);
+    return buildView(invoice, ctx);
+  });
+}
+
 /** → { missing, needsConfirmation } counts of required needs that block generation. */
 export async function blockingCounts(invoiceId) {
   const rows = await prisma.certificateDataNeed.groupBy({ by: ["status"], where: { invoiceId, required: true, status: { in: BLOCKING } }, _count: { _all: true } });
@@ -665,7 +722,7 @@ async function buildView(invoice, ctx, ai = null) {
   const needView = (r) => {
     const f = fieldFor(r);
     const display = r.value !== null && f ? applyFormat(r.value, f.format).value : r.value;
-    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt, estimated: r.provenance?.estimated === true, labResult: isLabResult(f) };
+    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt, estimated: r.provenance?.estimated === true, labResult: isLabResult(f), ...(f?.showSpecInstead ? { showsSpecification: true, specFieldKey: f.specFieldKey } : {}) };
   };
   const certificates = ctx.plan.entries
     .filter((e) => byPlan.has(e.planKey))
@@ -687,9 +744,9 @@ async function buildView(invoice, ctx, ai = null) {
     });
   // batch data (lab results): one input per line and label, whatever the number of certificate types needing it
   const batch = new Map();
-  for (const r of rows.filter((x) => x.invoiceItemId && (x.category === "batch_data" || isLabResult(fieldFor(x))))) {
+  for (const r of rows.filter((x) => x.invoiceItemId && (x.category === "batch_data" || isLabResult(fieldFor(x))) && !fieldFor(x)?.showSpecInstead)) {
     const item = itemById.get(r.invoiceItemId);
-    if (!batch.has(r.invoiceItemId)) batch.set(r.invoiceItemId, { invoiceItemId: r.invoiceItemId, lineNo: item?.lineNo ?? null, productName: item?.product?.name || item?.data?.name || null, batchNo: item?.data?.batchNo || null, fields: new Map() });
+    if (!batch.has(r.invoiceItemId)) batch.set(r.invoiceItemId, { invoiceItemId: r.invoiceItemId, lineNo: item?.lineNo ?? null, productName: item?.product?.name || item?.data?.name || null, batchNo: item?.data?.batchNo || null, noBatch: !batchOf(item), fields: new Map() });
     const fields = batch.get(r.invoiceItemId).fields;
     const k = normLabel(r.label);
     if (!fields.has(k)) fields.set(k, { labelKey: k, label: r.label, needIds: [], statuses: [], value: null, required: false });
@@ -712,6 +769,8 @@ async function buildView(invoice, ctx, ai = null) {
         status: g.statuses.some((s) => s === "missing") ? "missing" : g.statuses.some((s) => s === "needs_confirmation") ? "needs_confirmation" : g.statuses.every((s) => s === "not_applicable") ? "not_applicable" : g.statuses.some((s) => s === "provided") ? "provided" : g.statuses[0],
       })),
     }));
+  // item 4: a line whose lab results can't be kept for its batch (nothing to key them by)
+  const warnings = batchData.filter((b) => b.noBatch).map((b) => ({ code: "NO_BATCH_NUMBER", invoiceItemId: b.invoiceItemId, lineNo: b.lineNo, message: `Line ${b.lineNo ?? "?"}: no batch number — results can't be reused` }));
   const count = (s) => rows.filter((r) => r.status === s).length;
   const blocking = rows.filter((r) => r.required && BLOCKING.includes(r.status)).length;
   // A5: what the panel may offer (web lookup only on request, only where policy allows)
@@ -740,6 +799,7 @@ async function buildView(invoice, ctx, ai = null) {
     tiers: { inference: aiAllowed(settings) && settings.allowProductInference, web: aiAllowed(settings) && settings.allowWebLookup, webEligible },
     certificates,
     batchData,
+    warnings,
     unassigned: ctx.plan.unassigned,
     ...(ai ? { ai } : {}),
     computedAt: new Date().toISOString(),
@@ -792,8 +852,17 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
   // "Confirm all" (item 3): every value of the invoice still waiting for a person, accepted as it is
   const expanded = decisions.flatMap((d) => (d.action === "confirm_all" ? all.filter((n) => AWAITING.includes(n.status) && n.value !== null).map((n) => ({ needId: n.id, action: "accept" })) : [d]));
   // a person's value is the product's from now on (its certificate profile), unless it is per batch / per invoice
-  const remember = (n, value, provenance, estimated = false) =>
-    n.productId ? rememberValue({ companyId: invoice.companyId, productId: n.productId, field: fieldFor(n), value, provenance, estimated, userId: userId || "person", invoiceId: invoice.id }) : null;
+  const remember = async (n, value, provenance, estimated = false) => {
+    // a field printing its specification keeps nothing: it is not a result, and not a product fact of its own
+    if (fieldFor(n).showSpecInstead) return null;
+    // item 4: a person's lab result belongs to the line's batch (reused on every line / invoice of it)
+    if (isLabResult(fieldFor(n)) && n.invoiceItemId) {
+      const item = ctx.items.find((i) => i.id === n.invoiceItemId);
+      const prov = { kind: "manual", via: "data_check", invoiceId: invoice.id, invoiceNumber: invoice.header?.invoiceNumber || null, ...(provenance?.kind === "supplier_coa" ? { from: provenance } : {}) };
+      return rememberBatchResult({ companyId: invoice.companyId, item, field: fieldFor(n), value, source: "manual", provenance: prov, userId: userId || "person", invoiceId: invoice.id });
+    }
+    return n.productId ? rememberValue({ companyId: invoice.companyId, productId: n.productId, field: fieldFor(n), value, provenance, estimated, userId: userId || "person", invoiceId: invoice.id }) : null;
+  };
   for (const d of expanded) {
     const need = byId.get(d.needId);
     if (!need) throw notFound("Data need");
@@ -811,7 +880,9 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
             await confirmEstimate(need.productId, invoice.companyId, need.provenance.path || savedTo, userId);
           } else {
             await saveProductData(need.productId, invoice.companyId, { values: { [savedTo]: need.value } });
-            if (need.status === "catalogue_found") await recordFieldProvenance(need.productId, invoice.companyId, savedTo, { ...need.provenance, confirmedByUserId: userId, confirmedAt: now.toISOString() });
+            // item 4: the product keeps where the value came from (catalogue, inference or the web), so a
+            // lab result never takes an inferred / web value from the product later
+            await recordFieldProvenance(need.productId, invoice.companyId, savedTo, { ...need.provenance, tier: need.provenance?.tier || { inferred: "I", web_found: "W", catalogue_found: "C" }[need.status], confirmedByUserId: userId, confirmedAt: now.toISOString() });
           }
         }
         await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "resolved_ai", decidedByUserId: userId, decidedAt: now, ...(savedTo ? { provenance: { ...(need.provenance || {}), savedToProduct: savedTo } } : {}) } });

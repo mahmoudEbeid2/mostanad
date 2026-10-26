@@ -191,6 +191,32 @@ export const invoiceSchemas = {
   itemById: { params: itemParams, query: companyQuery },
 };
 
+// Item 4 — the results grid and supplier COAs
+const gridRowKey = z.string().regex(/^(b:[0-9a-f-]{36}:[\p{L}\p{N}]{1,100}|l:[0-9a-f-]{36})$/u, "rowKey is one the grid gave");
+export const labResultSchemas = {
+  grid: { params: idParams, query: companyQuery },
+  save: {
+    params: idParams,
+    query: companyQuery,
+    body: z.object({
+      rows: z
+        .array(
+          z
+            .object({
+              rowKey: gridRowKey,
+              batchNo: z.string().max(100).optional(), // a line without one: asked first; empty = this line only
+              values: z.record(z.string().max(200), z.string().max(500).nullable()).optional(),
+            })
+            .strict()
+        )
+        .min(1)
+        .max(200),
+    }),
+  },
+  upload: { params: idParams, query: companyQuery },
+  coaById: { params: z.object({ id: uuid, coaId: uuid }), query: companyQuery },
+};
+
 const expectedVersionBody = z.object({ expectedVersion: z.number().int().min(1) });
 
 export const certificateSchemas = {

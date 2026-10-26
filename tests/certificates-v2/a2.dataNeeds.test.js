@@ -227,9 +227,9 @@ try {
   assert("template prepared + active", prep?.status === "completed" && r.status === 200, r.data);
   const pG = await prisma.product.create({ data: { companyId: coG.id, name: "ADD-E120", productCode: "ADDE120" } });
   const src = await fileStore.putFile({ companyId: coG.id, kind: "invoice_source", buffer: fs.readFileSync(path.join(FIXTURES, "outlined_text.pdf")), mimeType: "application/pdf" });
-  const mkInvoice = async (no) => {
-    const inv = await prisma.invoice.create({ data: { companyId: coG.id, status: "ready", sourceFileId: src.id, header: { invoiceNumber: no }, headerExtracted: {}, textContent: `=== Page 1 ===\nINVOICE ${no}\n1 | ADD-E120 1L | ADDE120 | AVVS77 | Mfg 06/2026 | 10` } });
-    const data = { name: "ADD-E120 1L", code: "ADDE120", batchNo: "AVVS77", productionDate: null, extra: {} };
+  const mkInvoice = async (no, batch = "AVVS77") => {
+    const inv = await prisma.invoice.create({ data: { companyId: coG.id, status: "ready", sourceFileId: src.id, header: { invoiceNumber: no }, headerExtracted: {}, textContent: `=== Page 1 ===\nINVOICE ${no}\n1 | ADD-E120 1L | ADDE120 | ${batch} | Mfg 06/2026 | 10` } });
+    const data = { name: "ADD-E120 1L", code: "ADDE120", batchNo: batch, productionDate: null, extra: {} };
     await prisma.invoiceItem.create({ data: { invoiceId: inv.id, lineNo: 1, data, dataExtracted: data, productId: pG.id, matchStatus: "matched", matchMethod: "exact_code" } });
     return inv;
   };
@@ -257,7 +257,8 @@ try {
   r = await api("POST", `/certificates/${cert.id}/fields/ph_result/reset`, G, { expectedVersion: cert.currentVersion });
   const reset = await prisma.certificateVersion.findFirst({ where: { certificateId: cert.id }, orderBy: { versionNumber: "desc" } });
   assert("'reset to source' keeps the check's value (the need comes first)", r.status === 200 && reset.values.ph_result.value === "4.0" && reset.values.ph_result.origin === "data_check", reset.values.ph_result);
-  const invG2 = await mkInvoice("G-2");
+  // another batch: its pH result is genuinely open (G-1 batch AVVS77 would reuse 4.0 — item 4)
+  const invG2 = await mkInvoice("G-2", "AVVS78");
   await computeNeeds(invG2.id, coG.id, { ai: false });
   r = await api("POST", `/invoices/${invG2.id}/generate`, G, { force: true });
   assert("'Generate anyway' (force, update_certificates) → 202", r.status === 202, r.data);

@@ -4,14 +4,16 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas, labResultSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
 import * as certificates from "../controllers/certificatesV2/certificateController.js";
 import * as certificateAi from "../controllers/certificatesV2/certificateAiController.js";
 import * as aiCosts from "../controllers/certificatesV2/aiCostController.js";
+import * as labResults from "../controllers/certificatesV2/labResultController.js";
 import { MAX_INVOICE_BYTES } from "../services/certificates/invoices/invoiceService.js";
+import { MAX_COA_FILES } from "../services/certificates/labResults/coaService.js";
 
 // Certificates V2 API (CERTIFICATES_V2_PLAN.md §12). Every route: protect +
 // restrictToPermission + tenant scoping in the service (cross-tenant → 404).
@@ -122,6 +124,12 @@ router.post("/invoices/:id/data-needs", guard("update_invoices"), validate(dataN
 router.patch("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.decide), certificateAi.decideDataNeeds);
 router.get("/invoices/:id/data-needs/diagnosis", guard("read_invoices"), validate(invoiceSchemas.byId), certificateAi.diagnoseDataNeeds);
 router.post("/invoices/:id/data-needs/web-lookup", guard("update_invoices"), validate(invoiceSchemas.byId), certificateAi.webLookup); // A5 §14.3
+// item 4: the results grid (one per invoice) and supplier COA / lab report uploads
+const uploadCoa = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_INVOICE_BYTES, files: MAX_COA_FILES } });
+router.get("/invoices/:id/lab-results", guard("read_invoices"), validate(labResultSchemas.grid), labResults.getGrid);
+router.put("/invoices/:id/lab-results", guard("update_invoices"), validate(labResultSchemas.save), labResults.saveGrid);
+router.post("/invoices/:id/supplier-coas", guard("update_invoices"), uploadCoa.array("files", MAX_COA_FILES), validate(labResultSchemas.upload), labResults.uploadCoas);
+router.delete("/invoices/:id/supplier-coas/:coaId", guard("update_invoices"), validate(labResultSchemas.coaById), labResults.deleteCoa);
 router.get("/certificate-batches/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getBatch);
 router.get("/certificates", guard("read_certificates"), validate(certificateSchemas.list), certificates.listCertificates);
 router.get("/certificates/:id", guard("read_certificates"), validate(certificateSchemas.byId), certificates.getCertificate);

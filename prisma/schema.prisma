@@ -752,7 +752,7 @@ model ShadowComparison {
 model StoredFile {
   id           String   @id @default(uuid())
   companyId    String?  @map("company_id") // null only for system assets
-  kind         String // template_source | template_sanitized | template_prepared | template_thumb | template_diff | invoice_source | certificate_html | certificate_pdf | batch_zip
+  kind         String // template_source | template_sanitized | template_prepared | template_thumb | template_diff | invoice_source | certificate_html | certificate_pdf | batch_zip | supplier_coa
   path         String // relative to uploads/, e.g. certificates/{companyId}/{uuid}.html
   mimeType     String   @map("mime_type")
   sizeBytes    Int      @map("size_bytes")

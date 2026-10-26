@@ -130,7 +130,9 @@ export function validateFieldList(input, lines, groups = []) {
       isLabResult: typeof raw.isLabResult === "boolean" ? raw.isLabResult : undefined,
       // owner setting: print the row's specification instead of a measured result
       showSpecInstead: raw.showSpecInstead === true,
-      specFieldKey: raw.showSpecInstead === true && typeof raw.specFieldKey === "string" ? raw.specFieldKey : null,
+      // its specification field: printed instead of a result (showSpecInstead), or shown next to
+      // the result in the results grid (item 4); null = the field has none
+      specFieldKey: typeof raw.specFieldKey === "string" && raw.specFieldKey ? raw.specFieldKey : null,
     };
     const p = (message) => problems.push({ key: f.key || `#${i + 1}`, message });
     if (!KEY_RE.test(f.key)) p("key must be snake_case (a-z, 0-9, _), starting with a letter");
@@ -178,6 +180,11 @@ export function validateFieldList(input, lines, groups = []) {
       f.isLabResult = true;
     }
   }
+  // a lab result's specification shown next to it in the results grid: another plain field
+  for (const f of fields.filter((x) => !x.showSpecInstead && x.specFieldKey)) {
+    const spec = fields.find((x) => x.key === f.specFieldKey);
+    if (!spec || spec.groupKey || spec.showSpecInstead || spec.key === f.key) problems.push({ key: f.key, message: `specFieldKey must name another plain field of this version (got "${f.specFieldKey}")` });
+  }
   // no overlapping ranges on the same line
   const sorted = fields.filter((f) => Number.isInteger(f.charStart)).sort((a, b) => (a.lineId === b.lineId ? a.charStart - b.charStart : a.lineId < b.lineId ? -1 : 1));
   for (let i = 1; i < sorted.length; i++) {
@@ -220,6 +227,23 @@ const groupView = (d) =>
     : { ok: false, error: d?.error || "NOT_DETECTED", message: d?.message || null };
 
 /**
+ * Fills in a field's stored "show the specification instead" and spec link when the
+ * request leaves them out (item 4). A kept link to a field removed in the same save
+ * goes; a kept "print the specification" still needs its specification (validation says so).
+ */
+export function keepStoredSpecSettings(input, storedRows) {
+  const stored = new Map((storedRows || []).map((s) => [s.key, s]));
+  const inputKeys = new Set((input || []).map((r) => r?.key));
+  return (input || []).map((raw) => {
+    const s = stored.get(raw?.key);
+    if (!s) return raw;
+    const showSpecInstead = raw.showSpecInstead === undefined ? s.showSpecInstead : raw.showSpecInstead;
+    const keptKey = showSpecInstead || inputKeys.has(s.specFieldKey) ? s.specFieldKey : null;
+    return { ...raw, showSpecInstead, ...(raw.specFieldKey === undefined ? { specFieldKey: keptKey } : {}) };
+  });
+}
+
+/**
  * PUT /template-versions/:id/fields — replaces the full list (idempotent).
  * `groupsInput` (§7.8): omitted = the stored groups are kept; [] removes them.
  * Draft only. → { fields, groups, groupDetection, suggestions: { [key]: { align } }, fieldsHash }
@@ -230,7 +254,11 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
     throw new CertError("VERSION_NOT_DRAFT", `Fields can only be changed on a draft version (this one is ${version.status}). Create a new version to change them.`, 409);
   }
   const rawGroups = groupsInput === undefined ? await listGroups(versionId) : groupsInput || [];
-  const { fields, problems } = validateFieldList(input, version.lines, rawGroups);
+  // a client that doesn't send "show the specification instead" / the spec link (older UI,
+  // autosave of other edits) never resets what the owner or "Fix this template" set (item 4)
+  const storedSpec = await prisma.templateField.findMany({ where: { versionId }, select: { key: true, showSpecInstead: true, specFieldKey: true } });
+  const kept = keepStoredSpecSettings(input, storedSpec);
+  const { fields, problems } = validateFieldList(kept, version.lines, rawGroups);
   const { groups, problems: groupProblems } = validateGroupList(rawGroups, fields);
   problems.push(...groupProblems);
   // a group's list must exist for this template's certificates (§10.3)
@@ -305,7 +333,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         inferencePolicy: policyToStore(f, f.inferencePolicy),
         isLabResult: f.isLabResult === true,
         showSpecInstead: f.showSpecInstead === true,
-        specFieldKey: f.showSpecInstead ? f.specFieldKey : null,
+        specFieldKey: f.specFieldKey || null,
       })),
     }),
     prisma.templateGroup.createMany({

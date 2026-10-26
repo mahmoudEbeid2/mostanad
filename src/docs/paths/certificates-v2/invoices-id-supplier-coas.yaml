@@ -1,0 +1,25 @@
+# /invoices/{id}/supplier-coas — fill automatically, item 4: supplier COA / lab report uploads.
+post:
+  tags: ["Invoices"]
+  summary: Upload supplier COAs / lab reports (read in the background)
+  description: |
+    multipart `files` (1–10; PDF, PNG, JPEG or WebP by magic bytes; ≤ 15 MB each). → 202 `{ taskId, coas[] }`; poll `/background-tasks/:taskId` (socket `job_status_update`, `stage: "supplier_coa"`).
+    The job makes ONE `CERT_COA_EXTRACT` call per document (ai_runs + AI cost ledger feature `certificates.coa`). CODE accepts a value only when: its batch number is printed in the document (as a whole token) and is the batch number of a line of this invoice (one product); the value is inside its quote and the quote is in the document's text (page from code; a document printing several batches → on a page printing that batch); and the document gives that result one value. Everything else is listed in `rejected[]` with the reason.
+    Text-layer PDF (`textSource: "pdf_text"`, code read the text) → accepted values become the batch's results (`source: supplier_coa`, `{ coaId, fileName, page, quote }`), reused on every line and invoice of that batch; grid source "Supplier COA p.N". A scan / image (`textSource: "transcription"`, quotes checked only against the model's own transcription) → the values go to the data check as `needs_confirmation` and become the batch's result when a person accepts them.
+    A document that can't be read: its row gets `status: "failed"` and `error` = the provider's message; the others go on; all of them failing fails the task. 409 `AI_DISABLED` when AI is off for the company. Permission: `update_invoices`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema: { type: object, properties: { files: { type: array, items: { type: string, format: binary } } } }
+  responses:
+    "202": { description: "`{ taskId, coas }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: NO_FILES · TOO_MANY_FILES · UNSUPPORTED_FORMAT · EMPTY_FILE }
+    "409": { description: INVOICE_NOT_REVIEWED · AI_DISABLED }
+    "413": { description: FILE_TOO_LARGE }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

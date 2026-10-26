@@ -100,7 +100,8 @@ try {
   down = await prisma.invoice.findUnique({ where: { id: down.id } });
   assert("AI down for both steps → the extraction still succeeds (review)", down.status === "review" && outDown.status === "review", outDown);
   assert("… match summary says why the AI was unavailable", down.matchSummary.ai.unavailable === true && /503/.test(down.matchSummary.ai.reason), down.matchSummary);
-  assert("… the check ran by code; its gaps stay missing and are asked next time", down.dataCheckedAt && outDown.dataCheck.missing === 8 && outDown.dataCheck.ai.unavailable === true, outDown.dataCheck);
+  // item 4: the same lines and batches as the first invoice, whose lab results a person accepted → those 2 are reused by code
+  assert("… the check ran by code; its gaps stay missing and are asked next time (the batch's 2 confirmed lab results reused)", down.dataCheckedAt && outDown.dataCheck.missing === 6 && outDown.dataCheck.reused === 2 && outDown.dataCheck.ai.unavailable === true, outDown.dataCheck);
   r = await api("POST", `/invoices/${down.id}/rematch`, A);
   const after = await prisma.invoice.findUnique({ where: { id: down.id } });
   assert("Re-run matching refreshes the stored summary (by: rematch)", r.status === 200 && after.matchSummary.by === "rematch", after.matchSummary);

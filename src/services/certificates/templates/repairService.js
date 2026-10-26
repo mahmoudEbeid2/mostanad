@@ -192,9 +192,10 @@ export function buildRepair(plan, baseFields, baseGroups, decisions = []) {
     }
     if (choice === "keep_fixed") continue;
     const base = { key: item.resultKey, label: `${item.rowLabel} result`, lineId: item.cell.lineId, charStart: item.cell.start, charEnd: item.cell.end, sampleValue: item.text, align: "left", required: true, origin: "manual", mappingOrigin: "manual", groupKey: null, sortOrder: 400 + fields.length };
-    if (choice === "lab_result_field") add({ ...base, source: { kind: "manual" }, format: null, dataCategory: "batch_data", isLabResult: true });
+    const specKey = item.spec?.fieldKey || specItemField.get(item.spec?.itemId)?.key;
+    // item 4: the result keeps its row's specification, shown next to it in the results grid
+    if (choice === "lab_result_field") add({ ...base, source: { kind: "manual" }, format: null, dataCategory: "batch_data", isLabResult: true, ...(specKey ? { specFieldKey: specKey } : {}) });
     else {
-      const specKey = item.spec?.fieldKey || specItemField.get(item.spec?.itemId)?.key;
       if (!specKey) problems.push({ id: item.id, message: "this row has no specification to show" });
       else add({ ...base, source: { kind: "manual" }, format: null, dataCategory: "batch_data", isLabResult: true, showSpecInstead: true, specFieldKey: specKey });
     }

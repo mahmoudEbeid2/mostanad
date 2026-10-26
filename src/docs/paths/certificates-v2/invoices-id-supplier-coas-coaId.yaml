@@ -1,0 +1,15 @@
+# /invoices/{id}/supplier-coas/{coaId} — fill automatically, item 4.
+delete:
+  tags: ["Invoices"]
+  summary: Delete an uploaded supplier COA
+  description: The upload and its file. Results already stored for a batch stay (they are that batch's results; clear them in the results grid). 409 `COA_BUSY` while it is being read. Permission `update_invoices`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - { name: coaId, in: path, required: true, schema: { type: string, format: uuid } }
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "204": { description: Deleted }
+    "409": { description: COA_BUSY }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }

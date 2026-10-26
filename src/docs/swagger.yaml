@@ -309,6 +309,12 @@ paths:
     $ref: './paths/certificates-v2/invoices-id-data-needs-diagnosis.yaml'
   /invoices/{id}/data-needs/web-lookup:
     $ref: './paths/certificates-v2/invoices-id-data-needs-web-lookup.yaml'
+  /invoices/{id}/lab-results:
+    $ref: './paths/certificates-v2/invoices-id-lab-results.yaml'
+  /invoices/{id}/supplier-coas:
+    $ref: './paths/certificates-v2/invoices-id-supplier-coas.yaml'
+  /invoices/{id}/supplier-coas/{coaId}:
+    $ref: './paths/certificates-v2/invoices-id-supplier-coas-coaId.yaml'
   /catalogues:
     $ref: './paths/catalogues/catalogues.yaml'
   /catalogues/{id}:

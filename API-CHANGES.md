@@ -438,3 +438,32 @@ Additive; no migration.
   (`update_products`) — **new**, tenant-scoped.
 - Web lookup: identity also accepts the product code as the second mark (name + manufacturer, brand or code); the
   per-check and per-day limits add `ai.web.limited` / `limitReason`; directly filled facts are counted in `ai.web.filled`.
+
+## Certificates — fill automatically, item 4: lab results (2026-10-26)
+
+- **Hard rule:** a field with `isLabResult: true` is never filled by inference or the web, on any path — not sent to
+  tier I / W (as before), and now also no estimate offered from the product (`codeOffer`), and no product value whose
+  `fieldProvenance` says inference or the web put it there (even one a person confirmed). Accepting a tier I / W /
+  catalogue value with `saveToProduct` now records that origin in the product's `fieldProvenance` (`tier` I / W / C).
+- `BatchResult` (table `batch_results`, migration `20261026100000_cert_batch_lab_results`): a lab result per
+  (company, product, batch number, label). Written only by a person (results grid, or accepting / typing a lab
+  result in the data check) or a supplier COA value code verified. The data check reuses it by code on every line /
+  invoice of the same company + product + batch number (case, spaces, punctuation ignored): status `reused`,
+  provenance `{ kind: "batch_result", batchResultId, batchNo, source, fromInvoiceId, fromInvoiceNumber, coaId?, page?, quote? }`.
+  A line without a batch number never stores or reuses one.
+- Data check view: `warnings[]` — `{ code: "NO_BATCH_NUMBER", invoiceItemId, lineNo, message: "Line N: no batch number — results can't be reused" }`;
+  `batchData[].noBatch`; a need of a field printing its specification has `showsSpecification: true`, `specFieldKey`.
+- "Show the specification instead": the field mirrors its specification field's need (status `reused`, provenance
+  `{ kind: "spec_instead", specFieldKey, from }`) unless that specification came from inference / the web; it is never
+  sent to the gap call, never a batch result, not in `batchData`. **Fix:** `PUT /template-versions/:id/fields` keeps a
+  field's stored `showSpecInstead` / `specFieldKey` when the request leaves them out (the Mark-fields save used to
+  erase what "Fix this template" set).
+- `TemplateField.specFieldKey` may now be set on any field (not only with `showSpecInstead`): a lab result's
+  specification, shown next to it in the results grid (422 unless it names another plain field). "Fix this template"
+  sets it on a "lab-result field" choice.
+- `GET /invoices/:id/lab-results` (`read_invoices`) and `PUT /invoices/:id/lab-results` (`update_invoices`) — **new**:
+  the results grid (see swagger).
+- `POST /invoices/:id/supplier-coas` (multipart `files`, ≤ 10) → 202 `{ taskId, coas }` and
+  `DELETE /invoices/:id/supplier-coas/:coaId` (`update_invoices`) — **new**. `SupplierCoa` (table `supplier_coas`).
+  Job `coa` on the invoice queue (task type `supplier_coa_extract`); AI kind `CERT_COA_EXTRACT`, ledger feature
+  `certificates.coa`. The daily orphan-file sweep keeps a COA's file while its upload exists.

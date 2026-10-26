@@ -31,6 +31,7 @@ export const FEATURES = [
   "certificates.dictionary",
   "certificates.inference",
   "certificates.web_lookup",
+  "certificates.coa",
 ];
 export const UNATTRIBUTED = "unattributed";
 
@@ -44,6 +45,7 @@ export const FEATURE_BY_RUN_KIND = {
   CERT_DICTIONARY: "certificates.dictionary",
   CERT_PRODUCT_INFER: "certificates.inference",
   CERT_WEB_LOOKUP: "certificates.web_lookup",
+  CERT_COA_EXTRACT: "certificates.coa",
   CATALOGUE_EXTRACT: "catalogue.extract",
   CATALOGUE_INFER: "catalogue.infer",
 };

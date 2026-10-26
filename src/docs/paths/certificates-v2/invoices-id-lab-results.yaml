@@ -1,0 +1,55 @@
+# /invoices/{id}/lab-results — fill automatically, item 4 (owner 2026-10-26): the results grid.
+get:
+  tags: ["Invoices"]
+  summary: The invoice's results grid (lab results per batch)
+  description: |
+    ONE grid per invoice, computed from the data check (no AI, no writes).
+    `columns`: one per lab-result field label its certificates need (`{ labelKey, label, required }`); fields printing their specification instead (`showSpecInstead`) are not columns — they never ask for a result.
+    `rows`: one per batch — every line of the same product + batch number (case, spaces and punctuation ignored) is ONE row (`rowKey` `b:<productId>:<batchNorm>`, `reusable: true`) — or one per line without a batch number (`rowKey` `l:<invoiceItemId>`, `noBatch: true`, `warning: { code: "NO_BATCH_NUMBER", message: "No batch number — results can't be reused" }`). Each row: `lines[{ invoiceItemId, lineNo }]`, `productName`, `batchNo`, `cells`.
+    `cells[labelKey]`: `{ value, status, required, needIds[], spec, inSpec, outOfSpec, source: { kind, text }, provenance }` — `spec` is the specification field's value (the field's `specFieldKey`, else the plain spec cell on its template row); `inSpec` true / false / null (null = not judged: only a single number against a numeric range or limit is judged); `source.text` e.g. "From batch AV-100 (invoice ZYIV25001)", "Supplier COA p.2", "Typed", "Invoice p.1".
+    `summary: { rows, batches, linesWithoutBatch, cells, filled, outOfSpec, blocking }`; `supplierCoas[]` — every COA uploaded on the invoice with its `accepted[]` / `rejected[{ reason }]`.
+    Permission: `read_invoices`. Another company's invoice → 404.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "`{ grid }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }
+put:
+  tags: ["Invoices"]
+  summary: Save results in the grid (one save fills every certificate of those batches)
+  description: |
+    `rows: [{ rowKey, batchNo?, values?: { [labelKey]: string | null } }]` (1–200).
+    `batchNo` — only on a row of a line without one (asked first): the line gets that batch number (recorded as `data.batchNoSource: { via: "results_grid" }`) and joins its batch's row. Left out or empty → the results stay on that line only and are never reused. A row that already has a batch number → 409 `BATCH_ALREADY_SET`.
+    A value → every need of that result on every line of the row becomes `provided` (provenance `{ kind: "manual", via: "results_grid", batchNo, batchResultId }`, or `{ lineOnly: true }`), and the batch's result is stored per (company, product, batch number, label) — reused by code on every other line or invoice of that batch. A supplier COA never overwrites a person's value.
+    `null` / "" → cleared: the row's lines lose it, and so does the batch's stored result.
+    Then a code-only recheck (no AI). → `{ grid }`. 422 `UNKNOWN_RESULT` for a label the row doesn't have; 404 `ROW_NOT_FOUND`. Permission: `update_invoices`.
+  parameters:
+    - $ref: "./_shared.yaml#/parameters/Id"
+    - $ref: "./_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [rows]
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                required: [rowKey]
+                properties:
+                  rowKey: { type: string }
+                  batchNo: { type: string, maxLength: 100 }
+                  values: { type: object, additionalProperties: { type: string, nullable: true, maxLength: 500 } }
+  responses:
+    "200": { description: "`{ grid }`", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "409": { description: INVOICE_NOT_REVIEWED · BATCH_ALREADY_SET }
+    "422": { description: UNKNOWN_RESULT · INVALID_BATCH }
+    "404": { $ref: "./_shared.yaml#/responses/E404" }
+    "401": { $ref: "./_shared.yaml#/responses/E401" }
+    "403": { $ref: "./_shared.yaml#/responses/E403" }
