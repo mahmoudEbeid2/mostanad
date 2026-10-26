@@ -182,11 +182,12 @@ export const invoiceSchemas = {
     query: companyQuery,
     body: z.object({ header: z.record(z.string(), cell).optional(), brandId: optionalUuid, country: optionalCountry }),
   },
-  addItem: { params: idParams, query: companyQuery, body: z.object({ data: itemData.optional(), productId: uuid.optional().nullable() }) },
+  // rememberAlias: the person explicitly asks to learn "this line name is this product" (owner, 2026-10-27)
+  addItem: { params: idParams, query: companyQuery, body: z.object({ data: itemData.optional(), productId: uuid.optional().nullable(), rememberAlias: z.boolean().optional() }) },
   updateItem: {
     params: itemParams,
     query: companyQuery,
-    body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional(), aiSuggestionId: uuid.optional() }),
+    body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional(), aiSuggestionId: uuid.optional(), rememberAlias: z.boolean().optional() }),
   },
   itemById: { params: itemParams, query: companyQuery },
 };

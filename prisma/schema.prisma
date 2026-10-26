@@ -1324,8 +1324,14 @@ model ProductAlias {
   aliasNorm String   @map("alias_norm") // normalizeName(invoice line name)
   productId String   @map("product_id")
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  origin    String // user_confirmed | ai_confirmed
+  origin    String // user_confirmed (ai_confirmed: legacy rows, before 2026-10-27 — never read)
   timesUsed Int      @default(1) @map("times_used")
+  // Explicit confirmation (owner, 2026-10-27): an alias is learned only when a person asks for it
+  // ("remember this name"). The matcher reads confirmed rows only; legacy rows have no confirmedAt.
+  confirmedAt         DateTime? @map("confirmed_at")
+  confirmedByUserId   String?   @map("confirmed_by_user_id") // null for a company session (the company itself confirmed)
+  sourceInvoiceId     String?   @map("source_invoice_id")
+  sourceInvoiceItemId String?   @map("source_invoice_item_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 

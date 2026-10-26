@@ -84,14 +84,15 @@ export function goldenMatchModel(idx, seed, { calls = [], override = null } = {}
   };
 }
 
-/** A person confirms every line as expected (the AI pick when it is the right one) — what makes aliases. */
-export async function confirmAsExpected(api, headers, invoiceId, idx, seed) {
+/** A person confirms every line as expected (the AI pick when it is the right one) and asks to remember
+ *  each name — what makes aliases (owner, 2026-10-27: only an explicit "remember" teaches one). */
+export async function confirmAsExpected(api, headers, invoiceId, idx, seed, { remember = true } = {}) {
   const items = await prisma.invoiceItem.findMany({ where: { invoiceId }, orderBy: { lineNo: "asc" } });
   for (const it of items) {
     const want = GOLDEN.invoices[idx].lines[it.lineNo - 1].expect;
     if (!want || (it.matchStatus === "matched" && it.productId === seed.products[want].id)) continue;
     const ai = (it.matchCandidates || []).find((c) => c.ai && c.productId === seed.products[want].id)?.ai;
-    await api("PATCH", `/invoices/${invoiceId}/items/${it.id}`, headers, { productId: seed.products[want].id, ...(ai ? { aiSuggestionId: ai.suggestionId } : {}) });
+    await api("PATCH", `/invoices/${invoiceId}/items/${it.id}`, headers, { productId: seed.products[want].id, ...(ai ? { aiSuggestionId: ai.suggestionId } : {}), ...(remember ? { rememberAlias: true } : {}) });
   }
 }
 

@@ -7,7 +7,9 @@
 //  - 0 cross-tenant candidates; the prompt carries only the company's products (P6)
 //  - adversarial picks refused: not a candidate, another tenant's product, an invented id
 //  - a contradicted pick loses confidence (never auto-accepted)
-//  - confirmation (a person's, or auto ≥ threshold) writes an alias → the same supplier's
+//  - an alias is learned ONLY when a person explicitly asks ("remember this name", owner 2026-10-27):
+//    never by an auto-accepted AI match, never by picking a product alone; who / when / which line is
+//    recorded, and rows without a confirmation are never read → the same supplier's
 //    next invoice matches with 0 AI calls
 //  - AI off / down → candidates as before (P8); re-matching reuses answers (0 calls)
 //  - API: confirm the AI pick (ai_confirmed), pick another (suggestion edited), tenancy
@@ -17,7 +19,7 @@ import { seedMatchingCompanies, runMatching, goldenMatchModel, loadInvoice, conf
 import { matchLine } from "../../src/services/certificates/matching/productMatcher.js";
 import { matchInvoice } from "../../src/services/certificates/matching/productMatcher.js";
 import { sizesOf, percentsOf, contradictions } from "../../src/services/certificates/matching/aiMatcher.js";
-import { rememberAlias } from "../../src/services/certificates/matching/productAliases.js";
+import { confirmAlias, aliasMap } from "../../src/services/certificates/matching/productAliases.js";
 
 const { assert, counts } = makeAssert();
 const seed = await seedMatchingCompanies("a3a");
@@ -91,16 +93,14 @@ try {
   const doxy = items[0].matchCandidates.find((c) => c.ai);
   assert("1 KG line, AI picks the 500 G product at 0.95 → halved, not auto-accepted, warning shown", items[0].matchStatus === "needs_match" && doxy?.ai.confidence < 0.5 && doxy.ai.reasons.some((r) => /⚠ invoice says 1 KG, product is 500 G/.test(r)), doxy);
   assert("uncontradicted picks ≥ 0.9 → matched ai_confirmed", items.filter((i) => i.matchMethod === "ai_confirmed").length === 7 && res.ai.autoAccepted === 7, res.ai);
-  const aiAliases = await prisma.productAlias.findMany({ where: { companyId: cid, origin: "ai_confirmed" } });
-  assert("each auto-accepted match wrote an alias (ai_confirmed)", aiAliases.length === 7 && aiAliases.some((a) => a.aliasNorm === "add e120 5 lt" && a.productId === P["ADD-E120 5L"].id), aiAliases.map((a) => a.aliasNorm));
+  assert("auto-accepted AI matches write NO alias (the AI never teaches the matcher)", (await prisma.productAlias.count({ where: { companyId: cid } })) === 0);
   const n = [];
   g = await runMatching(seed, 1, { generate: goldenMatchModel(1, seed, { calls: n }) });
-  assert("the same supplier's next invoice: learned lines by alias, correctly", g.items.filter((i) => i.matchMethod === "alias").length === 3 && g.score.perLine.filter((l) => l.method === "alias").every((l) => l.ok), g.score.perLine);
-  assert("… only the line that wasn't learned (its pick was contradicted) is asked: 1 call, 1 line", n.length === 1 && JSON.parse(n[0].contents[1].slice(7)).lines.length === 1, g.res.ai);
+  assert("the same supplier's next invoice: nothing by alias — its lines go to the AI again (1 call)", g.items.every((i) => i.matchMethod !== "alias") && n.length === 1 && JSON.parse(n[0].contents[1].slice(7)).lines.length >= 4, { methods: g.items.map((i) => i.matchMethod), calls: n.length });
   await api("PATCH", "/certificate-ai-settings", A, { autoAccept: false });
   await prisma.productAlias.deleteMany({ where: { companyId: cid } });
 
-  console.log("\n🧪 A person confirms (API) → aliases → next invoice 0 calls");
+  console.log("\n🧪 A person confirms and asks to remember (API) → aliases → next invoice 0 calls");
   const inv1 = await loadInvoice(cid, 0);
   await matchInvoice(inv1.id, { generate: goldenMatchModel(0, seed) });
   items = await itemsOf(inv1.id);
@@ -108,7 +108,15 @@ try {
   let r = await api("PATCH", `/invoices/${inv1.id}/items/${items[0].id}`, A, { productId: P["DOXYPHARMA 1KG"].id, aiSuggestionId: pick.suggestionId });
   assert("confirm the AI pick → matched, ai_confirmed", r.status === 200 && r.data.data.item.matchMethod === "ai_confirmed", r.data);
   assert("… suggestion accepted by that person's decision", (await prisma.aiSuggestion.findUnique({ where: { id: pick.suggestionId } })).status === "accepted");
-  assert("… alias written (user_confirmed)", (await prisma.productAlias.findFirst({ where: { companyId: cid, aliasNorm: "doxypharma 1 kg" } }))?.origin === "user_confirmed");
+  assert("… picking the product alone teaches nothing: no alias", (await prisma.productAlias.count({ where: { companyId: cid } })) === 0);
+  await prisma.invoice.update({ where: { id: inv1.id }, data: { status: "ready" } });
+  r = await api("PATCH", `/invoices/${inv1.id}/items/${items[0].id}`, A, { rememberAlias: true });
+  const learned = await prisma.productAlias.findFirst({ where: { companyId: cid, aliasNorm: "doxypharma 1 kg" } });
+  assert("“remember this name” → alias, confirmed, with the invoice line it came from", r.status === 200 && learned?.origin === "user_confirmed" && learned.confirmedAt && learned.sourceInvoiceId === inv1.id && learned.sourceInvoiceItemId === items[0].id && learned.productId === P["DOXYPHARMA 1KG"].id, learned);
+  assert("… remembering changes nothing on the line, so the confirmed invoice stays confirmed", (await prisma.invoice.findUnique({ where: { id: inv1.id } })).status === "ready");
+  await prisma.invoice.update({ where: { id: inv1.id }, data: { status: "review" } });
+  r = await api("PATCH", `/invoices/${inv1.id}/items/${items[2].id}`, A, { rememberAlias: true });
+  assert("remembering a line without a product → 409 NOTHING_TO_REMEMBER", r.status === 409 && r.data.code === "NOTHING_TO_REMEMBER", r.data);
   const pick2 = items[1].matchCandidates[0].ai;
   r = await api("PATCH", `/invoices/${inv1.id}/items/${items[1].id}`, A, { productId: P["DOXYPHARMA 1KG"].id });
   assert("choosing another product than the AI's → user match, suggestion recorded as edited", r.status === 200 && r.data.data.item.matchMethod === "user" && (await prisma.aiSuggestion.findUnique({ where: { id: pick2.suggestionId } })).status === "edited");
@@ -117,7 +125,7 @@ try {
   r = await api("PATCH", `/invoices/${inv1.id}/items/${items[2].id}`, F, { productId: P["ADD-E120 5L"].id });
   assert("another company → 404", r.status === 404, r.status);
   await confirmAsExpected(api, A, inv1.id, 0, seed);
-  await api("PATCH", `/invoices/${inv1.id}/items/${items[1].id}`, A, { productId: P["DOXYPHARMA 500G"].id }); // the person corrects line 2 — the alias follows
+  await api("PATCH", `/invoices/${inv1.id}/items/${items[1].id}`, A, { productId: P["DOXYPHARMA 500G"].id, rememberAlias: true }); // the person corrects line 2 and remembers it — the alias follows
   assert("a re-confirmation to another product replaces the alias", (await prisma.productAlias.findFirst({ where: { companyId: cid, aliasNorm: "doxypharma 500gr" } }))?.productId === P["DOXYPHARMA 500G"].id);
   r = await api("POST", `/invoices/${inv1.id}/rematch`, A);
   items = await itemsOf(inv1.id);
@@ -125,7 +133,10 @@ try {
   const z = [];
   g = await runMatching(seed, 1, { generate: goldenMatchModel(1, seed, { calls: z }) });
   assert("second upload from the same supplier → 0 AI match calls, every line matched by alias, correctly", z.length === 0 && g.items.every((i) => i.matchMethod === "alias") && g.score.correct === g.score.total, g.score.perLine);
-  assert("aliases never cross tenants", (await rememberAlias(seed.foreign.id, "DOXYPHARMA 1 KG", P["DOXYPHARMA 1KG"].id, "user_confirmed")) === null && (await prisma.productAlias.count({ where: { companyId: seed.foreign.id } })) === 0);
+  assert("aliases never cross tenants", (await confirmAlias({ companyId: seed.foreign.id, name: "DOXYPHARMA 1 KG", productId: P["DOXYPHARMA 1KG"].id })) === null && (await prisma.productAlias.count({ where: { companyId: seed.foreign.id } })) === 0);
+  // a row from before the rule (no confirmation) is never read
+  await prisma.productAlias.create({ data: { companyId: cid, aliasNorm: "legacy auto name", productId: P["DOXYPHARMA 1KG"].id, origin: "ai_confirmed" } });
+  assert("an alias nobody confirmed (legacy row) is never used by the matcher", !(await aliasMap(cid)).has("legacy auto name") && (await aliasMap(cid)).has("doxypharma 1 kg"));
 
   console.log("\n🧪 AI off / down → candidates as before (P8)");
   await prisma.productAlias.deleteMany({ where: { companyId: cid } });

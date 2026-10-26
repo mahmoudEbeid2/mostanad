@@ -1,6 +1,6 @@
 import { prisma } from "../../../lib/prisma.js";
 import { getAiSettings } from "../ai/aiSettings.js";
-import { aliasMap, rememberAlias } from "./productAliases.js";
+import { aliasMap } from "./productAliases.js";
 import { aiMatch, AI_CANDIDATES } from "./aiMatcher.js";
 import { catalogueCandidates } from "../../catalogues/searchService.js";
 
@@ -129,8 +129,8 @@ export async function matchInvoice(invoiceId, { generate } = {}) {
       pick.autoAccepted = false;
     }
     if (pick.autoAccepted) {
+      // this line only: an alias is learned only when a person asks for it (owner, 2026-10-27)
       Object.assign(u, { productId: pick.productId, matchStatus: "matched", matchMethod: "ai_confirmed", matchCandidates: null });
-      await rememberAlias(invoice.companyId, u.item.data?.name, pick.productId, "ai_confirmed");
       ai.autoAccepted++;
     } else {
       // the AI's pick first, marked, for a person to confirm (plan.md §7 "AI suggests X (0.78) — confirm")

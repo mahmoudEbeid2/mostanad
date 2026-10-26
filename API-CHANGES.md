@@ -475,3 +475,13 @@ Additive; no migration.
   progress; the result says what still needs a person (`prepared.toConfirm`, `missingLabResults`, `canGenerate`) and
   the invoice's AI cost so far. Task type `certificate_prepare`; job `prepare` on the invoice queue.
 
+## Certificates — product aliases need a person's explicit confirmation (2026-10-27)
+
+- **Behaviour change:** choosing a product for a line (`PATCH /invoices/:id/items/:itemId { productId }`,
+  `POST /invoices/:id/items`) and an auto-accepted AI match no longer learn an alias. A person asks for it
+  explicitly with `rememberAlias: true` (with or without a `productId`; alone it changes nothing on the line and a
+  confirmed invoice stays confirmed). 409 `NOTHING_TO_REMEMBER` when the line has no product.
+- `ProductAlias` gains `confirmedAt`, `confirmedByUserId`, `sourceInvoiceId`, `sourceInvoiceItemId` (additive
+  migration `20261027100000_cert_alias_confirmation`). The matcher reads confirmed aliases only: rows written before
+  this change (no `confirmedAt`) are never used.
+
