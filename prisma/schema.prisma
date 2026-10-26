@@ -99,6 +99,8 @@ model Company {
   productAliases       ProductAlias[]
   catalogues           Catalogue[]
   certificateValues    ProductCertificateValue[]
+  batchResults         BatchResult[]
+  supplierCoas         SupplierCoa[]
 
   @@map("companies")
 }
@@ -181,6 +183,7 @@ model Product {
   aliases           ProductAlias[]
   catalogueBlocks   CatalogueBlock[]
   certificateValues ProductCertificateValue[]
+  batchResults      BatchResult[]
 
   @@map("products")
 }
@@ -929,6 +932,7 @@ model Invoice {
   batches      CertificateBatch[]
   certificates Certificate[]
   dataNeeds    CertificateDataNeed[]
+  supplierCoas SupplierCoa[]
 
   @@index([companyId, createdAt])
   @@map("invoices")
@@ -1250,6 +1254,63 @@ model ProductCertificateValue {
   @@unique([companyId, productId, key])
   @@index([productId])
   @@map("product_certificate_values")
+}
+
+// A product batch's lab results (fill automatically, item 4, owner 2026-10-26): measured once
+// per batch, so a result confirmed for (company, product, batch number) is reused by code on
+// every other line / invoice of that batch — never inferred, never from the web, a catalogue or
+// a product profile. Written by a person (results grid) or from a supplier COA value code found
+// verbatim in the document for that batch. A line without a batch number keeps its results on
+// that line only (certificate_data_needs) — nothing to key them by, so they are never reused.
+model BatchResult {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId           String   @map("product_id")
+  product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batchNo             String   @map("batch_no") // as printed / typed
+  batchNorm           String   @map("batch_norm") // upper-case, no spaces / punctuation
+  labelNorm           String   @map("label_norm") // the result's normalised label ("ph result")
+  label               String
+  value               String
+  source              String // manual | supplier_coa
+  provenance          Json // { kind: manual } | { kind: supplier_coa, coaId, fileName, page, quote, textSource }
+  confirmedByUserId   String?  @map("confirmed_by_user_id")
+  sourceInvoiceId     String?  @map("source_invoice_id")
+  sourceInvoiceItemId String?  @map("source_invoice_item_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, productId, batchNorm, labelNorm])
+  @@index([companyId, batchNorm])
+  @@map("batch_results")
+}
+
+// A supplier certificate of analysis / lab report uploaded on an invoice (item 4). A background
+// job reads it (AI) and code accepts a result only when its value is in the document verbatim
+// (page + quote) and the document's batch number is the line's. result keeps what was accepted
+// and what was rejected, with the reason.
+model SupplierCoa {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoiceId        String   @map("invoice_id")
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fileId           String   @map("file_id")
+  fileName         String?  @map("file_name")
+  mimeType         String   @map("mime_type")
+  status           String   @default("uploaded") // uploaded | extracting | done | failed
+  pages            Int      @default(0)
+  textSource       String?  @map("text_source") // pdf_text (code read the text layer) | transcription (a scan: the model's page text)
+  result           Json? // { accepted: [...], rejected: [...] }
+  error            String?
+  taskId           String?  @map("task_id")
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId, invoiceId])
+  @@map("supplier_coas")
 }
 
 // Learned invoice name → product, per company (plan.md §4, §7; Phase A3).
