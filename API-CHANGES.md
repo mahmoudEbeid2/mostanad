@@ -493,3 +493,27 @@ Additive; no migration.
   `ai.inference.knownEmpty` count the values skipped this way. Lab results and invoice / batch values are never
   skipped (a new invoice may print them). Stored in `external_knowledge_cache`, kind `cert_gap_not_found`.
 
+
+## Certificates — what the AI may generate; batch facts protected (2026-10-27)
+
+- Two protected classes are never generated on any path (inference, web, catalogue, product profile, estimate
+  offer): lab results (`isLabResult`) and **batch facts** — new `TemplateField.isBatchFact` (batch / lot number,
+  production / manufacturing / expiry date). Batch facts come only from the invoice, a supplier COA, a packing list
+  or a person; a batch fact never takes a product / brand value.
+- `PUT /template-versions/:id/fields`: optional `isBatchFact` (boolean) per field — the owner's tick in Mark fields;
+  omitted = keep what is stored; a new field gets the pre-set (by label, or the invoice line's batch / date source).
+  `GET /template-versions/:id` fields carry `isBatchFact` as it applies (the tick, or the pre-set while undecided).
+  `POST …/repair` decisions accept `isBatchFact` too.
+- Everything else may be generated: a field's default inference policy is `product_facts_and_web` unless it is
+  protected or owned by the invoice / company / fixed text (category or source). Additive migration
+  `20261028100000_cert_batch_fact_and_open_inference`: the `is_batch_fact` column (nullable = undecided), its pre-set,
+  and every other field's stored policy opened to `product_facts_and_web`. Registration numbers stay out of
+  inference (web: official registry only).
+- `CERT_PRODUCT_INFER` accepts a fourth answer, `derivation: "typical"` — a value from general knowledge of the
+  product's type (e.g. an oral vitamin solution → "Clear yellow liquid"), anchored on exact quotes of this product's
+  facts, with `reasoning` and `generalKnowledge`. Always filled as estimated (status `inferred`, provenance
+  `estimated: true`, `estimateBasis`, `generalKnowledge`, `evidence`), so a person confirms it (Confirm all); code
+  rejects it for any field it may not fill.
+- Data check rows carry `batchFact`; the "what is missing" diagnosis has a `batch_fact` group.
+- Negative cache: an inference "came back empty" now records the prompt it was asked under; one recorded under an
+  earlier prompt (an older rule of what may be inferred) no longer counts.

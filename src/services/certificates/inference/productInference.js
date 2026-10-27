@@ -17,12 +17,17 @@ import { allowsInference } from "./policy.js";
 // is accepted: "estimate" — a value inferred from facts of THIS product, each
 // quoted verbatim; it is filled marked estimated and a person confirms it. Fields whose policy forbids
 // inference never reach the prompt, and an answer for one is ignored anyway.
+// Owner, 2026-10-27: every gap that reaches the prompt — never a protected one (lab result, batch
+// fact: policy.allowsInference) — may also be answered "typical": an estimate from general
+// knowledge of the product's TYPE, anchored on quoted facts of this product (its form, ingredients,
+// name). Always estimated, with its reasoning, the general fact and the facts used; code re-checks
+// the field's policy, so a "typical" answer for a field it may not fill is rejected.
 
 const MAX_PRODUCT_JSON = 16384;
 const SKIP = new Set(["id", "companyId", "categoryId", "brandId", "createdAt", "updatedAt"]);
 
 const INSTRUCTIONS = [
-  "You fill missing certificate values for a product from the product's OWN record only. Never use outside knowledge.",
+  "You fill missing certificate values for a product from the product's own record and, where the record doesn't say, general knowledge of products of its type (a \"typical\" answer, below).",
   "For each gap, either:",
   "- derivation \"quoted\": the value is written in a product field. evidence = [{ path, quote }] where path is the field's path in the record (e.g. storage, specifications.values[\"Shelf life\"]) and quote is an exact passage of that field containing the value; or",
   "- derivation \"derived\": the value is a deterministic transformation of quoted facts, and derivationKind is one of:",
@@ -33,6 +38,9 @@ const INSTRUCTIONS = [
   "- derivation \"estimate\": the value is NOT written in the record but follows from facts that are (e.g. appearance from the form and the ingredients).",
   "  evidence = every fact you used, each [{ path, quote }] with an exact quote; reasoning = how the value follows from them. It is shown to a person as an estimate to confirm.",
   "  Never estimate from what such products usually are without a fact of THIS product; then answer found=false.",
+  "- derivation \"typical\": the value is not in the record and doesn't follow from it alone, but is what a product of THIS type typically has, from your general knowledge of the type (e.g. appearance of an oral vitamin solution → \"Clear yellow liquid\"; storage, shelf life after opening, usage, warnings, packaging wording).",
+  "  evidence = the facts of THIS product that identify its type (dosage form, physical form, ingredients, name), each [{ path, quote }] with an exact quote; generalKnowledge = the general fact about such products you relied on; reasoning = how the value follows. It is shown to a person as an estimate to confirm.",
+  "  Prefer quoted / derived / estimate when the record supports them; answer found=false only when even the product's type says nothing about the gap.",
   "confidence 0–1; reasoning: one short sentence.",
 ].join("\n");
 
@@ -47,7 +55,7 @@ const RESPONSE_SCHEMA = {
           gapId: { type: "string" },
           found: { type: "boolean" },
           value: { type: "string", nullable: true },
-          derivation: { type: "string", enum: ["quoted", "derived", "estimate"], nullable: true },
+          derivation: { type: "string", enum: ["quoted", "derived", "estimate", "typical"], nullable: true },
           derivationKind: { type: "string", enum: DERIVATIONS, nullable: true },
           params: {
             type: "object",
@@ -56,6 +64,7 @@ const RESPONSE_SCHEMA = {
           },
           evidence: { type: "array", items: { type: "object", properties: { path: { type: "string" }, quote: { type: "string", nullable: true } }, required: ["path"] } },
           reasoning: { type: "string", nullable: true },
+          generalKnowledge: { type: "string", nullable: true },
           confidence: { type: "number" },
         },
         required: ["gapId", "found", "confidence"],
@@ -91,9 +100,11 @@ export function productRecord(product) {
 const scalar = (v) => ["string", "number"].includes(typeof v);
 
 /**
- * Verifies one tier-I answer against the product (pure). → { ok, value, provenance } | { ok: false, reason }
+ * Verifies one tier-I answer against the product (pure). `field`: the gap's field — a "typical" answer
+ * only fills a field code allows inference for (never a lab result or a batch fact).
+ * → { ok, value, provenance } | { ok: false, reason }
  */
-export function verifyInference(answer, product) {
+export function verifyInference(answer, product, { field = null } = {}) {
   if (!answer?.found) return { ok: false, reason: "not found" };
   const value = String(answer.value ?? "").trim();
   if (!value) return { ok: false, reason: "no value" };
@@ -130,7 +141,16 @@ export function verifyInference(answer, product) {
     if (!checked.every((c) => c.quote)) return { ok: false, reason: "every fact of an estimate needs an exact quote" };
     return { ok: true, value, estimated: true, provenance: { tier: "I", kind: "product_inference", derivation: "estimate", estimated: true, estimateBasis: basis.slice(0, 300), evidence: checked.map(({ path, quote }) => ({ path, quote })) } };
   }
-  return { ok: false, reason: "derivation must be quoted, derived or estimate" };
+  if (answer.derivation === "typical") {
+    // general knowledge of the product type: any field code allows inference for — never a protected one
+    if (!field || !allowsInference(field)) return { ok: false, reason: "a typical value is not allowed for this field (lab result, batch fact or never-field)" };
+    const basis = String(answer.reasoning || "").trim();
+    const knowledge = String(answer.generalKnowledge || "").trim();
+    if (!basis || !knowledge) return { ok: false, reason: "a typical value needs its reasoning and the general fact it rests on" };
+    if (!checked.every((c) => c.quote)) return { ok: false, reason: "every fact of this product it rests on needs an exact quote" };
+    return { ok: true, value, estimated: true, provenance: { tier: "I", kind: "product_inference", derivation: "typical", estimated: true, estimateBasis: basis.slice(0, 300), generalKnowledge: knowledge.slice(0, 300), evidence: checked.map(({ path, quote }) => ({ path, quote })) } };
+  }
+  return { ok: false, reason: "derivation must be quoted, derived, estimate or typical" };
 }
 
 /**
@@ -154,8 +174,8 @@ export async function askInference({ companyId, invoiceId, gaps }, { generate = 
   for (const g of allowed) {
     const raw = (result?.gaps || []).find((a) => a?.gapId === g.gapId);
     if (!raw) continue;
-    const answer = { ...raw, confidence: clampConfidence(raw.confidence), reasoning: raw.reasoning ? String(raw.reasoning).slice(0, 300) : null };
-    answers.set(g.gapId, { answer, verdict: verifyInference(answer, g.product) });
+    const answer = { ...raw, confidence: clampConfidence(raw.confidence), reasoning: raw.reasoning ? String(raw.reasoning).slice(0, 300) : null, generalKnowledge: raw.generalKnowledge ? String(raw.generalKnowledge).slice(0, 300) : null };
+    answers.set(g.gapId, { answer, verdict: verifyInference(answer, g.product, { field: g.field }) });
   }
   return { answers, run, inputHash, sent: allowed.map((g) => g.gapId) };
 }

@@ -103,6 +103,7 @@ const fieldDraft = z
     page: z.number().int().optional(),
     groupKey: z.string().max(60).nullable().optional(),
     isLabResult: z.boolean().optional(), // owner-set (Mark fields); omitted = keep the stored flag
+    isBatchFact: z.boolean().optional(), // owner-set (Mark fields); omitted = keep the stored flag
   })
   .passthrough();
 
@@ -135,6 +136,7 @@ const repairDecision = z
     format: z.record(z.string(), z.any()).nullable().optional(),
     category: z.string().max(30).optional(),
     isLabResult: z.boolean().optional(),
+    isBatchFact: z.boolean().optional(),
   })
   .strict();
 

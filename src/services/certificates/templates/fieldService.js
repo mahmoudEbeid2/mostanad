@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { policyToStore, defaultIsLabResult } from "../inference/policy.js";
+import { policyToStore, defaultIsLabResult, defaultIsBatchFact, isBatchFact } from "../inference/policy.js";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
@@ -128,6 +128,8 @@ export function validateFieldList(input, lines, groups = []) {
       inferencePolicy: typeof raw.inferencePolicy === "string" ? raw.inferencePolicy : undefined, // clamped on save (A5)
       // the owner's tick in "Mark fields"; undefined = keep what is stored (replaceFields), else the pre-set
       isLabResult: typeof raw.isLabResult === "boolean" ? raw.isLabResult : undefined,
+      // the owner's batch-fact tick (owner, 2026-10-27): true / false; undefined = keep what is stored, else the pre-set
+      isBatchFact: typeof raw.isBatchFact === "boolean" ? raw.isBatchFact : undefined,
       // owner setting: print the row's specification instead of a measured result
       showSpecInstead: raw.showSpecInstead === true,
       // its specification field: printed instead of a result (showSpecInstead), or shown next to
@@ -202,7 +204,8 @@ const publicField = (f) => {
 
 export async function listFields(versionId) {
   const rows = await prisma.templateField.findMany({ where: { versionId }, orderBy: [{ sortOrder: "asc" }, { key: "asc" }] });
-  return rows.map(publicField);
+  // the batch-fact tick as it applies: the owner's choice, or the pre-set while undecided
+  return rows.map((f) => ({ ...publicField(f), isBatchFact: isBatchFact(f) }));
 }
 
 export async function listGroups(versionId) {
@@ -276,11 +279,13 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
   }
   // review #10: a stored suggested/detected field can't become "manual" (and so
   // confirmed) by re-sending it; its confirmation is the one /fields/confirm stored
-  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true } })).map((s) => [s.key, s]));
+  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true, isBatchFact: true } })).map((s) => [s.key, s]));
   for (const f of fields) {
     const s = stored.get(f.key);
     // a client that doesn't send the lab-result tick (older UI, autosave of other edits) never resets the owner's choice
     if (f.isLabResult === undefined) f.isLabResult = s ? s.isLabResult : defaultIsLabResult(f);
+    // …nor the batch-fact one; a new field gets the pre-set (true), or stays undecided (null)
+    if (f.isBatchFact === undefined) f.isBatchFact = s ? s.isBatchFact : defaultIsBatchFact(f) ? true : null;
     if (s && s.origin !== "manual") {
       f.origin = s.origin;
       f.confirmed = s.confirmed === true;
@@ -332,6 +337,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         // A5 (plan.md §14.1): a person may tighten, never loosen past the category's default
         inferencePolicy: policyToStore(f, f.inferencePolicy),
         isLabResult: f.isLabResult === true,
+        isBatchFact: typeof f.isBatchFact === "boolean" ? f.isBatchFact : null,
         showSpecInstead: f.showSpecInstead === true,
         specFieldKey: f.specFieldKey || null,
       })),

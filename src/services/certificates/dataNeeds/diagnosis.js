@@ -3,7 +3,7 @@ import { loadInvoice } from "../invoices/invoiceService.js";
 import { listFields } from "../templates/fieldService.js";
 import { fromSource, resolve, parse } from "../paths/sourcePath.js";
 import { TEMPLATE_TOKEN_RE } from "../templates/sourceCatalogue.js";
-import { isLabResult } from "../inference/policy.js";
+import { isLabResult, isBatchFact } from "../inference/policy.js";
 import { maskEstimates } from "../../catalogues/fieldProvenance.js";
 
 // Why is a certificate value missing? (owner, 2026-10-24, item 1). Read-only:
@@ -17,7 +17,7 @@ import { maskEstimates } from "../../catalogues/fieldProvenance.js";
 //   invoice_data     — the invoice (line) doesn't carry it.
 // Reasons are computed by code from the stored rows; nothing is changed.
 
-export const DIAGNOSIS_GROUPS = ["template_mapping", "product_data", "lab_result", "invoice_data"];
+export const DIAGNOSIS_GROUPS = ["template_mapping", "product_data", "lab_result", "batch_fact", "invoice_data"];
 const GENERIC_LABEL = /^field\s*\d+$/i;
 const MAX_PRODUCTS = 2000;
 
@@ -41,6 +41,10 @@ const refsOf = (source) =>
 export function classifyMissing(field, ctx) {
   if (!field) return { group: "template_mapping", reason: "the template field no longer exists in this version — run the data check again" };
   const label = String(field.label || "");
+  // a batch fact read from the invoice falls through to "the invoice line has no …" below
+  if (!isLabResult(field) && isBatchFact(field) && !["item", "invoice"].includes(field.source?.kind)) {
+    return { group: "batch_fact", reason: "a batch fact (batch / lot number, production or expiry date): never generated — only the invoice, a supplier COA, a packing list or a person" };
+  }
   if (isLabResult(field)) {
     const batch = String(ctx.item?.batchNo || "").trim();
     return {

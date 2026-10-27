@@ -873,6 +873,11 @@ model TemplateField {
   // catalogue or a product profile — only a supplier COA, a previous result of the same batch
   // or a person. Owner-set in "Mark fields"; pre-set for result / assay / complies / conforms labels.
   isLabResult         Boolean         @default(false) @map("is_lab_result")
+  // A batch fact (owner, 2026-10-27): batch / lot number, production / manufacturing date, expiry
+  // date — never generated on any path (no inference, web, catalogue or product profile); only
+  // the invoice, a supplier COA, a packing list or a person. Owner-set in "Mark fields" (true /
+  // false); null = not decided yet → the pre-set by label / invoice-line source applies.
+  isBatchFact         Boolean?        @map("is_batch_fact")
   // Owner setting (never automatic): this lab-result field prints its row's specification
   // instead of a measured value. specFieldKey names that specification field (same version);
   // the server keeps this field's source/format equal to it.

@@ -9,6 +9,8 @@ import { profileAllowed, profileKey } from "./productProfile.js";
 // fingerprint means the data changed, so the step may ask again.
 // Product facts only: lab results and invoice / batch values are never cached here (a new invoice
 // may print them). Stored in external_knowledge_cache, kind cert_gap_not_found, tenant in the key.
+// A step may also pass its prompt hash: an entry recorded under another prompt (the rule of what may
+// be inferred changed) no longer counts, so the field is asked again under the new rule.
 
 export const NEGATIVE_KIND = "cert_gap_not_found";
 const VOLATILE = new Set(["createdAt", "updatedAt", "brand", "category"]);
@@ -25,8 +27,8 @@ const keyOf = (companyId, productId, step, field) => `${companyId}|${productId}|
 /** May this field be remembered as "came back empty"? (a product fact only) */
 export const cacheable = (field, productId) => !!productId && profileAllowed(field);
 
-/** → Set of lookup keys already known empty for these (product, field) pairs, with the current fingerprints. */
-export async function knownEmpty(companyId, step, pairs) {
+/** → Set of lookup keys already known empty for these (product, field) pairs, with the current fingerprints (and prompt). */
+export async function knownEmpty(companyId, step, pairs, { promptHash = null } = {}) {
   const wanted = pairs.filter((p) => cacheable(p.field, p.productId));
   if (!wanted.length) return new Set();
   const keys = [...new Set(wanted.map((p) => keyOf(companyId, p.productId, step, p.field)))];
@@ -35,7 +37,8 @@ export async function knownEmpty(companyId, step, pairs) {
   const out = new Set();
   for (const p of wanted) {
     const k = keyOf(companyId, p.productId, step, p.field);
-    if (byKey.get(k)?.payload?.fingerprint === p.fingerprint) out.add(k);
+    const hit = byKey.get(k)?.payload;
+    if (hit?.fingerprint === p.fingerprint && (!promptHash || hit.promptHash === promptHash)) out.add(k);
   }
   return out;
 }
@@ -43,11 +46,11 @@ export async function knownEmpty(companyId, step, pairs) {
 export const isKnownEmpty = (known, companyId, step, productId, field) => known.has(keyOf(companyId, productId, step, field));
 
 /** Remembers that `step` came back empty for this product + field, at this fingerprint. */
-export async function rememberEmpty(companyId, step, productId, field, fingerprint, { invoiceId = null, reason = null } = {}) {
+export async function rememberEmpty(companyId, step, productId, field, fingerprint, { invoiceId = null, reason = null, promptHash = null } = {}) {
   if (!cacheable(field, productId) || !fingerprint) return null;
   const lookupKey = keyOf(companyId, productId, step, field);
   const data = {
-    payload: { fingerprint, step, productId, label: field.label, invoiceId, ...(reason ? { reason: String(reason).slice(0, 300) } : {}) },
+    payload: { fingerprint, step, productId, label: field.label, invoiceId, ...(promptHash ? { promptHash } : {}), ...(reason ? { reason: String(reason).slice(0, 300) } : {}) },
     summary: `${field.label}: not found (${step === "I" ? "inference" : "gap call"})`,
     sourceType: "none",
     sourceUrls: [],

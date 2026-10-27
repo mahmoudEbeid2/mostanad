@@ -2,10 +2,14 @@
 // A certificate of analysis states measured, batch-specific facts; filling those
 // from inference or the internet would make it false. So the line is drawn in
 // CODE, never by prompt:
+//   - two PROTECTED classes are never generated, on any path (owner, 2026-10-27): lab results
+//     (isLabResult) and batch facts (isBatchFact: batch / lot number, production / manufacturing
+//     / expiry date) — they come only from the invoice, a supplier COA, a packing list or a person;
+//   - everything else may be generated (owner, 2026-10-27): its default is product_facts_and_web,
+//     except values the invoice / company / fixed text own (by category or source);
 //   - every field has an `inferencePolicy`: never | product_facts | product_facts_and_web;
-//   - its default comes from the category — only product data may use tiers I/W;
-//   - a person may tighten a policy, never loosen it past the default;
-//   - whatever is stored, batch/date/quantity/document/result fields are `never`
+//     a person may tighten a policy, never loosen it past the default;
+//   - whatever is stored, quantity / invoice / document-number / result fields are `never`
 //     (hard guard on the source and the label, for fields categorised wrongly);
 //   - registration numbers: never inferred (tier I), and from the web only from
 //     an official registry page (§14.3).
@@ -14,17 +18,23 @@ export const POLICIES = ["never", "product_facts", "product_facts_and_web"];
 const RANK = { never: 0, product_facts: 1, product_facts_and_web: 2 };
 const NEVER_CATEGORIES = new Set(["batch_data", "invoice_line", "invoice_header", "company", "constant"]);
 
-// labels that name a measured / per-batch / per-shipment value, whatever the category says
-const HARD_NEVER_LABEL = /\b(batch|lot|expir\w*|exp\.?|production|manufactur\w*\s*date|mfg|mfd|prod\.?\s*date|quantity|qty|invoice|document|certificate\s*(no|number|#)|result|found|analy[sz]ed|tested|measured|net\s*weight|gross\s*weight)\b/i;
+// labels that name a measured or per-shipment / per-document value, whatever the category says
+// (batch / lot / dates are batch facts: an owner-editable flag, pre-set by BATCH_FACT_LABEL)
+const HARD_NEVER_LABEL = /\b(quantity|qty|invoice|(document|certificate)\s*(no|number|#)|result|found|analy[sz]ed|tested|measured|net\s*weight|gross\s*weight)\b/i;
+// batch / lot, production / manufacturing / expiry dates (same rule as the migration's pre-set)
+const BATCH_FACT_LABEL = /\b(batch|lot|expir\w*|exp\.?\s*date|best\s*before|use\s*by|(production|manufactur\w*|mfg|mfd|prod\.?)\s*(date|dt))\b/i;
+const BATCH_FACT_PATHS = new Set(["batchNo", "lotNo", "expiryDate", "productionDate", "manufacturingDate"]);
 const REGISTRATION_LABEL = /\b(registration|reg\.?\s*(no|number|#)|licen[cs]e\s*(no|number|#)|marketing\s*authori[sz]ation)\b/i;
 
-/** The default for a field (§14.1): product data → product_facts_and_web; everything else → never. */
+/**
+ * The default for a field (owner, 2026-10-27): a protected field → never; a value the invoice /
+ * company / fixed text owns (by category) → never; everything else → product_facts_and_web.
+ */
 export function defaultPolicy(field) {
-  if (isLabResult(field)) return "never";
+  if (isProtected(field)) return "never";
   const category = field?.dataCategory ?? null;
   if (category && NEVER_CATEGORIES.has(category)) return "never";
-  if (category === "product_data") return "product_facts_and_web";
-  return ["product", "brand"].includes(field?.source?.kind) ? "product_facts_and_web" : "never";
+  return "product_facts_and_web";
 }
 
 // The owner's lab-result pre-set (2026-10-24): a label naming a result, an
@@ -42,9 +52,18 @@ export const defaultIsLabResult = (field) => field?.dataCategory === "batch_data
  */
 export const isLabResult = (field) => field?.isLabResult === true || field?.dataCategory === "batch_data";
 
+/** The pre-set for a field whose owner hasn't decided: a batch / lot / production / expiry label, or the invoice line's batch / date. */
+export const defaultIsBatchFact = (field) => !isLabResult(field) && (BATCH_FACT_LABEL.test(String(field?.label || "")) || (field?.source?.kind === "item" && BATCH_FACT_PATHS.has(String(field.source.path || ""))));
+
+/** A batch fact: the owner's tick decides (true / false); not decided (null / absent) → the pre-set. */
+export const isBatchFact = (field) => (typeof field?.isBatchFact === "boolean" ? field.isBatchFact : defaultIsBatchFact(field));
+
+/** Never generated, on any path: a lab result or a batch fact (owner, 2026-10-27). */
+export const isProtected = (field) => isLabResult(field) || isBatchFact(field);
+
 /** Code's hard line: true when nothing may be inferred or fetched for this field, whatever is stored. */
 export function hardNever(field) {
-  if (isLabResult(field)) return true;
+  if (isProtected(field)) return true;
   if (["item", "invoice", "company", "today", "static"].includes(field?.source?.kind)) return true;
   if (field?.groupKey) return true; // group cells come from their declared list
   if (field?.source?.kind === "template" && /\{\{\s*(item|invoice)\b/.test(String(field.source.template || ""))) return true;
@@ -63,7 +82,10 @@ export function effectivePolicy(field) {
   return stricter(stored, defaultPolicy(field));
 }
 
-/** May this field use tier I (inference from product data)? Registration numbers: no. */
+/**
+ * May this field use tier I — inference from the product's data and general knowledge of its
+ * type (owner, 2026-10-27)? Never a protected field (hard line); registration numbers: no.
+ */
 export const allowsInference = (field) => RANK[effectivePolicy(field)] >= RANK.product_facts && !isRegistrationField(field);
 /** May this field use tier W (web)? */
 export const allowsWeb = (field) => effectivePolicy(field) === "product_facts_and_web";
@@ -83,7 +105,7 @@ export const allowsCatalogue = (field) => !hardNever(field) && defaultPolicy(fie
  * clamped so it is never looser than the default. → policy
  */
 export function policyToStore(field, requested) {
-  if (isLabResult(field)) return "never";
+  if (isProtected(field)) return "never";
   const d = defaultPolicy(field);
   if (!POLICIES.includes(requested)) return d;
   return stricter(requested, d);

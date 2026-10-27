@@ -12,10 +12,10 @@ import { getAiSettings, aiAllowed } from "../ai/aiSettings.js";
 import { logNotRun, sha16, stableStringify } from "../ai/aiRunLog.js";
 import { recordSuggestion, decideSuggestion } from "../ai/aiSuggestions.js";
 import { locateItemSpans } from "./itemSpans.js";
-import { allowsInference, allowsWeb, allowsCatalogue, isLabResult } from "../inference/policy.js";
+import { allowsInference, allowsWeb, allowsCatalogue, isLabResult, isBatchFact, isProtected } from "../inference/policy.js";
 import { findCatalogueValue, verifyBlockQuote } from "../../catalogues/catalogueSections.js";
 import { maskEstimates, provenanceFor, isUnconfirmedEstimate } from "../../catalogues/fieldProvenance.js";
-import { askInference } from "../inference/productInference.js";
+import { askInference, PROMPT_HASH as INFER_PROMPT_HASH } from "../inference/productInference.js";
 import { lookupProduct, cachedFact, storeFact, CACHE_KIND } from "../inference/webLookup.js";
 import { saveProductData } from "../insights/productNeeds.js";
 import { askGaps, buildPayload, nearMisses, PROMPT_HASH as GAPS_PROMPT_HASH } from "./gapResolver.js";
@@ -184,9 +184,12 @@ function entryContext(entry, ctx, invoice) {
 const inferredOrigin = (p) => !!p && (["I", "W"].includes(p.tier) || p.estimated === true || ["web", "product_estimate"].includes(p.kind));
 export const fromInferenceOrWeb = (p) => inferredOrigin(p) || inferredOrigin(p?.from);
 
-/** A lab-result field's code value read from a product path that inference or the web filled → not a value. */
-function guardLabResult(field, r, rawProduct) {
-  if (!isLabResult(field) || r.resolved === "" || field.source?.kind !== "product" || !rawProduct) return r;
+/** A protected field's (lab result, batch fact) code value read from a product path that inference or the web filled → not a value. */
+function guardProtected(field, r, rawProduct) {
+  if (!isProtected(field) || r.resolved === "") return r;
+  // a batch fact is never a product value at all — it is per batch (invoice, supplier COA, packing list, a person)
+  if (!isLabResult(field) && isBatchFact(field) && ["product", "brand"].includes(field.source?.kind)) return { ...r, resolved: "", refused: true };
+  if (field.source?.kind !== "product" || !rawProduct) return r;
   const prov = provenanceFor(rawProduct, canonicalFull(fromSource(field.source)));
   return inferredOrigin(prov) ? { ...r, resolved: "", refused: true } : r;
 }
@@ -219,7 +222,7 @@ async function computeCode(invoice, ctx) {
     for (const field of [...versionFields.filter((f) => !f.showSpecInstead), ...versionFields.filter((f) => f.showSpecInstead)]) {
       const key = `${entry.planKey}|${field.key}`;
       keep.add(key);
-      const r = guardLabResult(field, resolveField(field, rctx), item?.product);
+      const r = guardProtected(field, resolveField(field, rctx), item?.product);
       const basis = sha16(stableStringify({ source: field.source, required: field.required, productId: entry.productId, itemId, category: field.dataCategory }));
       const prev = byKey.get(key);
       let code = r.resolved !== ""
@@ -279,8 +282,8 @@ async function computeCode(invoice, ctx) {
  */
 function codeOffer(field, entry, ctx, rctx) {
   if (entry.scope !== "per_product") return null;
-  // item 4: never an estimate (or a catalogue value) for a lab result
-  if (isLabResult(field)) return null;
+  // item 4 / owner 2026-10-27: never an estimate (or a catalogue value) for a lab result or a batch fact
+  if (isProtected(field)) return null;
   const raw = ctx.items.find((i) => i.id === entry.invoiceItemIds[0])?.product;
   if (!raw) return null;
   if (field.source?.kind === "product") {
@@ -498,7 +501,8 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   if (!open.length) return out;
   // inferred before from the same product data and nothing came of it → not asked again
   const fpOf = (product) => productFingerprint(product, blockOf(ctx, product));
-  const known = await knownEmpty(invoice.companyId, "I", open.map((x) => ({ productId: productOf(x.row).id, field: x.field, fingerprint: fpOf(productOf(x.row)) })));
+  // …under the same inference rule: a changed prompt (what may be inferred) asks again
+  const known = await knownEmpty(invoice.companyId, "I", open.map((x) => ({ productId: productOf(x.row).id, field: x.field, fingerprint: fpOf(productOf(x.row)) })), { promptHash: INFER_PROMPT_HASH });
   const skip = open.filter((x) => isKnownEmpty(known, invoice.companyId, "I", productOf(x.row).id, x.field));
   for (const x of skip) x.row = await prisma.certificateDataNeed.update({ where: { id: x.row.id }, data: { aiAskedBasis: markAsked(x.row, "I") } });
   if (skip.length) out.knownEmpty = skip.length;
@@ -520,7 +524,7 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   Object.assign(out, { used: true, calls: 1, asked: res.sent.length });
   for (const g of groups.values()) {
     const got = res.answers.get(g.gap.gapId);
-    if (!got?.verdict.ok) for (const x of g.needs) await rememberEmpty(invoice.companyId, "I", g.gap.product.id, x.field, fpOf(g.gap.product), { invoiceId: invoice.id, reason: got?.verdict.reason || "no answer" });
+    if (!got?.verdict.ok) for (const x of g.needs) await rememberEmpty(invoice.companyId, "I", g.gap.product.id, x.field, fpOf(g.gap.product), { invoiceId: invoice.id, reason: got?.verdict.reason || "no answer", promptHash: INFER_PROMPT_HASH });
     let suggestion = null;
     if (got) {
       // §14.4: always a person's decision, whatever the auto-accept setting
@@ -743,7 +747,7 @@ async function buildView(invoice, ctx, ai = null) {
   const needView = (r) => {
     const f = fieldFor(r);
     const display = r.value !== null && f ? applyFormat(r.value, f.format).value : r.value;
-    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt, estimated: r.provenance?.estimated === true, labResult: isLabResult(f), ...(f?.showSpecInstead ? { showsSpecification: true, specFieldKey: f.specFieldKey } : {}) };
+    return { id: r.id, fieldKey: r.fieldKey, label: r.label, category: r.category, required: r.required, status: r.status, value: r.value, display, provenance: r.provenance, suggestionId: r.suggestionId, decidedAt: r.decidedAt, estimated: r.provenance?.estimated === true, labResult: isLabResult(f), batchFact: isBatchFact(f), ...(f?.showSpecInstead ? { showsSpecification: true, specFieldKey: f.specFieldKey } : {}) };
   };
   const certificates = ctx.plan.entries
     .filter((e) => byPlan.has(e.planKey))

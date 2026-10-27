@@ -132,6 +132,7 @@ const pick = (f) => ({
   dataCategory: f.dataCategory ?? null,
   inferencePolicy: f.inferencePolicy,
   isLabResult: f.isLabResult === true,
+  isBatchFact: typeof f.isBatchFact === "boolean" ? f.isBatchFact : undefined, // the owner's tick carries over; undecided → the pre-set (replaceFields)
   showSpecInstead: f.showSpecInstead === true,
   specFieldKey: f.specFieldKey ?? null,
 });
@@ -179,7 +180,7 @@ export function buildRepair(plan, baseFields, baseGroups, decisions = []) {
     if (!ticked(item) && !specNeeded.has(item.id)) continue;
     const d = byId.get(item.id) || {};
     const s = d.source ? { source: d.source, format: d.format ?? null, category: d.category || item.suggestion?.category, isLabResult: d.isLabResult ?? defaultIsLabResult({ label: item.field.label }) } : item.suggestion || { source: { kind: "manual" }, format: null, category: item.field.dataCategory || "unknown", isLabResult: false, origin: "none" };
-    const f = { ...item.field, source: s.source, format: s.format ?? null, origin: "manual", mappingOrigin: s.origin === "memory" ? "memory" : s.origin === "dictionary" ? "dictionary" : "manual", dataCategory: s.category || item.field.dataCategory || null, isLabResult: s.isLabResult === true, sortOrder: 300 + fields.length };
+    const f = { ...item.field, source: s.source, format: s.format ?? null, origin: "manual", mappingOrigin: s.origin === "memory" ? "memory" : s.origin === "dictionary" ? "dictionary" : "manual", dataCategory: s.category || item.field.dataCategory || null, isLabResult: s.isLabResult === true, ...(typeof d.isBatchFact === "boolean" ? { isBatchFact: d.isBatchFact } : {}), sortOrder: 300 + fields.length };
     add(f);
     specItemField.set(item.id, f);
     applied.push(item.id);
