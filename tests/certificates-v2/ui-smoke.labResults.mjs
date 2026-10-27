@@ -31,10 +31,19 @@ const company = await createCompany("uilab");
 const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox", "--window-size=1440,1000"] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 1000 });
-page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
+// the seeded invoice has no real source file: its PDF preview 404s by construction, nothing else may
+page.on("console", (m) => m.type() === "error" && !/\/invoices\/[^/]+\/source$/.test(m.location()?.url || "") && consoleErrors.push(m.text()));
 page.on("pageerror", (e) => consoleErrors.push(String(e)));
+page.on("response", (r) => r.status() >= 400 && console.log(`     ⚠ ${r.status()} ${r.request().method()} ${r.url()}`)); // names the resource behind a console error
 const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
 const waitForText = (text, timeout = 15000) => page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text).then(() => true, () => false);
+// Puppeteer 25 has no `clickCount`: a "triple-click" selected nothing and typing appended to the value
+const selectCell = async (sel) => {
+  await page.click(sel);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+};
 const cells = () => page.$$eval('[data-testid="results-row"]', (rows) => rows.map((r) => [...r.querySelectorAll('[data-testid="result-cell"]')].map((i) => ({ id: i.id, value: i.value, disabled: i.disabled, red: i.className.includes("border-red-400") }))));
 
 try {
@@ -93,11 +102,11 @@ try {
   await page.keyboard.press("ArrowRight");
   assert("ArrowRight at the end of a cell moves to the next result", (await page.evaluate(() => document.activeElement?.id)) === "rg-0-1");
   // out of spec, highlighted while typing
-  await page.click("#rg-0-0", { clickCount: 3 });
+  await selectCell("#rg-0-0");
   await page.keyboard.type("9.9");
   c = await cells();
   assert("9.9 outside 6.5 - 7.5 → highlighted, and said under the cell", c[0][0].red && (await waitForText("outside the specification")), c[0][0]);
-  await page.click("#rg-0-0", { clickCount: 3 });
+  await selectCell("#rg-0-0");
   await page.keyboard.type("7.1");
   // the line without a batch: type it first, then a result
   await page.type('[data-testid="batch-input"]', "AV-1");
@@ -128,7 +137,7 @@ try {
 
   console.log("\n🧪 Fix this template");
   const type = await prisma.certificateType.findFirst({ where: { companyId: company.id } });
-  const up = await uploadTemplate(company.id, { file: "ADDVET_COA.ai", name: "ADDVET COA (UI)", certificateTypeId: type.id });
+  const up = await uploadTemplate(company.id, { file: "ADDVET_COA.ai", name: "ADDVET COA (UI)", certificateTypeId: type.id, country: "EG" }); // own slot: "UI COA" holds the no-country one
   assert("ADDVET design converted", up.task?.status === "completed" && up.version?.status === "draft", up.task?.error || up.version?.status);
   await page.goto(`${FRONT}/certificates/templates/${up.data.data.templateId}/versions/${up.version.id}`, { waitUntil: "networkidle2" });
   await page.waitForSelector('[data-testid="fix-template"]', { timeout: 20000 });
