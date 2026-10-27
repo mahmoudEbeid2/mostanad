@@ -141,7 +141,7 @@ separator();
 log("📋 TEST 4: POST /users — Duplicate email", "bold");
 {
   const email = `dup_${Date.now()}@mostanad.com`;
-  await request("POST", "/users", {
+  const first = await request("POST", "/users", {
     name: "First User",
     email,
     username: `first_${Date.now()}`,
@@ -156,6 +156,7 @@ log("📋 TEST 4: POST /users — Duplicate email", "bold");
   assert("Status is 400", status === 400, `Got ${status}`);
   assert("Error about email", data?.message?.toLowerCase().includes("email"), data?.message);
   log(`  Response: ${JSON.stringify(data)}`, "white");
+  if (first.data?.data?.user?.id) await request("DELETE", `/users/${first.data.data.user.id}`); // it used to stay in the DB after every run
 }
 
 // ═══════════════════════════════════════════════
