@@ -1140,6 +1140,7 @@ model AiCall {
   parentType         String?   @map("parent_type") // the business object a call served when the entity is a part of it (web lookup → invoice)
   parentId           String?   @map("parent_id")
   aiRunId            String?   @map("ai_run_id") // the ai_runs row of a certificate/catalogue operation, when there is one
+  meta               Json? // call-site detail, e.g. a catalogue extraction's { catalogueId, pages: [original page numbers] }
   modelId            String    @map("model_id")
   attempt            Int // 1 = first try; retries count up
   outcome            String // ok | quota (429) | error
@@ -1382,9 +1383,12 @@ model CatalogueVersion {
   error            String?
   uploadedByUserId String?          @map("uploaded_by_user_id")
   appliedAt        DateTime?        @map("applied_at")
+  // the pages sent to the AI: { pages: [n…], source: auto|previous|user, fromVersionId?, savedByUserId?, at }
+  pageSelection    Json?            @map("page_selection")
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   blocks           CatalogueBlock[]
+  pageRows         CataloguePage[]
 
   @@index([companyId, createdAt])
   @@index([catalogueId, createdAt])
@@ -1417,4 +1421,25 @@ model CatalogueBlock {
   @@index([companyId])
   @@index([productId])
   @@map("catalogue_blocks")
+}
+
+// One page of an uploaded catalogue, read by code at upload (no AI): its kind from
+// the text layer, for the "choose pages" step. The thumbnail is a cache on disk,
+// re-rendered from the kept PDF when missing.
+model CataloguePage {
+  id         String           @id @default(uuid())
+  versionId  String           @map("version_id")
+  version    CatalogueVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  companyId  String           @map("company_id")
+  number     Int // 1-based, in the uploaded file
+  kind       String // cover|contents|about|product|blank|registrations|contact|back|other|unknown (no text layer)
+  textLength Int              @default(0) @map("text_length")
+  reason     String? // why code gave it that kind ("COMPOSITION, DOSAGE and a product name")
+  width      Float            @default(0)
+  height     Float            @default(0)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@unique([versionId, number])
+  @@index([companyId])
+  @@map("catalogue_pages")
 }

@@ -1,0 +1,15 @@
+# /catalogue-versions/{id}/pages/{n}/image (C1).
+get:
+  tags: ["Catalogues"]
+  summary: One page of the catalogue as an image (WebP)
+  description: "Rendered by code from the kept PDF (pdf.js, no AI) and cached; `size=thumb` (240 px wide, default) or `large` (1200 px). Authenticated like every other route — fetch it with the bearer token. Permission: `read_products`."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - { name: n, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    - { name: size, in: query, schema: { type: string, enum: [thumb, large] } }
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: image/webp, content: { image/webp: { schema: { type: string, format: binary } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

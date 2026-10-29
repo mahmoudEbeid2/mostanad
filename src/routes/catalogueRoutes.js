@@ -24,6 +24,10 @@ router.get("/catalogues/:id", guard("read_products"), validate(catalogueSchemas.
 router.post("/catalogues/:id/versions", guard("manage_catalogues"), uploadPdf.single("file"), validate(catalogueSchemas.uploadVersion), catalogues.uploadVersion);
 router.get("/catalogue-versions/:id", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getVersion);
 router.get("/catalogue-versions/:id/file", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getVersionFile);
+// C1: choose the pages sent to the AI — page kinds + thumbnails (code, no AI), the saved selection, the estimate
+router.get("/catalogue-versions/:id/pages", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getPages);
+router.put("/catalogue-versions/:id/page-selection", guard("manage_catalogues"), validate(catalogueSchemas.pageSelection), catalogues.putPageSelection);
+router.get("/catalogue-versions/:id/pages/:n/image", guard("read_products"), validate(catalogueSchemas.pageImage), catalogues.getPageImage);
 router.get("/catalogue-blocks/:id", guard("read_products"), validate(catalogueSchemas.byId), catalogues.getBlock);
 router.post("/catalogue-blocks/:id/link", guard("manage_catalogues"), validate(catalogueSchemas.link), catalogues.linkBlock);
 // A6.3: AI extraction (CATALOGUE_EXTRACT + CATALOGUE_INFER) and the once-per-catalogue number convention

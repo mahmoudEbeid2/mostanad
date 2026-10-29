@@ -136,10 +136,11 @@ function makeBlock(page, lines, kind, titleSize) {
 
 /**
  * layout ({ pages } from readPdfLayout) → { blocks: [{ seq, kind, page, bbox, title, text, lines }], warnings, stats }
+ * opts.bodySize: the whole catalogue's body size, when `layout` is only some of its pages (a split file)
  */
-export function segment(layout) {
+export function segment(layout, opts = {}) {
   const pages = layout.pages || [];
-  const body = bodySize(pages);
+  const body = opts.bodySize || bodySize(pages);
   const titleSize = body * TITLE_RATIO;
   const blocks = [];
   const warnings = [];

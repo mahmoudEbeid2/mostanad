@@ -8,7 +8,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // `ledger` values, which win. Same technique as generationMetrics.js.
 
 const als = new AsyncLocalStorage();
-const KEYS = ["companyId", "userId", "feature", "entityType", "entityId", "parentType", "parentId", "aiRunId"];
+const KEYS = ["companyId", "userId", "feature", "entityType", "entityId", "parentType", "parentId", "aiRunId", "meta"]; // meta: call-site detail (JSON), e.g. a catalogue call's pages
 
 const pick = (o = {}) => Object.fromEntries(KEYS.filter((k) => o[k] !== undefined && o[k] !== null && o[k] !== "").map((k) => [k, o[k]]));
 

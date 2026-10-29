@@ -8,10 +8,18 @@ import { verifyRecord, renormalise, basisOf, compositionText } from "./recordVer
 import { estimateMissing, missingFields, FLAGGED_WHEN_ESTIMATED, PROMPT_HASH as INFER_HASH } from "./catalogueInference.js";
 import { blockEvidence, majorityConvention } from "./numbers.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
+import * as fileStore from "../../certificates/storage/fileStore.js";
+import { readPdfLayout } from "../pdfLayout.js";
+import { segment, bodySize } from "../segmenter.js";
+import { splitPdf } from "../pages/pdfSplit.js";
+import { selectionForExtraction } from "../pages/pageService.js";
 
 // The catalogue extraction job (plan.md §15.3 steps 3–5; A6.3). Per version:
+//  0. C1: the PDF is split on the server into ONLY the kept pages; the blocks read
+//     for the AI come from that split file, stored under their ORIGINAL page numbers;
 //  1. code reads each product block's own number evidence and the catalogue majority;
-//  2. CATALOGUE_EXTRACT, BLOCKS_PER_CALL blocks per call (+ the context blocks once);
+//  2. CATALOGUE_EXTRACT, whole pages per call up to BLOCKS_PER_CALL blocks (+ the
+//     kept context blocks once) — every ledger row tagged with the catalogue and its pages;
 //  3. code verifies every value against its own block (recordVerifier) and parses numbers;
 //  4. producer / origin from the cover and back pages, verified there, applied to every product;
 //  5. duplicate product codes flagged; a category is PROPOSED (matched to an existing one), never created;
@@ -23,6 +31,77 @@ import { publicAiError } from "../../ai/aiErrorMessage.js";
 
 const norm = (s) => String(s || "").normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/g, " ").trim();
 const chunk = (list, n) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
+const pagesOf = (blocks) => [...new Set(blocks.map((b) => b.page))].sort((a, b) => a - b);
+
+/** Product blocks → call groups of whole pages, up to `size` blocks (a page with more is cut). */
+export function pageGroups(blocks, size = BLOCKS_PER_CALL) {
+  const byPage = new Map();
+  for (const b of blocks) {
+    if (!byPage.has(b.page)) byPage.set(b.page, []);
+    byPage.get(b.page).push(b);
+  }
+  const groups = [];
+  let cur = [];
+  for (const page of [...byPage.keys()].sort((a, b) => a - b)) {
+    const list = byPage.get(page);
+    if (cur.length && cur.length + list.length > size) {
+      groups.push(cur);
+      cur = [];
+    }
+    if (list.length > size) {
+      groups.push(...chunk(list, size));
+      continue;
+    }
+    cur.push(...list);
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+
+const textsOf = (list) => list.map((x) => `${x.kind}|${x.text}`).sort().join("\n\n");
+
+/**
+ * C1: the kept pages, split out of the PDF and read again from the split file.
+ * Blocks come back under their original page numbers. A kept page whose stored
+ * blocks match what the split file gives — or that a person merged/split
+ * (extraction.editedPages) — keeps its stored rows (same ids); any other kept
+ * page gets the split file's blocks. Blocks on skipped pages are left as they
+ * are and never read. → { pages, pageCount, kept, split: { pages, bytes } }
+ */
+async function blocksFromSplit(version) {
+  const { pages, pageCount, selection } = await selectionForExtraction(version);
+  const { buffer } = await fileStore.readFile(version.sourceFileId, { companyId: version.companyId });
+  const split = await splitPdf(buffer, pages);
+  const layout = await readPdfLayout(split.buffer);
+  if (layout.pages.length !== pages.length) throw new CertError("SPLIT_MISMATCH", `The split file has ${layout.pages.length} pages but ${pages.length} were kept`, 500);
+  // titles are found against the whole catalogue's body size, as at upload
+  const body = version.extraction?.bodySize || bodySize((await readPdfLayout(buffer)).pages);
+  const fresh = segment(layout, { bodySize: body }).blocks.map((b) => ({ ...b, page: split.pageMap[b.page - 1] }));
+  const stored = await prisma.catalogueBlock.findMany({ where: { versionId: version.id }, orderBy: { seq: "asc" } });
+  const edited = new Set(version.extraction?.editedPages || []);
+  const create = [];
+  const drop = new Set();
+  for (const page of pages) {
+    const mine = stored.filter((b) => b.page === page);
+    const theirs = fresh.filter((b) => b.page === page);
+    if (edited.has(page) || textsOf(mine) === textsOf(theirs)) continue;
+    for (const b of mine) drop.add(b.id);
+    create.push(...theirs);
+  }
+  if (create.length || drop.size) {
+    // reading order: page, then the order within the page
+    const order = [...stored.filter((b) => !drop.has(b.id)), ...create.map((b, i) => ({ fresh: b, page: b.page, seq: 1e6 + i }))].sort((a, b) => a.page - b.page || a.seq - b.seq);
+    await prisma.$transaction([
+      prisma.catalogueBlock.deleteMany({ where: { id: { in: [...drop] }, versionId: version.id, status: "pending", productId: null } }),
+      ...order.map((o, seq) =>
+        o.fresh
+          ? prisma.catalogueBlock.create({ data: { versionId: version.id, companyId: version.companyId, seq, kind: o.fresh.kind, page: o.fresh.page, bbox: o.fresh.bbox, title: o.fresh.title, text: o.fresh.text, lines: o.fresh.lines } })
+          : prisma.catalogueBlock.update({ where: { id: o.id }, data: { seq } })
+      ),
+    ]);
+  }
+  return { pages, pageCount, selection, kept: new Set(pages), split: { pages: split.pageMap.length, bytes: split.buffer.length }, replacedPages: [...new Set(create.map((b) => b.page))] };
+}
 
 /** The "." + three digits convention a block is read with. */
 function conventionFor(block, evidence, majority, admin) {
@@ -77,21 +156,31 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
   const started = Date.now();
   await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "extracting", error: null } });
   try {
+    ctx.progress(4, "Splitting the PDF into the kept pages");
+    // a full extraction reads only the kept pages (the split file); a partial one only the blocks it names
+    const chosen = only ? null : await blocksFromSplit(version);
     const all = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
-    const allProducts = all.filter((b) => b.kind === "product");
+    const read = (b) => !chosen || chosen.kept.has(b.page);
+    const allProducts = all.filter((b) => b.kind === "product" && read(b));
     const blocks = only ? allProducts.filter((b) => only.includes(b.id)) : allProducts;
     const others = only ? allProducts.filter((b) => !only.includes(b.id)) : [];
-    const context = all.filter((b) => b.kind === "context");
+    const context = all.filter((b) => b.kind === "context" && read(b));
     const numbers = numberContext(allProducts, version);
+    // every AI call is billed to the catalogue and the ORIGINAL pages it read
+    const tag = (list) => ({ catalogueId: version.catalogueId, pages: pagesOf(list) });
 
     // AI structuring, a group at a time (the shared rate limiter queues them)
     const raws = new Map();
     let catalogueCtx = null;
     const runs = [];
-    const groups = chunk(blocks, BLOCKS_PER_CALL);
+    const groups = pageGroups(blocks);
+    let done = 0;
     for (const [i, group] of groups.entries()) {
-      ctx.progress(10 + Math.round((70 * i) / Math.max(groups.length, 1)), `Reading products ${i * BLOCKS_PER_CALL + 1}–${i * BLOCKS_PER_CALL + group.length} of ${blocks.length}`);
-      const res = await extractGroup({ companyId: version.companyId, versionId, blocks: group, context: i === 0 ? context : null }, { generate: deps.generate });
+      const gp = pagesOf(group);
+      ctx.progress(10 + Math.round((70 * i) / Math.max(groups.length, 1)), `Reading products ${done + 1}–${done + group.length} of ${blocks.length} (page${gp.length > 1 ? "s" : ""} ${gp.join(", ")})`);
+      done += group.length;
+      const withContext = i === 0 && context.length ? context : null;
+      const res = await extractGroup({ companyId: version.companyId, versionId, blocks: group, context: withContext, meta: tag([...group, ...(withContext || [])]) }, { generate: deps.generate });
       if (res.run?.id) runs.push(res.run.id);
       const ids = new Set(group.map((b) => b.id));
       for (const p of res.result.products || []) if (p?.blockId && ids.has(p.blockId) && !raws.has(p.blockId)) raws.set(p.blockId, p); // only the blocks it was given, once
@@ -102,7 +191,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     const skipped = blocks.filter((b) => !raws.has(b.id));
     if (skipped.length) {
       ctx.progress(80, `Asking again for ${skipped.length} product(s) the AI skipped`);
-      const res = await extractGroup({ companyId: version.companyId, versionId, blocks: skipped }, { generate: deps.generate });
+      const res = await extractGroup({ companyId: version.companyId, versionId, blocks: skipped, meta: tag(skipped) }, { generate: deps.generate });
       retries = 1;
       if (res.run?.id) runs.push(res.run.id);
       const ids = new Set(skipped.map((b) => b.id));
@@ -162,7 +251,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
         return { blockId: b.id, name: r.name || b.title || null, known: { ...r, activeIngredients: (r.activeIngredients || []).map((x) => x.name) }, missing: r.name && !out.get(b.id).flags.some((f) => f.code === "no_ai_answer") ? missingFields(r) : [] }; // a block the AI didn't read gets no estimates: what it prints is unknown
       });
       try {
-        const res = await estimateMissing({ companyId: version.companyId, versionId, products }, { generate: deps.inferGenerate });
+        const res = await estimateMissing({ companyId: version.companyId, versionId, products, meta: tag(blocks) }, { generate: deps.inferGenerate });
         inference = { calls: res.calls, estimated: 0, refused: res.refused, ...(res.run?.id ? { runId: res.run.id } : {}) };
         const at = new Date().toISOString();
         for (const [blockId, list] of res.estimates) {
@@ -208,9 +297,14 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
         where: { id: versionId },
         data: {
           status: "review",
+          // the pages read are this catalogue's remembered choice: its next version starts from them
+          ...(chosen ? { pageSelection: { ...chosen.selection, pages: chosen.pages, savedAt: chosen.selection.savedAt || at, extractedAt: at } } : {}),
           extraction: {
             ...(version.extraction || {}),
-            ...(only ? { lastPartial: { blockIds: only, at: new Date().toISOString() } } : {}),
+            ...(only ? { lastPartial: { blockIds: only, pages: pagesOf(blocks), at: new Date().toISOString() } } : {}),
+            // C1: the pages read, out of how many, and the split file they came from
+            ...(chosen ? { pages: chosen.pages, pageCount: chosen.pageCount, split: chosen.split, replacedPages: chosen.replacedPages } : {}),
+            grouping: "pages",
             modelId: MODELS.CATALOGUE_EXTRACT.id,
             promptHash: EXTRACT_HASH,
             blocksPerCall: BLOCKS_PER_CALL,

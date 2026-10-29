@@ -1,6 +1,7 @@
 import geminiClient from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { runLogged, sha16, stableStringify } from "../../certificates/ai/aiRunLog.js";
+import { ledgerTags } from "./catalogueExtractor.js";
 
 // Estimating what the catalogue does NOT print (owner rule, A6.3). Business
 // requirement: a product gets its missing facts — but ONLY fields still empty
@@ -75,13 +76,13 @@ export function cleanEstimate(e) {
  * products: [{ blockId, name, known: { field: value }, missing: [field] }]
  * → { estimates: Map(blockId → [{ field, value, basis }]), refused, run }. Throws the model's error unchanged.
  */
-export async function estimateMissing({ companyId, versionId, products }, { generate = defaultGenerate } = {}) {
+export async function estimateMissing({ companyId, versionId, products, meta = null }, { generate = defaultGenerate } = {}) {
   const ask = products.filter((p) => p.missing.length);
   if (!ask.length) return { estimates: new Map(), refused: 0, run: null, calls: 0 };
   const payload = { products: ask.map((p) => ({ blockId: p.blockId, name: p.name, known: p.known, missing: p.missing })) };
   const contents = [INSTRUCTIONS, `Products:\n${JSON.stringify(payload)}`];
   const { result, run } = await runLogged(
-    { companyId, kind: "CATALOGUE_INFER", promptHash: PROMPT_HASH, inputHash: sha16(stableStringify(payload)), entityType: "catalogue_version", entityId: versionId, reason: `${ask.length} product(s) with fields the catalogue doesn't print` },
+    { companyId, kind: "CATALOGUE_INFER", promptHash: PROMPT_HASH, inputHash: sha16(stableStringify(payload)), entityType: "catalogue_version", entityId: versionId, ...ledgerTags(meta), reason: `${ask.length} product(s) with fields the catalogue doesn't print${meta?.pages?.length ? ` (pages ${meta.pages.join(", ")})` : ""}` },
     () => generate({ model: MODELS.CATALOGUE_INFER.id, temperature: MODELS.CATALOGUE_INFER.temperature, thinkingBudget: MODELS.CATALOGUE_INFER.thinkingBudget, contents, schema: RESPONSE_SCHEMA, maxOutputTokens: 32768 })
   );
   const estimates = new Map();

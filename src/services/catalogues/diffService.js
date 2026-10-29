@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { CertError, notFound } from "../certificates/errors.js";
 import { scheduleDictionaryRebuild } from "../certificates/dictionary/rebuildScheduler.js";
 import { catalogueRefOf } from "./catalogueService.js";
-import { productFromBlock } from "./reviewService.js";
+import { productFromBlock, onReadPages, readPagesWhere } from "./reviewService.js";
 import { matchContext, matchBlock } from "./productMatch.js";
 
 // The re-upload diff (plan.md §15.4, A6.5): what a catalogue version would change
@@ -97,7 +97,7 @@ async function loadVersion(versionId, companyScope) {
 /** GET /catalogue-versions/:id/diff */
 export async function versionDiff(versionId, companyScope) {
   const version = await loadVersion(versionId, companyScope);
-  const blocks = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
+  const blocks = (await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } })).filter(onReadPages(version));
   const mctx = await matchContext(version, blocks);
   const productIds = new Set();
   const items = [];
@@ -193,7 +193,7 @@ async function applyOne(block, { fields = null, productId = null } = {}, userId,
 }
 
 async function afterApply(version) {
-  const pending = await prisma.catalogueBlock.count({ where: { versionId: version.id, kind: "product", status: "pending" } });
+  const pending = await prisma.catalogueBlock.count({ where: { versionId: version.id, kind: "product", status: "pending", ...(await readPagesWhere(version.id)) } });
   if (!pending) await prisma.catalogueVersion.update({ where: { id: version.id }, data: { status: "applied", appliedAt: new Date() } });
   await scheduleDictionaryRebuild(version.companyId);
 }

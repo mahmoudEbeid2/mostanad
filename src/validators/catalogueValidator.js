@@ -23,6 +23,9 @@ export const catalogueSchemas = {
   uploadVersion: { params: idParams, query: companyQuery, body: z.object({ label: optionalText(80), extract: flag }) },
   extract: { params: idParams, query: companyQuery, body: z.object({ infer: flag, blockIds: z.array(uuid).min(1).max(200).optional() }).optional() },
   convention: { params: idParams, query: companyQuery, body: z.object({ dotGroup3: z.enum(["thousands", "decimal"]) }) },
+  // C1 choose pages: the range (1..pageCount, at least one) is checked by the service against the file
+  pageSelection: { params: idParams, query: companyQuery, body: z.object({ pages: z.array(z.number().int()).max(5000) }) },
+  pageImage: { params: z.object({ id: uuid, n: z.coerce.number().int().min(1).max(5000) }), query: z.object({ companyId: uuid.optional(), size: z.enum(["thumb", "large"]).optional() }).passthrough() },
   list: { query: companyQuery },
   byId: { params: idParams, query: companyQuery },
   link: { params: idParams, query: companyQuery, body: z.object({ productId: uuid }) },

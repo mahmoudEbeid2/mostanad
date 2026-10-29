@@ -331,6 +331,12 @@ paths:
     $ref: './paths/catalogues/catalogue-blocks-id.yaml'
   /catalogue-blocks/{id}/link:
     $ref: './paths/catalogues/catalogue-blocks-id-link.yaml'
+  /catalogue-versions/{id}/pages:
+    $ref: './paths/catalogues/catalogue-versions-id-pages.yaml'
+  /catalogue-versions/{id}/page-selection:
+    $ref: './paths/catalogues/catalogue-versions-id-page-selection.yaml'
+  /catalogue-versions/{id}/pages/{n}/image:
+    $ref: './paths/catalogues/catalogue-versions-id-pages-n-image.yaml'
   /catalogue-versions/{id}/extract:
     $ref: './paths/catalogues/catalogue-versions-id-extract.yaml'
   /catalogue-versions/{id}/number-convention:

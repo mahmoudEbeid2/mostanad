@@ -58,12 +58,16 @@ export const SCALAR_FIELDS = SCALARS;
 export const PROMPT_HASH = sha16(INSTRUCTIONS + JSON.stringify(RESPONSE_SCHEMA));
 const defaultGenerate = (args) => geminiClient.generateJson({ ...args, ledger: { feature: "catalogue.extract" } });
 
+/** runLogged opts that put the catalogue and its pages on every ledger row of the call */
+export const ledgerTags = (meta) => (meta?.catalogueId ? { parentType: "catalogue", parentId: meta.catalogueId, meta } : {});
+
 /**
  * One call for a group of product blocks (+ the context blocks on the first call).
  * blocks: [{ id, page, text }] · context: [{ id, page, text }] | null
  * → { result: { products, catalogue }, run, inputHash }. Throws the model's error unchanged.
  */
-export async function extractGroup({ companyId, versionId, blocks, context = null }, { generate = defaultGenerate } = {}) {
+/** meta: { catalogueId, pages } — the catalogue and ORIGINAL page numbers this call reads, on its ledger rows */
+export async function extractGroup({ companyId, versionId, blocks, context = null, meta = null }, { generate = defaultGenerate } = {}) {
   const payload = {
     blocks: blocks.map((b) => ({ blockId: b.id, page: b.page, text: b.text })),
     ...(context?.length ? { contextBlocks: context.map((b) => ({ blockId: b.id, page: b.page, text: b.text })) } : {}),
@@ -72,7 +76,7 @@ export async function extractGroup({ companyId, versionId, blocks, context = nul
   const contents = [INSTRUCTIONS, `Blocks:\n${JSON.stringify(payload)}`];
   const inputHash = sha16(stableStringify(payload));
   const { result, run } = await runLogged(
-    { companyId, kind: "CATALOGUE_EXTRACT", promptHash: PROMPT_HASH, inputHash, entityType: "catalogue_version", entityId: versionId, reason: `${blocks.length} catalogue block(s)` },
+    { companyId, kind: "CATALOGUE_EXTRACT", promptHash: PROMPT_HASH, inputHash, entityType: "catalogue_version", entityId: versionId, ...ledgerTags(meta), reason: `${blocks.length} catalogue block(s)${meta?.pages?.length ? ` from page${meta.pages.length > 1 ? "s" : ""} ${meta.pages.join(", ")}` : ""}` },
     () =>
       generate({
         model: MODELS.CATALOGUE_EXTRACT.id,

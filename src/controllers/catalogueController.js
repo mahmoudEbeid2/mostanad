@@ -5,6 +5,7 @@ import { setNumberConvention } from "../services/catalogues/extraction/extractio
 import * as review from "../services/catalogues/reviewService.js";
 import * as diff from "../services/catalogues/diffService.js";
 import { searchCatalogues } from "../services/catalogues/searchService.js";
+import * as pages from "../services/catalogues/pages/pageService.js";
 
 // Product catalogues as source documents (plan.md §15, A6). Thin: every rule
 // and every tenant check is in services/catalogues/catalogueService.js.
@@ -14,12 +15,12 @@ const ok = (res, data, status = 200) => res.status(status).json({ status: "succe
 export const uploadCatalogue = catchAsync(async (req, res) => {
   const companyId = req.body.companyId || req.validatedQuery?.companyId || null;
   if (companyId) assertCompanyAccess(req, companyId);
-  const result = await catalogues.uploadCatalogue({ companyId, manufacturer: req.body.manufacturer, brandId: req.body.brandId, label: req.body.label, extract: req.body.extract, file: req.file, userId: req.company ? null : req.user?.id });
+  const result = await catalogues.uploadCatalogue({ companyId, manufacturer: req.body.manufacturer, brandId: req.body.brandId, label: req.body.label, file: req.file, userId: req.company ? null : req.user?.id });
   ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, jobId: result.taskId }, 202);
 });
 
 export const uploadVersion = catchAsync(async (req, res) => {
-  const result = await catalogues.uploadVersion(req.params.id, scopeFor(req), { label: req.body.label, extract: req.body.extract, file: req.file, userId: req.company ? null : req.user?.id });
+  const result = await catalogues.uploadVersion(req.params.id, scopeFor(req), { label: req.body.label, file: req.file, userId: req.company ? null : req.user?.id });
   ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, jobId: result.taskId }, 202);
 });
 
@@ -30,6 +31,17 @@ export const getBlock = catchAsync(async (req, res) => ok(res, { block: await ca
 export const linkBlock = catchAsync(async (req, res) => ok(res, await catalogues.linkBlock(req.params.id, scopeFor(req), req.body.productId)));
 export const extractVersion = catchAsync(async (req, res) => ok(res, await catalogues.requestExtraction(req.params.id, scopeFor(req), { infer: req.body?.infer, blockIds: req.body?.blockIds }), 202));
 export const putNumberConvention = catchAsync(async (req, res) => ok(res, await setNumberConvention(req.params.id, scopeFor(req), { dotGroup3: req.body.dotGroup3 }, req.company ? null : req.user?.id)));
+
+// C1 — choose the pages sent to the AI
+export const getPages = catchAsync(async (req, res) => ok(res, await pages.listPages(req.params.id, scopeFor(req))));
+export const putPageSelection = catchAsync(async (req, res) => ok(res, await pages.saveSelection(req.params.id, scopeFor(req), req.body.pages, req.company ? null : req.user?.id || null)));
+export const getPageImage = catchAsync(async (req, res) => {
+  const q = req.validatedQuery || req.query;
+  const file = await pages.pageImageFile(req.params.id, scopeFor(req), Number(req.params.n), q.size || "thumb");
+  res.setHeader("Content-Type", "image/webp");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.sendFile(file);
+});
 
 // A6.4 — the admin's review (plan §15.3 steps 6–7)
 const actor = (req) => (req.company ? null : req.user?.id || null);

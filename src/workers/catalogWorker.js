@@ -142,7 +142,7 @@ export const catalogueWorker = startWorker({
   label: "Catalogue Worker",
   concurrency: 1,
   handlers: {
-    segment: ({ versionId, extract }, ctx) => runSegmentJob(versionId, ctx, { extract }),
+    segment: ({ versionId }, ctx) => runSegmentJob(versionId, ctx),
     extract: ({ versionId, infer, blockIds }, ctx) => runExtractJob(versionId, ctx, { infer, blockIds }),
   },
 });

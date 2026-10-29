@@ -100,10 +100,29 @@ export function productFromBlock(block, { categoryId = null, brandId = null } = 
 }
 
 /** GET /catalogue-versions/:id/review — every block with what accepting it would do. */
+/** A person merged/split blocks on this page: a later full extraction keeps them as they are (C1 split re-read). */
+async function markEdited(versionId, page) {
+  const v = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, select: { extraction: true } });
+  const editedPages = [...new Set([...(v.extraction?.editedPages || []), page])].sort((a, b) => a - b);
+  await prisma.catalogueVersion.update({ where: { id: versionId }, data: { extraction: { ...(v.extraction || {}), editedPages } } });
+}
+
+/** C1: once a version was extracted from chosen pages, blocks on the skipped pages are not part of its review. */
+export const onReadPages = (version) => {
+  const pages = Array.isArray(version.extraction?.pages) ? new Set(version.extraction.pages) : null;
+  return (b) => !pages || pages.has(b.page);
+};
+
+/** The same rule as a Prisma filter (skipped pages' blocks stay pending forever and never block "applied"). */
+export async function readPagesWhere(versionId) {
+  const v = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, select: { extraction: true } });
+  return Array.isArray(v?.extraction?.pages) ? { page: { in: v.extraction.pages } } : {};
+}
+
 export async function reviewVersion(versionId, companyScope) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, include: { catalogue: { include: { brand: { select: { id: true, name: true } } } } } });
   if (!version || (companyScope && version.companyId !== companyScope)) throw notFound("Catalogue version");
-  const blocks = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
+  const blocks = (await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } })).filter(onReadPages(version));
   const mctx = await matchContext(version, blocks);
   const categories = await prisma.category.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
   const out = [];
@@ -191,7 +210,7 @@ async function applyOne(block, userId, mctx = null) {
 }
 
 async function afterApply(version) {
-  const pending = await prisma.catalogueBlock.count({ where: { versionId: version.id, kind: "product", status: "pending" } });
+  const pending = await prisma.catalogueBlock.count({ where: { versionId: version.id, kind: "product", status: "pending", ...(await readPagesWhere(version.id)) } });
   if (!pending) await prisma.catalogueVersion.update({ where: { id: version.id }, data: { status: "applied", appliedAt: new Date() } });
   await scheduleDictionaryRebuild(version.companyId);
 }
@@ -208,7 +227,7 @@ export async function acceptBlock(blockId, companyScope, userId = null) {
 export async function acceptUnflagged(versionId, companyScope, userId = null) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version || (companyScope && version.companyId !== companyScope)) throw notFound("Catalogue version");
-  const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product", status: "pending" }, include: { version: { include: { catalogue: true } } }, orderBy: { seq: "asc" } });
+  const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product", status: "pending", ...(await readPagesWhere(versionId)) }, include: { version: { include: { catalogue: true } } }, orderBy: { seq: "asc" } });
   const mctx = await matchContext(version);
   const created = [];
   const skipped = { flagged: 0, existing: 0, notExtracted: 0 };
@@ -275,6 +294,7 @@ export async function mergeBlocks(versionId, companyScope, blockIds) {
     prisma.catalogueBlock.delete({ where: { id: drop.id } }),
   ]);
   await reseq(versionId);
+  await markEdited(versionId, keep.page);
   return { blockId: keep.id, removed: drop.id, needsExtraction: true };
 }
 
@@ -301,5 +321,6 @@ export async function splitBlock(blockId, companyScope, atLine) {
     prisma.catalogueBlock.create({ data: { versionId: block.versionId, companyId: block.companyId, seq: block.seq, kind: "product", page: block.page, title: null, ...b } }),
   ]);
   await reseq(block.versionId);
+  await markEdited(block.versionId, block.page);
   return { blockId: block.id, newBlockId: created.id, needsExtraction: true };
 }

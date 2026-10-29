@@ -6,12 +6,15 @@ import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
 import { readPdfLayout } from "./pdfLayout.js";
 import { segment, SEGMENTER_VERSION } from "./segmenter.js";
 import { presentError } from "../ai/aiErrorMessage.js";
+import { analysePages } from "./pages/pageService.js";
 
 // Product catalogues as source documents (plan.md §15.2, §15.7; Phase A6.1).
 //  - A system user (manage_catalogues) uploads a manufacturer's catalogue FOR a
 //    company; the file is a StoredFile kept forever (never deleted, never swept).
 //  - Each upload is a CatalogueVersion under its Catalogue (company + manufacturer).
-//  - Code splits it into product blocks { page, bbox, text, lines } (segmenter.js).
+//  - Code splits it into product blocks { page, bbox, text, lines } (segmenter.js)
+//    and reads every page (kind, thumbnail) for the "choose pages" step (C1).
+//    Upload never starts the AI: a person picks the pages, then extracts.
 //  - Every query is tenant-scoped: a company sees only its own catalogues;
 //    another tenant's row is reported as missing (404), never as forbidden.
 // Nothing here creates, changes or deletes a product's data; linking a block to
@@ -43,8 +46,8 @@ function assertFile(file) {
 
 const baseName = (name) => path.basename(String(name || "catalogue.pdf")).replace(/\.pdf$/i, "").trim().slice(0, 120) || "Catalogue";
 
-/** Stores the file, creates the version and queues its segmentation (then, unless extract === false, its extraction). */
-async function addVersion({ catalogue, label, file, userId, extract = true }) {
+/** Stores the file, creates the version and queues its segmentation + page reading (no AI). */
+async function addVersion({ catalogue, label, file, userId }) {
   const stored = await fileStore.putFile({ companyId: catalogue.companyId, kind: "catalogue_source", buffer: file.buffer, mimeType: "application/pdf", originalName: file.originalname || null });
   // the admin confirms the number convention once per catalogue: a new version inherits the last confirmed one
   const prior = await prisma.catalogueVersion.findFirst({ where: { catalogueId: catalogue.id, numberConvention: { path: ["source"], equals: "admin" } }, orderBy: { createdAt: "desc" }, select: { id: true, numberConvention: true } });
@@ -63,7 +66,7 @@ async function addVersion({ catalogue, label, file, userId, extract = true }) {
     jobName: "segment",
     type: "catalogue_segment",
     companyId: catalogue.companyId,
-    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, extract: extract !== false },
+    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id },
   });
   return { catalogue, version, taskId: task.id };
 }
@@ -101,7 +104,7 @@ export async function requestExtraction(versionId, companyScope, { infer = true,
  * company's catalogue from the same manufacturer). manufacturer defaults to the
  * brand's name, else the file name.
  */
-export async function uploadCatalogue({ companyId, manufacturer, brandId, label, file, userId, extract = true }) {
+export async function uploadCatalogue({ companyId, manufacturer, brandId, label, file, userId }) {
   await assertCompany(companyId);
   const brand = await assertBrand(companyId, brandId);
   assertFile(file);
@@ -111,23 +114,24 @@ export async function uploadCatalogue({ companyId, manufacturer, brandId, label,
     update: brand ? { brandId: brand.id } : {},
     create: { companyId, manufacturer: maker, brandId: brand?.id || null },
   });
-  return addVersion({ catalogue, label, file, userId, extract });
+  return addVersion({ catalogue, label, file, userId });
 }
 
 /** POST /catalogues/:id/versions — a newer file of an existing catalogue (diff in §15.4). */
-export async function uploadVersion(catalogueId, companyScope, { label, file, userId, extract = true }) {
+export async function uploadVersion(catalogueId, companyScope, { label, file, userId }) {
   const catalogue = await prisma.catalogue.findUnique({ where: { id: catalogueId } });
   if (!visible(catalogue, companyScope)) throw notFound("Catalogue");
   assertFile(file);
-  return addVersion({ catalogue, label, file, userId, extract });
+  return addVersion({ catalogue, label, file, userId });
 }
 
 /**
- * The catalogue worker's `segment` job: text with positions → blocks. Idempotent
+ * The catalogue worker's `segment` job: text with positions → blocks, and every
+ * page's kind + thumbnail + the starting page selection (C1). No AI. Idempotent
  * by version: a retried job replaces the blocks it wrote, unless a person already
  * acted on them (then it refuses rather than lose that work).
  */
-export async function runSegmentJob(versionId, ctx = { progress: () => {} }, { extract = false } = {}) {
+export async function runSegmentJob(versionId, ctx = { progress: () => {} }) {
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version) throw notFound("Catalogue version");
   // checked before anything changes, so a refused retry leaves a reviewed version as it is
@@ -141,6 +145,7 @@ export async function runSegmentJob(versionId, ctx = { progress: () => {} }, { e
     const layout = await readPdfLayout(buffer);
     ctx.progress(60, "Finding product blocks");
     const { blocks, warnings, stats } = segment(layout);
+    const { pages, selection } = await analysePages(version, { buffer, layout, blocks, ctx });
     await prisma.$transaction([
       prisma.catalogueBlock.deleteMany({ where: { versionId } }),
       prisma.catalogueBlock.createMany({
@@ -151,10 +156,10 @@ export async function runSegmentJob(versionId, ctx = { progress: () => {} }, { e
         data: { status: "segmented", pages: stats.pages, warnings, extraction: { segmenter: SEGMENTER_VERSION, bodySize: stats.bodySize, ms: Date.now() - started } },
       }),
     ]);
-    ctx.progress(100, `${stats.products} product blocks found`);
-    // the AI step is its own job (own task, own retry); a scanned/empty catalogue has nothing to extract
-    const next = extract && stats.products ? await enqueueExtraction({ id: versionId, companyId: version.companyId }) : null;
-    return { versionId, pages: stats.pages, productBlocks: stats.products, contextBlocks: stats.context, warnings, ...(next ? { extractJobId: next.id } : {}) };
+    const productPages = pages.filter((p) => p.kind === "product").length;
+    ctx.progress(100, `${stats.pages} pages read — ${productPages} product pages, ${stats.products} product blocks`);
+    // the AI step is its own job, started by a person once the pages are chosen (POST …/extract)
+    return { versionId, pages: stats.pages, productPages, productBlocks: stats.products, contextBlocks: stats.context, selectedPages: selection?.pages?.length ?? null, selectionSource: selection?.source ?? null, warnings };
   } catch (err) {
     await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "failed", error: err.code ? `${err.code}: ${err.message}` : err.message } });
     throw err;
@@ -171,6 +176,7 @@ const versionSummary = {
   createdAt: true,
   appliedAt: true,
   sourceFileId: true,
+  pageSelection: true,
   _count: { select: { blocks: true } },
 };
 

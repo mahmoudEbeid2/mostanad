@@ -1,0 +1,24 @@
+# /catalogue-versions/{id}/pages (C1 — choose the pages sent to the AI).
+get:
+  tags: ["Catalogues"]
+  summary: The pages of an uploaded catalogue, the saved selection and the token estimate
+  description: |
+    Every page read by code at upload (no AI): `{ number, kind, textLength, reason, width, height, thumbnailUrl, previewUrl }`.
+    `kind` from the PDF text layer: cover | contents | about | product | blank | registrations | contact | back | other | unknown
+    (no text layer — a scanned page; kept by default, "can't auto-detect"). A product page = a product block was found on it, or a
+    product-like name with ≥ 2 composition/dosage/specification words and amounts, or a specification table.
+    `selection` `{ pages, source: auto | previous | user, fromVersionId?, savedByUserId?, at, savedAt?, extractedAt? }` — a new version
+    starts from the saved selection of the latest earlier version of the same catalogue (company + manufacturer), cut to its page
+    range; else the product (and unknown) pages.
+    `estimate` `{ selected, all: { pages, input, output, tokens, costUsd }, savedPercent, basis: ledger | constant, sample, priced, estimate: true }`
+    — tokens per page with text, averaged over the ledger's catalogue calls (each tagged with the pages it read); a constant only
+    while there is no history. `costUsd` is null while the model has no price in `modelPrices.js`.
+    A version uploaded before C1 is read on the first call. Permission: `read_products`.
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  responses:
+    "200": { description: "{ version, pageCount, pages, selection, estimate }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

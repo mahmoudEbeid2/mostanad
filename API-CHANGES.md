@@ -517,3 +517,24 @@ Additive; no migration.
 - Data check rows carry `batchFact`; the "what is missing" diagnosis has a `batch_fact` group.
 - Negative cache: an inference "came back empty" now records the prompt it was asked under; one recorded under an
   earlier prompt (an older rule of what may be inferred) no longer counts.
+
+
+## Catalogues — choose the pages sent to the AI (C1, 2026-10-29)
+
+- **Behaviour change:** `POST /catalogues` and `POST /catalogues/:id/versions` no longer start the AI extraction. The
+  upload job (`catalogue_segment`, no AI) now also reads every page — kind, text length, a cached thumbnail — and saves
+  the starting selection; its result is `{ versionId, pages, productPages, productBlocks, contextBlocks, selectedPages,
+  selectionSource, warnings }` (no `extractJobId`). The `extract` form field is accepted and ignored.
+- `GET /catalogue-versions/:id/pages` — **new** (`read_products`): pages `{ number, kind, textLength, reason, width,
+  height, thumbnailUrl, previewUrl }`, `selection`, `estimate` (selection vs all pages; `basis: ledger | constant`).
+- `PUT /catalogue-versions/:id/page-selection` `{ pages }` — **new** (`manage_catalogues`); 400 `EMPTY_SELECTION` /
+  `PAGE_OUT_OF_RANGE`, 409 `VERSION_BUSY`.
+- `GET /catalogue-versions/:id/pages/:n/image?size=thumb|large` — **new** (`read_products`), `image/webp`.
+- `POST /catalogue-versions/:id/extract` — a full extraction splits the PDF into the selected pages and reads only
+  those; blocks keep their original page numbers. Review, bulk accept, the diff and "applied" ignore blocks on skipped
+  pages once a version was extracted from a selection. A new version of a catalogue starts from the previous version's
+  saved/extracted selection.
+- Ledger: `ai_calls.meta` (JSON, nullable) — catalogue calls carry `{ catalogueId, pages }` (original page numbers),
+  with `parentType: "catalogue"`, `parentId`. `GET /catalogues` versions carry `pageSelection`.
+- Additive migration `20261029100000_catalogue_pages`: `catalogue_pages` table, `catalogue_versions.page_selection`,
+  `ai_calls.meta`.

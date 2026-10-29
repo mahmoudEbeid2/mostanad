@@ -1,0 +1,18 @@
+# /catalogue-versions/{id}/page-selection (C1).
+put:
+  tags: ["Catalogues"]
+  summary: Save which pages are sent to the AI
+  description: "Body `{ pages: int[] }` — original page numbers, 1..pageCount, at least one (stored sorted, without repeats). → `{ selection, estimate }`. 400 EMPTY_SELECTION / PAGE_OUT_OF_RANGE (`{ pageCount, invalid }`); 409 VERSION_BUSY while it is being read or extracted. The next version of the catalogue starts from it. Permission: `manage_catalogues`."
+  parameters:
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
+    - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
+  requestBody:
+    required: true
+    content: { application/json: { schema: { type: object, required: [pages], properties: { pages: { type: array, items: { type: integer, minimum: 1 } } } } } }
+  responses:
+    "200": { description: "{ selection, estimate }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "400": { description: EMPTY_SELECTION / PAGE_OUT_OF_RANGE / validation }
+    "409": { description: VERSION_BUSY }
+    "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
+    "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
+    "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

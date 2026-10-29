@@ -89,6 +89,7 @@ export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpSta
     parentType: ctx.parentType ?? null,
     parentId: ctx.parentId ?? null,
     aiRunId: ctx.aiRunId ?? null,
+    meta: ctx.meta ?? undefined,
     modelId: String(modelId),
     attempt,
     outcome: ok ? "ok" : outcomeOf(httpStatus),
