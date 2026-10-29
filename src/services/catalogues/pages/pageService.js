@@ -137,6 +137,8 @@ export function estimate(pages, selected, rates) {
     selected: sel,
     all,
     savedPercent: all.tokens ? Math.round((100 * (all.tokens - sel.tokens)) / all.tokens) : 0,
+    // so a screen can re-estimate while a person clicks pages (a page counts when `readable`)
+    perPage: { input: Math.round(rates.input), output: Math.round(rates.output), costUsd: costOf(rates, { pages: 1, input: Math.round(rates.input), output: Math.round(rates.output) }) },
     basis: rates.basis, // "ledger" | "constant" — either way an estimate
     sample: { calls: rates.calls, pages: rates.pages },
     priced: sel.costUsd !== null,
@@ -156,7 +158,7 @@ export async function listPages(versionId, companyScope) {
   return {
     version: { id: version.id, label: version.label, status: version.status, error: version.error, catalogue: version.catalogue, file: file ? { name: file.originalName, sizeBytes: file.sizeBytes } : null, extraction: version.extraction?.pages ? { pages: version.extraction.pages, at: version.extraction.at } : null },
     pageCount: rows.length,
-    pages: rows.map((p) => ({ number: p.number, kind: p.kind, textLength: p.textLength, reason: p.reason, width: p.width, height: p.height, thumbnailUrl: imageUrl(version.id, p.number, "thumb"), previewUrl: imageUrl(version.id, p.number, "large") })),
+    pages: rows.map((p) => ({ number: p.number, kind: p.kind, textLength: p.textLength, readable: p.textLength >= BLANK_CHARS, reason: p.reason, width: p.width, height: p.height, thumbnailUrl: imageUrl(version.id, p.number, "thumb"), previewUrl: imageUrl(version.id, p.number, "large") })),
     selection,
     estimate: estimate(rows, selection.pages, await perPageRates()),
   };
