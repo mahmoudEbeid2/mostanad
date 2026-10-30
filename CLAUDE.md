@@ -22,6 +22,8 @@ Anything the frontend needs is delivered as an **API contract**, never as a UI c
 npm run dev            # nodemon, API only
 npm run dev:all         # cert-renderer + API + all 9 workers in one command (plain node, no watch — see below)
 npm test               # node tests/runAll.js  (custom runner — do NOT add Jest)
+npm run dev:test:light  # the guarded stack in 3 processes, for a machine short on memory
+node tests/runAll.js --chunk 2/6  # one slice of npm test, same preflights
 npx prisma migrate dev # local only
 npm run eval:golden    # golden-set accuracy (once Phase 0.5 exists)
 ```

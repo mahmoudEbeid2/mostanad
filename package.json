@@ -10,6 +10,7 @@
     "dev:all": "node scripts/runDev.js",
     "dev:test": "node scripts/runDev.js --no-gemini",
     "dev:test:light": "node scripts/runDev.js --no-gemini --light",
+    "eval:catalogue-pages": "node scripts/evalCataloguePages.js",
     "test": "node tests/runAll.js",
     "eval:golden": "node scripts/evalGolden.js",
     "eval:cert-mapping": "node scripts/evalCertMapping.js",

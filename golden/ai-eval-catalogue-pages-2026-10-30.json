@@ -1,0 +1,861 @@
+{
+  "date": "2026-10-30T09:19:48.270Z",
+  "file": "Agrikima_Catalogue_2022-new_-_feed.pdf",
+  "companyId": "cb8d4fb1-cbcd-405a-b527-7d87d55a1fb2",
+  "all": {
+    "label": "all pages",
+    "versionId": "85647b5b-6e8e-4a40-8f1c-7e41a9368df0",
+    "pagesSent": 18,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "ms": 168548,
+    "ledger": {
+      "calls": 6,
+      "ok": 5,
+      "failed": 1,
+      "byFeature": {
+        "catalogue.extract": 5,
+        "catalogue.infer": 1
+      },
+      "inputTokens": 24912,
+      "cachedTokens": 4425,
+      "outputTokens": 25581,
+      "thinkingTokens": 941,
+      "costUsd": null,
+      "unpricedCalls": 6
+    },
+    "estimate": {
+      "selected": {
+        "pages": 18,
+        "input": 21600,
+        "output": 25200,
+        "tokens": 46800,
+        "costUsd": null
+      },
+      "basis": "constant"
+    },
+    "extraction": {
+      "calls": 5,
+      "retriedBlocks": 0,
+      "inference": {
+        "calls": 1,
+        "runId": "15cd879f-f55d-4fba-a2c6-2acacf8d4a9c",
+        "refused": 0,
+        "estimated": 86
+      },
+      "split": {
+        "bytes": 14998261,
+        "pages": 18
+      },
+      "status": "review",
+      "error": null
+    },
+    "products": [
+      {
+        "page": 3,
+        "title": null,
+        "name": "ADVICE",
+        "code": "AKS030",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 8,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 3,
+        "title": "MIX5",
+        "name": "MIX5",
+        "code": "AKS031",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 5,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 4,
+        "title": "Toxinil",
+        "name": "Toxinil",
+        "code": "AKF029",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 7,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 4,
+        "title": "Antistrs-300",
+        "name": "Antistrs-300",
+        "code": "AKS040",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 3,
+        "fields": 15,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 5,
+        "title": "NUTRITIC",
+        "name": "NUTRITIC",
+        "code": "AKF007",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 2,
+        "fields": 13,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 5,
+        "title": "K-Digest",
+        "name": "K-Digest",
+        "code": "AKS17",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 7,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 6,
+        "title": "Re-Cover",
+        "name": "Re-Cover",
+        "code": "AKS2017015",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 7,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 6,
+        "title": "Growth 80",
+        "name": "Growth 80",
+        "code": "AKS2017014",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 9,
+        "fields": 15,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 7,
+        "title": "Immuzyme",
+        "name": "Immuzyme",
+        "code": "AKF06",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 4,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 7,
+        "title": "Optimum24",
+        "name": "Optimum24",
+        "code": "AKF41",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 5,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 8,
+        "title": "Mentholic",
+        "name": "Mentholic",
+        "code": "AKS05",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 3,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 8,
+        "title": "Agri-CalD3",
+        "name": "Agri-CalD3",
+        "code": "AKS01",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 8,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 9,
+        "title": "Aminovital",
+        "name": "Aminovital",
+        "code": "AKS02",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 25,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 9,
+        "title": "Calcium-70",
+        "name": "Calcium-70",
+        "code": "AKS03",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 6,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 10,
+        "title": "Agrivita+",
+        "name": "Agrivita+",
+        "code": "AKS06",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 20,
+        "fields": 14,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 10,
+        "title": "Agri-E+S200",
+        "name": "Agri-E+S200",
+        "code": "AKS207",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 2,
+        "fields": 16,
+        "flags": []
+      },
+      {
+        "page": 11,
+        "title": "Kima-Immune",
+        "name": "Kima-Immune",
+        "code": "AKS08",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 7,
+        "fields": 14,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 11,
+        "title": "Agri-Hepa+",
+        "name": "Agri-Hepa+",
+        "code": "AKS09",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 10,
+        "fields": 14,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 12,
+        "title": "Agrilyte+C",
+        "name": "Agrilyte+C",
+        "code": "AKS11",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 11,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 12,
+        "title": "Agrivita-C",
+        "name": "Agrivita-C",
+        "code": "AKS10",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 1,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 13,
+        "title": "Agrizec",
+        "name": "Agrizec",
+        "code": "AKS12",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 4,
+        "fields": 15,
+        "flags": [
+          "ambiguous_number"
+        ]
+      },
+      {
+        "page": 13,
+        "title": "AD3E 100/20/20",
+        "name": "AD3E 100/20/20",
+        "code": "AKS43",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 3,
+        "fields": 15,
+        "flags": []
+      },
+      {
+        "page": 14,
+        "title": "AD3E-CK",
+        "name": "AD3E-CK",
+        "code": "AKS13",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 5,
+        "fields": 15,
+        "flags": [
+          "duplicate_code"
+        ]
+      },
+      {
+        "page": 14,
+        "title": "AD3E-PLUS",
+        "name": "AD3E-PLUS",
+        "code": "AKS13",
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 15,
+        "fields": 16,
+        "flags": [
+          "duplicate_code"
+        ]
+      },
+      {
+        "page": 15,
+        "title": "IMMUSOL",
+        "name": "IMMUSOL",
+        "code": null,
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 10,
+        "fields": 13,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 15,
+        "title": "DL-METHIONINE",
+        "name": "DL-METHIONINE",
+        "code": null,
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 0,
+        "fields": 14,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 16,
+        "title": "CHOLINE CHLORIDE 70%",
+        "name": "CHOLINE CHLORIDE 70%",
+        "code": null,
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 1,
+        "fields": 12,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 16,
+        "title": "THERIONINE 65%",
+        "name": "THERIONINE 65%",
+        "code": null,
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 2,
+        "fields": 12,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 17,
+        "title": "BETAINE 50%",
+        "name": "BETAINE 50%",
+        "code": null,
+        "producer": "Agrikima Sdn. Bhd.",
+        "origin": "Malaysia",
+        "ingredients": 0,
+        "fields": 12,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      }
+    ]
+  },
+  "kept": {
+    "label": "product pages",
+    "versionId": "59c32426-151f-4df6-b236-a1b1f983cf50",
+    "pagesSent": 15,
+    "pages": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "ms": 137321,
+    "ledger": {
+      "calls": 7,
+      "ok": 7,
+      "failed": 0,
+      "byFeature": {
+        "catalogue.extract": 6,
+        "catalogue.infer": 1
+      },
+      "inputTokens": 28659,
+      "cachedTokens": 7255,
+      "outputTokens": 34074,
+      "thinkingTokens": 798,
+      "costUsd": null,
+      "unpricedCalls": 7
+    },
+    "estimate": {
+      "selected": {
+        "pages": 15,
+        "input": 24912,
+        "output": 26522,
+        "tokens": 51434,
+        "costUsd": null
+      },
+      "basis": "ledger"
+    },
+    "extraction": {
+      "calls": 6,
+      "retriedBlocks": 2,
+      "inference": {
+        "calls": 1,
+        "runId": "73232941-d05b-434f-ba0f-14ee13c6175a",
+        "refused": 0,
+        "estimated": 89
+      },
+      "split": {
+        "bytes": 12296625,
+        "pages": 15
+      },
+      "status": "review",
+      "error": null
+    },
+    "products": [
+      {
+        "page": 3,
+        "title": null,
+        "name": null,
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 0,
+        "fields": 0,
+        "flags": [
+          "no_name",
+          "no_ai_answer"
+        ]
+      },
+      {
+        "page": 3,
+        "title": "MIX5",
+        "name": "MIX5",
+        "code": "AKS031",
+        "producer": null,
+        "origin": null,
+        "ingredients": 5,
+        "fields": 11,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 4,
+        "title": "Toxinil",
+        "name": "Toxinil",
+        "code": "AKF029",
+        "producer": null,
+        "origin": null,
+        "ingredients": 7,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 4,
+        "title": "Antistrs-300",
+        "name": "Antistrs-300",
+        "code": "AKS040",
+        "producer": null,
+        "origin": null,
+        "ingredients": 3,
+        "fields": 12,
+        "flags": [
+          "unverified",
+          "unverified"
+        ]
+      },
+      {
+        "page": 5,
+        "title": "NUTRITIC",
+        "name": "NUTRITIC",
+        "code": "AKF007",
+        "producer": null,
+        "origin": null,
+        "ingredients": 2,
+        "fields": 11,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 5,
+        "title": "K-Digest",
+        "name": "K-Digest",
+        "code": "AKS17",
+        "producer": null,
+        "origin": null,
+        "ingredients": 7,
+        "fields": 12,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 6,
+        "title": "Re-Cover",
+        "name": "Re-Cover",
+        "code": "AKS2017015",
+        "producer": null,
+        "origin": null,
+        "ingredients": 7,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 6,
+        "title": "Growth 80",
+        "name": "Growth 80",
+        "code": "AKS2017014",
+        "producer": null,
+        "origin": null,
+        "ingredients": 9,
+        "fields": 12,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 7,
+        "title": "Immuzyme",
+        "name": "Immuzyme",
+        "code": "AKF06",
+        "producer": null,
+        "origin": null,
+        "ingredients": 4,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 7,
+        "title": "Optimum24",
+        "name": "Optimum24",
+        "code": "AKF41",
+        "producer": null,
+        "origin": null,
+        "ingredients": 5,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 8,
+        "title": "Mentholic",
+        "name": "Mentholic",
+        "code": "AKS05",
+        "producer": null,
+        "origin": null,
+        "ingredients": 3,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 8,
+        "title": "Agri-CalD3",
+        "name": "Agri-CalD3",
+        "code": "AKS01",
+        "producer": null,
+        "origin": null,
+        "ingredients": 8,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 9,
+        "title": "Aminovital",
+        "name": "Aminovital",
+        "code": "AKS02",
+        "producer": null,
+        "origin": null,
+        "ingredients": 25,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 9,
+        "title": "Calcium-70",
+        "name": "Calcium-70",
+        "code": "AKS03",
+        "producer": null,
+        "origin": null,
+        "ingredients": 6,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 10,
+        "title": "Agrivita+",
+        "name": "Agrivita+",
+        "code": "AKS06",
+        "producer": null,
+        "origin": null,
+        "ingredients": 20,
+        "fields": 13,
+        "flags": [
+          "unverified"
+        ]
+      },
+      {
+        "page": 10,
+        "title": "Agri-E+S200",
+        "name": "Agri-E+S200",
+        "code": "AKS207",
+        "producer": null,
+        "origin": null,
+        "ingredients": 2,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 11,
+        "title": "Kima-Immune",
+        "name": "Kima-Immune",
+        "code": "AKS08",
+        "producer": null,
+        "origin": null,
+        "ingredients": 7,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 11,
+        "title": "Agri-Hepa+",
+        "name": "Agri-Hepa+",
+        "code": "AKS09",
+        "producer": null,
+        "origin": null,
+        "ingredients": 10,
+        "fields": 14,
+        "flags": []
+      },
+      {
+        "page": 12,
+        "title": "Agrilyte+C",
+        "name": "Agrilyte+C",
+        "code": "AKS11",
+        "producer": null,
+        "origin": null,
+        "ingredients": 11,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 12,
+        "title": "Agrivita-C",
+        "name": "Agrivita-C",
+        "code": "AKS10",
+        "producer": null,
+        "origin": null,
+        "ingredients": 1,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 13,
+        "title": "Agrizec",
+        "name": "Agrizec",
+        "code": "AKS12",
+        "producer": null,
+        "origin": null,
+        "ingredients": 4,
+        "fields": 13,
+        "flags": [
+          "ambiguous_number"
+        ]
+      },
+      {
+        "page": 13,
+        "title": "AD3E 100/20/20",
+        "name": "AD3E 100/20/20",
+        "code": "AKS43",
+        "producer": null,
+        "origin": null,
+        "ingredients": 3,
+        "fields": 13,
+        "flags": []
+      },
+      {
+        "page": 14,
+        "title": "AD3E-CK",
+        "name": "AD3E-CK",
+        "code": "AKS13",
+        "producer": null,
+        "origin": null,
+        "ingredients": 5,
+        "fields": 13,
+        "flags": [
+          "duplicate_code"
+        ]
+      },
+      {
+        "page": 14,
+        "title": "AD3E-PLUS",
+        "name": "AD3E-PLUS",
+        "code": "AKS13",
+        "producer": null,
+        "origin": null,
+        "ingredients": 15,
+        "fields": 12,
+        "flags": [
+          "unverified",
+          "duplicate_code"
+        ]
+      },
+      {
+        "page": 15,
+        "title": "IMMUSOL",
+        "name": "IMMUSOL",
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 10,
+        "fields": 11,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 15,
+        "title": "DL-METHIONINE",
+        "name": "DL-METHIONINE",
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 0,
+        "fields": 12,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 16,
+        "title": "CHOLINE CHLORIDE 70%",
+        "name": "CHOLINE CHLORIDE 70%",
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 1,
+        "fields": 10,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 16,
+        "title": "THERIONINE 65%",
+        "name": "THERIONINE 65%",
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 2,
+        "fields": 10,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      },
+      {
+        "page": 17,
+        "title": "BETAINE 50%",
+        "name": "BETAINE 50%",
+        "code": null,
+        "producer": null,
+        "origin": null,
+        "ingredients": 0,
+        "fields": 10,
+        "flags": [
+          "estimated_withdrawal"
+        ]
+      }
+    ]
+  },
+  "diff": {
+    "missedBySelection": [
+      {
+        "page": 3,
+        "name": "ADVICE"
+      }
+    ],
+    "foundOnlyWithSelection": [],
+    "blocksOnSkippedPages": [],
+    "producer": {
+      "all": 29,
+      "kept": 0
+    },
+    "origin": {
+      "all": 29,
+      "kept": 0
+    },
+    "fieldsFilled": {
+      "all": 425,
+      "kept": 351
+    }
+  }
+}

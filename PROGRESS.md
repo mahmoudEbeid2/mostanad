@@ -1624,3 +1624,25 @@ Owner: Postgres FTS + pg_trgm, company-scoped, also a candidate source in invoic
 | Tier C: "Storage conditions" from the catalogue with a page-cited quote; results never | yes / never | a6.tierC |
 | Search: "Vitamin E" → every block containing it, company-scoped | 10/10 exactly, other company excluded | a6.search |
 | Live eval opt-in | `RUN_LIVE_GEMINI=1 npm run eval:catalogue` — run once (7 calls); the second run after the fixes stopped on the free-tier daily quota (20/day) | — |
+
+## Catalogues — C1 choose pages: verification and proof (2026-10-30)
+
+**Verified:** `npm run dev:test:light`, `node tests/runAll.js --chunk i/6`: **96/96 suites, 3227 assertions, 0 failed**. `c1.choosePages.test.js` 46 checks. Frontend build and oxlint clean. `ui-smoke.choosePages.mjs` 46/46 (by hand, needs Vite).
+
+**Found by looking at the screen or the run, fixed:** fonts a PDF doesn't embed drew nothing, so such pages rendered white (pdf.js standard fonts); kind tags were cut off; `GET …/pages` during the upload job ran a second analysis against the job's rows; a kept scanned page was counted as "will be read" although the extraction reads text; the estimate treated a cover like a product page (17% saved shown, 4% real — pages now weigh by their text); a dropped DB connection lost a billed ledger row (the write is retried once).
+
+**Live proof** `golden/ai-eval-catalogue-pages-2026-10-30.json`, Agrikima, gemini-2.5-flash, one run each. There was no "before": the ledger held no catalogue call. Costs are null: `modelPrices.js` has no prices yet.
+
+| | All pages | Product pages (default) |
+|---|---|---|
+| Pages sent | 18 | 15 |
+| AI calls in the ledger | 6 (1 failed 503), **1 ok call lost** | 7 (0 failed), 1 of them a retry of skipped blocks |
+| Input / output + thinking tokens in the ledger | 24,912 / 25,581 + 941 — **understated** | 28,659 / 34,074 + 798 |
+| With the lost call, taken from the same pages of the other run (estimate) | about 28,270 / 30,620 + 941 | — |
+| Products read | 29 of 29 | 28 of 29 |
+
+- The saving is only the context blocks: 656 input + 144 output tokens on the first call. Everything else is model variance (one retry = 4,297 tokens, more than the saving). 3 skipped pages hold about 4% of the text here; the saving grows with a catalogue's front/back matter.
+- No product is on a skipped page. Advice (p.3) was sent in both runs; the model answered nothing for it twice in the second run. Asked again alone it gave name, code and 14 quoted fields but no composition (8 ingredients in the other run).
+- **Producer and origin: 29 products → 0.** They are printed only on the cover and back pages, which the default now skips. Owner decision pending.
+- The third run (all pages, with the ledger fix) stopped on the free-tier daily quota (20/day), so the all-pages ledger total stays incomplete. Re-run: `RUN_LIVE_GEMINI=1 EVAL_ONLY=all npm run eval:catalogue-pages`.
+- The proof company stays in the local database: its ledger rows are the estimate's history (13 calls; it now gives 59.7k tokens for the default selection).
