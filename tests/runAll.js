@@ -67,7 +67,7 @@ const testDir = "./tests";
 // Top-level suites plus tests/certificates-v2/. tests/live/ (paid APIs, opt-in
 // via GEMINI_LIVE=1) is never run by npm test.
 const SUB_DIRS = ["certificates-v2"];
-const files = [
+const allFiles = [
   ...fs.readdirSync(testDir).filter((f) => f.endsWith(".test.js") && f !== "runAll.js"),
   ...SUB_DIRS.flatMap((d) =>
     fs.existsSync(path.join(testDir, d))
@@ -75,6 +75,10 @@ const files = [
       : []
   ),
 ];
+// `node tests/runAll.js --chunk 2/6` runs the 2nd of 6 equal slices, same preflights
+const chunkArg = process.argv[process.argv.indexOf("--chunk") + 1];
+const [chunk, chunks] = process.argv.includes("--chunk") ? chunkArg.split("/").map(Number) : [1, 1];
+const files = allFiles.slice(Math.floor(((chunk - 1) * allFiles.length) / chunks), Math.floor((chunk * allFiles.length) / chunks));
 
 // The suites authenticate with the test bypass, which only `npm run dev:test`
 // switches on (opt-in, random secret per start — src/middleware/testBypass.js).

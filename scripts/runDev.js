@@ -41,6 +41,11 @@ const targets = [
 // secret per start, handed to every child via env and written to the
 // gitignored .test-bypass-secret so `npm test` (tests/testBypass.js) can send
 // it. `npm run dev:all` never enables it.
+// `--light` (npm run dev:test:light): for a machine short on memory — the same
+// workers, all in one process (scripts/lightWorkers.js), so 3 processes, not 12.
+const LIGHT = process.argv.includes("--light");
+const run = LIGHT ? [...targets.slice(0, 2), { name: "workers", script: "scripts/lightWorkers.js", args: targets.slice(2).map((t) => t.script) }] : targets;
+
 export const BYPASS_SECRET_FILE = ".test-bypass-secret";
 if (process.argv.includes("--no-gemini")) {
   process.env.GEMINI_DISABLED = "true";
@@ -64,9 +69,9 @@ function prefixStream(stream, label, color) {
   });
 }
 
-const children = targets.map(({ name, script }, i) => {
+const children = run.map(({ name, script, args = [] }, i) => {
   const color = COLORS[i % COLORS.length];
-  const child = spawn(process.execPath, [script], {
+  const child = spawn(process.execPath, [script, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,
   });
@@ -78,7 +83,7 @@ const children = targets.map(({ name, script }, i) => {
   return child;
 });
 
-console.log(`Started ${children.length} processes: ${targets.map((t) => t.name).join(", ")}`);
+console.log(`Started ${children.length} processes: ${run.map((t) => t.name).join(", ")}`);
 console.log(`Gemini: ${process.env.GEMINI_DISABLED === "true" ? "DISABLED (GEMINI_DISABLED=true)" : "enabled"}`);
 console.log(`Test auth bypass: ${process.env.ALLOW_TEST_BYPASS === "true" ? `ENABLED (secret in ${BYPASS_SECRET_FILE})` : "off"}`);
 console.log("Postgres + Redis are NOT started by this script — bring them up first. Press Ctrl+C to stop all.\n");
