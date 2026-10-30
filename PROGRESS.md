@@ -1646,3 +1646,22 @@ Owner: Postgres FTS + pg_trgm, company-scoped, also a candidate source in invoic
 - **Producer and origin: 29 products → 0.** They are printed only on the cover and back pages, which the default now skips. Owner decision pending.
 - The third run (all pages, with the ledger fix) stopped on the free-tier daily quota (20/day), so the all-pages ledger total stays incomplete. Re-run: `RUN_LIVE_GEMINI=1 EVAL_ONLY=all npm run eval:catalogue-pages`.
 - The proof company stays in the local database: its ledger rows are the estimate's history (13 calls; it now gives 59.7k tokens for the default selection).
+
+## Catalogues — fast upload, a person chooses the pages (C0/C1, 2026-10-30)
+
+**Before / after, same 100-page, 15 MB catalogue (real Agrikima pages repeated), same machine, another project's tests running alongside:**
+
+| | Before | After |
+|---|---|---|
+| Upload click → file checked | 17.8 s | 0.37 s |
+| Upload click → pages screen on screen (range input, quick select work) | 18.1 s | 0.78 s |
+| Upload click → thumbnails in view drawn | 18.2 s | 5.5 s |
+| Image requests when the screen opens | 376 | 21 (21 distinct, at most 6 at a time) |
+
+Stages of the old job: text of every page 0.5 s, segmenting 0.02 s, thumbnails 14.8 s. Thumbnails are now drawn one by one in the API process; each opens the PDF again, which is what the 5.5 s is. A cache of the open document is the next thing to try if that matters.
+
+**Verified:** `node tests/runAll.js --chunk i/6` on `npm run dev:test:light`: 96/96 suites, 3255 assertions, 0 failed. `c1.choosePages.test.js` 76. `ui-smoke.choosePages.mjs` 72/72. Frontend build and oxlint clean.
+
+**Decisions:** new status `pages_ready` (not `segmented`: no blocks exist yet). `segmented` now means the chosen pages were read and the AI did not finish. A PDF locked by an owner password only is refused too: it opens but can't be split into readable pages. `pageKinds.js` is gone; old page rows keep their kind column values. The estimate is per chosen page now, with no text to weigh it by at upload.
+
+**Not measured:** extraction tokens for chosen vs all pages on the 100-page file: the Gemini free tier (20 requests a day, the same key locally and on the server) was used up. Measured on the 18-page Agrikima earlier the same day: see the C1 proof below.

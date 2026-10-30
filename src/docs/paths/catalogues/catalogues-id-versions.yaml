@@ -2,7 +2,7 @@
 post:
   tags: ["Catalogues"]
   summary: Upload a newer file of an existing catalogue
-  description: "Multipart file (PDF) + label. Same processing as POST /catalogues; the diff against the previous version is §15.4. → 202 { catalogueId, versionId, jobId }. Permission: manage_catalogues."
+  description: "Multipart file (PDF) + label. Same processing as POST /catalogues; the diff against the previous version is §15.4. → 201 { catalogueId, versionId, status, pageCount }. Permission: manage_catalogues."
   parameters:
     - $ref: "../certificates-v2/_shared.yaml#/parameters/Id"
     - $ref: "../certificates-v2/_shared.yaml#/parameters/CompanyId"
