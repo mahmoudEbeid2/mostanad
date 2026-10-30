@@ -132,7 +132,11 @@ try {
 
   console.log("\n📄 Extraction reads only the kept pages; evidence keeps the original page");
   const ag = await upload(pdf, { label: "2022" });
-  assert("Agrikima starts from its product pages 3–17 (auto)", JSON.stringify((await api("GET", `/catalogue-versions/${ag.versionId}/pages`, A)).data.data.selection.pages) === JSON.stringify([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]));
+  const agPages = (await api("GET", `/catalogue-versions/${ag.versionId}/pages`, A)).data.data;
+  assert("Agrikima starts from its product pages 3–17 (auto)", JSON.stringify(agPages.selection.pages) === JSON.stringify([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]));
+  // cover, about and back hold about 4% of the text, not 3 of 18 pages' worth (17%)
+  assert("the estimate weighs pages by their text: skipping them saves under 10%", agPages.estimate.savedPercent > 0 && agPages.estimate.savedPercent < 10, agPages.estimate.savedPercent);
+  assert("a cover weighs far less than a product page", agPages.pages[0].weight < 0.2 && agPages.pages[3].weight > 1, agPages.pages.map((p) => p.weight));
   r = await PUT({ pages: [15, 4, 9] }, asAdmin, ag.versionId);
   assert("keep p.4, 9, 15 → 200", r.status === 200, r.data);
   const calls = [];

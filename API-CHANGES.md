@@ -525,8 +525,10 @@ Additive; no migration.
   upload job (`catalogue_segment`, no AI) now also reads every page — kind, text length, a cached thumbnail — and saves
   the starting selection; its result is `{ versionId, pages, productPages, productBlocks, contextBlocks, selectedPages,
   selectionSource, warnings }` (no `extractJobId`). The `extract` form field is accepted and ignored.
-- `GET /catalogue-versions/:id/pages` — **new** (`read_products`): pages `{ number, kind, textLength, reason, width,
+- `GET /catalogue-versions/:id/pages` — **new** (`read_products`): pages `{ number, kind, textLength, readable, weight, reason, width,
   height, thumbnailUrl, previewUrl }`, `selection`, `estimate` (selection vs all pages; `basis: ledger | constant`).
+  `weight` = the page's share of the per-page average by its text (a cover ≈ 0.1, a product page ≈ 1.2): `estimate.perPage` × the
+  kept pages' weights is the live estimate.
 - `PUT /catalogue-versions/:id/page-selection` `{ pages }` — **new** (`manage_catalogues`); 400 `EMPTY_SELECTION` /
   `PAGE_OUT_OF_RANGE`, 409 `VERSION_BUSY`.
 - `GET /catalogue-versions/:id/pages/:n/image?size=thumb|large` — **new** (`read_products`), `image/webp`.

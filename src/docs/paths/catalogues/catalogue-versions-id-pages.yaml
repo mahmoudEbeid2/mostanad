@@ -3,7 +3,7 @@ get:
   tags: ["Catalogues"]
   summary: The pages of an uploaded catalogue, the saved selection and the token estimate
   description: |
-    Every page read by code at upload (no AI): `{ number, kind, textLength, reason, width, height, thumbnailUrl, previewUrl }`.
+    Every page read by code at upload (no AI): `{ number, kind, textLength, readable, weight, reason, width, height, thumbnailUrl, previewUrl }` (`weight`: the page's share of the per-page average, by its text).
     `kind` from the PDF text layer: cover | contents | about | product | blank | registrations | contact | back | other | unknown
     (no text layer — a scanned page; kept by default, "can't auto-detect"). A product page = a product block was found on it, or a
     product-like name with ≥ 2 composition/dosage/specification words and amounts, or a specification table.

@@ -122,14 +122,23 @@ function costOf(rates, tokens) {
   return price ? costUsd({ inputTokens: tokens.input, outputTokens: tokens.output }, price) : null;
 }
 
+const readable = (p) => p.textLength >= BLANK_CHARS;
+
+/** page number → its share of the per-page average, by its text: a cover costs a tenth of a product page */
+function pageWeights(pages) {
+  const read = pages.filter(readable);
+  const mean = read.reduce((s, p) => s + p.textLength, 0) / (read.length || 1);
+  return new Map(pages.map((p) => [p.number, readable(p) ? p.textLength / mean : 0]));
+}
+
 /** pages: page rows · selected: page numbers → { selected, all, savedPercent, basis, … } */
 export function estimate(pages, selected, rates) {
   const set = new Set(selected);
-  const readable = (p) => p.textLength >= BLANK_CHARS;
+  const weights = pageWeights(pages);
   const of = (list) => {
-    const n = list.filter(readable).length;
-    const t = { pages: n, input: Math.round(n * rates.input), output: Math.round(n * rates.output) };
-    return { ...t, tokens: t.input + t.output, costUsd: costOf(rates, t) };
+    const n = list.reduce((s, p) => s + weights.get(p.number), 0);
+    const t = { pages: list.filter(readable).length, input: Math.round(n * rates.input), output: Math.round(n * rates.output) };
+    return { ...t, tokens: t.input + t.output, costUsd: costOf(rates, { ...t, pages: n }) };
   };
   const sel = of(pages.filter((p) => set.has(p.number)));
   const all = of(pages);
@@ -137,7 +146,7 @@ export function estimate(pages, selected, rates) {
     selected: sel,
     all,
     savedPercent: all.tokens ? Math.round((100 * (all.tokens - sel.tokens)) / all.tokens) : 0,
-    // so a screen can re-estimate while a person clicks pages (a page counts when `readable`)
+    // so a screen can re-estimate while a person clicks pages (perPage × each page's `weight`)
     perPage: { input: Math.round(rates.input), output: Math.round(rates.output), costUsd: costOf(rates, { pages: 1, input: Math.round(rates.input), output: Math.round(rates.output) }) },
     basis: rates.basis, // "ledger" | "constant" — either way an estimate
     sample: { calls: rates.calls, pages: rates.pages },
@@ -155,10 +164,11 @@ export async function listPages(versionId, companyScope) {
   const fresh = version.pageSelection ? version : await prisma.catalogueVersion.findUnique({ where: { id: version.id } });
   const selection = fresh.pageSelection || { pages: autoSelection(rows), source: "auto" };
   const file = await fileStore.getFileRow(version.sourceFileId, { companyId: version.companyId }).catch(() => null);
+  const weights = pageWeights(rows);
   return {
     version: { id: version.id, label: version.label, status: version.status, error: version.error, catalogue: version.catalogue, file: file ? { name: file.originalName, sizeBytes: file.sizeBytes } : null, extraction: version.extraction?.pages ? { pages: version.extraction.pages, at: version.extraction.at } : null },
     pageCount: rows.length,
-    pages: rows.map((p) => ({ number: p.number, kind: p.kind, textLength: p.textLength, readable: p.textLength >= BLANK_CHARS, reason: p.reason, width: p.width, height: p.height, thumbnailUrl: imageUrl(version.id, p.number, "thumb"), previewUrl: imageUrl(version.id, p.number, "large") })),
+    pages: rows.map((p) => ({ number: p.number, kind: p.kind, textLength: p.textLength, readable: readable(p), weight: Number(weights.get(p.number).toFixed(3)), reason: p.reason, width: p.width, height: p.height, thumbnailUrl: imageUrl(version.id, p.number, "thumb"), previewUrl: imageUrl(version.id, p.number, "large") })),
     selection,
     estimate: estimate(rows, selection.pages, await perPageRates()),
   };
