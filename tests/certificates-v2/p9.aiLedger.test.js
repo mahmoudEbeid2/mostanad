@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, prisma } from "./helpers.js";
 import geminiClient from "../../src/services/ai/geminiClient.js";
-import { FEATURES, __setPriceTableForTests, recordAttempt, linkTaskCalls } from "../../src/services/ai/aiLedger.js";
+import { FEATURES, __setPriceTableForTests, __setLedgerWriteForTests, recordAttempt, linkTaskCalls } from "../../src/services/ai/aiLedger.js";
 import { withAiContext, withAiJobContext, aiRequestContext, setAiActor } from "../../src/services/ai/aiContext.js";
 import { MODEL_PRICES, priceAt, ratesFor, costUsd } from "../../src/services/ai/modelPrices.js";
 import { MODELS, MODEL_IDS } from "../../src/services/ai/modelRegistry.js";
@@ -136,6 +136,24 @@ try {
   const rereadOld = await prisma.aiCall.findUnique({ where: { id: old.id } });
   assert("the change rewrote no earlier row (B and A costs and prices unchanged)", near(reread.costUsd, COST_B) && Number(reread.priceInputPerM) === 1 && near(rereadOld.costUsd, COST_A));
   __setPriceTableForTests(TABLE);
+
+  console.log("\n🔌 A dropped database connection doesn't lose a billed call");
+  let writes = 0;
+  __setLedgerWriteForTests((data) => {
+    writes++;
+    if (writes === 1) throw new Error("Server has closed the connection.");
+    return prisma.aiCall.create({ data });
+  });
+  const dropped = await withAiContext({ companyId: co.id, feature: "labels.chat", entityType: "test", entityId: "ledger-dropped" }, () => recordAttempt({ modelId: FLASH, attempt: 1, ok: true, usage: USAGE, latencyMs: 5 }));
+  assert("the write that failed is tried once more, and the row is there", writes === 2 && !!dropped?.id && (await prisma.aiCall.count({ where: { entityId: "ledger-dropped" } })) === 1, writes);
+  writes = 0;
+  __setLedgerWriteForTests(() => {
+    writes++;
+    throw new Error("still down");
+  });
+  const lost = await withAiContext({ companyId: co.id, feature: "labels.chat", entityType: "test", entityId: "ledger-down" }, () => recordAttempt({ modelId: FLASH, attempt: 1, ok: true, usage: USAGE, latencyMs: 5 }));
+  assert("still down: two tries, no throw (the AI call stands), logged", writes === 2 && lost === null, writes);
+  __setLedgerWriteForTests(null);
 
   const unpriced = await withAiContext({ companyId: co.id, feature: "labels.chat", entityType: "test", entityId: "ledger-unpriced" }, () => recordAttempt({ modelId: "some-other-model", attempt: 1, ok: true, usage: USAGE }));
   assert("a model with no price → row kept, costUsd null (unpriced)", unpriced && unpriced.costUsd === null && unpriced.inputTokens === 1000);

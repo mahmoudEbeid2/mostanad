@@ -57,6 +57,12 @@ export function __setPriceTableForTests(table) {
   if (process.env.NODE_ENV === "production") throw new Error("price table override is for tests only");
   priceTable = table || MODEL_PRICES;
 }
+const insertRow = (data) => prisma.aiCall.create({ data });
+let writeRow = insertRow;
+export function __setLedgerWriteForTests(fn) {
+  if (process.env.NODE_ENV === "production") throw new Error("ledger write override is for tests only");
+  writeRow = fn || insertRow;
+}
 
 /** 429 → quota; any other failure → error. */
 export const outcomeOf = (httpStatus) => (httpStatus === 429 ? "quota" : "error");
@@ -105,10 +111,15 @@ export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpSta
     createdAt: at,
   };
   try {
-    return await prisma.aiCall.create({ data });
-  } catch (err) {
-    console.error(`[aiLedger] could not record a ${feature} call (${modelId}, attempt ${attempt}): ${err.message}`);
-    return null;
+    return await writeRow(data);
+  } catch (first) {
+    // a dropped database connection must not lose a billed call: once more, on a fresh one
+    try {
+      return await writeRow(data);
+    } catch (err) {
+      console.error(`[aiLedger] could not record a ${feature} call (${modelId}, attempt ${attempt}): ${first.message} / ${err.message}`);
+      return null;
+    }
   }
 }
 
