@@ -14,7 +14,7 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, BASE_URL } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, keepAllPages, BASE_URL } from "./helpers.js";
 import { runExtractJob } from "../../src/services/catalogues/extraction/extractionService.js";
 import { maskEstimates } from "../../src/services/catalogues/fieldProvenance.js";
 
@@ -88,6 +88,7 @@ try {
   let r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
   await pollTask(r.data.data.jobId, asAdmin);
   const versionId = r.data.data.versionId;
+  await keepAllPages(versionId); // the whole catalogue, cover and back pages included (C1 default: product pages)
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
   const goldenOf = new Map(blocks.map((b, i) => [b.id, GOLDEN.products[i]]));
   const idOf = (name) => blocks[GOLDEN.products.findIndex((p) => p.name === name)].id;

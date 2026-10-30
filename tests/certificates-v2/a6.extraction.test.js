@@ -13,7 +13,7 @@
 // convention confirmed once re-reads every amount; a duplicated code never auto-matches.
 import fs from "fs";
 import path from "path";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, keepAllPages } from "./helpers.js";
 import { runExtractJob, setNumberConvention } from "../../src/services/catalogues/extraction/extractionService.js";
 import { verifyBlockQuote } from "../../src/services/catalogues/catalogueSections.js";
 import { normaliseAmount, readNumber } from "../../src/services/catalogues/extraction/numbers.js";
@@ -118,6 +118,7 @@ try {
   const task = await pollTask(r.data.data.jobId, asAdmin);
   assert("extract=false → segmented, no extraction queued", task.status === "completed" && !task.result.extractJobId && (await prisma.catalogueVersion.findUnique({ where: { id: r.data.data.versionId } })).status === "segmented");
   const versionId = r.data.data.versionId;
+  await keepAllPages(versionId); // the whole catalogue, cover and back pages included (C1 default: product pages)
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
   const goldenOf = new Map(blocks.map((b, i) => [b.id, GOLDEN.products[i]]));
   const byName = (n) => blocks[GOLDEN.products.findIndex((p) => p.name === n)];
@@ -238,8 +239,10 @@ try {
   console.log("\n💥 The extraction call fails → back to segmented, blocks kept");
   const r3 = await api("POST", `/catalogues/${version.catalogueId}/versions`, asAdmin, form({}, { buffer: pdf, name: "v3.pdf", type: "application/pdf" }));
   const t3 = await pollTask(r3.data.data.jobId, asAdmin);
-  assert("without extract=false the segment job queues the extraction", !!t3.result?.extractJobId);
-  const t3e = await pollTask(t3.result.extractJobId, asAdmin);
+  // C1: an upload never starts the AI — a person extracts once the pages are chosen
+  assert("an upload never queues the extraction (C1), even without extract=false", t3.status === "completed" && !t3.result?.extractJobId);
+  const started = await api("POST", `/catalogue-versions/${r3.data.data.versionId}/extract`, asAdmin, {});
+  const t3e = await pollTask(started.data.data.jobId, asAdmin);
   const v3 = await prisma.catalogueVersion.findUnique({ where: { id: r3.data.data.versionId } });
   assert("…which fails loudly here (GEMINI_DISABLED), version back to segmented with the error", t3e.status === "failed" && t3e.errorCode === "AI_DISABLED" && !/GEMINI/.test(t3e.error) && v3.status === "segmented" && /GEMINI_DISABLED/.test(v3.error) && (await prisma.catalogueBlock.count({ where: { versionId: v3.id } })) === 33, { t3e, status: v3.status });
   r = await api("POST", `/catalogue-versions/${v3.id}/extract`, asAdmin, {});
