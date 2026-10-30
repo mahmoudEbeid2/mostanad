@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import { createCanvas } from "@napi-rs/canvas";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -12,6 +13,8 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 export const SIZES = { thumb: 240, large: 1200 };
 const ROOT = path.resolve(process.cwd(), "uploads", "catalogue-pages");
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+// without them a font the PDF doesn't embed (Helvetica, Times…) draws nothing: a page of text renders white
+const STANDARD_FONTS = `${path.dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json")).replace(/\\/g, "/")}/standard_fonts/`;
 
 /** pdf.js needs a canvas factory outside the browser */
 class NapiCanvasFactory {
@@ -47,7 +50,7 @@ function hasInk(ctx, w, h) {
  * numbers: page numbers (default all) → Map n → { file, drawn }
  */
 export async function renderPages(buffer, { companyId, versionId, numbers = null, size = "thumb" }) {
-  const doc = await getDocument({ data: new Uint8Array(buffer), disableFontFace: true, isEvalSupported: false, canvasFactory: new NapiCanvasFactory() }).promise;
+  const doc = await getDocument({ data: new Uint8Array(buffer), disableFontFace: true, isEvalSupported: false, standardFontDataUrl: STANDARD_FONTS, canvasFactory: new NapiCanvasFactory() }).promise;
   const out = new Map();
   try {
     const list = numbers || Array.from({ length: doc.numPages }, (_, i) => i + 1);

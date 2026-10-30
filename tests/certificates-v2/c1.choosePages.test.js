@@ -12,8 +12,8 @@
 // Needs the guarded stack (npm run dev:test).
 import fs from "fs";
 import path from "path";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma } from "./helpers.js";
+import { fixtureCatalogue } from "./c1Fixture.js";
 import { splitPdf } from "../../src/services/catalogues/pages/pdfSplit.js";
 import { readPdfLayout } from "../../src/services/catalogues/pdfLayout.js";
 import { segment } from "../../src/services/catalogues/segmenter.js";
@@ -27,46 +27,6 @@ const co = await createCompany("c1a");
 const coB = await createCompany("c1b");
 const A = asCompany(co.id);
 const B = asCompany(coB.id);
-
-/** A small catalogue with one page of every kind, drawn with pdf-lib. */
-async function fixtureCatalogue() {
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const page = (lines, { drawOnly = false } = {}) => {
-    const p = doc.addPage([595, 842]);
-    if (drawOnly) p.drawRectangle({ x: 60, y: 200, width: 470, height: 500, color: rgb(0.3, 0.5, 0.7) });
-    let y = 780;
-    for (const l of lines) {
-      const cells = Array.isArray(l) ? l : [l];
-      const size = typeof cells[0] === "object" ? cells[0].size : 10;
-      cells.forEach((c, i) => p.drawText(typeof c === "object" ? c.t : c, { x: 60 + i * 220, y, size, font }));
-      y -= size + 8;
-    }
-  };
-  const product = (name, code) => [
-    [{ t: name, size: 34 }],
-    "COMPOSITION",
-    ["Vitamin E", "200 mg"],
-    ["Vitamin A", "100000 I.U."],
-    ["Selenium", "0.2 mg"],
-    "DOSAGE",
-    "1 mL per 2 litres of drinking water for 5 days.",
-    "PACKING",
-    "1 L bottle",
-    ["FORM", "CODE"],
-    ["Liquid", code],
-  ];
-  page([[{ t: "ACME FEED", size: 40 }], "Product catalogue 2026 edition — animal nutrition"]); // 1 cover
-  page(["CONTENTS", "Vitaminol ............ 4", "Hepaton ............ 6", "Registrations ............ 9", "Contact ............ 7"]); // 2 contents
-  page([]); // 3 blank
-  page(product("VITAMINOL", "AC001")); // 4 product
-  page(["About us", "Welcome to ACME Feed. Our mission is healthy animals; founded in 1998 in Klang."]); // 5 about
-  page(product("HEPATON", "AC002")); // 6 product
-  page(["Contact us", "Tel: +60 3 1234 5678", "Fax: +60 3 1234 5679", "info@acme-feed.com", "Address: Lot 5, Jalan Industri, Klang"]); // 7 contact
-  page([], { drawOnly: true }); // 8 a scanned page: drawn, no text layer
-  page(["Thank you for choosing ACME — www.acme-feed.com"]); // 9 back
-  return Buffer.from(await doc.save());
-}
 
 async function upload(buffer, { manufacturer = "Agrikima Sdn. Bhd.", catalogueId = null, label } = {}) {
   const r = catalogueId
@@ -131,6 +91,14 @@ try {
   assert("large preview → image/webp", r.status === 200 && r.buffer.subarray(8, 12).toString() === "WEBP");
   r = await api("GET", `/catalogue-versions/${up.versionId}/pages/10/image`, A);
   assert("a page past the end → 404", r.status === 404);
+
+  await prisma.cataloguePage.deleteMany({ where: { versionId: up.versionId } });
+  await prisma.catalogueVersion.update({ where: { id: up.versionId }, data: { status: "segmenting" } });
+  r = await api("GET", `/catalogue-versions/${up.versionId}/pages`, A);
+  assert("while the upload job runs: no pages yet, and GET doesn't analyse them itself", r.status === 200 && r.data.data.pageCount === 0 && (await prisma.cataloguePage.count({ where: { versionId: up.versionId } })) === 0, r.data);
+  await prisma.catalogueVersion.update({ where: { id: up.versionId }, data: { status: "segmented" } });
+  r = await api("GET", `/catalogue-versions/${up.versionId}/pages`, A);
+  assert("a segmented version without page rows (uploaded before C1) is analysed on demand", r.status === 200 && r.data.data.pageCount === 9, r.data);
 
   console.log("\n🧮 Selection rules");
   const PUT = (body, h = asAdmin, id = up.versionId) => api("PUT", `/catalogue-versions/${id}/page-selection`, h, body);

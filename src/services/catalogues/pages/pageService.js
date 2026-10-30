@@ -70,10 +70,10 @@ export async function analysePages(version, { buffer = null, layout = null, bloc
   return { pages, selection: keep || version.pageSelection };
 }
 
-/** The page rows of a version, analysed now when it has none yet (uploaded before C1). */
+/** The page rows of a version, analysed now when it has none yet (uploaded before C1). While the upload job still runs it owns them: none yet. */
 async function pagesOf(version) {
   let rows = await prisma.cataloguePage.findMany({ where: { versionId: version.id }, orderBy: { number: "asc" } });
-  if (!rows.length) {
+  if (!rows.length && !["uploaded", "segmenting"].includes(version.status)) {
     await analysePages(version);
     rows = await prisma.cataloguePage.findMany({ where: { versionId: version.id }, orderBy: { number: "asc" } });
   }
