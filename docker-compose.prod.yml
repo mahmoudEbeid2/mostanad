@@ -12,6 +12,9 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      # Default 60s cuts a slow upload with a 502 that has no CORS headers (the browser
+      # reports a CORS error). 300s = Node's own requestTimeout; a 60 MB catalogue needs ~1.6 Mbit/s.
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=300s"
       # Redirect HTTP to HTTPS
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
