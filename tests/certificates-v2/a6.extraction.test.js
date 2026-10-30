@@ -13,7 +13,7 @@
 // convention confirmed once re-reads every amount; a duplicated code never auto-matches.
 import fs from "fs";
 import path from "path";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, keepAllPages } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, keepAllPages, readWholeCatalogue } from "./helpers.js";
 import { runExtractJob, setNumberConvention } from "../../src/services/catalogues/extraction/extractionService.js";
 import { verifyBlockQuote } from "../../src/services/catalogues/catalogueSections.js";
 import { normaliseAmount, readNumber } from "../../src/services/catalogues/extraction/numbers.js";
@@ -115,10 +115,9 @@ try {
   console.log("\n📤 Segment (no AI yet) → extract with the stand-ins");
   const categoriesBefore = await prisma.category.count();
   let r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
-  const task = await pollTask(r.data.data.jobId, asAdmin);
-  assert("extract=false → segmented, no extraction queued", task.status === "completed" && !task.result.extractJobId && (await prisma.catalogueVersion.findUnique({ where: { id: r.data.data.versionId } })).status === "segmented");
+  assert("an upload queues nothing: pages_ready", !r.data.data.jobId && (await prisma.catalogueVersion.findUnique({ where: { id: r.data.data.versionId } })).status === "pages_ready");
   const versionId = r.data.data.versionId;
-  await keepAllPages(versionId); // the whole catalogue, cover and back pages included (C1 default: product pages)
+  await readWholeCatalogue(versionId);
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
   const goldenOf = new Map(blocks.map((b, i) => [b.id, GOLDEN.products[i]]));
   const byName = (n) => blocks[GOLDEN.products.findIndex((p) => p.name === n)];
@@ -221,7 +220,7 @@ try {
 
   console.log("\n😵 Inference down → verified values kept");
   const r2 = await api("POST", `/catalogues/${version.catalogueId}/versions`, asAdmin, form({ extract: "false" }, { buffer: pdf, name: "v2.pdf", type: "application/pdf" }));
-  await pollTask(r2.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r2.data.data.versionId);
   const blocks2 = await prisma.catalogueBlock.findMany({ where: { versionId: r2.data.data.versionId, kind: "product" }, orderBy: { seq: "asc" } });
   const golden2 = new Map(blocks2.map((b, i) => [b.id, GOLDEN.products[i]]));
   const down = await runExtractJob(r2.data.data.versionId, undefined, { generate: extractModel(golden2, [], { mutate: false }), inferGenerate: async () => { throw new Error("Gemini quota exhausted (daily/project limit)"); } });
@@ -238,9 +237,9 @@ try {
 
   console.log("\n💥 The extraction call fails → back to segmented, blocks kept");
   const r3 = await api("POST", `/catalogues/${version.catalogueId}/versions`, asAdmin, form({}, { buffer: pdf, name: "v3.pdf", type: "application/pdf" }));
-  const t3 = await pollTask(r3.data.data.jobId, asAdmin);
   // C1: an upload never starts the AI — a person extracts once the pages are chosen
-  assert("an upload never queues the extraction (C1), even without extract=false", t3.status === "completed" && !t3.result?.extractJobId);
+  assert("an upload never queues the extraction (C1), even without extract=false", r3.status === 201 && !r3.data.data.jobId);
+  await keepAllPages(r3.data.data.versionId);
   const started = await api("POST", `/catalogue-versions/${r3.data.data.versionId}/extract`, asAdmin, {});
   const t3e = await pollTask(started.data.data.jobId, asAdmin);
   const v3 = await prisma.catalogueVersion.findUnique({ where: { id: r3.data.data.versionId } });
@@ -250,7 +249,8 @@ try {
   await pollTask(r.data.data.jobId, asAdmin);
   await prisma.catalogueBlock.updateMany({ where: { versionId: v2.id, kind: "product" }, data: { status: "accepted" } });
   r = await api("POST", `/catalogue-versions/${v2.id}/extract`, asAdmin, {});
-  assert("re-extracting a version whose blocks were accepted → 409 BLOCKS_IN_USE", r.status === 409 && r.data.code === "BLOCKS_IN_USE");
+  const idle = r.status === 202 ? await pollTask(r.data.data.jobId, asAdmin) : null;
+  assert("extracting again with every block accepted → nothing to read or ask, the blocks stay accepted", idle?.status === "completed" && idle.result.products === 0 && idle.result.calls === 0 && (await prisma.catalogueBlock.count({ where: { versionId: v2.id, kind: "product", status: "accepted" } })) === 29, idle);
   r = await api("POST", `/catalogue-versions/${v3.id}/extract`, asCompany(co.id), {});
   assert("another… a company can't reach it unless it's theirs: same company bypass sees it (tenant ok)", [202, 409].includes(r.status));
 
@@ -274,7 +274,7 @@ try {
   console.log("\n🙈 A block the AI never answers gets no estimates (seen live: Aminovital)");
   {
     const up = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "No answer test", extract: "false" }, { buffer: pdf, name: "na.pdf", type: "application/pdf" }));
-    await pollTask(up.data.data.jobId, asAdmin);
+    await readWholeCatalogue(up.data.data.versionId);
     const vb = await prisma.catalogueBlock.findMany({ where: { versionId: up.data.data.versionId, kind: "product" }, orderBy: { seq: "asc" } });
     const gOf = new Map(vb.map((b, i) => [b.id, GOLDEN.products[i]]));
     const amino = vb[GOLDEN.products.findIndex((p) => p.name === "Aminovital")];

@@ -284,6 +284,11 @@ model BackgroundTask {
   status    String // "pending" | "processing" | "completed" | "failed"
   result    Json? // Final JSON results output
   error     String? // Error message if failed
+  // the running job's progress, kept here so polling sees it without the socket
+  progress  Int?
+  message   String?
+  stage     String?
+  stages    Json?
   companyId String?  @map("company_id")
   brandId   String?  @map("brand_id")
   createdAt DateTime @default(now()) @map("created_at")
@@ -1375,7 +1380,7 @@ model CatalogueVersion {
   companyId        String           @map("company_id") // = catalogue.companyId, for tenant-scoped queries without a join
   label            String // "2025–2026"
   sourceFileId     String           @map("source_file_id")
-  status           String           @default("uploaded") // uploaded|segmenting|segmented|extracting|review|applied|failed
+  status           String           @default("uploaded") // pages_ready|segmented|extracting|review|applied|failed
   numberConvention Json?            @map("number_convention") // { dotGroup3: "thousands"|"decimal", source: "majority"|"admin", confirmedByUserId?, at }
   pages            Int              @default(0)
   warnings         Json? // [{ code: no_text_layer|no_product_blocks, page?, message }]
@@ -1385,6 +1390,7 @@ model CatalogueVersion {
   appliedAt        DateTime?        @map("applied_at")
   // the pages sent to the AI: { pages: [n…], source: auto|previous|user, fromVersionId?, savedByUserId?, at }
   pageSelection    Json?            @map("page_selection")
+  extractTaskId    String?          @map("extract_task_id") // the running extraction's background task
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   blocks           CatalogueBlock[]
@@ -1432,7 +1438,7 @@ model CataloguePage {
   version    CatalogueVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   companyId  String           @map("company_id")
   number     Int // 1-based, in the uploaded file
-  kind       String // cover|contents|about|product|blank|registrations|contact|back|other|unknown (no text layer)
+  kind       String? // null: a person chooses the pages. Older rows: cover|contents|about|product|blank|registrations|contact|back|other|unknown (no text layer)
   textLength Int              @default(0) @map("text_length")
   reason     String? // why code gave it that kind ("COMPOSITION, DOSAGE and a product name")
   width      Float            @default(0)

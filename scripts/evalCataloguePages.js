@@ -22,8 +22,7 @@ if (process.env.GEMINI_DISABLED === "true") {
 }
 
 const { createCompany, prisma } = await import("../tests/certificates-v2/helpers.js");
-const fileStore = await import("../src/services/certificates/storage/fileStore.js");
-const { runSegmentJob } = await import("../src/services/catalogues/catalogueService.js");
+const { uploadCatalogue } = await import("../src/services/catalogues/catalogueService.js");
 const { runExtractJob } = await import("../src/services/catalogues/extraction/extractionService.js");
 const { saveSelection, listPages } = await import("../src/services/catalogues/pages/pageService.js");
 process.env.GEMINI_DISABLED = "false";
@@ -35,12 +34,9 @@ const co = await createCompany("c1proof");
 
 /** One extraction of the file under its own catalogue (so no selection carries over). */
 async function run(label, choose) {
-  const stored = await fileStore.putFile({ companyId: co.id, kind: "catalogue_source", buffer: pdf, mimeType: "application/pdf", originalName: path.basename(file) });
-  const catalogue = await prisma.catalogue.create({ data: { companyId: co.id, manufacturer: `C1 proof — ${label}` } });
-  const version = await prisma.catalogueVersion.create({ data: { catalogueId: catalogue.id, companyId: co.id, label, sourceFileId: stored.id } });
-  await runSegmentJob(version.id);
+  const { version, catalogue } = await uploadCatalogue({ companyId: co.id, manufacturer: `C1 proof — ${label}`, label, file: { buffer: pdf, originalname: path.basename(file) } });
   const listed = await listPages(version.id, co.id);
-  const pages = choose(listed.pages.map((p) => p.number), listed.selection.pages);
+  const pages = choose(listed.pages.map((p) => p.number));
   await saveSelection(version.id, co.id, pages);
   const estimate = (await listPages(version.id, co.id)).estimate;
   const t0 = Date.now();
@@ -88,7 +84,9 @@ async function run(label, choose) {
 // EVAL_ONLY=all: run the whole catalogue again and compare with today's saved product-pages run
 const today = path.join(ROOT, "golden", `ai-eval-catalogue-pages-${new Date().toISOString().slice(0, 10)}.json`);
 const all = await run("all pages", (every) => every);
-const kept = process.env.EVAL_ONLY === "all" ? JSON.parse(fs.readFileSync(today, "utf8")).kept : await run("product pages", (_, auto) => auto);
+// the pages a person would keep: EVAL_PAGES="3-17", default all but the first two and the last
+const wanted = (every) => (process.env.EVAL_PAGES ? process.env.EVAL_PAGES.split(",").flatMap((p) => { const [a, b = a] = p.split("-").map(Number); return Array.from({ length: b - a + 1 }, (_, i) => a + i); }) : every.slice(2, -1));
+const kept = process.env.EVAL_ONLY === "all" ? JSON.parse(fs.readFileSync(today, "utf8")).kept : await run("product pages", wanted);
 
 const key = (p) => `${p.page}|${p.title}`;
 const inKept = new Map(kept.products.map((p) => [key(p), p]));

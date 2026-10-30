@@ -15,7 +15,7 @@ import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
 import { PDFDocument, PDFName, decodePDFRawStream } from "pdf-lib";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, BASE_URL } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, readWholeCatalogue, BASE_URL } from "./helpers.js";
 import { runExtractJob } from "../../src/services/catalogues/extraction/extractionService.js";
 
 const { assert, counts } = makeAssert();
@@ -67,7 +67,7 @@ const inferModel = (wording) => async (args) => {
 async function uploadAndExtract({ catalogueId = null, buffer, label, wording }) {
   const fd = form(catalogueId ? { label, extract: "false" } : { companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", label, extract: "false" }, { buffer, name: `${label}.pdf`, type: "application/pdf" });
   const r = await api("POST", catalogueId ? `/catalogues/${catalogueId}/versions` : "/catalogues", asAdmin, fd);
-  await pollTask(r.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r.data.data.versionId);
   const versionId = r.data.data.versionId;
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
   const goldenOf = new Map(blocks.map((b, i) => [b.id, GOLDEN.products[i]]));

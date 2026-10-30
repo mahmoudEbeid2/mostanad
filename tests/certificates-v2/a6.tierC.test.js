@@ -16,7 +16,7 @@
 // Stand-in models only (npm test never calls a paid API). Needs `npm run dev:test`.
 import fs from "fs";
 import path from "path";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, confirmFirst } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, readWholeCatalogue, confirmFirst } from "./helpers.js";
 import { seedTemplate } from "./invoiceGoldenHarness.js";
 import { computeNeeds, decideNeeds, blockingCounts } from "../../src/services/certificates/dataNeeds/dataNeedsService.js";
 import { verifyAnswer } from "../../src/services/certificates/dataNeeds/evidenceVerifier.js";
@@ -57,7 +57,7 @@ const gapsOf = (args) => JSON.parse(args.contents[3].slice(args.contents[3].inde
 
 async function uploadFor(c) {
   const r = await api("POST", "/catalogues", asAdmin, form({ companyId: c.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
-  await pollTask(r.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r.data.data.versionId);
   return prisma.catalogueBlock.findMany({ where: { versionId: r.data.data.versionId, kind: "product" }, orderBy: { seq: "asc" } });
 }
 

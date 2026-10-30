@@ -3,18 +3,17 @@ import { prisma } from "../../lib/prisma.js";
 import { CertError, notFound } from "../certificates/errors.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
-import { readPdfLayout } from "./pdfLayout.js";
-import { segment, SEGMENTER_VERSION } from "./segmenter.js";
 import { presentError } from "../ai/aiErrorMessage.js";
-import { analysePages } from "./pages/pageService.js";
+import { openPdf } from "./pages/pdfInfo.js";
+import { selectionForExtraction } from "./pages/pageService.js";
 
 // Product catalogues as source documents (plan.md §15.2, §15.7; Phase A6.1).
 //  - A system user (manage_catalogues) uploads a manufacturer's catalogue FOR a
 //    company; the file is a StoredFile kept forever (never deleted, never swept).
 //  - Each upload is a CatalogueVersion under its Catalogue (company + manufacturer).
-//  - Code splits it into product blocks { page, bbox, text, lines } (segmenter.js)
-//    and reads every page (kind, thumbnail) for the "choose pages" step (C1).
-//    Upload never starts the AI: a person picks the pages, then extracts.
+//  - An upload only opens the file (page count, sizes) and answers at once: no text
+//    is read and no thumbnail drawn. A person chooses the pages, and only those are
+//    read into product blocks and sent to the AI (extractionService).
 //  - Every query is tenant-scoped: a company sees only its own catalogues;
 //    another tenant's row is reported as missing (404), never as forbidden.
 // Nothing here creates, changes or deletes a product's data; linking a block to
@@ -46,8 +45,8 @@ function assertFile(file) {
 
 const baseName = (name) => path.basename(String(name || "catalogue.pdf")).replace(/\.pdf$/i, "").trim().slice(0, 120) || "Catalogue";
 
-/** Stores the file, creates the version and queues its segmentation + page reading (no AI). */
-async function addVersion({ catalogue, label, file, userId }) {
+/** Stores an opened file as a new version of the catalogue, with its page rows. Nothing is queued. */
+async function addVersion({ catalogue, label, file, info, userId }) {
   const stored = await fileStore.putFile({ companyId: catalogue.companyId, kind: "catalogue_source", buffer: file.buffer, mimeType: "application/pdf", originalName: file.originalname || null });
   // the admin confirms the number convention once per catalogue: a new version inherits the last confirmed one
   const prior = await prisma.catalogueVersion.findFirst({ where: { catalogueId: catalogue.id, numberConvention: { path: ["source"], equals: "admin" } }, orderBy: { createdAt: "desc" }, select: { id: true, numberConvention: true } });
@@ -58,43 +57,43 @@ async function addVersion({ catalogue, label, file, userId }) {
       label: String(label || "").trim() || baseName(file.originalname),
       sourceFileId: stored.id,
       uploadedByUserId: userId || null,
+      status: "pages_ready",
+      pages: info.pageCount,
       ...(prior ? { numberConvention: { ...prior.numberConvention, inheritedFromVersionId: prior.id } } : {}),
     },
   });
-  const task = await enqueueTask({
-    queueName: QUEUES.catalogue,
-    jobName: "segment",
-    type: "catalogue_segment",
-    companyId: catalogue.companyId,
-    data: { entity: "catalogue_version", entityId: version.id, versionId: version.id },
-  });
-  return { catalogue, version, taskId: task.id };
+  await prisma.cataloguePage.createMany({ data: info.pages.map((p) => ({ ...p, versionId: version.id, companyId: catalogue.companyId })) });
+  return { catalogue, version, pageCount: info.pageCount };
 }
 
-/** Queues the AI extraction of a segmented version (catalogue worker `extract`). → the task row */
-export function enqueueExtraction(version, { infer = true, blockIds = null } = {}) {
-  return enqueueTask({
+/** Queues the extraction of a version's chosen pages (catalogue worker `extract`). → the task row */
+export async function enqueueExtraction(version, { infer = true, blockIds = null } = {}) {
+  const task = await enqueueTask({
     queueName: QUEUES.catalogue,
     jobName: "extract",
     type: "catalogue_extract",
     companyId: version.companyId,
     data: { entity: "catalogue_version", entityId: version.id, versionId: version.id, infer: infer !== false, ...(blockIds?.length ? { blockIds } : {}) },
   });
+  await prisma.catalogueVersion.update({ where: { id: version.id }, data: { extractTaskId: task.id } });
+  return task;
 }
 
 /**
- * POST /catalogue-versions/:id/extract { infer?, blockIds? } — (re-)extract a version whose blocks
- * nobody acted on yet, or just some pending product blocks (after a merge/split).
+ * POST /catalogue-versions/:id/extract { infer?, blockIds? } — read and extract the chosen pages not
+ * read yet (blocks a person reviewed stay), or just some pending product blocks (after a merge/split).
  */
 export async function requestExtraction(versionId, companyScope, { infer = true, blockIds = null } = {}) {
   const version = await loadVersion(versionId, companyScope);
-  if (!["segmented", "review", "applied"].includes(version.status) || (version.status === "applied" && !blockIds?.length)) throw new CertError("VERSION_NOT_READY", `A version that is ${version.status} can't be extracted`, 409);
+  if (!["pages_ready", "segmented", "review", "applied"].includes(version.status)) throw new CertError("VERSION_NOT_READY", `A version that is ${version.status} can't be extracted`, 409);
   if (blockIds?.length) {
     const own = await prisma.catalogueBlock.count({ where: { versionId, id: { in: blockIds }, kind: "product" } });
     if (own !== blockIds.length) throw notFound("Catalogue block");
+    const touched = await prisma.catalogueBlock.count({ where: { versionId, id: { in: blockIds }, OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
+    if (touched) throw new CertError("BLOCKS_IN_USE", "These blocks were already accepted or linked; they can't be extracted again", 409);
+  } else {
+    await selectionForExtraction(version); // nothing chosen is refused here, not in the job
   }
-  const touched = await prisma.catalogueBlock.count({ where: { versionId, ...(blockIds?.length ? { id: { in: blockIds } } : {}), OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
-  if (touched) throw new CertError("BLOCKS_IN_USE", "Blocks of this version were already accepted or linked; it can't be extracted again", 409);
   const task = await enqueueExtraction(version, { infer, blockIds });
   return { versionId, jobId: task.id };
 }
@@ -108,13 +107,14 @@ export async function uploadCatalogue({ companyId, manufacturer, brandId, label,
   await assertCompany(companyId);
   const brand = await assertBrand(companyId, brandId);
   assertFile(file);
+  const info = await openPdf(file.buffer); // refused before anything is stored or created
   const maker = String(manufacturer || "").trim() || brand?.name || baseName(file.originalname);
   const catalogue = await prisma.catalogue.upsert({
     where: { companyId_manufacturer: { companyId, manufacturer: maker } },
     update: brand ? { brandId: brand.id } : {},
     create: { companyId, manufacturer: maker, brandId: brand?.id || null },
   });
-  return addVersion({ catalogue, label, file, userId });
+  return addVersion({ catalogue, label, file, info, userId });
 }
 
 /** POST /catalogues/:id/versions — a newer file of an existing catalogue (diff in §15.4). */
@@ -122,48 +122,7 @@ export async function uploadVersion(catalogueId, companyScope, { label, file, us
   const catalogue = await prisma.catalogue.findUnique({ where: { id: catalogueId } });
   if (!visible(catalogue, companyScope)) throw notFound("Catalogue");
   assertFile(file);
-  return addVersion({ catalogue, label, file, userId });
-}
-
-/**
- * The catalogue worker's `segment` job: text with positions → blocks, and every
- * page's kind + thumbnail + the starting page selection (C1). No AI. Idempotent
- * by version: a retried job replaces the blocks it wrote, unless a person already
- * acted on them (then it refuses rather than lose that work).
- */
-export async function runSegmentJob(versionId, ctx = { progress: () => {} }) {
-  const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
-  if (!version) throw notFound("Catalogue version");
-  // checked before anything changes, so a refused retry leaves a reviewed version as it is
-  const touched = await prisma.catalogueBlock.count({ where: { versionId, OR: [{ status: { not: "pending" } }, { productId: { not: null } }] } });
-  if (touched) throw new CertError("BLOCKS_IN_USE", "This version's blocks were already reviewed or linked; it can't be segmented again", 409);
-  const started = Date.now();
-  await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "segmenting", error: null } });
-  try {
-    ctx.progress(10, "Reading the catalogue's text layer");
-    const { buffer } = await fileStore.readFile(version.sourceFileId, { companyId: version.companyId });
-    const layout = await readPdfLayout(buffer);
-    ctx.progress(60, "Finding product blocks");
-    const { blocks, warnings, stats } = segment(layout);
-    const { pages, selection } = await analysePages(version, { buffer, layout, blocks, ctx });
-    await prisma.$transaction([
-      prisma.catalogueBlock.deleteMany({ where: { versionId } }),
-      prisma.catalogueBlock.createMany({
-        data: blocks.map((b) => ({ versionId, companyId: version.companyId, seq: b.seq, kind: b.kind, page: b.page, bbox: b.bbox, title: b.title, text: b.text, lines: b.lines })),
-      }),
-      prisma.catalogueVersion.update({
-        where: { id: versionId },
-        data: { status: "segmented", pages: stats.pages, warnings, extraction: { segmenter: SEGMENTER_VERSION, bodySize: stats.bodySize, ms: Date.now() - started } },
-      }),
-    ]);
-    const productPages = pages.filter((p) => p.kind === "product").length;
-    ctx.progress(100, `${stats.pages} pages read — ${productPages} product pages, ${stats.products} product blocks`);
-    // the AI step is its own job, started by a person once the pages are chosen (POST …/extract)
-    return { versionId, pages: stats.pages, productPages, productBlocks: stats.products, contextBlocks: stats.context, selectedPages: selection?.pages?.length ?? null, selectionSource: selection?.source ?? null, warnings };
-  } catch (err) {
-    await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "failed", error: err.code ? `${err.code}: ${err.message}` : err.message } });
-    throw err;
-  }
+  return addVersion({ catalogue, label, file, info: await openPdf(file.buffer), userId });
 }
 
 const versionSummary = {
@@ -177,8 +136,16 @@ const versionSummary = {
   appliedAt: true,
   sourceFileId: true,
   pageSelection: true,
+  extractTaskId: true,
   _count: { select: { blocks: true } },
 };
+
+/** A version being extracted carries its task's progress, for the list's status pill. */
+async function withTasks(versions) {
+  const ids = versions.filter((v) => v.status === "extracting" && v.extractTaskId).map((v) => v.extractTaskId);
+  const tasks = ids.length ? await prisma.backgroundTask.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, progress: true, message: true, stage: true } }) : [];
+  return versions.map((v) => ({ ...presentError(v), task: (v.status === "extracting" && tasks.find((t) => t.id === v.extractTaskId)) || null }));
+}
 
 /** GET /catalogues — the scoped company's catalogues (a system user without ?companyId sees all). */
 export async function listCatalogues(companyScope) {
@@ -187,7 +154,7 @@ export async function listCatalogues(companyScope) {
     include: { brand: { select: { id: true, name: true } }, company: { select: { id: true, name: true } }, versions: { select: versionSummary, orderBy: { createdAt: "desc" } } },
     orderBy: { updatedAt: "desc" },
   });
-  return rows.map((c) => ({ ...c, versions: c.versions.map(presentError) }));
+  return Promise.all(rows.map(async (c) => ({ ...c, versions: await withTasks(c.versions) })));
 }
 
 export async function getCatalogue(id, companyScope) {
@@ -196,7 +163,7 @@ export async function getCatalogue(id, companyScope) {
     include: { brand: { select: { id: true, name: true } }, company: { select: { id: true, name: true } }, versions: { select: versionSummary, orderBy: { createdAt: "desc" } } },
   });
   if (!visible(row, companyScope)) throw notFound("Catalogue");
-  return { ...row, versions: row.versions.map(presentError) };
+  return { ...row, versions: await withTasks(row.versions) };
 }
 
 async function loadVersion(id, companyScope) {

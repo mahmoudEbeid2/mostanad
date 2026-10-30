@@ -26,8 +26,8 @@ if (process.env.GEMINI_DISABLED === "true") {
 }
 
 const { createCompany, cleanupCompany, prisma } = await import("../tests/certificates-v2/helpers.js");
-const fileStore = await import("../src/services/certificates/storage/fileStore.js");
-const { runSegmentJob } = await import("../src/services/catalogues/catalogueService.js");
+const { uploadCatalogue } = await import("../src/services/catalogues/catalogueService.js");
+const { saveSelection } = await import("../src/services/catalogues/pages/pageService.js");
 const { runExtractJob } = await import("../src/services/catalogues/extraction/extractionService.js");
 const { verifyBlockQuote } = await import("../src/services/catalogues/catalogueSections.js");
 process.env.GEMINI_DISABLED = "false";
@@ -39,11 +39,9 @@ const co = await createCompany("a6live");
 const card = { date: new Date().toISOString(), products: [], totals: {} };
 let exitCode = 0;
 try {
-  // the same path as an upload, without the queue (the job functions directly)
-  const stored = await fileStore.putFile({ companyId: co.id, kind: "catalogue_source", buffer: pdf, mimeType: "application/pdf", originalName: "agrikima.pdf" });
-  const catalogue = await prisma.catalogue.create({ data: { companyId: co.id, manufacturer: "Agrikima Sdn. Bhd." } });
-  const version = await prisma.catalogueVersion.create({ data: { catalogueId: catalogue.id, companyId: co.id, label: "eval", sourceFileId: stored.id } });
-  await runSegmentJob(version.id);
+  // the real upload, then every page kept (the golden covers the whole catalogue)
+  const { version, pageCount } = await uploadCatalogue({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", label: "eval", file: { buffer: pdf, originalname: "agrikima.pdf" } });
+  await saveSelection(version.id, co.id, Array.from({ length: pageCount }, (_, i) => i + 1));
   const t0 = Date.now();
   await runExtractJob(version.id, { progress: (p, m) => console.log(`  ${p}% ${m}`) }, { infer: process.env.EVAL_INFER !== "0" });
   const v = await prisma.catalogueVersion.findUnique({ where: { id: version.id } });

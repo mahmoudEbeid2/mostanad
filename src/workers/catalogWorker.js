@@ -8,7 +8,6 @@ import io from "socket.io-client";
 import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 import { startWorker } from "../services/certificates/jobs/taskRunner.js";
 import { QUEUES } from "../services/certificates/jobs/queues.js";
-import { runSegmentJob } from "../services/catalogues/catalogueService.js";
 import { runExtractJob } from "../services/catalogues/extraction/extractionService.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -142,7 +141,6 @@ export const catalogueWorker = startWorker({
   label: "Catalogue Worker",
   concurrency: 1,
   handlers: {
-    segment: ({ versionId }, ctx) => runSegmentJob(versionId, ctx),
     extract: ({ versionId, infer, blockIds }, ctx) => runExtractJob(versionId, ctx, { infer, blockIds }),
   },
 });

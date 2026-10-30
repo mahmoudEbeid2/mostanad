@@ -14,10 +14,10 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, BASE_URL } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, readWholeCatalogue, BASE_URL } from "./helpers.js";
 import { readPdfLayout } from "../../src/services/catalogues/pdfLayout.js";
 import { segment, headingsOf, toLines } from "../../src/services/catalogues/segmenter.js";
-import { runSegmentJob } from "../../src/services/catalogues/catalogueService.js";
+import { readChosenPages } from "../../src/services/catalogues/extraction/extractionService.js";
 import { cleanupOrphanFiles, failStuckTasks } from "../../src/services/certificates/maintenance/maintenanceService.js";
 import { absolutePath, sha256 } from "../../src/services/certificates/storage/fileStore.js";
 
@@ -108,14 +108,14 @@ async function upload() {
 
   const before = await prisma.product.count();
   r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", label: "2025–2026", extract: "false" }, { buffer: pdf, name: "Agrikima_Catalogue_2022-new_-_feed.pdf", type: "application/pdf" }));
-  assert("upload → 202 with catalogue, version and job ids", r.status === 202 && r.data?.data?.versionId && r.data?.data?.jobId, r);
+  assert("upload → 201 with catalogue and version ids and the page count, no job", r.status === 201 && r.data?.data?.versionId && r.data?.data?.pageCount === 18 && !r.data?.data?.jobId, r);
   ({ versionId, catalogueId } = r.data.data);
-  const task = await pollTask(r.data.data.jobId, asAdmin, { timeoutMs: 60_000 });
-  assert("segment task completed", task?.status === "completed", task);
-  assert("task result: 29 product blocks, 18 pages", task?.result?.productBlocks === 29 && task?.result?.pages === 18, task?.result);
+  const uploaded = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
+  assert("version pages_ready, 18 pages, nothing read yet", uploaded.status === "pages_ready" && uploaded.pages === 18 && (await prisma.catalogueBlock.count({ where: { versionId } })) === 0, uploaded);
+  await readWholeCatalogue(versionId);
 
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
-  assert("version segmented, 18 pages, segmenter recorded", version.status === "segmented" && version.pages === 18 && version.extraction?.segmenter, version);
+  assert("all pages read: 18 pages, segmenter recorded", version.pages === 18 && version.extraction?.segmenter && version.extraction?.readPages?.length === 18, version);
   const file = await prisma.storedFile.findUnique({ where: { id: version.sourceFileId } });
   assert("the file is a StoredFile of the company, kind catalogue_source", file?.companyId === co.id && file.kind === "catalogue_source" && file.originalName === "Agrikima_Catalogue_2022-new_-_feed.pdf");
   assert("kept byte for byte (sha256)", file.sha256 === sha256(pdf) && fs.readFileSync(absolutePath(file)).equals(pdf));
@@ -126,11 +126,11 @@ async function upload() {
 
   // a second upload from the same manufacturer is a new version of the same catalogue
   r = await api("POST", `/catalogues/${catalogueId}/versions`, asAdmin, form({ label: "reprint", extract: "false" }, { buffer: pdf, name: "again.pdf", type: "application/pdf" }));
-  assert("POST /catalogues/:id/versions → 202, same catalogue", r.status === 202 && r.data?.data?.catalogueId === catalogueId, r);
-  await pollTask(r.data.data.jobId, asAdmin);
+  assert("POST /catalogues/:id/versions → 201, same catalogue", r.status === 201 && r.data?.data?.catalogueId === catalogueId, r);
+  await readWholeCatalogue(r.data.data.versionId);
   r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "third.pdf", type: "application/pdf" }));
   assert("upload with the same manufacturer → a version of the same catalogue", r.data?.data?.catalogueId === catalogueId);
-  await pollTask(r.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r.data.data.versionId);
   assert("the company has one catalogue with three versions", (await prisma.catalogueVersion.count({ where: { catalogueId } })) === 3 && (await prisma.catalogue.count({ where: { companyId: co.id } })) === 1);
 }
 
@@ -182,18 +182,12 @@ async function linking() {
   r = await api("POST", `/catalogue-blocks/${context.id}/link`, asAdmin, { productId: product.id });
   assert("a context block can't be linked → 409", r.status === 409 && r.data?.code === "NOT_A_PRODUCT_BLOCK", r.data);
 
-  // re-segmenting: idempotent while untouched, refused once linked (and the version stays as it was)
+  // reading again reads nothing new: the same rows, a linked block included
   const other = await prisma.catalogueVersion.findFirst({ where: { catalogueId, NOT: { id: versionId } } });
-  const res = await runSegmentJob(other.id);
-  assert("re-segmenting an untouched version → the same 33 blocks", res.productBlocks === 29 && (await prisma.catalogueBlock.count({ where: { versionId: other.id } })) === 33);
-  let err = null;
-  try {
-    await runSegmentJob(versionId);
-  } catch (e) {
-    err = e;
-  }
-  const v = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
-  assert("re-segmenting a linked version → BLOCKS_IN_USE, version untouched", err?.code === "BLOCKS_IN_USE" && v.status === "segmented" && (await prisma.catalogueBlock.count({ where: { versionId } })) === 33, err?.message);
+  const idsOf = async (id) => (await prisma.catalogueBlock.findMany({ where: { versionId: id }, orderBy: { seq: "asc" }, select: { id: true } })).map((b) => b.id).join();
+  const idsBefore = await idsOf(versionId);
+  const res = await readChosenPages(await prisma.catalogueVersion.findUnique({ where: { id: versionId } }));
+  assert("reading the chosen pages again → nothing new, the same 33 rows", res.newPages.length === 0 && (await idsOf(versionId)) === idsBefore);
 
   // a stuck segmentation is released by the daily job
   await prisma.catalogueVersion.update({ where: { id: other.id }, data: { status: "segmenting" } });
@@ -258,8 +252,8 @@ async function permissions() {
   assert("company token: reads its catalogues (200)", r.status === 200 && r.data.data.catalogues.length === 1);
   assert("system user without manage_catalogues: upload refused (403)", denied(await call("POST", "/catalogues", reader, pdfForm())));
   r = await call("POST", "/catalogues", manager, pdfForm());
-  assert("system user with manage_catalogues: upload accepted (202)", r.status === 202, r);
-  if (r.data?.data?.jobId) await pollTask(r.data.data.jobId, asAdmin);
+  assert("system user with manage_catalogues: upload accepted (201)", r.status === 201, r);
+  if (r.data?.data?.versionId) await readWholeCatalogue(r.data.data.versionId);
   const { COMPANY_ALLOWED_MODULES, permissionModule } = await import("../../src/middleware/authMiddleware.js");
   assert("its module is not company-allowed", !COMPANY_ALLOWED_MODULES.includes(permissionModule("manage_catalogues")));
 }

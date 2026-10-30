@@ -16,12 +16,12 @@ export const uploadCatalogue = catchAsync(async (req, res) => {
   const companyId = req.body.companyId || req.validatedQuery?.companyId || null;
   if (companyId) assertCompanyAccess(req, companyId);
   const result = await catalogues.uploadCatalogue({ companyId, manufacturer: req.body.manufacturer, brandId: req.body.brandId, label: req.body.label, file: req.file, userId: req.company ? null : req.user?.id });
-  ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, jobId: result.taskId }, 202);
+  ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, status: result.version.status, pageCount: result.pageCount }, 201);
 });
 
 export const uploadVersion = catchAsync(async (req, res) => {
   const result = await catalogues.uploadVersion(req.params.id, scopeFor(req), { label: req.body.label, file: req.file, userId: req.company ? null : req.user?.id });
-  ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, jobId: result.taskId }, 202);
+  ok(res, { catalogueId: result.catalogue.id, versionId: result.version.id, status: result.version.status, pageCount: result.pageCount }, 201);
 });
 
 export const listCatalogues = catchAsync(async (req, res) => ok(res, { catalogues: await catalogues.listCatalogues(scopeFor(req)) }));

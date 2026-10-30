@@ -170,16 +170,24 @@ export async function uploadTemplate(companyId, { file, name, certificateTypeId,
   return { ...r, task, version: v.data?.data?.version };
 }
 
-/**
- * C1: keep every page of a catalogue version (the default keeps product pages only). For the
- * suites written before page selection that read the whole catalogue, cover and back pages included.
- */
+/** C1: keep every page of a catalogue version (nothing is chosen by default). */
 export async function keepAllPages(versionId) {
   const r = await api("GET", `/catalogue-versions/${versionId}/pages`, asAdmin);
   const pages = (r.data?.data?.pages || []).map((p) => p.number);
   const put = await api("PUT", `/catalogue-versions/${versionId}/page-selection`, asAdmin, { pages });
   if (put.status !== 200) throw new Error(`keepAllPages: ${put.status} ${JSON.stringify(put.data)}`);
   return pages;
+}
+
+/**
+ * C1: keep every page and read them (the text and blocks an extraction starts from, no AI). For the
+ * suites that work on a whole catalogue's blocks: an upload no longer reads anything.
+ */
+export async function readWholeCatalogue(versionId) {
+  await keepAllPages(versionId);
+  const { readChosenPages } = await import("../../src/services/catalogues/extraction/extractionService.js");
+  await readChosenPages(await prisma.catalogueVersion.findUnique({ where: { id: versionId } }));
+  await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "segmented" } });
 }
 
 export { prisma };

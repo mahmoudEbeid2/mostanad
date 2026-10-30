@@ -5,7 +5,7 @@
 // word, independently of Postgres.
 import fs from "fs";
 import path from "path";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, readWholeCatalogue } from "./helpers.js";
 import { runExtractJob } from "../../src/services/catalogues/extraction/extractionService.js";
 import { matchInvoice } from "../../src/services/certificates/matching/productMatcher.js";
 
@@ -44,7 +44,7 @@ const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
 
 async function upload(companyId, extract) {
   const r = await api("POST", "/catalogues", asAdmin, form({ companyId, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
-  await pollTask(r.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r.data.data.versionId);
   const versionId = r.data.data.versionId;
   if (extract) {
     const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
@@ -101,7 +101,7 @@ try {
 
   console.log("\n📚 Latest edition by default");
   const v2 = await api("POST", `/catalogues/${v1.catalogueId}/versions`, asAdmin, form({ label: "again", extract: "false" }, { buffer: pdf, name: "again.pdf", type: "application/pdf" }));
-  await pollTask(v2.data.data.jobId, asAdmin);
+  await readWholeCatalogue(v2.data.data.versionId);
   r = await search(asCompany(co.id), "Vitamin E");
   assert("after a new edition: results come from it only", r.data.data.results.length && r.data.data.results.every((x) => x.versionId === v2.data.data.versionId));
   r = await search(asCompany(co.id), "Vitamin E", "&allVersions=true");

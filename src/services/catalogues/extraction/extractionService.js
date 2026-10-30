@@ -10,16 +10,18 @@ import { blockEvidence, majorityConvention } from "./numbers.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
 import * as fileStore from "../../certificates/storage/fileStore.js";
 import { readPdfLayout } from "../pdfLayout.js";
-import { segment, bodySize } from "../segmenter.js";
+import { segment, bodySize, SEGMENTER_VERSION } from "../segmenter.js";
 import { splitPdf } from "../pages/pdfSplit.js";
 import { selectionForExtraction } from "../pages/pageService.js";
 
 // The catalogue extraction job (plan.md §15.3 steps 3–5; A6.3). Per version:
-//  0. C1: the PDF is split on the server into ONLY the kept pages; the blocks read
-//     for the AI come from that split file, stored under their ORIGINAL page numbers;
+//  0. C1: the PDF is split on the server into ONLY the chosen pages not read yet; they
+//     are read and segmented here (never at upload), stored under their ORIGINAL page
+//     numbers. Unreviewed blocks of pages taken out are dropped, reviewed ones stay;
 //  1. code reads each product block's own number evidence and the catalogue majority;
-//  2. CATALOGUE_EXTRACT, whole pages per call up to BLOCKS_PER_CALL blocks (+ the
-//     kept context blocks once) — every ledger row tagged with the catalogue and its pages;
+//  2. CATALOGUE_EXTRACT for the blocks not extracted yet, whole pages per call up to
+//     BLOCKS_PER_CALL blocks (+ the kept context blocks once) — every ledger row tagged
+//     with the catalogue and its pages;
 //  3. code verifies every value against its own block (recordVerifier) and parses numbers;
 //  4. producer / origin from the cover and back pages, verified there, applied to every product;
 //  5. duplicate product codes flagged; a category is PROPOSED (matched to an existing one), never created;
@@ -27,7 +29,8 @@ import { selectionForExtraction } from "../pages/pageService.js";
 //     a failed call leaves the verified values only;
 //  7. block.extracted written, version → review. Nothing touches a product.
 // A failed extraction call fails the job and the version goes back to "segmented"
-// with the error (the blocks are kept; extract again from there).
+// with the error (the blocks are kept; extract again from there, or type them by hand).
+// With AI off the chosen pages are still read, so a person can enter the products.
 
 const norm = (s) => String(s || "").normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/g, " ").trim();
 const chunk = (list, n) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
@@ -58,49 +61,63 @@ export function pageGroups(blocks, size = BLOCKS_PER_CALL) {
   return groups;
 }
 
-const textsOf = (list) => list.map((x) => `${x.kind}|${x.text}`).sort().join("\n\n");
+// the named stages of an extraction, saved on its task row
+const STAGES = [
+  { key: "read", label: "Read the chosen pages" },
+  { key: "extract", label: "Extract products" },
+  { key: "check", label: "Check every value" },
+  { key: "estimate", label: "Estimate what isn't printed" },
+];
+const stagesAt = (key) => {
+  const at = STAGES.findIndex((s) => s.key === key);
+  return STAGES.map((s, i) => ({ ...s, status: i < at ? "done" : i === at ? "running" : "pending" }));
+};
 
 /**
- * C1: the kept pages, split out of the PDF and read again from the split file.
- * Blocks come back under their original page numbers. A kept page whose stored
- * blocks match what the split file gives — or that a person merged/split
- * (extraction.editedPages) — keeps its stored rows (same ids); any other kept
- * page gets the split file's blocks. Blocks on skipped pages are left as they
- * are and never read. → { pages, pageCount, kept, split: { pages, bytes } }
+ * C1: brings the stored blocks in line with the chosen pages. Only pages not read yet are
+ * split out of the PDF, read and segmented; blocks already read keep their rows (ids, edits,
+ * extraction). Unreviewed blocks of pages taken out are dropped; reviewed or linked ones stay.
+ * → { pages, pageCount, selection, kept, split, newPages, droppedPages }
  */
-async function blocksFromSplit(version) {
+export async function readChosenPages(version) {
   const { pages, pageCount, selection } = await selectionForExtraction(version);
-  const { buffer } = await fileStore.readFile(version.sourceFileId, { companyId: version.companyId });
-  const split = await splitPdf(buffer, pages);
-  const layout = await readPdfLayout(split.buffer);
-  if (layout.pages.length !== pages.length) throw new CertError("SPLIT_MISMATCH", `The split file has ${layout.pages.length} pages but ${pages.length} were kept`, 500);
-  // titles are found against the whole catalogue's body size, as at upload
-  const body = version.extraction?.bodySize || bodySize((await readPdfLayout(buffer)).pages);
-  const fresh = segment(layout, { bodySize: body }).blocks.map((b) => ({ ...b, page: split.pageMap[b.page - 1] }));
+  const kept = new Set(pages);
   const stored = await prisma.catalogueBlock.findMany({ where: { versionId: version.id }, orderBy: { seq: "asc" } });
-  const edited = new Set(version.extraction?.editedPages || []);
-  const create = [];
-  const drop = new Set();
-  for (const page of pages) {
-    const mine = stored.filter((b) => b.page === page);
-    const theirs = fresh.filter((b) => b.page === page);
-    if (edited.has(page) || textsOf(mine) === textsOf(theirs)) continue;
-    for (const b of mine) drop.add(b.id);
-    create.push(...theirs);
+  const dropped = stored.filter((b) => !kept.has(b.page) && b.status === "pending" && !b.productId);
+  const gone = new Set(dropped.map((b) => b.id));
+  const surviving = stored.filter((b) => !gone.has(b.id));
+  const earlier = new Set([...(version.extraction?.readPages || []).filter((n) => kept.has(n)), ...surviving.map((b) => b.page)]);
+  const newPages = pages.filter((n) => !earlier.has(n));
+
+  let fresh = [];
+  let split = version.extraction?.split || null;
+  let body = version.extraction?.bodySize;
+  const warnings = [...(version.warnings || [])];
+  if (newPages.length) {
+    const { buffer } = await fileStore.readFile(version.sourceFileId, { companyId: version.companyId });
+    const cutOut = await splitPdf(buffer, newPages);
+    const layout = await readPdfLayout(cutOut.buffer);
+    if (layout.pages.length !== newPages.length) throw new CertError("SPLIT_MISMATCH", `The split file has ${layout.pages.length} pages but ${newPages.length} were chosen`, 500);
+    body = body || bodySize(layout.pages);
+    const seg = segment(layout, { bodySize: body });
+    fresh = seg.blocks.map((b) => ({ ...b, page: cutOut.pageMap[b.page - 1] }));
+    for (const w of seg.warnings) warnings.push({ ...w, ...(w.page ? { page: cutOut.pageMap[w.page - 1] } : {}) });
+    split = { pages: cutOut.pageMap.length, bytes: cutOut.buffer.length };
   }
-  if (create.length || drop.size) {
-    // reading order: page, then the order within the page
-    const order = [...stored.filter((b) => !drop.has(b.id)), ...create.map((b, i) => ({ fresh: b, page: b.page, seq: 1e6 + i }))].sort((a, b) => a.page - b.page || a.seq - b.seq);
-    await prisma.$transaction([
-      prisma.catalogueBlock.deleteMany({ where: { id: { in: [...drop] }, versionId: version.id, status: "pending", productId: null } }),
-      ...order.map((o, seq) =>
-        o.fresh
-          ? prisma.catalogueBlock.create({ data: { versionId: version.id, companyId: version.companyId, seq, kind: o.fresh.kind, page: o.fresh.page, bbox: o.fresh.bbox, title: o.fresh.title, text: o.fresh.text, lines: o.fresh.lines } })
-          : prisma.catalogueBlock.update({ where: { id: o.id }, data: { seq } })
-      ),
-    ]);
-  }
-  return { pages, pageCount, selection, kept: new Set(pages), split: { pages: split.pageMap.length, bytes: split.buffer.length }, replacedPages: [...new Set(create.map((b) => b.page))] };
+  const readPages = [...new Set([...earlier, ...newPages])].sort((a, b) => a - b);
+  // reading order: page, then the order within the page
+  const order = [...surviving, ...fresh.map((b, i) => ({ fresh: b, page: b.page, seq: 1e6 + i }))].sort((a, b) => a.page - b.page || a.seq - b.seq);
+  const extraction = { ...(version.extraction || {}), segmenter: SEGMENTER_VERSION, bodySize: body ?? null, readPages };
+  await prisma.$transaction([
+    prisma.catalogueBlock.deleteMany({ where: { id: { in: [...gone] }, versionId: version.id, status: "pending", productId: null } }),
+    ...order.map((o, seq) =>
+      o.fresh
+        ? prisma.catalogueBlock.create({ data: { versionId: version.id, companyId: version.companyId, seq, kind: o.fresh.kind, page: o.fresh.page, bbox: o.fresh.bbox, title: o.fresh.title, text: o.fresh.text, lines: o.fresh.lines } })
+        : prisma.catalogueBlock.update({ where: { id: o.id }, data: { seq } })
+    ),
+    prisma.catalogueVersion.update({ where: { id: version.id }, data: { extraction, warnings } }),
+  ]);
+  return { pages, pageCount, selection, kept, split, newPages, droppedPages: [...new Set(dropped.map((b) => b.page))] };
 }
 
 /** The "." + three digits convention a block is read with. */
@@ -150,20 +167,22 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
   const version = await prisma.catalogueVersion.findUnique({ where: { id: versionId } });
   if (!version) throw notFound("Catalogue version");
   const only = Array.isArray(deps.blockIds) && deps.blockIds.length ? deps.blockIds : null;
-  await assertUntouched(versionId, only);
-  const settings = await getAiSettings(version.companyId);
-  if (!aiAllowed(settings)) throw new CertError("AI_DISABLED", "AI is turned off for this company — the blocks are kept; extract them once it is on", 409);
+  if (only) await assertUntouched(versionId, only);
   const started = Date.now();
+  const say = (progress, message, stage) => ctx.progress(progress, message, { stage, stages: stagesAt(stage) });
   await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "extracting", error: null } });
   try {
-    ctx.progress(4, "Splitting the PDF into the kept pages");
-    // a full extraction reads only the kept pages (the split file); a partial one only the blocks it names
-    const chosen = only ? null : await blocksFromSplit(version);
+    say(4, "Reading the chosen pages", "read");
+    // a full extraction reads the chosen pages not read yet; a partial one only the blocks it names
+    const chosen = only ? null : await readChosenPages(version);
+    const current = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, select: { extraction: true } });
     const all = await prisma.catalogueBlock.findMany({ where: { versionId }, orderBy: { seq: "asc" } });
     const read = (b) => !chosen || chosen.kept.has(b.page);
     const allProducts = all.filter((b) => b.kind === "product" && read(b));
-    const blocks = only ? allProducts.filter((b) => only.includes(b.id)) : allProducts;
-    const others = only ? allProducts.filter((b) => !only.includes(b.id)) : [];
+    const wanted = only ? (b) => only.includes(b.id) : (b) => b.status === "pending" && !b.productId && !b.extracted?.extractedAt;
+    const blocks = allProducts.filter(wanted);
+    const others = allProducts.filter((b) => !wanted(b));
+    if (blocks.length && !aiAllowed(await getAiSettings(version.companyId))) throw new CertError("AI_DISABLED", "AI is turned off for this company — the pages are read; type the products by hand in the review, or extract them once it is on", 409);
     const context = all.filter((b) => b.kind === "context" && read(b));
     const numbers = numberContext(allProducts, version);
     // every AI call is billed to the catalogue and the ORIGINAL pages it read
@@ -177,7 +196,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     let done = 0;
     for (const [i, group] of groups.entries()) {
       const gp = pagesOf(group);
-      ctx.progress(10 + Math.round((70 * i) / Math.max(groups.length, 1)), `Reading products ${done + 1}–${done + group.length} of ${blocks.length} (page${gp.length > 1 ? "s" : ""} ${gp.join(", ")})`);
+      say(10 + Math.round((70 * i) / Math.max(groups.length, 1)), `Reading products ${done + 1}–${done + group.length} of ${blocks.length} (page${gp.length > 1 ? "s" : ""} ${gp.join(", ")})`, "extract");
       done += group.length;
       const withContext = i === 0 && context.length ? context : null;
       const res = await extractGroup({ companyId: version.companyId, versionId, blocks: group, context: withContext, meta: tag([...group, ...(withContext || [])]) }, { generate: deps.generate });
@@ -190,7 +209,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     let retries = 0;
     const skipped = blocks.filter((b) => !raws.has(b.id));
     if (skipped.length) {
-      ctx.progress(80, `Asking again for ${skipped.length} product(s) the AI skipped`);
+      say(80, `Asking again for ${skipped.length} product(s) the AI skipped`, "extract");
       const res = await extractGroup({ companyId: version.companyId, versionId, blocks: skipped, meta: tag(skipped) }, { generate: deps.generate });
       retries = 1;
       if (res.run?.id) runs.push(res.run.id);
@@ -199,7 +218,7 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     }
 
     // verification + numbers, per block
-    ctx.progress(82, "Checking every value against its own block");
+    say(82, "Checking every value against its own block", "check");
     const facts = contextFacts(catalogueCtx, context);
     const out = new Map();
     for (const b of blocks) {
@@ -244,8 +263,8 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
 
     // estimates for what the catalogue doesn't print (owner rule)
     let inference = { calls: 0, estimated: 0, refused: 0 };
-    if (deps.infer !== false) {
-      ctx.progress(88, "Estimating facts the catalogue doesn't print");
+    if (deps.infer !== false && blocks.length) {
+      say(88, "Estimating facts the catalogue doesn't print", "estimate");
       const products = blocks.map((b) => {
         const r = out.get(b.id).record;
         return { blockId: b.id, name: r.name || b.title || null, known: { ...r, activeIngredients: (r.activeIngredients || []).map((x) => x.name) }, missing: r.name && !out.get(b.id).flags.some((f) => f.code === "no_ai_answer") ? missingFields(r) : [] }; // a block the AI didn't read gets no estimates: what it prints is unknown
@@ -296,14 +315,14 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
       prisma.catalogueVersion.update({
         where: { id: versionId },
         data: {
-          status: "review",
+          status: blocks.length || version.status !== "applied" ? "review" : "applied",
           // the pages read are this catalogue's remembered choice: its next version starts from them
           ...(chosen ? { pageSelection: { ...chosen.selection, pages: chosen.pages, savedAt: chosen.selection.savedAt || at, extractedAt: at } } : {}),
           extraction: {
-            ...(version.extraction || {}),
+            ...(current.extraction || {}),
             ...(only ? { lastPartial: { blockIds: only, pages: pagesOf(blocks), at: new Date().toISOString() } } : {}),
-            // C1: the pages read, out of how many, and the split file they came from
-            ...(chosen ? { pages: chosen.pages, pageCount: chosen.pageCount, split: chosen.split, replacedPages: chosen.replacedPages } : {}),
+            // C1: the pages read, out of how many, the split file, what this run added and dropped
+            ...(chosen ? { pages: chosen.pages, pageCount: chosen.pageCount, split: chosen.split, newPages: chosen.newPages, droppedPages: chosen.droppedPages } : {}),
             grouping: "pages",
             modelId: MODELS.CATALOGUE_EXTRACT.id,
             promptHash: EXTRACT_HASH,
@@ -323,7 +342,8 @@ export async function runExtractJob(versionId, ctx = { progress: () => {} }, dep
     ctx.progress(100, `${blocks.length} products read, ${flagged} with something to check`);
     return { versionId, products: blocks.length, flagged, calls: groups.length + retries + (inference.calls || 0), inference };
   } catch (err) {
-    await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: "segmented", error: err.code ? `${err.code}: ${err.message}` : err.message } });
+    const read = await prisma.catalogueBlock.count({ where: { versionId } });
+    await prisma.catalogueVersion.update({ where: { id: versionId }, data: { status: read ? "segmented" : "pages_ready", error: err.code ? `${err.code}: ${err.message}` : err.message } });
     throw err;
   }
 }

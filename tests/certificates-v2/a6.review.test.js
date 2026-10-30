@@ -14,7 +14,7 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
-import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, keepAllPages, BASE_URL } from "./helpers.js";
+import { api, asAdmin, asCompany, makeAssert, finish, createCompany, cleanupCompany, form, pollTask, prisma, readWholeCatalogue, keepAllPages, BASE_URL } from "./helpers.js";
 import { runExtractJob } from "../../src/services/catalogues/extraction/extractionService.js";
 import { maskEstimates } from "../../src/services/catalogues/fieldProvenance.js";
 
@@ -86,7 +86,7 @@ try {
   created.categories.push(picked.id);
 
   let r = await api("POST", "/catalogues", asAdmin, form({ companyId: co.id, manufacturer: "Agrikima Sdn. Bhd.", extract: "false" }, { buffer: pdf, name: "agrikima.pdf", type: "application/pdf" }));
-  await pollTask(r.data.data.jobId, asAdmin);
+  await readWholeCatalogue(r.data.data.versionId);
   const versionId = r.data.data.versionId;
   await keepAllPages(versionId); // the whole catalogue, cover and back pages included (C1 default: product pages)
   const blocks = await prisma.catalogueBlock.findMany({ where: { versionId, kind: "product" }, orderBy: { seq: "asc" } });
@@ -275,7 +275,7 @@ try {
   console.log("\n✍️ P8 — AI unavailable: products entered by hand");
   {
     const up = await api("POST", "/catalogues", asAdmin, form({ companyId: manualCo.id, manufacturer: "Manual entry test", extract: "false" }, { buffer: pdf, name: "m.pdf", type: "application/pdf" }));
-    await pollTask(up.data.data.jobId, asAdmin);
+    await readWholeCatalogue(up.data.data.versionId);
     const mv = up.data.data.versionId;
     const mb = (await prisma.catalogueBlock.findMany({ where: { versionId: mv, kind: "product" }, orderBy: { seq: "asc" } }))[GOLDEN.products.findIndex((p) => p.name === "Toxinil")];
     r = await api("POST", `/catalogue-blocks/${mb.id}/accept`, asAdmin);

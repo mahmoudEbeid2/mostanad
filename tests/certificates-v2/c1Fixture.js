@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 /** A small catalogue with one page of every kind, drawn with pdf-lib. */
@@ -38,4 +39,51 @@ export async function fixtureCatalogue() {
   page([], { drawOnly: true }); // 8 a scanned page: drawn, no text layer
   page(["Thank you for choosing ACME — www.acme-feed.com"]); // 9 back
   return Buffer.from(await doc.save());
+}
+
+const rc4 = (key, data) => {
+  const s = Array.from({ length: 256 }, (_, i) => i);
+  for (let i = 0, j = 0; i < 256; i++) {
+    j = (j + s[i] + key[i % key.length]) & 255;
+    [s[i], s[j]] = [s[j], s[i]];
+  }
+  let i = 0;
+  let j = 0;
+  return Buffer.from(data.map((b) => {
+    i = (i + 1) & 255;
+    j = (j + s[i]) & 255;
+    [s[i], s[j]] = [s[j], s[i]];
+    return b ^ s[(s[i] + s[j]) & 255];
+  }));
+};
+
+/**
+ * A one-page PDF under the standard security handler (40-bit RC4, revision 2), written by hand:
+ * userPassword "" opens without a password (locked by its owner only), anything else asks for it.
+ */
+export function encryptedPdf(userPassword) {
+  const PAD = Buffer.from("28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A", "hex");
+  const padded = Buffer.concat([Buffer.from(userPassword, "latin1"), PAD]).subarray(0, 32);
+  const O = Buffer.alloc(32, 0x41);
+  const P = Buffer.alloc(4);
+  P.writeInt32LE(-44);
+  const ID = Buffer.alloc(16, 0x42);
+  const key = crypto.createHash("md5").update(Buffer.concat([padded, O, P, ID])).digest().subarray(0, 5);
+  const U = rc4(key, [...PAD]);
+  const bodies = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] >>",
+    `<< /Filter /Standard /V 1 /R 2 /O <${O.toString("hex")}> /U <${U.toString("hex")}> /P -44 >>`,
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = bodies.map((b, i) => {
+    const at = out.length;
+    out += `${i + 1} 0 obj\n${b}\nendobj\n`;
+    return at;
+  });
+  const xref = out.length;
+  out += `xref\n0 5\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size 5 /Root 1 0 R /Encrypt 4 0 R /ID [<${ID.toString("hex")}> <${ID.toString("hex")}>] >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
 }

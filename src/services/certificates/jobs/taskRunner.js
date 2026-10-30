@@ -11,6 +11,8 @@ import { geminiWorkerName } from "../../ai/geminiGuard.js";
 // progress and the structured job log { entity, id, companyId, ms, outcome }
 // (plan §15). Business logic never lives here.
 
+const PROGRESS_SAVE_MS = 500;
+
 /**
  * startWorker({ queueName, label, concurrency, handlers: { [jobName]: async (data, ctx) => result } })
  * ctx.progress(progress, message, extra) emits a processing update.
@@ -36,10 +38,24 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
         await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "processing" } });
         emit({ ...base, status: "processing" });
       }
+      // the row is the truth: progress is saved on it too (at most twice a second, always on a new
+      // stage, in order), so GET /background-tasks/:id carries it without the socket
+      let saves = Promise.resolve();
+      let savedAt = 0;
+      let savedStage = null;
+      const save = (data) => {
+        saves = saves.then(() => prisma.backgroundTask.update({ where: { id: taskId }, data })).catch((err) => console.error(`[${label}] could not save progress of ${taskId}: ${err.message}`));
+      };
       const ctx = {
         progress: (progress, message, extra = {}) => {
           if (process.env.CERT_JOB_TRACE === "true") console.log(`[${label}] ${job.name} ${job.data.entityId || ""} ${progress}% ${message}`);
-          if (taskId) emit({ ...base, status: "processing", progress, message, ...extra });
+          if (!taskId) return;
+          emit({ ...base, status: "processing", progress, message, ...extra });
+          const stage = extra.stage ?? savedStage;
+          if (stage === savedStage && Date.now() - savedAt < PROGRESS_SAVE_MS) return;
+          savedAt = Date.now();
+          savedStage = stage;
+          save({ progress: Math.round(progress), message: message ?? null, stage, ...(extra.stages ? { stages: extra.stages } : {}) });
         },
       };
 
@@ -47,7 +63,8 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
         const result = await handler(job.data, ctx);
         const ms = Date.now() - startedAt;
         if (taskId) {
-          await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: result ?? {} } });
+          await saves;
+          await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", progress: 100, result: result ?? {} } });
           emit({ ...base, status: "completed", result });
         }
         console.log(`[${label}] ${JSON.stringify({ job: job.name, entity: job.data.entity, id: job.data.entityId, companyId, ms, outcome: "completed" })}`);
@@ -56,6 +73,7 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
         const ms = Date.now() - startedAt;
         const message = err.code ? `${err.code}: ${err.message}` : err.message;
         if (taskId) {
+          await saves;
           await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "failed", error: message } });
           emit({ ...base, status: "failed", error: message });
         }

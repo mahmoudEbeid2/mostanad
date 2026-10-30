@@ -519,6 +519,27 @@ Additive; no migration.
   earlier prompt (an older rule of what may be inferred) no longer counts.
 
 
+## Catalogues — fast upload, a person chooses the pages (C0/C1, 2026-10-30)
+
+- **Breaking:** `POST /catalogues` and `POST /catalogues/:id/versions` are now synchronous: they open the file and answer
+  **201** `{ catalogueId, versionId, status: "pages_ready", pageCount }`. No `jobId`, no `catalogue_segment` task. The `extract`
+  form field is still accepted and ignored.
+- New refusals, before anything is stored or queued: 422 `PDF_UNREADABLE`, 422 `PDF_PASSWORD_PROTECTED` (also a file locked by an
+  owner password only: it can't be split into readable pages), 422 `PDF_NO_PAGES`.
+- New version status `pages_ready`: uploaded, pages counted, nothing read. `segmented` now means the chosen pages were read and
+  the AI did not finish (the error says why); the blocks are kept.
+- `GET /catalogue-versions/:id/pages`: pages are `{ number, width, height, thumbnailUrl, previewUrl }` (no `kind`, `reason`,
+  `textLength`, `readable`, `weight`). `selection` is empty by default (`source: "none"`). New `previousSelection`
+  `{ pages, fromVersionId, label }` (cut to this file, never applied) and `reviewedPages`. `estimate` is per chosen page.
+- Page images are drawn one page at a time on first request, then cached.
+- `POST /catalogue-versions/:id/extract`: 400 `EMPTY_SELECTION` with nothing chosen. Reads and segments only the chosen pages not
+  read yet; unreviewed blocks of removed pages are dropped, reviewed or linked ones stay. No more 409 `BLOCKS_IN_USE` on a full
+  extraction (still on `blockIds`), and an `applied` version can be extracted again. With AI off the pages are still read, then the
+  job fails with `AI_DISABLED` and the blocks stay, to type by hand.
+- `GET /background-tasks/:id` now returns `progress`, `message`, `stage`, `stages` (saved on the row, also for the other workers on
+  the shared runner). `GET /catalogues` and `GET /catalogues/:id`: a version being extracted carries `task`
+  `{ id, status, progress, message, stage }`.
+
 ## Catalogues — choose the pages sent to the AI (C1, 2026-10-29)
 
 - **Behaviour change:** `POST /catalogues` and `POST /catalogues/:id/versions` no longer start the AI extraction. The
