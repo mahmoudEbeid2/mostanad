@@ -12,7 +12,7 @@ post:
       multipart/form-data:
         schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, label: { type: string, maxLength: 80 } } }
   responses:
-    "202": { description: "{ catalogueId, versionId, jobId }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    "201": { description: "{ catalogueId, versionId, status, pageCount }", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
     "404": { $ref: "../certificates-v2/_shared.yaml#/responses/E404" }
     "401": { $ref: "../certificates-v2/_shared.yaml#/responses/E401" }
     "403": { $ref: "../certificates-v2/_shared.yaml#/responses/E403" }

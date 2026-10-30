@@ -36,10 +36,30 @@ try {
     localStorage.setItem("user", JSON.stringify(u));
     localStorage.setItem("certificates.companyId", c);
   }, token, me.data?.data?.user, company.id);
+  // counted inside the page, at the XMLHttpRequest the app uses: the exact number in flight, and which ones
+  await page.evaluateOnNewDocument(() => {
+    const seen = (window.__images = { open: new Set(), peak: 0, atPeak: [], urls: [] });
+    const { open, send } = XMLHttpRequest.prototype;
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__image = /\/pages\/\d+\/image/.test(url) ? url : null;
+      // here, ahead of axios's own handler: the next image starts from that one
+      this.addEventListener("loadend", () => seen.open.delete(this));
+      return open.call(this, method, url, ...rest);
+    };
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this.__image) {
+        seen.urls.push(this.__image);
+        seen.open.add(this);
+        if (seen.open.size > seen.peak) {
+          seen.peak = seen.open.size;
+          seen.atPeak = [...seen.open].map((x) => x.__image.replace(/^.*pages\//, ""));
+        }
+      }
+      return send.apply(this, args);
+    };
+  });
   await page.goto(`${FRONT}/catalogues`, { waitUntil: "networkidle2" });
 
-  const images = [];
-  page.on("response", (r) => /\/pages\/\d+\/image/.test(r.url()) && images.push(r.url()));
   await page.waitForSelector(T("catalogue-upload"));
   await (await page.$(`${T("catalogue-upload")} input[type=file]`)).uploadFile(file);
   await sleep(300);
@@ -47,9 +67,9 @@ try {
   const t0 = Date.now();
   await page.click(`${T("catalogue-upload")} button[type=submit]`);
   // the new flow stops on a "Choose pages →" link after the check; the old one navigates by itself
-  await page.waitForFunction(() => document.querySelector('[data-testid="page-grid"]') || document.querySelector('[data-testid="choose-pages-next"]'), { timeout: 280000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="page-grid"]') || document.querySelector('[data-testid="choose-pages-next"]:not([disabled])'), { timeout: 280000 });
   out.uploadChecked = Date.now() - t0;
-  const next = await page.$(T("choose-pages-next"));
+  const next = await page.$(`${T("choose-pages-next")}:not([disabled])`);
   if (next) await next.click();
   await page.waitForSelector(T("page-grid"), { timeout: 280000 });
   out.gridOnScreen = Date.now() - t0;
@@ -60,7 +80,11 @@ try {
   }, { timeout: 120000 });
   out.pagesUsable = Date.now() - t0;
   await sleep(4000);
-  out.imageRequestsAfterOpen = images.length;
+  const seen = await page.evaluate(() => ({ urls: window.__images.urls, peak: window.__images.peak, atPeak: window.__images.atPeak }));
+  out.imageRequestsAfterOpen = seen.urls.length;
+  out.uniqueImages = new Set(seen.urls).size;
+  out.peakAtOnce = seen.peak;
+  out.atPeak = seen.atPeak;
   out.thumbsOnPage = await page.$$eval(T("page-thumb"), (l) => l.length);
   console.log(JSON.stringify(out));
 } catch (err) {
