@@ -11,12 +11,39 @@ async function load(id, companyId) {
   return row;
 }
 
+/** Each type carries its active templates: `activeTemplates` (count) and `scopes`; a type with none can't make anything yet. */
 export async function listTypes(companyId, { includeInactive = false } = {}) {
-  return prisma.certificateType.findMany({
-    where: { companyId, ...(includeInactive ? {} : { isActive: true }) },
-    orderBy: { name: "asc" },
-    include: { _count: { select: { templates: true } } },
+  const [types, templates] = await Promise.all([
+    prisma.certificateType.findMany({
+      where: { companyId, ...(includeInactive ? {} : { isActive: true }) },
+      orderBy: { name: "asc" },
+      include: { _count: { select: { templates: true } } },
+    }),
+    prisma.certificateTemplate.findMany({ where: { companyId, archivedAt: null, activeVersionId: { not: null } }, select: { certificateTypeId: true, scope: true } }),
+  ]);
+  return types.map((t) => {
+    const own = templates.filter((x) => x.certificateTypeId === t.id);
+    return { ...t, activeTemplates: own.length, scopes: [...new Set(own.map((x) => x.scope))] };
   });
+}
+
+/** A chosen list of types → the same ids once each; every id must be an active type of this company. null passes (all types). */
+export async function assertChosenTypes(companyId, ids) {
+  if (ids === null) return null;
+  const unique = [...new Set(ids)];
+  if (!unique.length) throw new CertError("NO_CERTIFICATE_TYPES", "Pick at least one certificate", 422);
+  const found = await prisma.certificateType.count({ where: { id: { in: unique }, companyId, isActive: true } });
+  if (found !== unique.length) throw new CertError("INVALID_CERTIFICATE_TYPE", "That isn't an active certificate type of this company", 422);
+  return unique;
+}
+
+/** The company's saved choice, without types switched off since; nothing left = all types. → string[] | null */
+export async function defaultTypes(companyId) {
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { defaultCertificateTypeIds: true } });
+  const ids = company?.defaultCertificateTypeIds;
+  if (!Array.isArray(ids) || !ids.length) return null;
+  const rows = await prisma.certificateType.findMany({ where: { id: { in: ids }, companyId, isActive: true }, select: { id: true } });
+  return rows.length ? ids.filter((id) => rows.some((r) => r.id === id)) : null;
 }
 
 export async function createType(companyId, { name, code, description }) {

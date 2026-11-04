@@ -561,3 +561,19 @@ Additive; no migration.
   with `parentType: "catalogue"`, `parentId`. `GET /catalogues` versions carry `pageSelection`.
 - Additive migration `20261029100000_catalogue_pages`: `catalogue_pages` table, `catalogue_versions.page_selection`,
   `ai_calls.meta`.
+
+## Invoices — choose which certificate types an invoice makes (D1, D2, 2026-11-04)
+
+- `invoices.certificateTypeIds`: `null` = every type with an active template, also types activated later; an array = only those.
+  Existing invoices stay `null`, behaviour unchanged. `companies.defaultCertificateTypeIds`: same meaning, used when an upload sends no choice.
+  Both are JSON columns: Prisma can't model a nullable list.
+- `POST /invoices` — new multipart fields: `certificateTypeIds` (repeated, or one JSON string, `null` included; omitted = the company default,
+  else null) and `saveAsDefault` (`"true"` keeps a sent choice as the company default). 400 on an empty list, 422 `INVALID_CERTIFICATE_TYPE`
+  for anything that isn't an active type of this company.
+- `PATCH /invoices/:id` — new `certificateTypeIds`, while the invoice is `review` / `ready`; 409 `INVOICE_NOT_EDITABLE` after that. Sent alone it
+  keeps a `ready` invoice `ready`: the lines didn't change.
+- `GET /certificate-types` — each type gains `activeTemplates` and `scopes`; `data.defaultCertificateTypeIds` is new.
+- `GET /invoices/:id/generation-plan` — `plan.certificateTypeIds`, and `plan.types`: `[{ certificateTypeId, typeCode, typeName, selected, count, scopes }]`,
+  what every usable type would make, chosen or not. `gaps` lists chosen types only. The data check and Generate read the same plan;
+  `certificate_batches.plan` freezes `certificateTypeIds`.
+- Additive migration `20261104100000_invoice_certificate_types`.

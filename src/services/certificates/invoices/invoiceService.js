@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../../lib/prisma.js";
 import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
@@ -12,6 +13,7 @@ import { decideSuggestion } from "../ai/aiSuggestions.js";
 import { extractionHints } from "../dataNeeds/extractionHints.js";
 import { locateItemSpans } from "../dataNeeds/itemSpans.js";
 import { presentError } from "../../ai/aiErrorMessage.js";
+import { assertChosenTypes, defaultTypes } from "../types/certificateTypeService.js";
 
 // Invoices (CERTIFICATES_V2_PLAN.md §9): upload → extract (AI) → review →
 // confirm → ready. Extraction output is frozen in headerExtracted /
@@ -54,17 +56,23 @@ const normCountry = (c) => (c ? String(c).trim().toUpperCase() : null);
  * extract=false (P8: AI unavailable) keeps the original and opens it under
  * review for manual entry straight away — no extraction job, no failed state
  * to come back from. → { invoiceId, taskId: null }
+ * certificateTypeIds: undefined = no choice sent (the company's default), null = every type,
+ * an array = only those. saveAsDefault keeps a sent choice as the company's default.
  */
-export async function uploadInvoice({ companyId, userId, file, brandId = null, country = null, extract = true }) {
+export async function uploadInvoice({ companyId, userId, file, brandId = null, country = null, extract = true, certificateTypeIds, saveAsDefault = false }) {
   const { ext, mimeType } = detectInvoiceFormat(file?.buffer);
   await assertBrand(companyId, brandId);
+  const sent = certificateTypeIds !== undefined;
+  const chosen = sent ? await assertChosenTypes(companyId, certificateTypeIds) : await defaultTypes(companyId);
   const invoice = await prisma.$transaction(async (tx) => {
     const src = await fileStore.putFile({ companyId, kind: "invoice_source", buffer: file.buffer, mimeType, originalName: file.originalname || null, ext, tx });
+    if (sent && saveAsDefault) await tx.company.update({ where: { id: companyId }, data: { defaultCertificateTypeIds: chosen ?? Prisma.DbNull } });
     return tx.invoice.create({
       data: {
         companyId,
         brandId: brandId || null,
         country: normCountry(country),
+        ...(chosen ? { certificateTypeIds: chosen } : {}),
         sourceFileId: src.id,
         uploadedByUserId: userId || null,
         ...(extract
@@ -285,11 +293,16 @@ function mergeFields(current, patch, defs) {
   return next;
 }
 
-/** PATCH /invoices/:id — { header?, brandId?, country? } */
-export async function updateInvoice(id, companyId, { header, brandId, country }) {
+/**
+ * PATCH /invoices/:id — { header?, brandId?, country?, certificateTypeIds? }
+ * The choice of types says nothing about what was read, so on its own it keeps a confirmed invoice confirmed.
+ */
+export async function updateInvoice(id, companyId, { header, brandId, country, certificateTypeIds }) {
   const inv = await loadInvoice(id, companyId);
   assertEditable(inv);
   if (brandId) await assertBrand(inv.companyId, brandId);
+  const chosen = certificateTypeIds === undefined ? undefined : await assertChosenTypes(inv.companyId, certificateTypeIds);
+  const contentEdited = header !== undefined || brandId !== undefined || country !== undefined;
   return prisma.invoice.update({
     where: { id },
     omit: TEXT_OMIT,
@@ -297,7 +310,8 @@ export async function updateInvoice(id, companyId, { header, brandId, country })
       ...(header ? { header: mergeFields(inv.header, header, INVOICE_HEADER_FIELDS) } : {}),
       ...(brandId !== undefined ? { brandId: brandId || null } : {}),
       ...(country !== undefined ? { country: normCountry(country) } : {}),
-      ...reopen(inv),
+      ...(chosen !== undefined ? { certificateTypeIds: chosen ?? Prisma.DbNull } : {}),
+      ...(contentEdited ? reopen(inv) : {}),
     },
   });
 }

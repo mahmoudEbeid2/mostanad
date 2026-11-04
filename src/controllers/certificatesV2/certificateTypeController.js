@@ -3,8 +3,9 @@ import * as typeService from "../../services/certificates/types/certificateTypeS
 import { companyFor, scopeOf } from "./requestScope.js";
 
 export const listTypes = catchAsync(async (req, res) => {
-  const types = await typeService.listTypes(companyFor(req), { includeInactive: req.query.includeInactive === "true" });
-  res.status(200).json({ status: "success", results: types.length, data: { types } });
+  const companyId = companyFor(req);
+  const [types, defaultCertificateTypeIds] = await Promise.all([typeService.listTypes(companyId, { includeInactive: req.query.includeInactive === "true" }), typeService.defaultTypes(companyId)]);
+  res.status(200).json({ status: "success", results: types.length, data: { types, defaultCertificateTypeIds } });
 });
 
 export const createType = catchAsync(async (req, res) => {

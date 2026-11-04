@@ -167,8 +167,31 @@ const cell = z.union([z.string().max(500), z.number(), z.null()]);
 const itemData = z.record(z.string(), cell);
 const itemParams = z.object({ id: uuid, itemId: uuid });
 
+// null = every type with an active template, also ones activated later; an array = only those types
+const certificateTypeIds = z.array(uuid).min(1, "Pick at least one certificate").max(100).nullable();
+/** A multipart field: repeated (certificateTypeIds=a, certificateTypeIds=b) or one JSON string ('["a","b"]', 'null'). */
+const multipartTypeIds = (v) => {
+  if (typeof v !== "string") return v;
+  if (!/^\s*(\[|null\s*$)/.test(v)) return [v];
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v; // stays a string, so the schema refuses it
+  }
+};
+
 export const invoiceSchemas = {
-  upload: { query: companyQuery, body: z.object({ brandId: optionalUuid, country: optionalCountry, companyId: uuid.optional(), extract: z.enum(["true", "false"]).optional() }) },
+  upload: {
+    query: companyQuery,
+    body: z.object({
+      brandId: optionalUuid,
+      country: optionalCountry,
+      companyId: uuid.optional(),
+      extract: z.enum(["true", "false"]).optional(),
+      certificateTypeIds: z.preprocess(multipartTypeIds, certificateTypeIds.optional()),
+      saveAsDefault: z.enum(["true", "false"]).optional(),
+    }),
+  },
   list: {
     query: companyQuery.extend({
       status: z.string().max(30).optional(),
@@ -182,7 +205,7 @@ export const invoiceSchemas = {
   update: {
     params: idParams,
     query: companyQuery,
-    body: z.object({ header: z.record(z.string(), cell).optional(), brandId: optionalUuid, country: optionalCountry }),
+    body: z.object({ header: z.record(z.string(), cell).optional(), brandId: optionalUuid, country: optionalCountry, certificateTypeIds: certificateTypeIds.optional() }),
   },
   // rememberAlias: the person explicitly asks to learn "this line name is this product" (owner, 2026-10-27)
   addItem: { params: idParams, query: companyQuery, body: z.object({ data: itemData.optional(), productId: uuid.optional().nullable(), rememberAlias: z.boolean().optional() }) },

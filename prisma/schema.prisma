@@ -74,6 +74,7 @@ model Company {
   address    String?
   logoUrl    String?  @map("logo_url") // every migration already creates this column; schema.prisma didn't declare it, which is the drift task 1 (2026-09-13) found
   aiSettings Json?    @map("ai_settings") // certificate AI layers (plan.md §3.3): { enabled, autoAcceptThreshold, … }; null = defaults
+  defaultCertificateTypeIds Json? @map("default_certificate_type_ids") // used when an invoice upload sends no choice; same meaning as Invoice.certificateTypeIds
   isActive   Boolean  @default(true) @map("is_active")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -923,6 +924,7 @@ model Invoice {
   brandId          String?   @map("brand_id") // optional hint chosen at upload
   brand            Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
   country          String? // chosen at upload, else extracted destination (A4)
+  certificateTypeIds Json? @map("certificate_type_ids") // null = every type with an active template, also ones activated later; string[] = only those types
   status           String    @default("uploaded") // uploaded|extracting|review|ready|generating|generated|partially_failed|failed
   sourceFileId     String    @map("source_file_id")
   header           Json? // reviewed header (what generation uses)

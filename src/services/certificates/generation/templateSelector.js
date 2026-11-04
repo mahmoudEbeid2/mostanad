@@ -8,7 +8,7 @@
 // The slot-uniqueness rule makes ties impossible within one (type, scope).
 //
 // input:
-//   invoice:   { country, brandId }
+//   invoice:   { country, brandId, certificateTypeIds? }   certificateTypeIds: null = every type, an array = only those
 //   items:     [{ id, lineNo, matchStatus, productId, data: { name, batchNo, … }, product: { id, name, brandId, brand?: { name } } }]
 //   templates: active templates [{ id, name, certificateTypeId, certificateType: { code, name }, brandId, brand?: { name }, country, scope,
 //                                  activeVersionId, activeVersion?: { versionNumber } }]
@@ -17,8 +17,9 @@
 //                 scope, productId, invoiceItemIds[], lineNos[] }],
 //     unassigned: [{ invoiceItemId, lineNo, name }],            // lines that get no certificate at all
 //     gaps: [{ invoiceItemId, lineNo, name, certificateTypeId, typeCode, typeName, scope, brandId, brandName, country }],
-//                                                                // a type the company issues, but no template fits this line
-//     summary: [{ certificateTypeId, typeCode, typeName, scope, templateId, templateName, templateVersionId, versionNumber, count, lines }] }
+//                                                                // a chosen type the company issues, but no template fits this line
+//     summary: [{ certificateTypeId, typeCode, typeName, scope, templateId, templateName, templateVersionId, versionNumber, count, lines }],
+//     certificateTypeIds: the invoice's choice, frozen with the plan }
 
 const specificity = (t) => (t.brandId ? 2 : 0) + (t.country ? 1 : 0);
 
@@ -43,9 +44,10 @@ export function pickTemplate(group, ctx) {
 
 export function selectTemplates({ invoice, items, templates }) {
   const lines = items.filter((i) => i.matchStatus === "matched" && i.productId).sort((a, b) => a.lineNo - b.lineNo);
+  const chosen = Array.isArray(invoice.certificateTypeIds) ? new Set(invoice.certificateTypeIds) : null;
   const groups = new Map(); // "typeId|scope" → templates
   for (const t of templates) {
-    if (!t.activeVersionId) continue;
+    if (!t.activeVersionId || (chosen && !chosen.has(t.certificateTypeId))) continue;
     const k = `${t.certificateTypeId}|${t.scope}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(t);
@@ -116,5 +118,5 @@ export function selectTemplates({ invoice, items, templates }) {
     s.lines += e.invoiceItemIds.length;
   }
 
-  return { entries, unassigned, gaps, summary };
+  return { entries, unassigned, gaps, summary, certificateTypeIds: chosen ? [...chosen] : null };
 }

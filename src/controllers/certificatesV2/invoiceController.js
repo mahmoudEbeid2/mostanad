@@ -10,6 +10,8 @@ export const uploadInvoice = catchAsync(async (req, res) => {
     brandId: req.body.brandId,
     country: req.body.country,
     extract: req.body.extract !== "false",
+    certificateTypeIds: req.body.certificateTypeIds,
+    saveAsDefault: req.body.saveAsDefault === "true",
   });
   // read by AI → 202 + taskId; entered by hand (extract=false) → 201, already under review
   res.status(data.taskId ? 202 : 201).json({ status: data.taskId ? "accepted" : "success", data });

@@ -5,7 +5,7 @@ import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { loadInvoice } from "../invoices/invoiceService.js";
 import { listFields, listGroups } from "../templates/fieldService.js";
 import { renderFilled, fillDef, groupFillDef } from "../templates/prepareEngine.js";
-import { computePlan } from "./planService.js";
+import { computePlan, previewPlan as planPreview } from "./planService.js";
 import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
 import { refreshIfChecked, blockingCounts, usableNeeds } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
@@ -32,7 +32,7 @@ export const countBlocking = (values) => Object.values(values || {}).filter((v) 
 export async function previewPlan(invoiceId, companyId) {
   const invoice = await loadInvoice(invoiceId, companyId);
   if (!PREVIEWABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to plan for an invoice that is ${invoice.status}`, 409);
-  return computePlan(invoice);
+  return planPreview(invoice);
 }
 
 const searchText = (parts) =>
