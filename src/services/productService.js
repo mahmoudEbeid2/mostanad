@@ -7,18 +7,19 @@ import { provenanceAfterEdit } from "./catalogues/fieldProvenance.js";
 /**
  * Create a new product scoped to a company
  */
-export const createProduct = async (companyId, data) => {
+export const createProduct = async (companyId, data, { tx = null } = {}) => {
+  const db = tx || prisma;
   const { categoryId, brandId, ...productData } = data;
 
   // Verify company exists
-  const companyExists = await prisma.company.findUnique({ where: { id: companyId } });
+  const companyExists = await db.company.findUnique({ where: { id: companyId } });
   if (!companyExists) {
     throw new AppError("Target company not found!", 404);
   }
 
   // Verify category exists if provided
   if (categoryId) {
-    const categoryExists = await prisma.category.findUnique({ where: { id: categoryId } });
+    const categoryExists = await db.category.findUnique({ where: { id: categoryId } });
     if (!categoryExists) {
       throw new AppError("Selected category not found!", 400);
     }
@@ -26,7 +27,7 @@ export const createProduct = async (companyId, data) => {
 
   // Verify brand exists and belongs to company if brandId provided
   if (brandId) {
-    const brandExists = await prisma.brand.findFirst({
+    const brandExists = await db.brand.findFirst({
       where: { id: brandId, companyId },
     });
     if (!brandExists) {
@@ -34,7 +35,7 @@ export const createProduct = async (companyId, data) => {
     }
   }
 
-  const product = await prisma.product.create({
+  const product = await db.product.create({
     data: {
       ...productData,
       companyId,
@@ -47,7 +48,8 @@ export const createProduct = async (companyId, data) => {
     },
   });
 
-  await scheduleDictionaryRebuild(companyId); // certificate data dictionary (plan.md §3.2)
+  // inside a transaction the caller schedules it once the product is committed
+  if (!tx) await scheduleDictionaryRebuild(companyId); // certificate data dictionary (plan.md §3.2)
   return product;
 };
 

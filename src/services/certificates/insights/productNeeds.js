@@ -54,6 +54,15 @@ export function classifyPath(full) {
   return { kind: "list", column, collection: format(p.segments.slice(0, at)), child: format(rest), ...(el.t === "filter" ? { filter: { key: el.k, value: el.v } } : { index: el.i }) };
 }
 
+/** The product paths a plain field's source reads, directly or inside a combination. → ["product.storage", …] */
+export function productPathsOf(source) {
+  const s = source || {};
+  if (s.kind === "product" && s.path) return [`product.${s.path}`];
+  if (s.kind === "brand") return ["brand.name"];
+  if (s.kind === "template") return [...String(s.template || "").matchAll(TEMPLATE_TOKEN_RE)].filter((m) => m[1] === "product" && m[2]).map((m) => `product.${m[2]}`);
+  return [];
+}
+
 /**
  * → { texts: Map(rel → need), lists: Map(collection → need), versions }
  *   need: { label, templates: Set(name), required }
@@ -93,10 +102,7 @@ export async function neededProductPaths(companyId) {
     }
   };
   for (const f of fields.filter((x) => !x.groupKey)) {
-    const s = f.source || {};
-    const template = nameOf.get(f.versionId);
-    if (s.kind === "product" && s.path) add(`product.${s.path}`, f.label, template, f.required);
-    if (s.kind === "template") for (const m of String(s.template || "").matchAll(TEMPLATE_TOKEN_RE)) if (m[1] === "product" && m[2]) add(`product.${m[2]}`, f.label, template, f.required);
+    for (const full of productPathsOf(f.source)) add(full, f.label, nameOf.get(f.versionId), f.required);
   }
   for (const g of groups) {
     if (g.source?.kind !== "product_list" || !g.source.path) continue;
@@ -212,7 +218,7 @@ export async function productData(productId, companyScope) {
 }
 
 // writing: only key segments, keeping an existing key's spelling ("PH" stays "PH")
-function setIn(obj, segments, value) {
+export function setIn(obj, segments, value) {
   const root = obj && typeof obj === "object" && !Array.isArray(obj) ? structuredClone(obj) : {};
   let cur = root;
   segments.forEach((s, i) => {

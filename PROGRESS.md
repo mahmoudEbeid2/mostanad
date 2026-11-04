@@ -1665,3 +1665,13 @@ Stages of the old job: text of every page 0.5 s, segmenting 0.02 s, thumbnails 1
 **Decisions:** new status `pages_ready` (not `segmented`: no blocks exist yet). `segmented` now means the chosen pages were read and the AI did not finish. A PDF locked by an owner password only is refused too: it opens but can't be split into readable pages. `pageKinds.js` is gone; old page rows keep their kind column values. The estimate is per chosen page now, with no text to weigh it by at upload.
 
 **Not measured:** extraction tokens for chosen vs all pages on the 100-page file: the Gemini free tier (20 requests a day, the same key locally and on the server) was used up. Measured on the 18-page Agrikima earlier the same day: see the C1 proof below.
+
+## Invoices — certificate types per invoice and a new product from a line (D1, D2, 2026-11-04)
+
+**Verified:** `npm run dev:test:light`, `node tests/runAll.js --chunk i/6`: **98/98 suites, 0 failed**. `d1.certificateTypes.test.js` 48, `d2.newProduct.test.js` 88. Frontend build clean, oxlint no findings in the touched files. `ui-smoke.invoiceTypes.mjs` 80/80 (by hand, needs Vite). "Suggest with AI" in the smoke runs against a stubbed answer: AI is off on the test stack, and the server side is proven with a stand-in model. No live Gemini call was made.
+
+**Decisions:** `certificateTypeIds` and the company default are JSON columns, not `uuid[]`: Prisma can't model a nullable list and null has its own meaning here. A choice of types alone keeps a `ready` invoice `ready`: the lines didn't change. A suggested value kept unchanged goes on the product as an unconfirmed estimate, so the data check asks a person to sign for it (`maskEstimates`), as for any estimate; a changed one is the person's. The modal asks only for fields whose inference policy allows it. While the modal is open the type chips float above it, so they stay reachable by mouse; Tab stays inside the dialog.
+
+**Found on the way:** `clearPath` / `provenanceAfterEdit` split paths on dots, so an estimate on a quoted key (`specifications.values["Shelf life"]`) was never masked; they read the path grammar now. `createProductSchema` lacks `routeOfAdmin, dosageForm, strength, productType, prescriptionStatus`, which templates can read: the new endpoint accepts them, `POST /products` still doesn't.
+
+**Known limit:** turning a type off deletes that type's data-need rows, as removing a line always did. Values kept in the product profile or batch results come back by code; others are asked again, and the AI may be called again.

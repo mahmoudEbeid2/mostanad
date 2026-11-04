@@ -26,7 +26,7 @@ const MIME = {
   jpg: { mime: "image/jpeg", magic: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   webp: { mime: "image/webp", magic: (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP" },
 };
-const EDITABLE = ["review", "ready"];
+export const EDITABLE = ["review", "ready"];
 
 /** Magic bytes decide the type — the declared mime type and file name don't. */
 export function detectInvoiceFormat(buffer) {
@@ -264,12 +264,12 @@ export async function getSource(id, companyId) {
 }
 
 // ── review edits (§9.3) ──────────────────────────────────────────────────────
-function assertEditable(inv) {
+export function assertEditable(inv) {
   if (!EDITABLE.includes(inv.status)) throw new CertError("INVOICE_NOT_EDITABLE", `This invoice is ${inv.status}; only an invoice under review can be edited`, 409);
 }
 
 /** Editing a confirmed invoice sends it back to review (it must be confirmed again). */
-const reopen = (inv) => (inv.status === "ready" ? { status: "review", reviewedAt: null, reviewedByUserId: null } : {});
+export const reopen = (inv) => (inv.status === "ready" ? { status: "review", reviewedAt: null, reviewedByUserId: null } : {});
 
 function mergeFields(current, patch, defs) {
   const next = { ...(current || {}) };
@@ -316,7 +316,7 @@ export async function updateInvoice(id, companyId, { header, brandId, country, c
   });
 }
 
-async function loadItem(invoiceId, itemId, companyId) {
+export async function loadItem(invoiceId, itemId, companyId) {
   const inv = await loadInvoice(invoiceId, companyId);
   const item = await prisma.invoiceItem.findUnique({ where: { id: itemId } });
   if (!item || item.invoiceId !== inv.id) throw notFound("Invoice item");

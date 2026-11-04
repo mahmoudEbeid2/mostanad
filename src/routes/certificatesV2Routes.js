@@ -4,7 +4,7 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
-import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas, labResultSchemas } from "../validators/certificatesV2Validator.js";
+import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, newProductSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas, labResultSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
 import * as invoices from "../controllers/certificatesV2/invoiceController.js";
@@ -19,6 +19,7 @@ import { MAX_COA_FILES } from "../services/certificates/labResults/coaService.js
 // restrictToPermission + tenant scoping in the service (cross-tenant → 404).
 const router = express.Router();
 const guard = (permission) => [protect, restrictToPermission(permission)];
+const guardBoth = (first, second) => [protect, restrictToPermission(first), restrictToPermission(second)];
 
 // Template designs: extension + magic bytes are checked in the service (an .ai
 // arrives with arbitrary mime types), so no mime filter here.
@@ -109,6 +110,10 @@ router.get("/invoices/:id/source", guard("read_invoices"), validate(invoiceSchem
 router.patch("/invoices/:id", guard("update_invoices"), validate(invoiceSchemas.update), invoices.updateInvoice);
 router.post("/invoices/:id/items", guard("update_invoices"), validate(invoiceSchemas.addItem), invoices.addItem);
 router.patch("/invoices/:id/items/:itemId", guard("update_invoices"), validate(invoiceSchemas.updateItem), invoices.updateItem);
+// a product created from a line (mockup D2): needs both the invoice's and the product's permission
+router.get("/invoices/:id/items/:itemId/new-product-draft", guardBoth("read_invoices", "create_products"), validate(invoiceSchemas.itemById), invoices.newProductDraft);
+router.post("/invoices/:id/items/:itemId/new-product-suggest", guardBoth("update_invoices", "create_products"), validate(newProductSchemas.suggest), invoices.suggestNewProduct);
+router.post("/invoices/:id/items/:itemId/create-product", guardBoth("update_invoices", "create_products"), validate(newProductSchemas.create), invoices.createProductFromLine);
 router.delete("/invoices/:id/items/:itemId", guard("update_invoices"), validate(invoiceSchemas.itemById), invoices.deleteItem);
 router.post("/invoices/:id/rematch", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.rematch);
 router.post("/invoices/:id/confirm", guard("update_invoices"), validate(invoiceSchemas.byId), invoices.confirmInvoice);

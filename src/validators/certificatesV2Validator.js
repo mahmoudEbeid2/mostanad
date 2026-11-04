@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createProductSchema } from "./productValidator.js";
 
 // Request schemas for the Certificates V2 API (CERTIFICATES_V2_PLAN.md §12).
 // Multipart bodies arrive as strings — empty strings mean "not set".
@@ -215,6 +216,30 @@ export const invoiceSchemas = {
     body: z.object({ data: itemData.optional(), productId: uuid.nullable().optional(), ignored: z.boolean().optional(), aiSuggestionId: uuid.optional(), rememberAlias: z.boolean().optional() }),
   },
   itemById: { params: itemParams, query: companyQuery },
+};
+
+// A product created from an invoice line: the product schema minus companyId (the company is the
+// invoice's), plus the label-engine columns a template may read. Only the name is required.
+const lineProduct = createProductSchema.body.omit({ companyId: true }).extend({
+  routeOfAdmin: z.string().optional().nullable(),
+  dosageForm: z.string().optional().nullable(),
+  strength: z.string().optional().nullable(),
+  productType: z.string().optional().nullable(),
+  prescriptionStatus: z.string().optional().nullable(),
+});
+const newProductMode = z.enum(["needed", "full"]).optional();
+export const newProductSchemas = {
+  create: {
+    params: itemParams,
+    query: companyQuery,
+    body: lineProduct.extend({
+      mode: newProductMode,
+      rememberAlias: z.boolean().optional(),
+      suggestionIds: z.array(uuid).max(60).optional(),
+      pathValues: z.record(z.string().max(300), z.string().max(1000)).optional(), // a value inside a JSON column, e.g. a named specification
+    }),
+  },
+  suggest: { params: itemParams, query: companyQuery, body: z.object({ mode: newProductMode, values: z.record(z.string(), z.unknown()).optional() }) },
 };
 
 // Item 4 — the results grid and supplier COAs

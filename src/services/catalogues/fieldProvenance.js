@@ -17,8 +17,11 @@ export function estimatesOf(product) {
   return out;
 }
 
+/** "specifications.values.Assay" or 'specifications.values["Shelf life"]' → its keys */
+const pathKeys = (path) => [...String(path).matchAll(/\["((?:[^"\\]|\\.)*)"\]|([^.[\]]+)/g)].map((m) => m[1] ?? m[2]);
+
 function clearPath(obj, path) {
-  const parts = path.split(".");
+  const parts = pathKeys(path);
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     if (!cur || typeof cur !== "object") return;
@@ -54,7 +57,7 @@ const canonical = (v) => {
   if (typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
   return v;
 };
-const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+export const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 
 /**
  * A person edited the product: every field whose value changed and that carried a
@@ -68,10 +71,11 @@ export function provenanceAfterEdit(existing, updates) {
   let changed = false;
   const next = { ...fp };
   for (const [path, p] of Object.entries(fp)) {
-    const column = path.split(".")[0];
+    const keys = pathKeys(path);
+    const column = keys[0];
     if (!(column in updates) || p?.tier === "manual") continue;
-    const before = path.split(".").reduce((o, k) => (o == null ? o : o[k]), existing);
-    const after = path.split(".").reduce((o, k) => (o == null ? o : o[k]), updates);
+    const before = keys.reduce((o, k) => (o == null ? o : o[k]), existing);
+    const after = keys.reduce((o, k) => (o == null ? o : o[k]), updates);
     if (same(before, after)) continue;
     next[path] = { tier: "manual", at: new Date().toISOString(), replaced: p.tier };
     changed = true;

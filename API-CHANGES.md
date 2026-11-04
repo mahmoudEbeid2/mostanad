@@ -577,3 +577,19 @@ Additive; no migration.
   what every usable type would make, chosen or not. `gaps` lists chosen types only. The data check and Generate read the same plan;
   `certificate_batches.plan` freezes `certificateTypeIds`.
 - Additive migration `20261104100000_invoice_certificate_types`.
+
+## Invoices — a new product from an unmatched line (D2, 2026-11-04)
+
+- `GET /invoices/:id/items/:itemId/new-product-draft` — **new** (`read_invoices` + `create_products`), code only:
+  `{ lineNo, invoiceText, companyName, prefill: { name, productCode, packaging, brandId, brandName }, neededFields: [{ path, label, input, types, required }],
+  notAsked: [{ label, from }], typeCodes, noCertificate, similar: [{ productId, name, code, score }], fullFields: [{ path, label, input }] }`.
+  `neededFields` = the product paths this line's selected templates read, for the invoice's chosen types, the line's brand and the invoice's country.
+  `input`: `text | long | tags | ingredients | specs | brand | category`.
+- `POST /invoices/:id/items/:itemId/new-product-suggest` — **new** (`update_invoices` + `create_products`), body `{ mode: needed|full, values }`:
+  `{ suggestions: [{ path, label, input, value, estimated: true, reasoning, confidence, suggestionId }], unavailable?, reason? }`. Stores no product.
+  Never a registration number, a lab result or a batch fact; a field whose inference policy is `never` isn't asked.
+- `POST /invoices/:id/items/:itemId/create-product` — **new** (`update_invoices` + `create_products`). Body: the product schema without `companyId`, plus
+  `routeOfAdmin, dosageForm, strength, productType, prescriptionStatus`, `mode`, `rememberAlias`, `suggestionIds`, and `pathValues`
+  (`{ path: text }`, a value inside a JSON column such as a named specification). 201 `{ item, product, matching }`. 409 `LINE_NOT_OPEN`, `INVOICE_NOT_EDITABLE`.
+  `needed` fills code, packaging and brand from the invoice when they aren't sent. A suggested value kept unchanged is stored as an unconfirmed
+  estimate in `fieldProvenance`, so the data check shows it as `inferred` until a person confirms it. On a `ready` invoice the line edit sends it back to review.

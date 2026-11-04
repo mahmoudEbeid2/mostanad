@@ -18,13 +18,14 @@ export async function aliasMap(companyId) {
  * A person confirmed: `name` is `productId` for this company from now on (a later confirmation to
  * another product replaces it). userId null = a company session. → the row, or null
  */
-export async function confirmAlias({ companyId, name, productId, userId = null, invoiceId = null, invoiceItemId = null }) {
+export async function confirmAlias({ companyId, name, productId, userId = null, invoiceId = null, invoiceItemId = null, tx = null }) {
+  const db = tx || prisma;
   const aliasNorm = normalizeName(name);
   if (!aliasNorm || !productId) return null;
-  const product = await prisma.product.findFirst({ where: { id: productId, companyId }, select: { id: true } });
+  const product = await db.product.findFirst({ where: { id: productId, companyId }, select: { id: true } });
   if (!product) return null; // never across tenants
   const confirmed = { origin: "user_confirmed", confirmedAt: new Date(), confirmedByUserId: userId, sourceInvoiceId: invoiceId, sourceInvoiceItemId: invoiceItemId };
-  return prisma.productAlias.upsert({
+  return db.productAlias.upsert({
     where: { companyId_aliasNorm: { companyId, aliasNorm } },
     create: { companyId, aliasNorm, productId, ...confirmed },
     update: { productId, ...confirmed, timesUsed: { increment: 1 } },

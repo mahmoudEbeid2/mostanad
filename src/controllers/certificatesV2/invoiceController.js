@@ -1,5 +1,6 @@
 import catchAsync from "../../utils/catchAsync.js";
 import * as invoiceService from "../../services/certificates/invoices/invoiceService.js";
+import * as newProducts from "../../services/certificates/invoices/newProductService.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
 
 export const uploadInvoice = catchAsync(async (req, res) => {
@@ -47,6 +48,21 @@ export const addItem = catchAsync(async (req, res) => {
 export const updateItem = catchAsync(async (req, res) => {
   const item = await invoiceService.updateItem(req.params.id, req.params.itemId, scopeOf(req), req.body, actorId(req));
   res.status(200).json({ status: "success", data: { item } });
+});
+
+export const newProductDraft = catchAsync(async (req, res) => {
+  const draft = await newProducts.newProductDraft(req.params.id, req.params.itemId, scopeOf(req));
+  res.status(200).json({ status: "success", data: { draft } });
+});
+
+export const suggestNewProduct = catchAsync(async (req, res) => {
+  const data = await newProducts.suggestNewProduct(req.params.id, req.params.itemId, scopeOf(req), req.body);
+  res.status(200).json({ status: "success", data });
+});
+
+export const createProductFromLine = catchAsync(async (req, res) => {
+  const data = await newProducts.createProductFromLine(req.params.id, req.params.itemId, scopeOf(req), req.body, actorId(req));
+  res.status(201).json({ status: "success", data });
 });
 
 export const deleteItem = catchAsync(async (req, res) => {
