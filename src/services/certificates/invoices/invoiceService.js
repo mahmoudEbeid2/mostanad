@@ -141,7 +141,7 @@ export async function runExtractJob(invoiceId, ctx = {}, deps = {}) {
     let dataCheck;
     try {
       const { computeNeeds } = await import("../dataNeeds/dataNeedsService.js"); // lazy: dataNeeds imports this module
-      const check = await computeNeeds(invoiceId, null, { generate: deps.gapsGenerate });
+      const check = await computeNeeds(invoiceId, null, { generate: deps.gapsGenerate, webFirst: true });
       dataCheck = { ...check.summary, ai: check.ai };
     } catch (err) {
       console.error(`[invoice ${invoiceId}] automatic data check failed (the review screen runs it again): ${err.message}`);

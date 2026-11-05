@@ -606,3 +606,18 @@ Additive; no migration.
 - `PATCH /template-versions/:id/font-fallbacks` — **new**. `{ fontClass, fallbackFamily }`. `update_certificate_templates`.
   Draft or ready versions only: 409 `VERSION_NOT_DRAFT`; 422 `UNKNOWN_FONT`, `INVALID_FONT`.
 - `changeSource`: **new** value `font_fallback`, written by `scripts/rerenderGlyphDrafts.js`.
+
+## Certificates — optional is not "not applicable" (2026-11-05)
+
+- `required: false` now means "may stay empty after we tried". Every non-protected field, required or optional, goes through
+  product → invoice → catalogue → web → inference. Inference is one `CERT_PRODUCT_INFER` call per product, for all its empty fields.
+  A check run on upload or from the panel leaves to the web what the web can answer; `POST /invoices/:id/data-needs/web-lookup` and
+  Prepare go on to inference afterwards.
+- Need `status`: `not_applicable` only for a field marked `notApplicable`, or a `skip`. An empty optional field is `missing` with `required: false`
+  ("missing (optional)"): shown, never blocking.
+- Check `summary`: `missing` now counts required fields only; **new** `missingOptional`. Prepare `prepared`: **new** `missingOptional: [{ needId, label }]`.
+- `PATCH /invoices/:id/data-needs`: **new** action `skip`. 409 `CANNOT_SKIP` unless the need is empty, optional and a lab result or batch fact.
+- Template fields: **new** `notApplicable` (boolean). It forces `required: false`; left out, the stored value is kept.
+- `flags` (certificates): **new** `unconfirmed`, blocks Finalize: the value is an estimate nobody confirmed. Generation prints those values on the draft.
+  **New** `empty_optional`, informational.
+- Additive migration `20261105120000_template_field_not_applicable`.

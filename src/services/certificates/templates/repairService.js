@@ -135,6 +135,7 @@ const pick = (f) => ({
   isBatchFact: typeof f.isBatchFact === "boolean" ? f.isBatchFact : undefined, // the owner's tick carries over; undecided → the pre-set (replaceFields)
   showSpecInstead: f.showSpecInstead === true,
   specFieldKey: f.specFieldKey ?? null,
+  notApplicable: f.notApplicable === true,
 });
 
 /**

@@ -6,8 +6,8 @@ import * as fileStore from "../storage/fileStore.js";
 import * as renderer from "../engine/rendererClient.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { resolveGroup } from "../generation/valueResolver.js";
-import { loadDesign, certificateContext, countBlocking, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed } from "../generation/batchService.js";
-import { USABLE } from "../dataNeeds/dataNeedsService.js";
+import { loadDesign, certificateContext, countBlocking, emptyFlags, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed } from "../generation/batchService.js";
+import { PRINTABLE } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
@@ -55,8 +55,8 @@ async function renderValues(cert, values) {
   const merged = {};
   for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
-    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format");
-    merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || [])])] };
+    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed");
+    merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || []), ...emptyFlags(f, v.value)])] };
   }
   for (const g of design.groups) {
     const v = values[g.key] || groupValue(g, { rows: [], flags: [] }, { flags: {} });
@@ -189,7 +189,7 @@ export async function resetField(id, companyId, userId, key, { expectedVersion }
     summary = `${key} reset to its source (${(current.values[key].rows || []).length} → ${r.rows.length} rows)`;
   } else {
     // the certificate data check's settled value first, as at generation (plan.md §4)
-    const need = await prisma.certificateDataNeed.findFirst({ where: { invoiceId: cert.invoiceId, planKey: cert.planKey, fieldKey: key, status: { in: USABLE }, value: { not: null } } });
+    const need = await prisma.certificateDataNeed.findFirst({ where: { invoiceId: cert.invoiceId, planKey: cert.planKey, fieldKey: key, status: { in: PRINTABLE }, value: { not: null } } });
     const r = resolveWithNeed(field, ctx, need);
     values[key] = { value: r.value, source: field.source, resolved: r.resolved, origin: r.origin, ...(r.provenance ? { provenance: r.provenance } : {}), flags: r.flags, editedByUserId: null, editedAt: null };
     summary = `${key} reset to source value (${short(current.values[key].value)} → ${short(r.value)})`;

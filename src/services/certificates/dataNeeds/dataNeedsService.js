@@ -27,8 +27,11 @@ import { productFingerprint, knownEmpty, isKnownEmpty, rememberEmpty } from "./n
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
 //   plan (templateSelector) × each template field → one CertificateDataNeed:
 //     resolved        code read it from the field's source (or an accepted synonym path)
-//     not_applicable  optional and empty
-//     missing         required and empty
+//     not_applicable  empty on purpose: the owner marked the field (notApplicable), or a person
+//                     skipped an optional lab result / batch fact (decision "skip")
+//     missing         empty. Required: blocks. Optional ("missing (optional)"): never blocks but is
+//                     shown, and required = false never stops the pipeline: it means "may stay
+//                     empty after we tried", not "don't try" (owner, 2026-11-05)
 //   → ONE CERT_INVOICE_GAPS call for the missing ones not asked before
 //     resolved_ai        found with verified evidence, auto-accepted (company setting, P4)
 //     needs_confirmation found with verified evidence, a person must accept it
@@ -49,8 +52,13 @@ import { productFingerprint, knownEmpty, isKnownEmpty, rememberEmpty } from "./n
 export const NEED_STATUSES = ["resolved", "resolved_ai", "needs_confirmation", "missing", "provided", "not_applicable", "inferred", "web_found", "catalogue_found", "reused"];
 export const AWAITING = ["needs_confirmation", "inferred", "web_found", "catalogue_found"]; // a value a person must accept
 export const BLOCKING = ["missing", ...AWAITING];
-export const USABLE = ["provided", "resolved_ai", "reused"]; // what generation takes from the check
+export const USABLE = ["provided", "resolved_ai", "reused"]; // settled: nothing left for a person
+// What generation prints (owner, 2026-11-05: never blank silently): an estimate waiting for a person
+// prints too, flagged `unconfirmed`, which refuses finalize until it is confirmed.
+export const PRINTABLE = [...USABLE, ...AWAITING];
 const AI_VALUE = ["resolved_ai", ...AWAITING];
+const emptyStatus = (field) => (field?.notApplicable === true ? "not_applicable" : "missing");
+const isSkipped = (row) => row.status === "not_applicable" && row.provenance?.kind === "skipped";
 
 // Which steps already looked at a need with its current basis: aiAskedBasis =
 // basis (the A2 gap call) + "|I" (tier I) + "|W" (tier W) + "|C" (tier C, A6) + "|E" (an
@@ -227,8 +235,10 @@ async function computeCode(invoice, ctx) {
       const prev = byKey.get(key);
       let code = r.resolved !== ""
         ? { status: "resolved", value: r.resolved, provenance: codeProvenance(field, r) }
-        : { status: field.required ? "missing" : "not_applicable", value: null, provenance: null };
-      if (r.resolved === "" && field.showSpecInstead) {
+        : { status: emptyStatus(field), value: null, provenance: null };
+      if (r.resolved === "" && field.notApplicable) {
+        // the owner said so: nothing is looked for
+      } else if (r.resolved === "" && field.showSpecInstead) {
         // refused: the specification on the product came from inference / the web → not printed as a result
         if (!r.refused) code = specMirror(field, entryRows.get(field.specFieldKey)) || code;
       } else if (r.resolved === "") {
@@ -249,7 +259,7 @@ async function computeCode(invoice, ctx) {
       if (prev && prev.basis === basis) {
         if (prev.status === "provided") data = {}; // a person's value stands
         else if (["resolved", "reused"].includes(code.status)) data = { ...code, suggestionId: null, aiAskedBasis: null }; // closed by code: if it reopens, it is a new gap
-        else if (AI_VALUE.includes(prev.status)) data = {}; // a verified AI value stands until decided
+        else if (AI_VALUE.includes(prev.status) || isSkipped(prev)) data = {}; // a verified AI value, or a person's skip, stands until decided
         else data = code;
       } else data = { aiAskedBasis: null, suggestionId: null, decidedByUserId: null, decidedAt: null, ...code };
       const base = { label: field.label, category: field.dataCategory || null, required: field.required, templateVersionId: entry.templateVersionId, invoiceItemId: itemId, productId: entry.productId, basis };
@@ -493,11 +503,15 @@ export async function computeNeeds(invoiceId, companyScope, opts = {}) {
 }
 
 // ── A5 tier I: inference from the product's own data (plan.md §14.2) ─────────
-async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
+// webFirst (owner's order, 2026-11-05: DB → invoice → catalogue → web → inference): a need the web
+// can still answer waits for it, so a typical estimate never takes the place of a cited value.
+// One call per product, for all its empty fields.
+async function inferProductFacts(invoice, ctx, rows, { generate, settings, webFirst = false }) {
   const out = { used: false, calls: 0, asked: 0, inferred: 0, rejected: 0 };
   if (!aiAllowed(settings) || !settings.allowProductInference) return { ...out, off: true };
   const productOf = (row) => ctx.items.find((i) => i.id === row.invoiceItemId)?.product || null;
-  let open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsInference(x.field) && !askedBy(x.row, "I"));
+  const webPending = (x) => webFirst && settings.allowWebLookup && allowsWeb(x.field) && !askedBy(x.row, "W");
+  let open = rows.filter((x) => x.row.status === "missing" && x.row.invoiceItemId && productOf(x.row) && allowsInference(x.field) && !askedBy(x.row, "I") && !webPending(x));
   if (!open.length) return out;
   // inferred before from the same product data and nothing came of it → not asked again
   const fpOf = (product) => productFingerprint(product, blockOf(ctx, product));
@@ -508,20 +522,31 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
   if (skip.length) out.knownEmpty = skip.length;
   open = open.filter((x) => !skip.includes(x));
   if (!open.length) return out;
-  const groups = new Map();
+  const byProduct = new Map(); // productId → sig → { gap, needs }
   for (const x of open) {
     const product = productOf(x.row);
-    const sig = `${product.id}|${normLabel(x.field.label)}|${stableStringify(x.field.source)}`;
+    if (!byProduct.has(product.id)) byProduct.set(product.id, new Map());
+    const groups = byProduct.get(product.id);
+    const sig = `${normLabel(x.field.label)}|${stableStringify(x.field.source)}`;
     if (!groups.has(sig)) groups.set(sig, { gap: { gapId: `I${groups.size + 1}`, field: x.field, label: x.field.label, expectedType: isDateField(x.field) ? "date" : sourceType(x.field.source || { kind: "manual" }), ...(x.field.format?.date ? { dateFormat: x.field.format.date } : {}), product }, needs: [] });
     groups.get(sig).needs.push(x);
   }
+  for (const groups of byProduct.values()) await inferOneProduct(invoice, groups, { generate, settings, out, fpOf });
+  return out;
+}
+
+/** One CERT_PRODUCT_INFER call: every empty field of one product. A failure stays with that product. */
+async function inferOneProduct(invoice, groups, { generate, settings, out, fpOf }) {
   let res;
   try {
     res = await askInference({ companyId: invoice.companyId, invoiceId: invoice.id, gaps: [...groups.values()].map((g) => g.gap) }, { generate });
   } catch (err) {
-    return { ...out, unavailable: true, reason: publicAiError(err) };
+    Object.assign(out, { unavailable: true, reason: publicAiError(err) });
+    return;
   }
-  Object.assign(out, { used: true, calls: 1, asked: res.sent.length });
+  out.used = true;
+  out.calls++;
+  out.asked += res.sent.length;
   for (const g of groups.values()) {
     const got = res.answers.get(g.gap.gapId);
     if (!got?.verdict.ok) for (const x of g.needs) await rememberEmpty(invoice.companyId, "I", g.gap.product.id, x.field, fpOf(g.gap.product), { invoiceId: invoice.id, reason: got?.verdict.reason || "no answer", promptHash: INFER_PROMPT_HASH });
@@ -555,10 +580,9 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings }) {
     }
     if (got?.verdict.ok && !got.verdict.estimated && direct(settings) && suggestion) await prisma.aiSuggestion.update({ where: { id: suggestion.id }, data: { status: "auto_accepted" } });
   }
-  return out;
 }
 
-async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate, inferGenerate } = {}) {
+async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate, inferGenerate, webFirst = false } = {}) {
   const invoice = await loadInvoice(invoiceId, companyScope);
   if (!CHECKABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to check for an invoice that is ${invoice.status}`, 409);
   const ctx = await loadContext(invoice);
@@ -570,7 +594,7 @@ async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate, i
   if (ai) {
     const settings = await getAiSettings(invoice.companyId);
     aiOut = await fillGaps(invoice, ctx, rows, { generate, settings });
-    aiOut.inference = await inferProductFacts(invoice, ctx, rows, { generate: inferGenerate, settings });
+    aiOut.inference = await inferProductFacts(invoice, ctx, rows, { generate: inferGenerate, settings, webFirst });
   }
   return buildView(invoice, ctx, aiOut);
 }
@@ -581,13 +605,14 @@ async function computeNeedsNow(invoiceId, companyScope, { ai = true, generate, i
  * the data check, never during upload (§14.4). ONE call per product for its
  * missing web-eligible facts; a fact looked up in the last 90 days comes from
  * the company's cache (0 calls). → the view, with ai.web
- * deps (tests): { search, fetchPage }
+ * thenInfer: what the web left empty goes on to inference (its turn in the owner's order) → ai.inference
+ * deps (tests): { search, fetchPage, inferGenerate }
  */
 export async function webLookupNeeds(invoiceId, companyScope, deps = {}) {
   return serialized(invoiceId, () => webLookupNow(invoiceId, companyScope, deps));
 }
 
-async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {}) {
+async function webLookupNow(invoiceId, companyScope, { search, fetchPage, thenInfer = false, inferGenerate } = {}) {
   const invoice = await loadInvoice(invoiceId, companyScope);
   if (!CHECKABLE.includes(invoice.status)) throw new CertError("INVOICE_NOT_REVIEWED", `There is nothing to check for an invoice that is ${invoice.status}`, 409);
   const ctx = await loadContext(invoice);
@@ -685,7 +710,8 @@ async function webLookupNow(invoiceId, companyScope, { search, fetchPage } = {})
       }
     }
   }
-  return buildView(invoice, ctx, { web });
+  const inference = thenInfer ? await inferProductFacts(invoice, ctx, rows, { generate: inferGenerate, settings }) : null;
+  return buildView(invoice, ctx, { web, ...(inference ? { inference } : {}) });
 }
 
 /**
@@ -723,9 +749,9 @@ export async function blockingCounts(invoiceId) {
   return { missing: n("missing"), needsConfirmation: AWAITING.reduce((a, st) => a + n(st), 0) };
 }
 
-/** Generation (batchService): planKey → { fieldKey → need } of the values the check settled. */
+/** Generation (batchService): planKey → { fieldKey → need } of the values the check holds (PRINTABLE). */
 export async function usableNeeds(invoiceId) {
-  const rows = await prisma.certificateDataNeed.findMany({ where: { invoiceId, status: { in: USABLE }, value: { not: null } } });
+  const rows = await prisma.certificateDataNeed.findMany({ where: { invoiceId, status: { in: PRINTABLE }, value: { not: null } } });
   const out = new Map();
   for (const r of rows) {
     if (!out.has(r.planKey)) out.set(r.planKey, new Map());
@@ -817,7 +843,8 @@ async function buildView(invoice, ctx, ai = null) {
       inferred: count("inferred"),
       webFound: count("web_found"),
       catalogueFound: count("catalogue_found"),
-      missing: count("missing"),
+      missing: rows.filter((r) => r.status === "missing" && r.required).length,
+      missingOptional: rows.filter((r) => r.status === "missing" && !r.required).length,
       notApplicable: count("not_applicable"),
       blocking,
     },
@@ -863,6 +890,7 @@ async function confirmEstimate(productId, companyId, path, userId) {
  *            applyTo "line" also every other open need of the same line with the same label
  *            ("use for all certificates of this product");
  *   reject — the AI value is wrong: back to missing, not asked again;
+ *   skip   — an optional lab result / batch fact stays empty on purpose (not_applicable);
  *   reset  — forget the decision; the next check recomputes it.
  * → the view
  */
@@ -932,10 +960,15 @@ export async function decideNeeds(invoiceId, companyScope, decisions, userId = n
       }
       case "reject": {
         if (!AI_VALUE.includes(need.status)) throw new CertError("NOTHING_TO_REJECT", `“${need.label}” has no AI value to reject`, 409);
-        await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: need.required ? "missing" : "not_applicable", value: null, provenance: null, decidedByUserId: userId, decidedAt: now } });
+        await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: emptyStatus(fieldFor(need)), value: null, provenance: null, decidedByUserId: userId, decidedAt: now } });
         if (need.suggestionId) await decideSuggestion(invoice.companyId, need.suggestionId, { decision: "rejected", userId });
         // a rejected web fact is not served from the cache again
         if (need.provenance?.cacheId) await prisma.externalKnowledgeCache.updateMany({ where: { id: need.provenance.cacheId, kind: CACHE_KIND }, data: { status: "rejected", reviewedByUserId: userId } });
+        break;
+      }
+      case "skip": {
+        if (need.required || need.value !== null || !isProtected(fieldFor(need))) throw new CertError("CANNOT_SKIP", `Only an empty, optional lab result or batch fact can be skipped (“${need.label}”)`, 409);
+        await prisma.certificateDataNeed.update({ where: { id: need.id }, data: { status: "not_applicable", provenance: { kind: "skipped" }, decidedByUserId: userId, decidedAt: now } });
         break;
       }
       case "reset":

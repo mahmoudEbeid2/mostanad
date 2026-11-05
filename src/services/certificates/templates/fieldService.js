@@ -114,7 +114,7 @@ export function validateFieldList(input, lines, groups = []) {
       sampleValue: raw.sampleValue,
       source: raw.source,
       format: raw.format ?? null,
-      required: raw.required !== false,
+      required: raw.required !== false && raw.notApplicable !== true,
       align: raw.align || "left",
       origin: raw.origin || "manual",
       confirmed: raw.confirmed,
@@ -132,6 +132,8 @@ export function validateFieldList(input, lines, groups = []) {
       isBatchFact: typeof raw.isBatchFact === "boolean" ? raw.isBatchFact : undefined,
       // owner setting: print the row's specification instead of a measured result
       showSpecInstead: raw.showSpecInstead === true,
+      // the owner's "not applicable": never looked for, stays empty; undefined = keep what is stored
+      notApplicable: typeof raw.notApplicable === "boolean" ? raw.notApplicable : undefined,
       // its specification field: printed instead of a result (showSpecInstead), or shown next to
       // the result in the results grid (item 4); null = the field has none
       specFieldKey: typeof raw.specFieldKey === "string" && raw.specFieldKey ? raw.specFieldKey : null,
@@ -279,13 +281,15 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
   }
   // review #10: a stored suggested/detected field can't become "manual" (and so
   // confirmed) by re-sending it; its confirmation is the one /fields/confirm stored
-  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true, isBatchFact: true } })).map((s) => [s.key, s]));
+  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true, isBatchFact: true, notApplicable: true } })).map((s) => [s.key, s]));
   for (const f of fields) {
     const s = stored.get(f.key);
     // a client that doesn't send the lab-result tick (older UI, autosave of other edits) never resets the owner's choice
     if (f.isLabResult === undefined) f.isLabResult = s ? s.isLabResult : defaultIsLabResult(f);
     // …nor the batch-fact one; a new field gets the pre-set (true), or stays undecided (null)
     if (f.isBatchFact === undefined) f.isBatchFact = s ? s.isBatchFact : defaultIsBatchFact(f) ? true : null;
+    if (f.notApplicable === undefined) f.notApplicable = s?.notApplicable === true;
+    if (f.notApplicable) f.required = false;
     if (s && s.origin !== "manual") {
       f.origin = s.origin;
       f.confirmed = s.confirmed === true;
@@ -340,6 +344,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         isBatchFact: typeof f.isBatchFact === "boolean" ? f.isBatchFact : null,
         showSpecInstead: f.showSpecInstead === true,
         specFieldKey: f.specFieldKey || null,
+        notApplicable: f.notApplicable === true,
       })),
     }),
     prisma.templateGroup.createMany({

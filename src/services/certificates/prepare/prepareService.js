@@ -12,8 +12,9 @@ import { entityCost } from "../../ai/aiCostReports.js";
 // "Prepare certificates" (fill automatically, item 5, owner 2026-10-26): ONE button on the
 // invoice runs, in order, as a background job with named stages and progress:
 //   matching      — lines still without a product (a confirmed invoice has none: skipped)
-//   product_data  — the data check: DB → invoice → catalogue → inference (one gap call, one
-//                   inference call), then the web for what is still missing, where allowed
+//   product_data  — the data check, in the owner's order (2026-11-05): DB → invoice → catalogue
+//                   (one gap call) → the web, where allowed → inference (one call per product,
+//                   for all its empty fields, required or optional)
 //   batch_results — lab results of the same company + product + batch, reused by code
 //   supplier_coa  — the uploaded supplier COAs not read yet (only if there are any)
 // and ends with what still needs a person: estimated / unconfirmed values (Confirm all) and the
@@ -40,6 +41,7 @@ export async function preparedView(invoice) {
   const rows = await prisma.certificateDataNeed.findMany({ where: { invoiceId: invoice.id } });
   const awaiting = rows.filter((r) => AWAITING.includes(r.status) && r.value !== null);
   const missing = rows.filter((r) => r.required && r.status === "missing");
+  const missingOptional = rows.filter((r) => !r.required && r.status === "missing").map((r) => ({ needId: r.id, label: r.label }));
   const open = await blockingCounts(invoice.id);
   const items = await prisma.invoiceItem.findMany({ where: { invoiceId: invoice.id }, select: { matchStatus: true } });
   const unmatched = items.filter((i) => i.matchStatus === "needs_match").length;
@@ -48,6 +50,7 @@ export async function preparedView(invoice) {
     toConfirm: awaiting.map((r) => ({ needId: r.id, label: r.label, value: r.value, status: r.status, estimated: r.provenance?.estimated === true, estimateBasis: r.provenance?.estimateBasis || null })),
     estimated: awaiting.filter((r) => r.provenance?.estimated === true).length,
     missing: missing.length,
+    missingOptional,
     missingLabResults: grid.summary.blocking,
     missingOther: missing.length - Math.min(missing.length, grid.summary.blocking),
     unmatchedLines: unmatched,
@@ -94,16 +97,19 @@ export async function runPrepareJob({ invoiceId }, ctx = {}, deps = {}) {
 
   let check = null;
   await run("product_data", 25, async () => {
-    check = await computeNeeds(invoiceId, invoice.companyId, { generate: deps.generate, inferGenerate: deps.inferGenerate });
+    check = await computeNeeds(invoiceId, invoice.companyId, { generate: deps.generate, inferGenerate: deps.inferGenerate, webFirst: true });
+    const first = check.ai;
     const settings = await getAiSettings(invoice.companyId);
     let web = null;
+    let inference = first?.inference?.calls ?? 0;
     if (aiAllowed(settings) && settings.allowWebLookup && check.tiers?.webEligible > 0) {
       progress(45, "product_data", "Looking up missing product facts on the web");
-      check = await webLookupNeeds(invoiceId, invoice.companyId, { search: deps.search, fetchPage: deps.fetchPage });
+      check = await webLookupNeeds(invoiceId, invoice.companyId, { search: deps.search, fetchPage: deps.fetchPage, thenInfer: true, inferGenerate: deps.inferGenerate });
       web = check.ai?.web || null;
+      inference += check.ai?.inference?.calls ?? 0;
     }
     const s = check.summary;
-    return { status: "done", detail: `${s.ready} of ${s.values} values ready, ${s.estimated} estimated, ${s.missing} missing`, ai: { gaps: check.ai?.calls ?? 0, inference: check.ai?.inference?.calls ?? 0, web: web?.calls ?? 0, ...(check.ai?.unavailable ? { unavailable: check.ai.reason } : {}) } };
+    return { status: "done", detail: `${s.ready} of ${s.values} values ready, ${s.estimated} estimated, ${s.missing} missing, ${s.missingOptional} optional empty`, ai: { gaps: first?.calls ?? 0, inference, web: web?.calls ?? 0, ...(first?.unavailable ? { unavailable: first.reason } : {}) } };
   });
 
   await run("batch_results", 60, async () => {

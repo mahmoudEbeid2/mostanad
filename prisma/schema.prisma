@@ -889,6 +889,9 @@ model TemplateField {
   // instead of a measured value. specFieldKey names that specification field (same version);
   // the server keeps this field's source/format equal to it.
   showSpecInstead     Boolean         @default(false) @map("show_spec_instead")
+  // Owner setting: nothing is looked for and the field stays empty on purpose. required = false
+  // only means "may stay empty after we tried"; this is the one way to say "don't try".
+  notApplicable       Boolean         @default(false) @map("not_applicable")
   specFieldKey        String?         @map("spec_field_key")
 
   @@unique([versionId, key])
@@ -1225,7 +1228,7 @@ model CertificateDataNeed {
   label             String // the template field's label, for the review panel
   category          String? // the field's dataCategory (batch_data → the batch-data form)
   required          Boolean
-  status            String // resolved | resolved_ai | needs_confirmation | missing | provided | not_applicable
+  status            String // resolved | resolved_ai | needs_confirmation | missing (required blocks; optional = "missing (optional)") | provided | not_applicable
   value             String?
   provenance        Json? // { kind: path|static|today|template|invoice_text|product_path|product_json_text|manual, path?, quote?, page?, suggestionId?, via? }
   basis             String // hash of what code resolution depends on (source, product, line) — a change resets AI/user values

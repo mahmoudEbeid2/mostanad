@@ -204,7 +204,7 @@ export async function saveGrid(invoiceId, companyScope, input, userId = null) {
       const text = raw === null || raw === undefined ? "" : String(raw).trim();
       if (!text) {
         for (const item of rowItems) await forgetBatchResult(invoice.companyId, item, cellNeeds[0].label);
-        for (const n of cellNeeds) await prisma.certificateDataNeed.update({ where: { id: n.id }, data: { status: n.required ? "missing" : "not_applicable", value: null, provenance: null, decidedByUserId: userId, decidedAt: now } });
+        for (const n of cellNeeds) await prisma.certificateDataNeed.update({ where: { id: n.id }, data: { status: "missing", value: null, provenance: null, decidedByUserId: userId, decidedAt: now } });
         continue;
       }
       // unchanged (e.g. the whole grid saved again): keep where each value came from

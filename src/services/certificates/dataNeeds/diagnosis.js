@@ -127,6 +127,7 @@ export async function diagnoseInvoice(invoiceId, companyScope) {
       versionStatus: v?.status || null,
       fieldKey: r.fieldKey,
       label: r.label,
+      required: r.required,
       sourcePath: field ? pathOf(field.source) : null,
       group,
       reason,
@@ -150,7 +151,7 @@ export async function diagnoseInvoice(invoiceId, companyScope) {
   const stale = [...versions.values()].filter((v) => v.template.activeVersionId !== v.id).map((v) => ({ versionId: v.id, templateName: v.template.name, status: v.status }));
   return {
     invoiceId: invoice.id,
-    summary: { certificates, values: rows.length, missing: entries.length, byGroup: Object.fromEntries(DIAGNOSIS_GROUPS.map((g) => [g, entries.filter((e) => e.group === g).length])) },
+    summary: { certificates, values: rows.length, missing: entries.length, missingOptional: entries.filter((e) => !e.required).length, byGroup: Object.fromEntries(DIAGNOSIS_GROUPS.map((g) => [g, entries.filter((e) => e.group === g).length])) },
     groups,
     entries,
     ...(stale.length ? { staleVersions: stale } : {}),

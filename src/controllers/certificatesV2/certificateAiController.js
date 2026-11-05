@@ -63,7 +63,7 @@ export const getDataNeeds = catchAsync(async (req, res) => {
 });
 
 export const computeDataNeeds = catchAsync(async (req, res) => {
-  const check = await dataNeeds.computeNeeds(req.params.id, scopeOf(req), { ai: req.body?.ai !== false });
+  const check = await dataNeeds.computeNeeds(req.params.id, scopeOf(req), { ai: req.body?.ai !== false, webFirst: true });
   res.status(200).json({ status: "success", data: { check } });
 });
 
@@ -132,5 +132,5 @@ export const diagnoseDataNeeds = catchAsync(async (req, res) => {
 });
 
 export const webLookup = catchAsync(async (req, res) => {
-  res.status(200).json({ status: "success", data: { check: await dataNeeds.webLookupNeeds(req.params.id, scopeOf(req)) } });
+  res.status(200).json({ status: "success", data: { check: await dataNeeds.webLookupNeeds(req.params.id, scopeOf(req), { thenInfer: true }) } });
 });

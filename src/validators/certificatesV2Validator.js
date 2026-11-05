@@ -105,6 +105,7 @@ const fieldDraft = z
     groupKey: z.string().max(60).nullable().optional(),
     isLabResult: z.boolean().optional(), // owner-set (Mark fields); omitted = keep the stored flag
     isBatchFact: z.boolean().optional(), // owner-set (Mark fields); omitted = keep the stored flag
+    notApplicable: z.boolean().optional(), // owner-set (Mark fields): never looked for; omitted = keep the stored flag
   })
   .passthrough();
 
@@ -371,7 +372,7 @@ export const dataNeedSchemas = {
             .object({
               // confirm_all (item 3): every estimated value of the invoice at once — no needId
               needId: uuid.optional(),
-              action: z.enum(["accept", "edit", "reject", "reset", "confirm_all"]),
+              action: z.enum(["accept", "edit", "reject", "reset", "confirm_all", "skip"]),
               value: z.string().max(500).nullable().optional(),
               applyTo: z.enum(["need", "line"]).optional(),
               saveToProduct: z.boolean().optional(),

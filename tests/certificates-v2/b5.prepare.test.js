@@ -85,7 +85,7 @@ try {
   const firstSeen = [...new Set(events.map((e) => e.stage).filter(Boolean))];
   assert("progress reported per stage, in that order, rising", firstSeen.join() === "matching,product_data,batch_results,supplier_coa" && events.every((e, i) => !i || e.pct >= events[i - 1].pct), events);
   assert("matching: line 2 matched by its code (no AI)", st.matching.status === "done" && /1 matched|2 matched/.test(st.matching.detail) && (await prisma.invoiceItem.findFirst({ where: { invoiceId: inv1.id, lineNo: 2 } })).productId === P2.id, st.matching);
-  assert("product data: one gap call + one inference call; Storage estimated for both products", st.product_data.status === "done" && calls.gap === 1 && calls.infer === 1, { st: st.product_data, calls });
+  assert("product data: one gap call + one inference call per product; Storage estimated for both products", st.product_data.status === "done" && calls.gap === 1 && calls.infer === 2, { st: st.product_data, calls });
   assert("batch results: nothing earlier for these batches → skipped", st.batch_results.status === "skipped", st.batch_results);
   assert("supplier COA: the uploaded file read (one call), its value taken", st.supplier_coa.status === "done" && calls.coa === 1 && /1 values taken/.test(st.supplier_coa.detail), st.supplier_coa);
   const p = out.prepared;
@@ -99,7 +99,7 @@ try {
   await saveGrid(inv1.id, co.id, [{ rowKey: line2.rowKey, values: { "ph result": "7.0" } }], null);
   const again = await runPrepareJob({ invoiceId: inv1.id }, {}, deps);
   assert("prepared again: nothing open → canGenerate", again.prepared.canGenerate === true && again.prepared.missing === 0 && again.prepared.toConfirm.length === 0, again.prepared);
-  assert("…and it asked no AI the second time (every gap already asked, COA already read)", calls.gap === 1 && calls.infer === 1 && calls.coa === 1, calls);
+  assert("…and it asked no AI the second time (every gap already asked, COA already read)", calls.gap === 1 && calls.infer === 2 && calls.coa === 1, calls);
 
   console.log("\n🧪 A second invoice with the same products and batches");
   const before = { ...calls };

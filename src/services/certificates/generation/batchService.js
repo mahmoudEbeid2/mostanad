@@ -7,7 +7,7 @@ import { listFields, listGroups } from "../templates/fieldService.js";
 import { renderFilled, fillDef, groupFillDef } from "../templates/prepareEngine.js";
 import { computePlan, previewPlan as planPreview } from "./planService.js";
 import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
-import { refreshIfChecked, blockingCounts, usableNeeds } from "../dataNeeds/dataNeedsService.js";
+import { refreshIfChecked, blockingCounts, usableNeeds, AWAITING } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { maskEstimates } from "../../catalogues/fieldProvenance.js";
 
@@ -15,7 +15,7 @@ import { maskEstimates } from "../../catalogues/fieldProvenance.js";
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
 // `generateBatch` job renders version 1 of each certificate. One certificate
 // failing never stops the batch. Values come only from declared sources (D7):
-// an empty required value renders empty and is flagged `missing`.
+// an empty required value renders empty and is flagged `missing`, an empty optional one `empty_optional`.
 
 export const GENERATABLE = ["ready", "generated", "partially_failed"];
 const PREVIEWABLE = ["review", ...GENERATABLE];
@@ -23,9 +23,13 @@ const RENDER_CONCURRENCY = 2; // pages per worker process (§5.2)
 const THUMB_SCALE = 0.25;
 const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email: true };
 
-/** Flags that block finalisation (§10.4): a required value missing, overflow, a character no available font has.
- *  Informational: `glyph_fallback:…` (drawn in the matched fallback font) and `glyph_unknown` (the font couldn't be parsed, review #7). */
-export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || String(flag).startsWith("glyph:");
+/** Flags that block finalisation (§10.4): a required value missing, overflow, a character no available font has,
+ *  an estimate nobody confirmed yet (`unconfirmed`: printed on the draft, never on a final certificate).
+ *  Informational: `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
+ *  review #7) and `empty_optional` (an optional value the pipeline couldn't fill). */
+export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
+/** Never blank silently (owner, 2026-11-05): an optional field left empty says so, unless the owner marked it not applicable. */
+export const emptyFlags = (field, value) => (value || field.required || field.notApplicable ? [] : ["empty_optional"]);
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
 
 /** GET /invoices/:id/generation-plan — what "Generate" would produce (plan §13.5, §20 I19). */
@@ -62,7 +66,7 @@ export async function assertDataCheckGate(invoice, { force = false, canForce = f
  * The certificate data check (plan.md §6.2): once it has been run for the
  * invoice, required values that are still missing or awaiting confirmation
  * block generation — unless `force` ("Generate anyway (leave empty, flagged)",
- * which needs update_certificates: `canForce`). Never run → V2 behaviour (D7:
+ * which needs update_certificates: `canForce`; an estimate still prints, flagged). Never run → V2 behaviour (D7:
  * empty required values render flagged).
  */
 export async function startGeneration(invoiceId, companyId, userId, { force = false, canForce = false } = {}) {
@@ -222,10 +226,10 @@ export function resolveWithNeed(field, ctx, need) {
   if (need && need.value !== null && need.value !== undefined) {
     const { value, flags } = applyFormat(need.value, field.format);
     // who confirmed it travels with the value (plan.md §14.4: the tier, evidence and the person, forever)
-    return { value, resolved: need.value, flags, origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
+    return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
   const r = resolveField(field, ctx);
-  return { value: r.value, resolved: r.resolved, flags: r.flags, origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
+  return { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
 }
 
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */
