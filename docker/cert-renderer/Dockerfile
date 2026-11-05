@@ -24,8 +24,15 @@ COPY src/services/certificates/engine/renderer.js \
      src/services/certificates/engine/fieldEngine.browser.js \
      src/services/certificates/engine/renderOps.js \
      src/services/certificates/engine/renderWire.js \
+     src/services/certificates/engine/fallbackFonts.js \
+     src/services/certificates/engine/glyphLookAlikes.js \
+     src/services/certificates/engine/glyphPlan.js \
+     src/services/certificates/engine/fallbackFaces.js \
      ./src/services/certificates/engine/
 COPY src/services/certificates/renderService/server.js ./src/services/certificates/renderService/
+# fallback fonts: files the engine reads, not system fonts, so `sans-serif` and every
+# existing render stay as they are (assets/cert-fonts/README.txt)
+COPY assets/cert-fonts ./assets/cert-fonts
 
 RUN adduser -D renderer
 USER renderer

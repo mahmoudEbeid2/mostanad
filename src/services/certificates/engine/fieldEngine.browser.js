@@ -1245,7 +1245,7 @@
   // ── group fill (§7.8) ───────────────────────────────────────────────────────
   // g: { key, mode, whenEmpty, required, footerY, minPitchRatio, geometry, cells: [fillDef] }
   // rows: [{ cellKey: text }] → { flags, info: { rows, rendered, pitch, delta, rowsFit } }
-  async function fillGroup(g, rowsIn, coverage) {
+  async function fillGroup(g, rowsIn, coverage, plan) {
     const geo = g.geometry;
     const flags = new Set();
     const info = { rows: 0, rendered: 0, pitch: geo ? geo.pitch : null, delta: 0, rowsFit: null };
@@ -1354,10 +1354,10 @@
           if (!s) continue;
           const raw = rows[i][def.key];
           const value = raw === null || raw === undefined ? "" : String(raw);
-          s.textContent = value;
+          setFieldText(s, value, def, plan);
           const res = layoutField(s, def);
           for (const f of res.flags) flags.add(f);
-          for (const f of glyphFlags(value, def, coverage)) flags.add(f);
+          for (const f of glyphFlags(value, def, coverage, plan)) flags.add(f);
         }
       }
     }
@@ -1417,15 +1417,16 @@
     return { flags: mergeGlyphFlags([...flags]), info };
   }
 
-  // one "glyph:…" flag with every missing character (cells report their own)
+  // one "glyph:…" and one "glyph_fallback:…" flag with all their characters (cells report their own)
   function mergeGlyphFlags(list) {
-    const chars = [];
+    const merged = { "glyph:": [], "glyph_fallback:": [] };
     const rest = [];
     for (const f of list) {
-      if (String(f).startsWith("glyph:")) for (const ch of Array.from(f.slice(6))) !chars.includes(ch) && chars.push(ch);
-      else rest.push(f);
+      const prefix = Object.keys(merged).find((p) => String(f).startsWith(p));
+      if (!prefix) rest.push(f);
+      else for (const ch of Array.from(f.slice(prefix.length))) !merged[prefix].includes(ch) && merged[prefix].push(ch);
     }
-    return chars.length ? [...rest, `glyph:${chars.join("")}`] : rest;
+    return [...rest, ...Object.entries(merged).filter(([, chars]) => chars.length).map(([prefix, chars]) => `${prefix}${chars.join("")}`)];
   }
 
   // fixed rows: cut [cutTop, cutBottom) out of the background inside the
@@ -1459,16 +1460,37 @@
   // values: { key: string, [groupKey]: [{ cellKey: string }] }
   // defs: [{ key, box, limits, scale, align, required, fontClass }]
   // coverage: { ff1: "ABC…" } | null · groups: group defs (§7.8), optional
-  function glyphFlags(value, def, coverage) {
+  // plan: glyphPlan.js's answer for these values | null
+  const planOf = (def, plan) => plan?.classes?.[def.fontClass] || null;
+
+  // what is drawn, not what is stored: look-alikes swapped in (glyphLookAlikes.js)
+  const shownText = (value, def, plan) => {
+    const subs = planOf(def, plan)?.subs;
+    return subs ? Array.from(value).map((ch) => subs[ch] ?? ch).join("") : value;
+  };
+
+  function setFieldText(span, value, def, plan) {
+    const text = shownText(value, def, plan);
+    span.textContent = text;
+    const p = planOf(def, plan);
+    // the design font stays first: only the characters it lacks reach the next family
+    if (p && Array.from(text).some((ch) => p.fallback[ch])) span.style.fontFamily = p.stack;
+    else if (span.style.fontFamily) span.style.fontFamily = "";
+  }
+
+  function glyphFlags(value, def, coverage, plan) {
     const cov = coverage && def.fontClass ? coverage[def.fontClass] : null;
     if (value && typeof cov === "string") {
       const covered = new Set(Array.from(cov));
+      const fallback = planOf(def, plan)?.fallback || {};
       const missing = [];
-      for (const ch of Array.from(value)) {
-        if (/\s/.test(ch) || covered.has(ch) || missing.includes(ch)) continue;
-        missing.push(ch);
+      const drawn = [];
+      for (const ch of Array.from(shownText(value, def, plan))) {
+        if (/\s/.test(ch) || covered.has(ch)) continue;
+        const list = fallback[ch] ? drawn : missing;
+        if (!list.includes(ch)) list.push(ch);
       }
-      return missing.length ? [`glyph:${missing.join("")}`] : [];
+      return [...(missing.length ? [`glyph:${missing.join("")}`] : []), ...(drawn.length ? [`glyph_fallback:${drawn.join("")}`] : [])];
     }
     if (value && coverage && def.fontClass && cov === null && Object.prototype.hasOwnProperty.call(coverage, def.fontClass)) {
       // the design embeds this font but it couldn't be parsed: whether every
@@ -1478,7 +1500,17 @@
     return [];
   }
 
-  async function fill(values, defs, coverage, groups) {
+  // the fallback @font-face rules, kept in the rendered HTML (they are not ENGINE_ATTR):
+  // loaded before fill() because layoutField measures with them
+  async function addFallbackFonts(css, faces) {
+    const st = document.createElement("style");
+    st.setAttribute("data-font-fallback", "");
+    st.textContent = css;
+    document.head.appendChild(st);
+    await Promise.all(faces.map((f) => document.fonts.load(`16px "${f.name}"`, f.chars)));
+  }
+
+  async function fill(values, defs, coverage, groups, plan) {
     const flags = {};
     const geometry = {};
     for (const def of defs) {
@@ -1490,15 +1522,15 @@
       }
       const raw = values[def.key];
       const value = raw === null || raw === undefined ? "" : String(raw);
-      span.textContent = value;
+      setFieldText(span, value, def, plan);
       const res = layoutField(span, def);
-      list.push(...res.flags, ...glyphFlags(value, def, coverage));
+      list.push(...res.flags, ...glyphFlags(value, def, coverage, plan));
       if (!value && def.required) list.push("missing");
       flags[def.key] = list;
       geometry[def.key] = { ...res.extent, fontScale: res.fontScale };
     }
     for (const g of groups || []) {
-      const res = await fillGroup(g, values[g.key], coverage);
+      const res = await fillGroup(g, values[g.key], coverage, plan);
       flags[g.key] = res.flags;
       geometry[g.key] = res.info;
     }
@@ -1548,6 +1580,7 @@
     inspect,
     lineCells,
     clear,
+    addFallbackFonts,
     fill,
     measure,
     runPositions,

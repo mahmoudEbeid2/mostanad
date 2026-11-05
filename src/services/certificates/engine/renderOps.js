@@ -1,10 +1,19 @@
 import * as renderer from "./renderer.js";
+import { planGlyphs } from "./glyphPlan.js";
+import { fallbackFontCss } from "./fallbackFaces.js";
 
 // Composite operations that need several engine calls on ONE loaded document.
 // They used to be closures passed to renderer.withDocument() by prepareEngine
 // and fieldService; a closure can't cross the HTTP boundary to the
 // cert-renderer service (plan §5.3), so each one is named here and runs inside
 // the service. The bodies are the former closures, unchanged.
+
+/** Decides how each value character is drawn and loads the fallback faces it needs → the plan for fill. */
+async function loadGlyphPlan(page, opts) {
+  const plan = planGlyphs(opts);
+  if (plan?.faces.length) await renderer.engine(page, "addFallbackFonts", await fallbackFontCss(plan.faces), plan.faces.map(({ name, chars }) => ({ name, chars })));
+  return plan;
+}
 
 /** prepare step 1 (§7.3, §7.8): detect groups, clear every field, remove placeholder rows → { results, detected, html } */
 export const prepareClear = (html, { inspectDefs = [], clearFields }) =>
@@ -22,11 +31,12 @@ export const prepareClear = (html, { inspectDefs = [], clearFields }) =>
   );
 
 /** prepare step 2 (§7.5): refill with the samples, measure, screenshot → { fill, rects, shots } */
-export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, groupDefs = [], measureKeys }) =>
+export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, fontFallbacks = null, groupDefs = [], measureKeys }) =>
   renderer.withDocument(
     html,
     async (page) => {
-      const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage, groupDefs);
+      const plan = await loadGlyphPlan(page, { values: samples, defs, groups: groupDefs, fontCoverage, fontFallbacks });
+      const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage, groupDefs, plan);
       const rects = await renderer.engine(page, "measure", measureKeys);
       const shots = await renderer.screenshotPagesOf(page);
       return { fill, rects, shots };
@@ -35,11 +45,12 @@ export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, gro
   );
 
 /** fill a prepared document (§7.4, §7.8) → { html, flags, geometry, thumbnail } */
-export const fill = (html, { values, defs, fontCoverage = null, groups = [], thumbnailScale = null, label = "fill" }) =>
+export const fill = (html, { values, defs, fontCoverage = null, fontFallbacks = null, groups = [], thumbnailScale = null, label = "fill" }) =>
   renderer.withDocument(
     html,
     async (page) => {
-      const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups);
+      const plan = await loadGlyphPlan(page, { values, defs, groups, fontCoverage, fontFallbacks });
+      const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups, plan);
       const out = await renderer.serialize(page);
       const thumbnail = thumbnailScale ? (await renderer.screenshotPagesOf(page, { scale: thumbnailScale }))[0]?.png || null : null;
       return { html: out, flags: res.flags, geometry: res.geometry, thumbnail };

@@ -1,4 +1,5 @@
 import { prisma } from "../../../lib/prisma.js";
+import { fallbackFontNames, fieldFontClasses } from "../engine/fallbackFonts.js";
 import { CertError, notFound } from "../errors.js";
 import * as fileStore from "../storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
@@ -52,7 +53,7 @@ export async function runPrepareJob(versionId, ctx = {}) {
   try {
     ctx.progress?.(10, "Clearing fields");
     const sanitized = await fileStore.readText(version.sanitizedFileId);
-    const { preparedHtml, geometry, groupGeometry, report, diffImages } = await runPrepare(sanitized, fields, { fontCoverage: version.fontCoverage, groups });
+    const { preparedHtml, geometry, groupGeometry, report, diffImages } = await runPrepare(sanitized, fields, { fontCoverage: version.fontCoverage, fontFallbacks: version.fontFallbacks, groups });
     ctx.progress?.(80, "Saving the report");
 
     const diffs = [];
@@ -184,7 +185,7 @@ export async function renderSample(versionId, companyId) {
   const { html, plain, groups, groupDefs } = await preparedDoc(version);
   const values = Object.fromEntries(plain.map((f) => [f.key, f.sampleValue]));
   for (const g of groups) values[g.key] = g.geometry?.sampleRows || [];
-  return (await renderFilled(html, plain.map(fillDef), values, { fontCoverage: version.fontCoverage, label: "sample", groups: groupDefs })).html;
+  return (await renderFilled(html, plain.map(fillDef), values, { fontCoverage: version.fontCoverage, fontFallbacks: version.fontFallbacks, label: "sample", groups: groupDefs })).html;
 }
 
 /**
@@ -210,10 +211,10 @@ export async function preview(versionId, companyId, { values = {}, productId = n
       : { kind: "group", rows: resolvedGroups[g.key].rows, flags: resolvedGroups[g.key].flags, origin: "auto" };
   }
   const flat = Object.fromEntries(Object.entries(final).map(([k, v]) => [k, v.kind === "group" ? v.rows : v.value]));
-  const out = await renderFilled(html, plain.map(fillDef), flat, { fontCoverage: version.fontCoverage, label: "preview", groups: groupDefs });
+  const out = await renderFilled(html, plain.map(fillDef), flat, { fontCoverage: version.fontCoverage, fontFallbacks: version.fontFallbacks, label: "preview", groups: groupDefs });
   const flags = Object.fromEntries([...plain, ...groups].map((f) => [f.key, [...new Set([...(final[f.key].flags || []), ...(out.flags[f.key] || [])])]]));
   for (const g of groups) final[g.key].rowsFit = out.geometry?.[g.key]?.rowsFit ?? null;
-  return { html: out.html, values: final, flags };
+  return { html: out.html, values: final, flags, fallbackFonts: fallbackFontNames(flags, fieldFontClasses(fields), version.fontFallbacks) };
 }
 
 /** GET /template-versions/:id/prepare-diff?page=n → PNG buffer. */

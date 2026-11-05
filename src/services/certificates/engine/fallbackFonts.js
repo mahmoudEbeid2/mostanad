@@ -58,6 +58,13 @@ export const faceFor = (entry, ch) => fallbackFaces(entry).find((f) => covers(f.
 
 export const readFontFile = (file) => fs.readFileSync(new URL(file, FONT_DIR));
 
+/** { [key]: [fontClass…] } for fallbackFontNames: a plain field's class, a group's cell classes. */
+export function fieldFontClasses(fields) {
+  const classes = {};
+  for (const f of fields) if (f.fontClass) (classes[f.groupKey || f.key] ??= []).push(f.fontClass);
+  return classes;
+}
+
 /**
  * Which font drew each glyph_fallback character → { [key]: { "+": "Noto Sans" } }.
  * `classes` is { [key]: [fontClass…] }; a group key lists the classes of its cells.

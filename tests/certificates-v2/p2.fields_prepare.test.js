@@ -124,7 +124,7 @@ try {
   assert("unresolved item field without values → missing", r.data?.data?.flags?.expiry?.includes("missing"));
   assert("combination with a missing placeholder renders empty + missing (D7)", r.data?.data?.values?.document_no?.value === "" && r.data.data.flags.document_no.includes("missing"));
   r = await api("POST", `/template-versions/${av.id}/preview`, A, { values: { batch_no: "BX-77" } });
-  assert("glyph outside the subset font → glyph:BX", r.data?.data?.flags?.batch_no?.includes("glyph:BX"), r.data?.data?.flags?.batch_no);
+  assert("glyph outside the subset font → drawn from the fallback, glyph_fallback:BX", r.data?.data?.flags?.batch_no?.includes("glyph_fallback:BX"), r.data?.data?.flags?.batch_no);
   const product = await prisma.product.create({
     data: { companyId: coA.id, name: "ADD-E120 FORTE", activeIngredients: [{ name: "Vitamin E", concentration: "120000 mg" }, { name: "Sodium selenite", concentration: "75 mg" }] },
   });

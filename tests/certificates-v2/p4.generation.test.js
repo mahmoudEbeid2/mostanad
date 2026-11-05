@@ -164,7 +164,7 @@ try {
   const fscCert = await get(certs.find((c) => c.certificateType.code === "FSC"));
   assert("FSC: invoice + company sources", v(fscCert, "document_no") === "INV-2026-0142" && v(fscCert, "product_name") === coA.name && fscCert.values.document_no.flags.length === 0, fscCert.values);
   // the test company's (random) name has "_" (and maybe other letters) the design's subset font lacks (§7.4 step 5, A5)
-  assert("FSC: a character missing from the design font → glyph:_ (blocking)", fscCert.values.product_name.flags.some((f) => f.startsWith("glyph:") && f.includes("_")) && fscCert.flagCount === 1, fscCert.values.product_name.flags);
+  assert("FSC: a character missing from the design font → glyph_fallback:_ (does not block)", fscCert.values.product_name.flags.some((f) => f.startsWith("glyph_fallback:") && f.includes("_")) && fscCert.flagCount === 0, fscCert.values.product_name.flags);
   assert("FSC covers lines 1–3", fscCert.lines.map((l) => l.lineNo).join() === "1,2,3");
 
   r = await api("GET", `/certificates/${c1.id}/html`, A);
@@ -181,7 +181,7 @@ try {
   r = await api("GET", `/certificates?invoiceId=${inv.id}`, A);
   assert("list by invoice: 6", r.data?.total === 6, r.data?.total);
   r = await api("GET", `/certificates?invoiceId=${inv.id}&flagged=true`, A);
-  assert("flagged filter: the 3 COAs + the FSC (glyph)", r.data?.total === 4, r.data?.total);
+  assert("flagged filter: the 3 COAs; the FSC's fallback character does not count", r.data?.total === 3, r.data?.total);
   r = await api("GET", `/certificates?q=avvs1124012`, A);
   assert("search by batch", r.data?.total >= 1 && r.data.data.certificates.every((c) => c.batchNo === "AVVS1124012"));
   r = await api("GET", `/invoices?q=0142`, A);

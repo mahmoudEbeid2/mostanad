@@ -62,7 +62,7 @@ export const groupFillDef = (g, fields) => ({
  * → { preparedHtml, geometry: { [key]: {...} }, groupGeometry: { [key]: {...} }, report, diffImages: [{ page, png }] }
  * `report.passed` is the gate verdict. Throws only on infrastructure errors.
  */
-export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, groups = [] } = {}) {
+export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, fontFallbacks = null, groups = [] } = {}) {
   const t0 = Date.now();
 
   // 1) detect groups on the untouched document, clear every field (group
@@ -88,6 +88,7 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, g
     samples,
     defs,
     fontCoverage,
+    fontFallbacks,
     groupDefs,
     measureKeys: plainFields.map((f) => f.key).concat(okGroups.length ? okFields.filter((f) => f.groupKey).map((f) => f.key) : []),
   });
@@ -186,6 +187,6 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, g
  * `groups` are group fill defs (groupFillDef); values[groupKey] is the list of rows.
  * `thumbnailScale` (e.g. 0.25) also returns a PNG of page 1 from the same render.
  */
-export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, label = "fill", thumbnailScale = null, groups = [] } = {}) {
-  return renderer.fill(preparedHtml, { values, defs, fontCoverage, groups, thumbnailScale, label });
+export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, fontFallbacks = null, label = "fill", thumbnailScale = null, groups = [] } = {}) {
+  return renderer.fill(preparedHtml, { values, defs, fontCoverage, fontFallbacks, groups, thumbnailScale, label });
 }

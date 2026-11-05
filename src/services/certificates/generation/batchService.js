@@ -23,8 +23,8 @@ const RENDER_CONCURRENCY = 2; // pages per worker process (§5.2)
 const THUMB_SCALE = 0.25;
 const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email: true };
 
-/** Flags that block finalisation (§10.4): a required value missing, overflow, a glyph the font lacks.
- *  `glyph_unknown` (the font couldn't be parsed, review #7) is informational — only `glyph:…` blocks. */
+/** Flags that block finalisation (§10.4): a required value missing, overflow, a character no available font has.
+ *  Informational: `glyph_fallback:…` (drawn in the matched fallback font) and `glyph_unknown` (the font couldn't be parsed, review #7). */
 export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || String(flag).startsWith("glyph:");
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
 
@@ -150,7 +150,7 @@ export function renderDesign(design, values, { label, thumbnailScale = null } = 
   const groups = (design.groups || []).filter((g) => g.geometry).map((g) => groupFillDef(g, design.fields));
   const flat = Object.fromEntries(fields.map((f) => [f.key, values[f.key]?.value ?? ""]));
   for (const g of design.groups || []) flat[g.key] = values[g.key]?.rows ?? [];
-  return renderFilled(design.html, fields.map(fillDef), flat, { fontCoverage: design.version.fontCoverage, label, thumbnailScale, groups });
+  return renderFilled(design.html, fields.map(fillDef), flat, { fontCoverage: design.version.fontCoverage, fontFallbacks: design.version.fontFallbacks, label, thumbnailScale, groups });
 }
 
 /** A stored group value (§10.4). */

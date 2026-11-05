@@ -54,6 +54,7 @@
     "sanitize-html": "2.13.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "subset-font": "2.9.0",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.4.3"
   },

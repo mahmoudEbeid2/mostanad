@@ -106,9 +106,9 @@ try {
   assert("two concurrent edits of v2: exactly one wins, the other 409", [p1.status, p2.status].sort().join() === "200,409", [p1.status, p2.status]);
   c = await getCert(add.certId);
   assert("now version 3", c.currentVersion === 3);
-  r = await api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 3, changes: { product_name: "ADD-Ωж" } });
+  r = await api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 3, changes: { product_name: "ADD-Ω\u{13000}" } });
   c = await getCert(add.certId);
-  assert("a character the design font lacks → glyph flag, counted as an issue", c.currentVersion === 4 && c.values.product_name.flags.some((f) => f.startsWith("glyph:")) && c.flagCount === 1, c.values.product_name);
+  assert("a character no font has → blocking glyph flag, counted as an issue; one a fallback has → info flag", c.currentVersion === 4 && c.values.product_name.flags.includes("glyph:\u{13000}") && c.values.product_name.flags.includes("glyph_fallback:Ω") && c.flagCount === 1, c.values.product_name);
 
   console.log("\n🧪 Reset, versions, restore");
   r = await api("POST", `/certificates/${add.certId}/fields/product_name/reset`, A, { expectedVersion: 4 });
