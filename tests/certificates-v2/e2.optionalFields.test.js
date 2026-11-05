@@ -17,6 +17,7 @@ import { preparedView } from "../../src/services/certificates/prepare/prepareSer
 import { scanTemplate } from "../../src/services/certificates/templates/repairScan.js";
 import { suggestSource } from "../../src/services/certificates/templates/repairService.js";
 import { resolveField } from "../../src/services/certificates/generation/valueResolver.js";
+import { verifyInference } from "../../src/services/certificates/inference/productInference.js";
 import { validateSource } from "../../src/services/certificates/templates/sourceCatalogue.js";
 
 const { assert, counts } = makeAssert();
@@ -156,6 +157,22 @@ try {
     },
   });
   assert("the other product is still asked; the failure is reported", tries === 2 && view.ai.inference.calls === 1 && view.ai.inference.unavailable === true, view.ai.inference);
+
+  console.log("\n🧪 What production's first run showed (invoice ZYIV25001)");
+  const P = { name: "VITAMIN ES", physicalForm: "Liquid" };
+  const quotedName = (value) => ({ found: true, value, derivation: "quoted", evidence: [{ path: "name", quote: "VITAMIN ES" }], confidence: 0.9 });
+  const spec = { label: "Identification", source: { kind: "product", path: "specifications.values.Identification" } };
+  assert("the name is never another field's value (Identification = the product's name)", !verifyInference(quotedName("VITAMIN ES"), P, { field: spec }).ok);
+  assert("…nor a piece of it (Category = VITAMIN)", !verifyInference(quotedName("VITAMIN"), P, { field: { label: "Category", source: { kind: "product", path: "category.name" } } }).ok);
+  assert("…the name field itself may quote it", verifyInference(quotedName("VITAMIN ES"), P, { field: { label: "Product Name", source: { kind: "product", path: "name" } } }).ok);
+  const typicalAnswer = { found: true, value: "Clear liquid", derivation: "typical", evidence: [{ path: "record.physicalForm", quote: "Liquid" }], reasoning: "A vitamin liquid.", generalKnowledge: "Such liquids are clear.", confidence: 0.6 };
+  assert("a path written as record.physicalForm is the product's physicalForm", verifyInference(typicalAnswer, P, { field: { label: "Appearance", source: { kind: "product", path: "appearance" } } }).ok);
+  const D = await seed([AD3E], { number: 4 });
+  await prisma.templateField.update({ where: { versionId_key: { versionId: D.versionId, key: "ph_result" } }, data: { specFieldKey: "storage" } });
+  calls = [];
+  await computeNeeds(D.inv.id, co.id, { generate: noGaps, inferGenerate: inferring(calls) });
+  const roles = Object.fromEntries(calls.flatMap(parseGaps).map((g) => [g.label, g.role]));
+  assert("a field a lab result names as its specification is sent as one", roles.Storage === "specification" && !roles.Appearance, roles);
 
   console.log("\n🧪 Fix this template: a value repeated in the wording, a number per certificate");
   const scan = scanTemplate({ lines: [{ id: "a", text: "Category:  SUPPLEMENT" }, { id: "b", text: "It is a qualified product to be used as supplement." }, { id: "c", text: "Origin:  JORDAN" }, { id: "d", text: "Jordan - Al-Zarqa - A Jordanian Organization" }] });

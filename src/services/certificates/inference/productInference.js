@@ -41,6 +41,10 @@ const INSTRUCTIONS = [
   "- derivation \"typical\": the value is not in the record and doesn't follow from it alone, but is what a product of THIS type typically has, from your general knowledge of the type (e.g. appearance of an oral vitamin solution → \"Clear yellow liquid\"; storage, shelf life after opening, usage, warnings, packaging wording).",
   "  evidence = the facts of THIS product that identify its type (dosage form, physical form, ingredients, name), each [{ path, quote }] with an exact quote; generalKnowledge = the general fact about such products you relied on; reasoning = how the value follows. It is shown to a person as an estimate to confirm.",
   "  Prefer quoted / derived / estimate when the record supports them; answer found=false only when even the product's type says nothing about the gap.",
+  "A gap with role \"specification\" is the acceptance criterion of a test on a certificate of analysis, what a batch must meet, never a measured result (e.g. Appearance: \"Clear yellow liquid\", Sterility: \"Sterile\", Pyrogen: \"Non-pyrogenic\", pH: a range, Assay: a percentage range of the labeled amount, Identification: the test and its expected outcome). Answer it \"typical\", with the criterion usual for a product of this type, unless the record states it.",
+  "A product's name is never the value of another field: never answer Identification, Category or anything else by quoting the name.",
+  "Evidence paths start at the record's own keys: physicalForm, never record.physicalForm.",
+  "found=true always carries a value. Without a value, answer found=false.",
   "confidence 0–1; reasoning: one short sentence.",
 ].join("\n");
 
@@ -112,7 +116,7 @@ export function verifyInference(answer, product, { field = null } = {}) {
   if (!evidence.length) return { ok: false, reason: "no evidence" };
   const checked = [];
   for (const ev of evidence) {
-    const r = resolve({ product }, `product.${String(ev?.path || "").replace(/^product\./, "")}`);
+    const r = resolve({ product }, `product.${String(ev?.path || "").replace(/^(product|record)\./, "")}`);
     if (r.error || !r.found) return { ok: false, reason: `the product has nothing at “${ev?.path}”` };
     const quote = ev.quote ? String(ev.quote).trim() : null;
     if (quote) {
@@ -124,6 +128,8 @@ export function verifyInference(answer, product, { field = null } = {}) {
   if (answer.derivation === "quoted") {
     const inQuote = checked.some((c) => (c.quote && normalizeEvidence(c.quote).includes(normalizeEvidence(value))) || (scalar(c.value) && normalizeEvidence(String(c.value)) === normalizeEvidence(value)));
     if (!inQuote) return { ok: false, reason: "the value is not inside the quoted product text" };
+    // the name says what the product is called: the text being there proves nothing about another field
+    if (field?.source?.path !== "name" && checked.every((c) => c.path === "product.name")) return { ok: false, reason: "a product's name is not the value of another field" };
     return { ok: true, value, provenance: { tier: "I", kind: "product_inference", derivation: "quoted", evidence: checked.map(({ path, quote }) => ({ path, quote })) } };
   }
   if (answer.derivation === "derived") {
@@ -154,7 +160,7 @@ export function verifyInference(answer, product, { field = null } = {}) {
 }
 
 /**
- * gaps: [{ gapId, field, label, expectedType, dateFormat?, product }]
+ * gaps: [{ gapId, field, label, role?, expectedType, dateFormat?, product }]
  * → { answers: Map(gapId → { answer, verdict }), run, inputHash } — throws the model's error (caller degrades).
  */
 export async function askInference({ companyId, invoiceId, gaps }, { generate = defaultGenerate } = {}) {
@@ -163,7 +169,7 @@ export async function askInference({ companyId, invoiceId, gaps }, { generate = 
   for (const g of allowed) if (!refs.has(g.product.id)) refs.set(g.product.id, `P${refs.size + 1}`);
   const payload = {
     products: [...refs].map(([id, ref]) => ({ productRef: ref, record: productRecord(allowed.find((g) => g.product.id === id).product) })),
-    gaps: allowed.map((g) => ({ gapId: g.gapId, label: g.label, expectedType: g.expectedType, ...(g.dateFormat ? { dateFormat: g.dateFormat } : {}), productRef: refs.get(g.product.id) })),
+    gaps: allowed.map((g) => ({ gapId: g.gapId, label: g.label, ...(g.role ? { role: g.role } : {}), expectedType: g.expectedType, ...(g.dateFormat ? { dateFormat: g.dateFormat } : {}), productRef: refs.get(g.product.id) })),
   };
   const inputHash = sha16(stableStringify(payload));
   const { result, run } = await runLogged(

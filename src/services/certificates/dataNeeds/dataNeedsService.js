@@ -528,7 +528,10 @@ async function inferProductFacts(invoice, ctx, rows, { generate, settings, webFi
     if (!byProduct.has(product.id)) byProduct.set(product.id, new Map());
     const groups = byProduct.get(product.id);
     const sig = `${normLabel(x.field.label)}|${stableStringify(x.field.source)}`;
-    if (!groups.has(sig)) groups.set(sig, { gap: { gapId: `I${groups.size + 1}`, field: x.field, label: x.field.label, expectedType: isDateField(x.field) ? "date" : sourceType(x.field.source || { kind: "manual" }), ...(x.field.format?.date ? { dateFormat: x.field.format.date } : {}), product }, needs: [] });
+    // a lab result names this field as its specification: the model must know that's what it fills
+    const role = (ctx.fields.get(x.entry.templateVersionId) || []).some((f) => f.specFieldKey === x.field.key) ? "specification" : null;
+    if (!groups.has(sig)) groups.set(sig, { gap: { gapId: `I${groups.size + 1}`, field: x.field, label: x.field.label, role, expectedType: isDateField(x.field) ? "date" : sourceType(x.field.source || { kind: "manual" }), ...(x.field.format?.date ? { dateFormat: x.field.format.date } : {}), product }, needs: [] });
+    groups.get(sig).gap.role ||= role; // one gap can serve several templates
     groups.get(sig).needs.push(x);
   }
   for (const groups of byProduct.values()) await inferOneProduct(invoice, groups, { generate, settings, out, fpOf });
