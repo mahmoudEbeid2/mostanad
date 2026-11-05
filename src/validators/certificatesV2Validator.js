@@ -147,6 +147,7 @@ export const versionSchemas = {
   html: { params: idParams, query: companyQuery.extend({ variant: z.enum(["sanitized", "prepared", "sample"]).default("sanitized") }) },
   fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200), groups: z.array(groupDraft).max(20).optional() }) },
   confirm: { params: idParams, query: companyQuery, body: z.object({ keys: z.array(z.string().max(60)).min(1).max(200) }) },
+  fontFallback: { params: idParams, query: companyQuery, body: z.object({ fontClass: z.string().min(1).max(40), fallbackFamily: z.string().min(1).max(60) }) },
   diff: { params: idParams, query: companyQuery.extend({ page: z.coerce.number().int().min(1).default(1) }) },
   preview: {
     params: idParams,

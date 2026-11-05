@@ -7,6 +7,7 @@ import { sanitizeTemplateHtml, describeSanitized } from "../sanitize/htmlSanitiz
 import * as renderer from "../engine/rendererClient.js";
 import { computeFontCoverage, fontWarnings } from "../analysis/fontCoverage.js";
 import { computeFontFallbacks } from "../analysis/fontFallbackMatch.js";
+import { FALLBACK_FAMILIES, faceName, isFallbackFamily, pickFace } from "../engine/fallbackFonts.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { listFields, listGroups, fieldsHash } from "./fieldService.js";
 
@@ -371,6 +372,28 @@ export async function getTemplate(id, companyId) {
   return { ...t, versions: t.versions.map(versionSummary) };
 }
 
+/** Each design font with its matched fallback, for "Prepare & test". */
+const fontMatches = (v) =>
+  Object.entries(v.fontFallbacks || {})
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([fontClass, m]) => ({ fontClass, ...m, fallbackName: isFallbackFamily(m.fallbackFamily) ? faceName(m.fallbackFamily, pickFace(m.fallbackFamily, m.weight, m.style)) : m.fallbackFamily }));
+
+/**
+ * PATCH /template-versions/:id/font-fallbacks: the owner overrides one automatic match.
+ * Only before activation, like every other part of a version; it can't affect the
+ * prepare gate, which refills the design with characters its fonts have.
+ */
+export async function setFontFallback(id, companyId, { fontClass, fallbackFamily }) {
+  const v = await loadVersion(id, companyId);
+  const current = v.fontFallbacks?.[fontClass];
+  if (!current) throw new CertError("UNKNOWN_FONT", `This version has no font "${fontClass}"`, 422);
+  if (!isFallbackFamily(fallbackFamily)) throw new CertError("INVALID_FONT", `"${fallbackFamily}" is not a shipped font`, 422, { families: FALLBACK_FAMILIES });
+  const fontFallbacks = { ...v.fontFallbacks, [fontClass]: { ...current, fallbackFamily, source: "owner" } };
+  const { count } = await prisma.templateVersion.updateMany({ where: { id, status: { in: ["draft", "ready"] } }, data: { fontFallbacks } });
+  if (!count) throw new CertError("VERSION_NOT_DRAFT", `Font matches can only be changed before activation (this version is ${v.status}). Create a new version.`, 409);
+  return { fontMatches: fontMatches({ fontFallbacks }) };
+}
+
 export async function getVersionDetail(id, companyId) {
   const v = await loadVersion(id, companyId);
   const [fields, groups] = await Promise.all([listFields(id), listGroups(id)]);
@@ -379,6 +402,8 @@ export async function getVersionDetail(id, companyId) {
   return {
     ...rest,
     template: { id: template.id, name: template.name, companyId: template.companyId, scope: template.scope, activeVersionId: template.activeVersionId, archivedAt: template.archivedAt },
+    fontMatches: fontMatches(v),
+    fallbackFontFamilies: FALLBACK_FAMILIES,
     fields,
     groups,
     fieldsHash: hash,

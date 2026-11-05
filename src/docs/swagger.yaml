@@ -243,6 +243,8 @@ paths:
     $ref: './paths/certificates-v2/template-versions-id-prepare-diff.yaml'
   /template-versions/{id}/preview:
     $ref: './paths/certificates-v2/template-versions-id-preview.yaml'
+  /template-versions/{id}/font-fallbacks:
+    $ref: './paths/certificates-v2/template-versions-id-font-fallbacks.yaml'
   /template-versions/{id}/activate:
     $ref: './paths/certificates-v2/template-versions-id-activate.yaml'
   /template-versions/{id}/new-version:

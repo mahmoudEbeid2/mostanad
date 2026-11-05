@@ -62,6 +62,7 @@ router.post("/template-versions/:id/label-proposals", guard("update_certificate_
 router.post("/template-versions/:id/map-fields", guard("update_certificate_templates"), validate(mappingSchemas.mapFields), certificateAi.mapFields);
 router.get("/ai-suggestions/:id", guard("read_certificate_templates"), validate(mappingSchemas.suggestion), certificateAi.getSuggestion);
 router.post("/template-versions/:id/suggest", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.suggestFields);
+router.patch("/template-versions/:id/font-fallbacks", guard("update_certificate_templates"), validate(versionSchemas.fontFallback), templates.setFontFallback);
 router.post("/template-versions/:id/prepare", guard("update_certificate_templates"), validate(versionSchemas.byId), templates.prepareVersion);
 router.get("/template-versions/:id/prepare-diff", guard("read_certificate_templates"), validate(versionSchemas.diff), templates.getPrepareDiff);
 router.post("/template-versions/:id/preview", guard("read_certificate_templates"), validate(versionSchemas.preview), templates.previewVersion);

@@ -593,3 +593,15 @@ Additive; no migration.
   (`{ path: text }`, a value inside a JSON column such as a named specification). 201 `{ item, product, matching }`. 409 `LINE_NOT_OPEN`, `INVOICE_NOT_EDITABLE`.
   `needed` fills code, packaging and brand from the invoice when they aren't sent. A suggested value kept unchanged is stored as an unconfirmed
   estimate in `fieldProvenance`, so the data check shows it as `inferred` until a person confirms it. On a `ready` invoice the line edit sends it back to review.
+
+## Certificates — characters the design font lacks (2026-11-05)
+
+- `flags` (certificates, preview): **new** `glyph_fallback:<chars>`, informational: the character is drawn from the
+  fallback font. `glyph:<chars>` now means no available font has it, and still blocks Finalize. Existing certificates
+  keep their stored `glyph:` flags until they are rendered again.
+- `GET /certificates/:id`, `POST /template-versions/:id/preview`: **new** `fallbackFonts` `{ [key]: { "+": "Noto Sans" } }`,
+  the font that drew each `glyph_fallback` character.
+- `GET /template-versions/:id`: **new** `fontMatches` `[{ fontClass, pdfName, fallbackFamily, fallbackName, weight, style, source }]`
+  and `fallbackFontFamilies`.
+- `PATCH /template-versions/:id/font-fallbacks` — **new**. `{ fontClass, fallbackFamily }`. `update_certificate_templates`.
+  Draft or ready versions only: 409 `VERSION_NOT_DRAFT`; 422 `UNKNOWN_FONT`, `INVALID_FONT`.

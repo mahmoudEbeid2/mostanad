@@ -106,6 +106,11 @@ export const getPrepareDiff = catchAsync(async (req, res) => {
   res.set({ "Content-Type": "image/png", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300" }).send(buffer);
 });
 
+export const setFontFallback = catchAsync(async (req, res) => {
+  const data = await templateService.setFontFallback(req.params.id, scopeOf(req), req.body);
+  res.status(200).json({ status: "success", data });
+});
+
 export const previewVersion = catchAsync(async (req, res) => {
   const data = await prepareService.preview(req.params.id, scopeOf(req), req.body);
   res.status(200).json({ status: "success", data });

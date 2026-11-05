@@ -75,11 +75,13 @@ export async function listCertificates(companyId, { invoiceId, batchId, status, 
 export async function getCertificate(id, companyId) {
   await loadCertificate(id, companyId);
   const c = await prisma.certificate.findUnique({ where: { id }, include: CARD_INCLUDE });
-  const [fields, groups] = await Promise.all([listFields(c.templateVersionId), listGroups(c.templateVersionId)]);
+  const [fields, groups, design] = await Promise.all([listFields(c.templateVersionId), listGroups(c.templateVersionId), prisma.templateVersion.findUnique({ where: { id: c.templateVersionId }, select: { fontFallbacks: true } })]);
   const current = c.versions[0] || null;
+  const card = toCard(c);
   return {
-    ...toCard(c),
+    ...card,
     values: current?.values || {},
+    fallbackFonts: fallbackFontNames(card.flags, fieldFontClasses(fields), design?.fontFallbacks),
     fields: fields.map((f) => ({ key: f.key, label: f.label, required: f.required, source: f.source, format: f.format, align: f.align, page: f.page, sortOrder: f.sortOrder, groupKey: f.groupKey || null })),
     // repeating groups (§7.8): values[group.key] = { kind: "group", rows: [{ cellKey: text }], … }
     groups: groups.map((g) => ({
