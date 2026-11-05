@@ -247,6 +247,17 @@ async function phase2(ctx) {
   await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.body?.innerText.includes("AVVS1124011"), { timeout: 20000 }).catch(() => {});
   assert("test fill: server render shows the typed value", (await frameText()).includes("AVVS1124011"));
   assert("test fill: unresolved required field flagged", await waitForText("Required value missing", 5000));
+  await page.$eval('[data-testid="test-batch_no"]', (el) => el.select());
+  await page.type('[data-testid="test-batch_no"]', "BX-77");
+  await clickText("button", "Render preview");
+  assert("test fill: a character the design font lacks is a grey note naming its font", await waitForText("B, X: drawn in Noto Sans — close match", 20000));
+  assert("prepare: each design font is listed with its match", (await page.$$('[data-testid="font-matches"] [data-font]')).length >= 1 && (await waitForText("Geogrotesque-Regular", 5000)));
+  const fontMenu = '[data-testid="font-matches"] [data-font="ff1"] select';
+  await page.select(fontMenu, "Liberation Sans");
+  await page.waitForFunction(() => document.querySelector('[data-testid="font-matches"] [data-font="ff1"] select')?.value === "Liberation Sans" && !document.querySelector('[data-testid="font-matches"] [data-font="ff1"] select')?.disabled, { timeout: 8000 }).catch(() => {});
+  await clickText("button", "Render preview");
+  assert("prepare: the owner's font is used by the next render", await waitForText("B, X: drawn in Liberation Sans — close match", 20000));
+  await page.select(fontMenu, "Noto Sans");
   await shot("p2-testfill");
   await ctx.audit("prepare report + test fill (A5)");
 

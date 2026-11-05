@@ -1675,3 +1675,21 @@ Stages of the old job: text of every page 0.5 s, segmenting 0.02 s, thumbnails 1
 **Found on the way:** `clearPath` / `provenanceAfterEdit` split paths on dots, so an estimate on a quoted key (`specifications.values["Shelf life"]`) was never masked; they read the path grammar now. `createProductSchema` lacks `routeOfAdmin, dosageForm, strength, productType, prescriptionStatus`, which templates can read: the new endpoint accepts them, `POST /products` still doesn't.
 
 **Known limit:** turning a type off deletes that type's data-need rows, as removing a line always did. Values kept in the product profile or batch results come back by code; others are asked again, and the AI may be called again.
+
+## Certificates — characters the design font lacks (2026-11-05)
+
+**Before / after, a read-only copy of production, rendered by the new cert-renderer image:**
+
+| | Before | After |
+|---|---|---|
+| Certificates blocked by a glyph flag | 25 of 65 | 0 of those 25 (all `glyph_fallback`) |
+| Gate on 21 templates with fields: pixel diff | stored values | the same on all 21 |
+| Prepared HTML with vs without fallbacks | | byte-identical on all 21 |
+| Size of a certificate that needs a fallback | | about 7.7 KB more |
+| PDF | | value is real text; only the missing characters change font |
+
+**Verified:** `npm run dev:test:light`, `node tests/runAll.js --chunk i/6`: 99/99 suites, 3541 assertions, 0 failed. `e1.glyphFallback.test.js` 113. `ui-smoke.mjs --phase 2` 45/45. Frontend build clean, oxlint no findings in the changed files.
+
+**Decisions:** fonts are files in `assets/cert-fonts`, loaded as `data:` faces, not system fonts: installing them could change what `sans-serif` resolves to and so existing renders (image: `fc-match sans-serif` still DejaVu). Each face has its own CSS family, because pdf2htmlEX's fonts are all `font-weight: normal` and Chromium would otherwise fake the bold. Faces are subset per render with `subset-font` (HarfBuzz); the whole file is embedded only if subsetting fails, with a warning in the log. The inline font stack goes only on spans that need it, and the faces only into documents that need them, so every other certificate is unchanged. Coverage is in `manifest.json`, per face, not per template version. Noto Sans Arabic is added to the chain, so Arabic in a Latin template is drawn rather than blocked. The owner picks a family; weight and style stay the design font's. Changing a match is refused once a version is active.
+
+**Known limits:** a certificate keeps its stored `glyph:` flag until it is rendered again. Fallback letters show on narrow fonts (Geogrotesque's B, X are a little wider than their neighbours). One Arabic word split across two fonts won't join. No rule targets Metropolis, Kabel or Geogrotesque, so they get Noto Sans; a closer geometric font could be added. `bundled.yaml` and the Postman collection are not regenerated, as since A5.
