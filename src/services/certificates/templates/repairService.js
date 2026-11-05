@@ -233,7 +233,7 @@ export async function startRepair(versionId, companyId, userId, decisions) {
         createdByUserId: userId || null,
         ...(svg
           ? {}
-          : { sanitizedFileId: base.sanitizedFileId, thumbnailFileId: base.thumbnailFileId, pages: base.pages ?? undefined, lines: base.lines ?? undefined, fontCoverage: base.fontCoverage ?? undefined, conversion: base.conversion ?? undefined }),
+          : { sanitizedFileId: base.sanitizedFileId, thumbnailFileId: base.thumbnailFileId, pages: base.pages ?? undefined, lines: base.lines ?? undefined, fontCoverage: base.fontCoverage ?? undefined, fontFallbacks: base.fontFallbacks ?? undefined, conversion: base.conversion ?? undefined }),
       },
     });
   });

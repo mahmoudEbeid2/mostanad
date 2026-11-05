@@ -827,6 +827,7 @@ model TemplateVersion {
   pages            Json? // [{ page, widthPx, heightPx, widthPt, heightPt }]
   lines            Json? // [{ id, page, text, box:{x,y,w,h}, fontClass }]
   fontCoverage     Json?               @map("font_coverage") // { "ff1": "ACDEF…" }
+  fontFallbacks    Json?               @map("font_fallbacks") // { "ff1": { pdfName, fallbackFamily, weight, style, source: auto|owner } }; null = not matched yet, so a missing character stays a blocking glyph flag
   conversion       Json? // { tool, version, zoom, ms, warnings[], background }
   backgroundFormat String              @default("png") @map("background_format") // png | svg — svg only when the version defines a repeating group (§7.8)
   prepareReport    Json?               @map("prepare_report") // §7.6 gate results

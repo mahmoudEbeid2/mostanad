@@ -6,6 +6,7 @@ import * as pdf2htmlex from "../conversion/pdf2htmlexClient.js";
 import { sanitizeTemplateHtml, describeSanitized } from "../sanitize/htmlSanitizer.js";
 import * as renderer from "../engine/rendererClient.js";
 import { computeFontCoverage, fontWarnings } from "../analysis/fontCoverage.js";
+import { computeFontFallbacks } from "../analysis/fontFallbackMatch.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { listFields, listGroups, fieldsHash } from "./fieldService.js";
 
@@ -250,6 +251,7 @@ export async function convertVersion(versionId, ctx = {}) {
         pages: pages.map((p) => ({ ...p, widthPt: +(p.widthPx * PX_TO_PT).toFixed(2), heightPt: +(p.heightPx * PX_TO_PT).toFixed(2) })),
         lines,
         fontCoverage,
+        fontFallbacks: computeFontFallbacks(html),
         conversion,
       },
     });

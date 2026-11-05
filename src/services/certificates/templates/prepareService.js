@@ -151,6 +151,7 @@ export async function cloneVersion(versionId, companyId, userId) {
         pages: v.pages ?? undefined,
         lines: v.lines ?? undefined,
         fontCoverage: v.fontCoverage ?? undefined,
+        fontFallbacks: v.fontFallbacks ?? undefined,
         conversion: v.conversion ?? undefined,
         basedOnVersionId: v.id,
         createdByUserId: userId || null,
