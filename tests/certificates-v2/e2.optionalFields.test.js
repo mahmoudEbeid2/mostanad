@@ -14,6 +14,10 @@ import { computeNeeds, decideNeeds, getNeeds, webLookupNeeds, blockingCounts, us
 import { resolveWithNeed, isBlocking, countBlocking, emptyFlags } from "../../src/services/certificates/generation/batchService.js";
 import { validateFieldList } from "../../src/services/certificates/templates/fieldService.js";
 import { preparedView } from "../../src/services/certificates/prepare/prepareService.js";
+import { scanTemplate } from "../../src/services/certificates/templates/repairScan.js";
+import { suggestSource } from "../../src/services/certificates/templates/repairService.js";
+import { resolveField } from "../../src/services/certificates/generation/valueResolver.js";
+import { validateSource } from "../../src/services/certificates/templates/sourceCatalogue.js";
 
 const { assert, counts } = makeAssert();
 const co = await createCompany("e2a");
@@ -152,6 +156,19 @@ try {
     },
   });
   assert("the other product is still asked; the failure is reported", tries === 2 && view.ai.inference.calls === 1 && view.ai.inference.unavailable === true, view.ai.inference);
+
+  console.log("\n🧪 Fix this template: a value repeated in the wording, a number per certificate");
+  const scan = scanTemplate({ lines: [{ id: "a", text: "Category:  SUPPLEMENT" }, { id: "b", text: "It is a qualified product to be used as supplement." }, { id: "c", text: "Origin:  JORDAN" }, { id: "d", text: "Jordan - Al-Zarqa - A Jordanian Organization" }] });
+  const wording = scan.items.filter((i) => i.where === "wording");
+  assert("the word in the sentence is offered, at its exact place", wording.some((i) => i.field.lineId === "b" && i.field.sampleValue === "supplement" && i.field.charEnd - i.field.charStart === 10), wording);
+  assert("never ticked for the owner: “Jordan” may be the company's address", wording.length === 2 && wording.every((i) => i.default === false), wording);
+  assert("part of a word isn't one (“Jordanian”)", !wording.some((i) => i.field.charStart > 0 && i.field.lineId === "d"));
+  const memo = { companyId: co.id, typeId: A.typeId, entries: [], batchSample: null };
+  const word = await suggestSource({ label: wording[0].sameAs, sample: "supplement", where: "label_value" }, memo);
+  assert("its source follows the printed label, in lower case", word.source.path === "category.name" && word.format?.case === "lower", word);
+  const number = { kind: "template", template: "COA-{{invoice.invoiceNumber}}-{{item.lineNo}}" };
+  assert("the number scheme is a valid source", validateSource(number).length === 0, validateSource(number));
+  assert("two lines of one invoice get two numbers", ["1", "2"].map((lineNo) => resolveField({ source: number, required: true }, { invoice: { invoiceNumber: "ZY1" }, item: { lineNo } }).value).join() === "COA-ZY1-1,COA-ZY1-2");
 
   console.log("\n🧪 The owner's setting");
   const lines = [{ id: "l1", page: 1, text: "Stamp: x" }];

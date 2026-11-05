@@ -11,6 +11,8 @@ import { slugKey } from "../mapping/labelProposal.js";
 //   - fixed result cells (“Complies”, “102.7%”) → listed for the owner to decide,
 //     never changed automatically;
 //   - "Label: value" text outside the table (Batch No.: AVVS1122005) → fields;
+//   - a value repeated in the wording (“SUPPLEMENT” → “… to be used as supplement.”) →
+//     offered unticked: it may be the product's word, or the company's own (its address);
 //   - unnamed fields (“Field 6”) → what they are, or that they can go.
 // Nothing here decides a source: every candidate carries the printed label and
 // sample; the service suggests sources (memory → dictionary → rules).
@@ -236,6 +238,28 @@ export function scanTemplate({ lines = [], cellLines = [], fields = [], groups =
         field: { key: keyFor(label, used), label: printed(label), lineId: value.lineId, charStart: value.start, charEnd: value.end, sampleValue: value.text, align: "left", required: true, isLabResult: false },
         default: true,
       });
+    }
+  }
+
+  // 3b. the same word repeated in a sentence: it still names the old product unless it moves too
+  const inTable = (l) => tableLines.has(l.id);
+  for (const source of items.filter((i) => i.where === "label_value" && /^\p{L}{4,}$/u.test(i.field.sampleValue))) {
+    const word = new RegExp(`(?<!\\p{L})${source.field.sampleValue}(?!\\p{L})`, "giu");
+    for (const l of lines.filter((x) => !inTable(x) && x.id !== source.field.lineId)) {
+      for (const m of l.text.matchAll(word)) {
+        const ref = { lineId: l.id, start: m.index, end: m.index + m[0].length };
+        if (coveredBy(fields, ref).length || items.some((i) => i.id === `field:${l.id}:${m.index}`)) continue;
+        const label = `${source.label} in the wording`;
+        items.push({
+          id: `field:${l.id}:${m.index}`,
+          kind: "fixed_to_field",
+          where: "wording",
+          label,
+          sameAs: source.label,
+          field: { key: keyFor(label, used), label, lineId: l.id, charStart: ref.start, charEnd: ref.end, sampleValue: m[0], align: "left", required: true, isLabResult: false },
+          default: false,
+        });
+      }
     }
   }
 

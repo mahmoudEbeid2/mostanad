@@ -26,7 +26,7 @@ export async function loadProductContext(companyId, { productId = null, invoiceI
     if (!prisma.invoiceItem) throw new CertError("INVOICES_UNAVAILABLE", "Invoice lines are not available yet", 400);
     const item = await prisma.invoiceItem.findFirst({ where: { id: invoiceItemId, invoice: { companyId } }, include: { invoice: true } });
     if (!item) throw notFound("Invoice item");
-    ctx.item = item.data || {};
+    ctx.item = { ...(item.data || {}), lineNo: item.lineNo ?? null };
     ctx.invoice = item.invoice.header || {};
     if (!productId && item.productId) productId = item.productId;
     // an invoice_lines group (§7.8) previews with every line of that invoice, as a collective certificate would

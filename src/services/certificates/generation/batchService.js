@@ -204,7 +204,7 @@ export async function certificateContext(cert, base, caches, design) {
   }
   if (cert.scope === "per_product") {
     const line = cert.items[0]?.invoiceItem;
-    ctx.item = line?.data || {};
+    ctx.item = { ...(line?.data || {}), lineNo: line?.lineNo ?? null };
     const product = await loadProductCtx(caches.products, cert.companyId, cert.productId);
     if (product) {
       ctx.product = product;

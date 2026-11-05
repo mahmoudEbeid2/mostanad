@@ -176,7 +176,7 @@ function entryContext(entry, ctx, invoice) {
   c.lines = lines.map((l) => ({ ...(l.data || {}), product: maskEstimates(l.product) || {} }));
   if (entry.scope === "per_product") {
     const line = lines[0];
-    c.item = line?.data || {};
+    c.item = { ...(line?.data || {}), lineNo: line?.lineNo ?? null };
     if (line?.product) {
       c.product = maskEstimates(line.product);
       c.brand = line.product.brand || null;

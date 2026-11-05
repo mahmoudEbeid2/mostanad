@@ -99,7 +99,7 @@ export async function getRepairPlan(versionId, companyId) {
   const batchField = fields.find((f) => f.source?.kind === "item" && f.source.path === "batchNo");
   const ctx = { companyId: version.template.companyId, typeId: version.template.certificateTypeId, entries, batchSample: batchItem?.field.sampleValue || batchField?.sampleValue || null };
   for (const item of scan.items) {
-    if (item.kind === "fixed_to_field") item.suggestion = await suggestSource({ label: item.label, sample: item.field.sampleValue, where: item.where }, ctx);
+    if (item.kind === "fixed_to_field") item.suggestion = await suggestSource({ label: item.sameAs || item.label, sample: item.field.sampleValue, where: item.sameAs ? "label_value" : item.where }, ctx);
     if (item.kind === "unnamed_field" && item.rename) item.suggestion = await suggestSource({ label: item.rename.label, sample: item.sampleValue, where: "table_spec" }, ctx);
   }
   const count = (k) => scan.items.filter((i) => i.kind === k).length;
