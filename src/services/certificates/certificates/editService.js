@@ -203,6 +203,25 @@ export async function resetField(id, companyId, userId, key, { expectedVersion }
   });
 }
 
+/**
+ * scripts/rerenderGlyphDrafts.js: renders a draft again with its stored values, so a stored
+ * glyph: flag becomes what the fonts can do now. Only the flags may change, so nothing is
+ * written unless they did. → { changed, before, after, version? }
+ */
+export async function rerenderGlyphDraft(id, { apply = false } = {}) {
+  const cert = await loadCertificate(id);
+  assertEditable(cert);
+  const current = await currentVersionRow(cert);
+  const rendered = await renderValues(cert, structuredClone(current.values));
+  const glyphFlags = (values) => Object.fromEntries(Object.entries(values).map(([k, v]) => [k, (v.flags || []).filter((f) => String(f).startsWith("glyph")).sort()]).filter(([, f]) => f.length));
+  const before = glyphFlags(current.values);
+  const after = glyphFlags(rendered.values);
+  const changed = JSON.stringify(before) !== JSON.stringify(after);
+  if (!changed || !apply) return { changed, before, after };
+  const { version } = await commitVersion(cert, rendered.values, { changeSource: "font_fallback", summary: "rendered again with the fallback fonts", files: { html: rendered.html, thumbnail: rendered.thumbnail } });
+  return { changed, before, after, version };
+}
+
 /** GET /certificates/:id/versions */
 export async function listVersions(id, companyId) {
   await loadCertificate(id, companyId);

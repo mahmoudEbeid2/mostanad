@@ -12,6 +12,7 @@ import path from "path";
 import JSZip from "jszip";
 import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
 import { comparePngs } from "../../src/services/certificates/engine/pixelDiff.js";
+import { rerenderGlyphDraft } from "../../src/services/certificates/certificates/editService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
 
 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -207,6 +208,26 @@ try {
   assert("ZIP: one PDF per certificate, unique names", r.headers.get("content-type") === "application/zip" && names.length === 2 && new Set(names).size === 2 && names.every((n) => /^COA-ADD-E120-AVVS1124011(-2)?\.pdf$/.test(n)), names);
   const firstPdf = await zip.file(names.find((n) => !n.includes("-2.pdf"))).async("nodebuffer");
   assert("ZIP: the final certificate's entry is its frozen PDF", firstPdf.equals(finalPdf.buffer));
+
+  console.log("\n🧪 A stored glyph flag from before the fallback fonts (scripts/rerenderGlyphDrafts.js)");
+  r = await api("POST", `/certificates/${add.certId}/duplicate`, A);
+  const staleId = r.data?.data?.certificateId;
+  const stale = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: staleId, versionNumber: 1 } } });
+  const staleValues = { ...stale.values, product_name: { ...stale.values.product_name, value: "ADD-Ω", flags: ["glyph:Ω"] } };
+  await prisma.certificateVersion.update({ where: { id: stale.id }, data: { values: staleValues } });
+  await prisma.certificate.update({ where: { id: staleId }, data: { flagCount: 1 } });
+  let again = await rerenderGlyphDraft(staleId);
+  c = await getCert(staleId);
+  assert("the plan reports the change and writes nothing", again.changed && !again.version && c.currentVersion === 1, again);
+  again = await rerenderGlyphDraft(staleId, { apply: true });
+  c = await getCert(staleId);
+  assert("--apply: a new version with the info flag, the issue gone", again.version === 2 && c.currentVersion === 2 && c.flagCount === 0 && c.values.product_name.flags.includes("glyph_fallback:Ω"), c.values?.product_name);
+  assert("the value stays as it was", c.values.product_name.value === "ADD-Ω" && c.values.product_name.origin === staleValues.product_name.origin);
+  assert("version 1 is kept", (await prisma.certificateVersion.findUnique({ where: { id: stale.id } })).values.product_name.flags.includes("glyph:Ω"));
+  again = await rerenderGlyphDraft(staleId, { apply: true });
+  assert("running it again changes nothing", !again.changed && (await getCert(staleId)).currentVersion === 2, again);
+  const refused = await rerenderGlyphDraft(add.certId, { apply: true }).catch((err) => err);
+  assert("a final certificate is refused", refused.code === "CERTIFICATE_FINAL", refused);
 
   console.log("\n🧪 Tenancy: every new route is 404 to another company");
   for (const [label, method, url, body] of [

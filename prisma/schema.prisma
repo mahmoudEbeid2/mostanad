@@ -1050,7 +1050,7 @@ model CertificateVersion {
   htmlFileId      String?     @map("html_file_id") // rendered static HTML (D9)
   pdfFileId       String?     @map("pdf_file_id") // created on export; frozen on finalize
   thumbnailFileId String?     @map("thumbnail_file_id") // page-1 PNG for cards (plan §20 I18)
-  changeSource    String      @map("change_source") // generation | user_edit | restore | regenerate_field
+  changeSource    String      @map("change_source") // generation | user_edit | restore | regenerate_field | font_fallback
   changedByUserId String?     @map("changed_by_user_id")
   changeSummary   String?     @map("change_summary")
   createdAt       DateTime    @default(now()) @map("created_at")

@@ -605,3 +605,4 @@ Additive; no migration.
   and `fallbackFontFamilies`.
 - `PATCH /template-versions/:id/font-fallbacks` — **new**. `{ fontClass, fallbackFamily }`. `update_certificate_templates`.
   Draft or ready versions only: 409 `VERSION_NOT_DRAFT`; 422 `UNKNOWN_FONT`, `INVALID_FONT`.
+- `changeSource`: **new** value `font_fallback`, written by `scripts/rerenderGlyphDrafts.js`.
