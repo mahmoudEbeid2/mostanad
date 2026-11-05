@@ -1703,4 +1703,9 @@ Estimates print on drafts flagged `unconfirmed`, which refuses Finalize. Inferen
 
 **Decisions for the owner:** a draft PDF can carry an unconfirmed estimate (the flag blocks Finalize, not export). Document # on ADDVET COA v2 is `COA-<invoice>-<line>`, because invoices may have no batch number.
 
-**Tests:** new `e2.optionalFields.test.js` (44). Whole suite: 3941 assertions, 0 failed.
+Production's first run: a product's name was accepted as another field's value (refused by code now), `record.` and `.0.` evidence paths were refused (read now), and a gap that is a specification is sent with `role: "specification"`.
+Prepare's `product_data` stage is `failed` when the AI stopped halfway.
+
+**Known limit:** the production key is Gemini free tier, 20 `gemini-2.5-flash` requests a day. Web + inference per product takes about two per product, so one invoice of 7 products uses most of it.
+
+**Tests:** `e2.optionalFields.test.js` (52). Whole suite: 3949 assertions, 0 failed. One prompt line changed after it; `e2` and `a5` were re-run, 0 failed.
