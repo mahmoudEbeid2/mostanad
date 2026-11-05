@@ -1693,3 +1693,14 @@ Stages of the old job: text of every page 0.5 s, segmenting 0.02 s, thumbnails 1
 **Decisions:** fonts are files in `assets/cert-fonts`, loaded as `data:` faces, not system fonts: installing them could change what `sans-serif` resolves to and so existing renders (image: `fc-match sans-serif` still DejaVu). Each face has its own CSS family, because pdf2htmlEX's fonts are all `font-weight: normal` and Chromium would otherwise fake the bold. Faces are subset per render with `subset-font` (HarfBuzz); the whole file is embedded only if subsetting fails, with a warning in the log. The inline font stack goes only on spans that need it, and the faces only into documents that need them, so every other certificate is unchanged. Coverage is in `manifest.json`, per face, not per template version. Noto Sans Arabic is added to the chain, so Arabic in a Latin template is drawn rather than blocked. The owner picks a family; weight and style stay the design font's. Changing a match is refused once a version is active.
 
 **Known limits:** a certificate keeps its stored `glyph:` flag until it is rendered again: `scripts/rerenderGlyphDrafts.js --apply` does that for drafts, after the backfill. Final certificates stay as frozen. Fallback letters show on narrow fonts (Geogrotesque's B, X are a little wider than their neighbours). One Arabic word split across two fonts won't join. No rule targets Metropolis, Kabel or Geogrotesque, so they get Noto Sans; a closer geometric font could be added. `bundled.yaml` and the Postman collection are not regenerated, as since A5.
+
+## Optional is not "not applicable" (2026-11-05)
+
+Certificate 53f9951d printed Appearance blank with flagCount 0: `required = false` was read as "don't try".
+Now every non-protected field goes through product → invoice → catalogue → web → inference, one inference call per product.
+`not_applicable` needs the owner's `notApplicable` tick or a person's `skip`. What stays empty is "missing (optional)": shown, flagged `empty_optional`, never blocking.
+Estimates print on drafts flagged `unconfirmed`, which refuses Finalize. Inference waits for the web on upload and in the panel (`webFirst`).
+
+**Decisions for the owner:** a draft PDF can carry an unconfirmed estimate (the flag blocks Finalize, not export). Document # on ADDVET COA v2 is `COA-<invoice>-<line>`, because invoices may have no batch number.
+
+**Tests:** new `e2.optionalFields.test.js` (44). Whole suite: 3941 assertions, 0 failed.
