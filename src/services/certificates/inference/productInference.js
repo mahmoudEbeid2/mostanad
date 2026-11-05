@@ -43,7 +43,7 @@ const INSTRUCTIONS = [
   "  Prefer quoted / derived / estimate when the record supports them; answer found=false only when even the product's type says nothing about the gap.",
   "A gap with role \"specification\" is the acceptance criterion of a test on a certificate of analysis, what a batch must meet, never a measured result (e.g. Appearance: \"Clear yellow liquid\", Sterility: \"Sterile\", Pyrogen: \"Non-pyrogenic\", pH: a range, Assay: a percentage range of the labeled amount, Identification: the test and its expected outcome). Answer it \"typical\", with the criterion usual for a product of this type, unless the record states it.",
   "A product's name is never the value of another field: never answer Identification, Category or anything else by quoting the name.",
-  "Evidence paths start at the record's own keys: physicalForm, never record.physicalForm.",
+  "Evidence paths start at the record's own keys: physicalForm, never record.physicalForm; a list item is activeIngredients[0].name.",
   "found=true always carries a value. Without a value, answer found=false.",
   "confidence 0–1; reasoning: one short sentence.",
 ].join("\n");
@@ -116,7 +116,8 @@ export function verifyInference(answer, product, { field = null } = {}) {
   if (!evidence.length) return { ok: false, reason: "no evidence" };
   const checked = [];
   for (const ev of evidence) {
-    const r = resolve({ product }, `product.${String(ev?.path || "").replace(/^(product|record)\./, "")}`);
+    const path = String(ev?.path || "").replace(/^(product|record)\./, "").replace(/\.(\d+)(?=\.|$)/g, "[$1]"); // activeIngredients.0.name
+    const r = resolve({ product }, `product.${path}`);
     if (r.error || !r.found) return { ok: false, reason: `the product has nothing at “${ev?.path}”` };
     const quote = ev.quote ? String(ev.quote).trim() : null;
     if (quote) {

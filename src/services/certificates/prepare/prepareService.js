@@ -102,14 +102,17 @@ export async function runPrepareJob({ invoiceId }, ctx = {}, deps = {}) {
     const settings = await getAiSettings(invoice.companyId);
     let web = null;
     let inference = first?.inference?.calls ?? 0;
+    let refused = first?.unavailable ? first.reason : first?.inference?.unavailable ? first.inference.reason : null;
     if (aiAllowed(settings) && settings.allowWebLookup && check.tiers?.webEligible > 0) {
       progress(45, "product_data", "Looking up missing product facts on the web");
       check = await webLookupNeeds(invoiceId, invoice.companyId, { search: deps.search, fetchPage: deps.fetchPage, thenInfer: true, inferGenerate: deps.inferGenerate });
       web = check.ai?.web || null;
       inference += check.ai?.inference?.calls ?? 0;
+      refused ||= web?.unavailable ? web.reason : check.ai?.inference?.unavailable ? check.ai.inference.reason : null;
     }
     const s = check.summary;
-    return { status: "done", detail: `${s.ready} of ${s.values} values ready, ${s.estimated} estimated, ${s.missing} missing, ${s.missingOptional} optional empty`, ai: { gaps: first?.calls ?? 0, inference, web: web?.calls ?? 0, ...(first?.unavailable ? { unavailable: first.reason } : {}) } };
+    // never "done" when the AI stopped halfway: what it never reached looks the same as what it couldn't find
+    return { status: refused ? "failed" : "done", detail: `${s.ready} of ${s.values} values ready, ${s.estimated} estimated, ${s.missing} missing, ${s.missingOptional} optional empty`, ...(refused ? { error: `The AI stopped before it finished, press Prepare again: ${refused}` } : {}), ai: { gaps: first?.calls ?? 0, inference, web: web?.calls ?? 0, ...(refused ? { unavailable: refused } : {}) } };
   });
 
   await run("batch_results", 60, async () => {
