@@ -110,6 +110,8 @@ try {
   c = await getCert(add.certId);
   assert("a character no font has → blocking glyph flag, counted as an issue; one a fallback has → info flag", c.currentVersion === 4 && c.values.product_name.flags.includes("glyph:\u{13000}") && c.values.product_name.flags.includes("glyph_fallback:Ω") && c.flagCount === 1, c.values.product_name);
 
+  assert("the certificate names the font that drew the fallback character", c.fallbackFonts?.product_name?.["Ω"], c.fallbackFonts);
+
   console.log("\n🧪 Reset, versions, restore");
   r = await api("POST", `/certificates/${add.certId}/fields/product_name/reset`, A, { expectedVersion: 4 });
   c = await getCert(add.certId);

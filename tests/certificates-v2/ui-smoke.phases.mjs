@@ -725,7 +725,7 @@ async function phase7(ctx) {
   assert("rows now: Sodium selenite, Biotin, Folic acid", JSON.stringify(await rowInputs()) === JSON.stringify(["Sodium selenite|60 mg", "Biotin|50 mg", "Folic acid|300 mg"]), await rowInputs());
   const db = await prisma.certificate.findUnique({ where: { id: cert.id }, include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } } });
   assert("DB: the rows and origin manual", db.versions[0].values.rows.rows.map((r) => r.name).join(",") === "Sodium selenite,Biotin,Folic acid" && db.versions[0].values.rows.origin === "manual", db.versions[0].values.rows);
-  assert("the glyph B (not in the design font) is flagged on the group", await waitForText("Character not in the design font: B", 5000));
+  assert("the glyph B (not in the design font) is noted on the group with its font", await waitForText("B: drawn in Noto Sans", 5000));
   await shot("p7-editor-rows");
   await ctx.audit("certificate editor — group rows");
   await sleep(200);
