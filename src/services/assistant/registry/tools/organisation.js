@@ -8,7 +8,7 @@ import { getAllUsers } from "../../../userService.js";
 import { getAllRoles } from "../../../roleService.js";
 import { getDashboardStatsData } from "../../../dashboardService.js";
 import { costSummary, topOperations } from "../../../ai/aiCostReports.js";
-import { getTask, countEntities, COUNT_ENTITIES, COUNT_GROUPS } from "../../reads.js";
+import { getTask, countEntities, COUNT_ENTITIES, COUNT_GROUPS, COUNT_PERIODS } from "../../reads.js";
 
 const COMPANY_FIELDS = ["id", "name", "username", "email", "phone", "address", "isActive", "createdAt"];
 
@@ -141,13 +141,22 @@ defineTool({
   risk: "read",
   label: "Counting",
   description:
-    `How many ${COUNT_ENTITIES.join(", ")} were created, optionally in a date range [from, to), grouped by one of: ${COUNT_GROUPS.join(", ")}. ` +
-    "type = certificate type (certificates, templates), brand (products), country (labels). For \"this week\" pass from = the Monday of this week. Use this for every count or report — never count by listing.",
-  args: z.object({ entity: z.enum(COUNT_ENTITIES), groupBy: z.enum(COUNT_GROUPS).optional(), from: dateArg("Start"), to: dateArg("End (exclusive)") }),
+    `How many ${COUNT_ENTITIES.join(", ")} were created in a period, grouped by one of: ${COUNT_GROUPS.join(", ")}. ` +
+    `Periods are Cairo days and a week is Saturday–Friday: pass period (${COUNT_PERIODS.join(", ")}) — e.g. "this week" → this_week — or from/to dates. ` +
+    "type = certificate type (certificates, templates), brand (products), country (labels). groupBy company lists every company the user can see, zero included. " +
+    "status filters (certificates: draft, final, failed, pending). The result states the exact date range: say it. Use this for every count or report — never count by listing.",
+  args: z.object({
+    entity: z.enum(COUNT_ENTITIES),
+    groupBy: z.enum(COUNT_GROUPS).optional(),
+    period: z.enum(COUNT_PERIODS).optional(),
+    from: dateArg("Start (Cairo date), when no period"),
+    to: dateArg("End (Cairo date, exclusive), when no period"),
+    status: z.string().max(30).optional(),
+  }),
   // the permission depends on the entity: checked here with the same rule as the routes
   run: (a, ctx) => {
     const need = { certificates: "read_certificates", invoices: "read_invoices", labels: "read_labels", products: "read_products", templates: "read_certificate_templates", catalogues: "read_products" }[a.entity];
     if (!mayUse(ctx.actor, need)) return { error: `You don't have permission to count ${a.entity}.` };
-    return countEntities(ctx.companyId, { entity: a.entity, groupBy: a.groupBy || "none", from: a.from, to: a.to });
+    return countEntities(ctx.companyId, { entity: a.entity, groupBy: a.groupBy || "none", period: a.period, from: a.from, to: a.to, status: a.status });
   },
 });

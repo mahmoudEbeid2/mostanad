@@ -24,7 +24,8 @@ defineTool({
   description:
     "Find products by name or code — the first step for any question about a specific product. Pass every spelling you can think of in `queries` (the user's text, Arabic and English forms, close spellings, the code). " +
     "Matches by exact code, saved aliases, fuzzy name similarity and catalogue text. Returns up to 5 products with a score 0–1 and a verdict: " +
-    "clear (one match — use it), ambiguous (ask the user which one, listing the names), none (say nothing matched and suggest the nearest if any).",
+    "clear (matched exactly by code, saved alias or full name — use it), close (only similar names: it is NOT the product asked for — say \"I didn't find X; the closest is Y\" and ask; the user is shown buttons), " +
+    "none (say nothing matched).",
   args: z.object({
     queries: z.array(z.string().min(1).max(120)).min(1).max(6).describe("Spellings to search together, e.g. [\"فيتامينول\", \"Vitaminol\", \"vitaminol\"]"),
   }),

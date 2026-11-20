@@ -114,7 +114,9 @@ export const MODELS = {
   // In-app assistant (C1): a function-calling loop over read-only tools, several
   // calls per message (choose tools → read results → answer). Choosing a tool
   // and reading its result is light reasoning: a small fixed budget, not dynamic.
-  ASSISTANT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 512, temperature: 0.1 },
+  // Temperature 0: its answers are about stored data, never creative (an invented
+  // product list was its first real bug — grounding.js now blocks one).
+  ASSISTANT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 512, temperature: 0 },
 
   // §14.5.7 — plausibility layer's "is this worth flagging at all" judgment
   // (concentration/dose/compatibility/withdrawal-period suspicion, before any

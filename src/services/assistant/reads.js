@@ -138,7 +138,13 @@ export async function productsMissingData(companyId, { fields = [], specificatio
 }
 
 // ── counts for reports ──────────────────────────────────────────────────────
-// entity → table, the company column, the "status" column and the "type" grouping
+// Periods are days in Cairo time (Africa/Cairo, DST included); a week runs
+// Saturday → Friday, as the company works it (design E1: "this week, 14–20 Nov").
+export const TIMEZONE = "Africa/Cairo";
+export const WEEK_STARTS = "Saturday";
+export const COUNT_PERIODS = ["today", "yesterday", "this_week", "last_week", "this_month", "last_month", "last_30_days", "all"];
+
+// entity → table, the "status" column and the "type" grouping
 const COUNTABLE = {
   certificates: { table: "certificates", status: "status", type: "certificate_type_id", typeTable: "certificate_types", typeName: "name" },
   invoices: { table: "invoices", status: "status" },
@@ -150,44 +156,98 @@ const COUNTABLE = {
 export const COUNT_ENTITIES = Object.keys(COUNTABLE);
 export const COUNT_GROUPS = ["none", "company", "status", "type", "day", "week", "month"];
 
+const ymd = (d) => d.toISOString().slice(0, 10);
+const addDays = (s, n) => ymd(new Date(Date.parse(`${s}T00:00:00Z`) + n * 86_400_000));
+
+/** Today's date in Cairo, YYYY-MM-DD. */
+export function cairoToday(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** A named period → [from, to) as Cairo dates (YYYY-MM-DD, to exclusive), or nulls for "all". */
+export function periodRange(period, now = new Date()) {
+  const today = cairoToday(now);
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0 Sunday … 6 Saturday
+  const weekStart = addDays(today, -((dow + 1) % 7)); // back to Saturday
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const prevMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1));
+  switch (period) {
+    case "today":
+      return [today, addDays(today, 1)];
+    case "yesterday":
+      return [addDays(today, -1), today];
+    case "this_week":
+      return [weekStart, addDays(weekStart, 7)];
+    case "last_week":
+      return [addDays(weekStart, -7), weekStart];
+    case "this_month":
+      return [monthStart, ymd(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)))];
+    case "last_month":
+      return [ymd(prevMonth), monthStart];
+    case "last_30_days":
+      return [addDays(today, -29), addDays(today, 1)];
+    default:
+      return [null, null];
+  }
+}
+
+/** A Cairo-local date as the UTC timestamp the columns hold. */
+const cairoMidnight = (date) => Prisma.sql`((${date}::date)::timestamp AT TIME ZONE ${TIMEZONE}) AT TIME ZONE 'UTC'`;
+const LOCAL = Prisma.sql`((x."created_at" AT TIME ZONE 'UTC') AT TIME ZONE ${TIMEZONE})`;
+
 /**
- * How many rows of `entity` were created in [from, to), grouped by one dimension.
- * Always within companyId when given. → { entity, groupBy, from, to, total, groups: [{ key, label, count }] }
+ * How many rows of `entity` were created in a period (Cairo days), grouped by one dimension.
+ * Within companyId when given. Grouped by company for all companies, EVERY company is listed —
+ * zero included — so a report never silently drops a company.
+ * → { entity, groupBy, period, from, to, timezone, weekStarts, total, groups: [{ key, label, count }] }
  */
-export async function countEntities(companyId, { entity, groupBy = "none", from = null, to = null }) {
+export async function countEntities(companyId, { entity, groupBy = "none", period = null, from = null, to = null, status = null, now = new Date() }) {
   const def = COUNTABLE[entity];
   if (!def) throw new AppError(`Can't count "${entity}"`, 400);
-  if (groupBy === "status" && !def.status) throw new AppError(`${entity} have no status`, 400);
+  if ((groupBy === "status" || status) && !def.status) throw new AppError(`${entity} have no status`, 400);
   if (groupBy === "type" && !def.type) throw new AppError(`${entity} have no type to group by`, 400);
+  if (period && period !== "all") [from, to] = periodRange(period, now);
+  else if (to) to = addDays(String(to).slice(0, 10), 0); // given dates are Cairo dates; to is exclusive
+  if (from) from = String(from).slice(0, 10);
+
   const t = Prisma.raw(`"${def.table}"`);
   const conds = [];
-  if (companyId) conds.push(Prisma.sql`x."company_id" = ${companyId}`);
-  if (from) conds.push(Prisma.sql`x."created_at" >= ${new Date(from)}`);
-  if (to) conds.push(Prisma.sql`x."created_at" < ${new Date(to)}`);
-  const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, " AND ")}` : Prisma.empty;
+  if (from) conds.push(Prisma.sql`x."created_at" >= ${cairoMidnight(from)}`);
+  if (to) conds.push(Prisma.sql`x."created_at" < ${cairoMidnight(to)}`);
+  if (status) conds.push(Prisma.sql`x.${Prisma.raw(`"${def.status}"`)} = ${status}`);
 
-  let key;
-  let join = Prisma.empty;
-  let label = Prisma.sql`NULL`;
-  if (groupBy === "none") key = Prisma.sql`'all'`;
-  else if (groupBy === "company") {
-    key = Prisma.sql`x."company_id"`;
-    join = Prisma.sql`LEFT JOIN "companies" g ON g."id" = x."company_id"`;
-    label = Prisma.sql`g."name"`;
-  } else if (groupBy === "status") key = Prisma.raw(`x."${def.status}"`);
-  else if (groupBy === "type") {
-    key = Prisma.raw(`x."${def.type}"`);
-    if (def.typeTable) {
-      join = Prisma.raw(`LEFT JOIN "${def.typeTable}" g ON g."id" = x."${def.type}"`);
-      label = Prisma.raw(`g."${def.typeName}"`);
-    }
-  } else if (["day", "week", "month"].includes(groupBy)) key = Prisma.sql`to_char(date_trunc(${groupBy}, x."created_at"), 'YYYY-MM-DD')`;
-  else throw new AppError(`Can't group by "${groupBy}"`, 400);
-
-  const rows = await prisma.$queryRaw`
-    SELECT ${key} AS "key", ${label} AS "label", count(*)::int AS "count"
-    FROM ${t} x ${join} ${where}
-    GROUP BY 1, 2 ORDER BY 3 DESC, 1 LIMIT 200`;
+  let rows;
+  if (groupBy === "company") {
+    // from the companies, so a company with nothing in the period still has its row
+    const on = conds.length ? Prisma.sql`AND ${Prisma.join(conds, " AND ")}` : Prisma.empty;
+    rows = await prisma.$queryRaw`
+      SELECT c."id" AS "key", c."name" AS "label", count(x."id")::int AS "count"
+      FROM "companies" c LEFT JOIN ${t} x ON x."company_id" = c."id" ${on}
+      ${companyId ? Prisma.sql`WHERE c."id" = ${companyId}` : Prisma.empty}
+      GROUP BY 1, 2 ORDER BY 3 DESC, 2 LIMIT 500`;
+  } else {
+    if (companyId) conds.unshift(Prisma.sql`x."company_id" = ${companyId}`);
+    const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, " AND ")}` : Prisma.empty;
+    let key;
+    let join = Prisma.empty;
+    let label = Prisma.sql`NULL`;
+    if (groupBy === "none") key = Prisma.sql`'all'`;
+    else if (groupBy === "status") key = Prisma.raw(`x."${def.status}"`);
+    else if (groupBy === "type") {
+      key = Prisma.raw(`x."${def.type}"`);
+      if (def.typeTable) {
+        join = Prisma.raw(`LEFT JOIN "${def.typeTable}" g ON g."id" = x."${def.type}"`);
+        label = Prisma.raw(`g."${def.typeName}"`);
+      }
+    } else if (groupBy === "day") key = Prisma.sql`to_char(${LOCAL}, 'YYYY-MM-DD')`;
+    else if (groupBy === "week") key = Prisma.sql`to_char(date_trunc('day', ${LOCAL}) - ((extract(dow FROM ${LOCAL})::int + 1) % 7) * interval '1 day', 'YYYY-MM-DD')`;
+    else if (groupBy === "month") key = Prisma.sql`to_char(${LOCAL}, 'YYYY-MM')`;
+    else throw new AppError(`Can't group by "${groupBy}"`, 400);
+    rows = await prisma.$queryRaw`
+      SELECT ${key} AS "key", ${label} AS "label", count(*)::int AS "count"
+      FROM ${t} x ${join} ${where}
+      GROUP BY 1, 2 ORDER BY 3 DESC, 1 LIMIT 500`;
+  }
   const groups = rows.map((r) => ({ key: r.key ?? null, label: r.label ?? null, count: r.count }));
-  return { entity, groupBy, from, to, total: groups.reduce((n, g) => n + g.count, 0), groups };
+  return { entity, groupBy, period: period || (from || to ? "custom" : "all"), from, to, timezone: TIMEZONE, weekStarts: WEEK_STARTS, total: groups.reduce((n, g) => n + g.count, 0), groups };
 }

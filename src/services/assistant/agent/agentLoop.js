@@ -2,6 +2,8 @@ import { z } from "zod";
 import { toolsFor, describeTools, runTool, getTool, cleanSchema, modules as allModules } from "../registry/index.js";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { selectModules } from "./selectTools.js";
+import { tableBlock } from "./blocks.js";
+import { factsOf, corpusOf, checkGrounding, stripTypedLists } from "./grounding.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
 // model → tool calls → run them as the caller → results back → repeat until
@@ -15,7 +17,21 @@ export const LIMITS = {
   maxToolCalls: Number(process.env.ASSISTANT_MAX_TOOL_CALLS) || 12,
   maxModelCalls: Number(process.env.ASSISTANT_MAX_MODEL_CALLS) || 8,
   historyMessages: 10,
+  maxFactsChars: 100_000,
 };
+
+const isArabicText = (s) => /[؀-ۿ]/.test(String(s || ""));
+export const UNGROUNDED_ANSWER = { en: "I couldn't get that from the system.", ar: "لم أستطع الحصول على ذلك من النظام." };
+const groundingRetry = (unknown) =>
+  `[system check] Your answer named or stated ${unknown.map((u) => `"${u}"`).join(", ")}, which no tool returned in this conversation. ` +
+  "Do not answer from memory and never continue a list yourself. Call the tool that returns this data (for more rows of a list, the same tool with page = nextPage) and answer only from its results — or say it isn't in the system.";
+
+/** What an earlier assistant turn did, replayed with its text so the model knows the cursors (never the rows). */
+export function historyNote(toolCalls) {
+  const done = (toolCalls || []).filter((c) => c.ok && c.name);
+  if (!done.length) return "";
+  return `\n\n[tools used in this answer: ${done.map((c) => `${c.name}(${JSON.stringify(c.args || {})}) → ${c.summary || "done"}${c.nextPage ? `, nextPage=${c.nextPage}` : ""}`).join("; ")}. Rows are not repeated here: call the tool again to read them.]`;
+}
 
 const LOAD_TOOLS = "load_tools";
 
@@ -88,14 +104,18 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const declarations = () => [...describeTools(offeredTools(), ctx.actor).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(available.length ? [loadToolsDecl(available)] : [])];
 
   const contents = [
-    ...history.slice(-lim.historyMessages).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
+    ...history.slice(-lim.historyMessages).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.role === "assistant" ? `${m.text || "(no text)"}${historyNote(m.toolCalls)}` : m.text }] })),
     { role: "user", parts: [{ text: userTurn(text, ctx) }] },
   ];
   const refs = new Map((ctx.knownRefs || []).map((r) => [r.id, r]));
   const toolCalls = [];
   let usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0, thinkingTokens: 0 };
   let modelCalls = 0;
-  const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, ...extra });
+  const blocks = new Map(); // tool name → the latest table block of this turn
+  const turnFacts = [];
+  let retried = null; // the unknown names of a first, blocked answer
+  const facts = () => turnFacts.join("\n").slice(0, lim.maxFactsChars);
+  const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...extra });
 
   onEvent({ type: "status", text: "Thinking…" });
   while (modelCalls < lim.maxModelCalls) {
@@ -112,8 +132,29 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     const parts = res?.content?.parts || [];
     const calls = parts.filter((p) => p.functionCall).map((p) => p.functionCall);
     if (!calls.length || lastChance) {
-      const answer = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
-      return out({ text: sanitizeAnswer(answer || "I couldn't produce an answer.", refs) });
+      const raw = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
+      // checked on what the model wrote, before typed lists are removed for display
+      const answer = stripTypedLists(raw);
+      const corpus = corpusOf([...(ctx.facts || []), ...turnFacts, text, ...history.filter((m) => m.role === "user").map((m) => m.text)]);
+      const toolCallsThisTurn = toolCalls.filter((c) => c.ok).length;
+      const g = checkGrounding(raw, corpus, { toolCallsThisTurn });
+      if (answer !== raw && toolCallsThisTurn === 0) {
+        g.ok = false; // a list typed without asking the system is never data
+        g.unknown.push("(a list typed without a tool call)");
+      }
+      if (!g.ok) {
+        console.warn(`[assistant] ungrounded answer${retried ? " (after retry)" : ""}: ${g.unknown.join(", ")}`);
+        if (!retried && !lastChance) {
+          retried = g.unknown;
+          contents.push(res.content);
+          contents.push({ role: "user", parts: [{ text: groundingRetry(g.unknown) }] });
+          onEvent({ type: "status", text: "Checking against the system…" });
+          continue;
+        }
+        return out({ text: isArabicText(text) ? UNGROUNDED_ANSWER.ar : UNGROUNDED_ANSWER.en, grounding: { blocked: true, unknown: g.unknown, firstUnknown: retried } });
+      }
+      const fallback = blocks.size ? "" : "I couldn't produce an answer.";
+      return out({ text: sanitizeAnswer(answer || fallback, refs), ...(retried ? { grounding: { blocked: false, firstUnknown: retried } } : {}) });
     }
     contents.push(res.content);
 
@@ -131,10 +172,15 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
       } else {
         onEvent({ type: "tool_start", tool: name, label: getTool(name)?.label || name, args: call.args || {} });
         result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
-        if (result.ok) collectRefs(result.data, refs);
+        if (result.ok) {
+          collectRefs(result.data, refs);
+          turnFacts.push(...factsOf(result.data));
+          const block = tableBlock(name, call.args || {}, result.companyId, result.data, getTool(name)?.label || name);
+          if (block) blocks.set(name, block);
+        }
       }
-      const choices = name === "search_products" && result.ok && result.data?.verdict === "ambiguous" ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
-      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(choices ? { choices } : {}) };
+      const choices = name === "search_products" && result.ok && result.data?.verdict === "close" && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
+      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}) };
       if (name !== LOAD_TOOLS) toolCalls.push(entry);
       if (name !== LOAD_TOOLS) onEvent({ type: "tool_end", ...entry });
       responses.push({ functionResponse: { ...(call.id ? { id: call.id } : {}), name, response: asFunctionResponse(result) } });
@@ -149,7 +195,7 @@ export function summarize(result) {
   if (!result.ok) return result.error;
   const d = result.data;
   if (d && typeof d === "object") {
-    if ("verdict" in d && Array.isArray(d.results)) return `${d.results.length} match${d.results.length === 1 ? "" : "es"} (${d.verdict})`;
+    if ("verdict" in d && Array.isArray(d.results)) return d.verdict === "none" ? "no match" : d.verdict === "clear" ? `exact match: ${d.results[0].name}` : `${d.results.length} close match${d.results.length === 1 ? "" : "es"}, not exact`;
     if ("total" in d && "shown" in d) return `${d.shown} of ${d.total}`;
     if ("total" in d && Array.isArray(d.groups)) return `total ${d.total}`;
     if ("total" in d) return `${d.total} found`;

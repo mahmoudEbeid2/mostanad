@@ -1490,6 +1490,9 @@ model AssistantMessage {
   page           Json? // the page the user was on: { route, entityType?, entityId? }
   toolCalls      Json?                 @map("tool_calls") // [{ name, args, ok, summary, error, ms, companyId }]
   links          Json? // [{ type, id, name }] entities the answer may link to (seen in tool results)
+  blocks         Json? // [{ type: "table", tool, args, companyId, columns, rows, total, more, nextPage }] — rows the UI shows; the model never types them
+  facts          String?               @db.Text // every string/number its tool results held: what later answers are checked against (grounding.js)
+  grounding      Json? // { blocked, unknown[], firstUnknown[] } when an answer named things no tool returned
   error          String?
   modelId        String?               @map("model_id")
   modelCalls     Int                   @default(0) @map("model_calls")

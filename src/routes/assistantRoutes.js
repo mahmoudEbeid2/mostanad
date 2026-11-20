@@ -19,6 +19,7 @@ router.get("/conversations", c.listConversations);
 router.get("/conversations/:id", validate(s.byId), c.getConversation);
 router.delete("/conversations/:id", validate(s.byId), c.deleteConversation);
 router.post("/conversations/:id/messages", validate(s.message), c.postMessage);
+router.post("/conversations/:id/messages/:messageId/blocks/:blockId/more", validate(s.more), c.loadMore);
 
 router.get("/settings", restrictToPermission("manage_assistant_settings"), c.listSettings);
 router.patch("/settings/:scopeKey", restrictToPermission("manage_assistant_settings"), validate(s.settings), c.updateSettings);

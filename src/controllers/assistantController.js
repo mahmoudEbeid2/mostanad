@@ -81,6 +81,12 @@ export const postMessage = catchAsync(async (req, res) => {
   }
 });
 
+/** "Load more" on a table block: the next page from the same tool, no model call. */
+export const loadMore = catchAsync(async (req, res) => {
+  const data = await assistant.loadMore(actorFrom(req), req.params.id, req.params.messageId, req.params.blockId);
+  res.status(200).json({ status: "success", data });
+});
+
 // ── system admin: the per-company switch and limits ─────────────────────────
 export const listSettings = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await assistant.listSettings() });

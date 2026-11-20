@@ -3,6 +3,9 @@ import AppError from "../../utils/appError.js";
 import { runAgent } from "./agent/agentLoop.js";
 import { geminiGenerate, ASSISTANT_MODEL } from "./agent/geminiTurn.js";
 import { setAiCompany } from "../ai/aiContext.js";
+import { runTool } from "./registry/index.js";
+import { nextRows } from "./agent/blocks.js";
+import { factsOf } from "./agent/grounding.js";
 
 // The assistant's conversations, messages, per-company switch and limits (C0).
 // The actor is the signed-in caller (actorFrom in the controller): a company
@@ -122,7 +125,7 @@ async function loadOwn(actor, id) {
 }
 
 const messageView = (m) => ({
-  id: m.id, role: m.role, text: m.text, companyId: m.companyId, page: m.page, toolCalls: m.toolCalls, links: m.links, error: m.error, modelId: m.modelId,
+  id: m.id, role: m.role, text: m.text, companyId: m.companyId, page: m.page, toolCalls: m.toolCalls, links: m.links, blocks: m.blocks || [], grounding: m.grounding || null, error: m.error, modelId: m.modelId,
   modelCalls: m.modelCalls, tokens: { input: m.inputTokens, cached: m.cachedTokens, output: m.outputTokens, thinking: m.thinkingTokens }, costUsd: m.costUsd === null ? null : Number(m.costUsd), createdAt: m.createdAt,
 });
 
@@ -166,7 +169,9 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
   const scopeKey = scopeKeyOf(actor);
   const pg = pageOf(page);
-  const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true } });
+  const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true, toolCalls: true } });
+  // what later answers are checked against: every tool result of this conversation
+  const earlierFacts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "assistant", facts: { not: null } }, select: { facts: true }, orderBy: { createdAt: "desc" }, take: 30 })).map((m) => m.facts);
   const userMsg = await prisma.assistantMessage.create({ data: { conversationId, role: "user", text: body, scopeKey, companyId: scope, page: pg ?? undefined } });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(conv.title ? {} : { title: body.slice(0, 80) }) } });
 
@@ -179,11 +184,12 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     page: pg,
     companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
     knownRefs: history.flatMap((m) => (Array.isArray(m.links) ? m.links : [])),
+    facts: earlierFacts,
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId: replyId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
   const result = await runAgent({
     text: body,
-    history: history.reverse().map(({ role, text: t }) => ({ role, text: t })),
+    history: history.reverse().map(({ role, text: t, toolCalls }) => ({ role, text: t, toolCalls })),
     ctx,
     generate: generate || geminiGenerate(ledger),
     onEvent,
@@ -202,6 +208,9 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
       companyId: scope,
       toolCalls: result.toolCalls,
       links: result.refs,
+      blocks: result.blocks?.length ? result.blocks : undefined,
+      facts: result.facts || null,
+      grounding: result.grounding ?? undefined,
       error,
       modelId: ASSISTANT_MODEL.id,
       modelCalls: result.modelCalls,
@@ -211,4 +220,33 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
   return { userMessageId: userMsg.id, message: messageView(reply) };
+}
+
+/**
+ * POST …/messages/:messageId/blocks/:blockId/more — the next page of a table block:
+ * the same tool, the same arguments, page = the block's cursor, run as the caller.
+ * No model call. The rows are kept on the message (and become facts later answers
+ * may use). → { block }
+ */
+export async function loadMore(actor, conversationId, messageId, blockId) {
+  await assertEnabled(actor);
+  await loadOwn(actor, conversationId);
+  const msg = UUID.test(String(messageId)) ? await prisma.assistantMessage.findFirst({ where: { id: messageId, conversationId, role: "assistant" } }) : null;
+  const blocks = Array.isArray(msg?.blocks) ? msg.blocks : [];
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new AppError("Table not found!", 404);
+  if (!block.nextPage) return { block };
+  const ctx = {
+    actor,
+    scope: { companyId: actor.kind === "company" ? actor.companyId : block.companyId },
+    companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
+    audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
+  };
+  const result = await runTool(block.tool, { ...block.args, page: block.nextPage }, ctx);
+  if (!result.ok) throw new AppError(result.error || "Couldn't load more rows", result.status === "refused" ? 403 : 400);
+  const next = nextRows(block, result.data);
+  const updated = { ...block, rows: [...block.rows, ...next.rows], more: next.more, nextPage: next.nextPage, total: next.total };
+  const facts = [msg.facts || "", ...factsOf(result.data)].join("\n").slice(0, 200_000);
+  await prisma.assistantMessage.update({ where: { id: messageId }, data: { blocks: blocks.map((b) => (b.id === blockId ? updated : b)), facts } });
+  return { block: updated, added: next.rows.length };
 }

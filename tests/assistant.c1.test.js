@@ -185,7 +185,7 @@ async function main() {
     r = await q([`zinc oxide chelate a${s}`]);
     assert("catalogue text → the linked product, via catalogue, with page", r.results.some((x) => x.productId === A.injected.id && x.via.includes("catalogue") && x.cataloguePage === 3), r);
     r = await q([`Calcium Plus a${s}`]);
-    assert("two close products → ambiguous", r.verdict === "ambiguous" && [A.calc1.id, A.calc2.id].every((id) => r.results.some((x) => x.productId === id)), r);
+    assert("two close products → close", r.verdict === "close" && [A.calc1.id, A.calc2.id].every((id) => r.results.some((x) => x.productId === id)), r);
     r = await q(["completely-unknown-xyz-123"]);
     assert("nothing → none", r.verdict === "none" && !r.results.length);
     r = await q([`nope a${s}`, `VTA-a${s}`]);

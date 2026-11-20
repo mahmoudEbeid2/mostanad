@@ -6,6 +6,7 @@ const scope = z.union([z.string().uuid(), z.literal("all"), z.null()]);
 export const assistantSchemas = {
   create: { body: z.object({ companyId: scope.optional() }).strict() },
   byId: { params: id },
+  more: { params: z.object({ id: z.string().uuid(), messageId: z.string().uuid(), blockId: z.string().uuid() }) },
   message: {
     params: id,
     body: z

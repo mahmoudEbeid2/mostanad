@@ -50,7 +50,7 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
 
     const f = fold(q);
     const rows = await prisma.$queryRaw`
-      SELECT p."id", greatest(similarity(${NAME_SQL}, ${f}), word_similarity(${f}, ${NAME_SQL})) AS "sim",
+      SELECT p."id", ${NAME_SQL} AS "nm", greatest(similarity(${NAME_SQL}, ${f}), word_similarity(${f}, ${NAME_SQL})) AS "sim",
              (${NAME_SQL} LIKE ${"%" + f + "%"}) AS "contains"
       FROM "products" p
       WHERE ${companyId ? Prisma.sql`p."company_id" = ${companyId}` : Prisma.sql`true`}
@@ -59,8 +59,15 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
       LIMIT 20`;
     for (const r of rows) {
       const sim = Number(r.sim) || 0;
-      const score = r.contains ? Math.max(0.8, 0.9 * sim) : 0.9 * sim;
-      if (score >= MIN_TRGM * 0.9) add(r.id, Math.round(score * 1000) / 1000, "name", q);
+      const nm = String(r.nm || "").replace(/\s+/g, " ").trim();
+      if (nm === f) {
+        add(r.id, 0.97, "exact_name", q); // the whole name, folded
+        continue;
+      }
+      // the query as whole words of the name ("Vitaminol" in "Vitaminol 500") is strong; a similar spelling is not
+      const words = ` ${nm} `.includes(` ${f} `);
+      const score = words ? Math.max(0.9, 0.9 * sim) : r.contains ? Math.max(0.6, 0.85 * sim) : 0.85 * sim;
+      if (score >= MIN_TRGM * 0.85) add(r.id, Math.round(score * 1000) / 1000, words ? "name_words" : "name", q);
     }
 
     if (companyId) {
@@ -100,11 +107,21 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
   return { verdict: verdictOf(results), results, notes };
 }
 
-/** One clear match / several close ones / none. */
+const STRONG = ["code", "alias", "exact_name"];
+export const CLEAR_SIMILARITY = 0.9; // a name match must be this strong…
+export const CLEAR_GAP = 0.15; // …and this far ahead of the next one
+
+/**
+ * "clear": one product matched by its exact code, a saved alias or its exact name — or a
+ * name match ≥ CLEAR_SIMILARITY with a CLEAR_GAP to the next. Anything else that matched is
+ * "close": a similar spelling (DOXYVET → MOXYVET) is never presented as the same product.
+ * "none": nothing matched.
+ */
 export function verdictOf(results) {
   if (!results.length) return "none";
   const [a, b] = results;
-  if (a.score >= 0.95 && (!b || b.score < 0.95)) return "clear";
-  if (a.score >= 0.5 && (!b || a.score - b.score >= 0.2)) return "clear";
-  return "ambiguous";
+  const strong = (r) => r && r.via.some((v) => STRONG.includes(v));
+  if (strong(a) && !(strong(b) && b.score >= a.score)) return "clear";
+  if (a.score >= CLEAR_SIMILARITY && (!b || a.score - b.score >= CLEAR_GAP)) return "clear";
+  return "close";
 }
