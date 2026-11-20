@@ -4,6 +4,7 @@ import AppError from "../utils/appError.js";
 import { Queue } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
+import { queueReferenceLabel } from "../services/label/labelUploads.js";
 
 const referenceLabelQueue = new Queue("referenceLabelQueue", { connection: getRedisConfig() });
 const labelGeneratorQueue = new Queue("labelGeneratorQueue", { connection: getRedisConfig() });
@@ -108,52 +109,11 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   let skippedCount = 0;
 
   for (const file of req.files) {
-    // Check if reference label with same name exists
-    const existingLabel = await prisma.referenceLabel.findFirst({
-      where: { name: file.originalname }
-    });
-
-    if (existingLabel) {
-      console.log(`[ReferenceLabelController] Skipping ${file.originalname}, already exists.`);
+    const queued = await queueReferenceLabel({ buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype, country, companyId: finalCompanyId, brandId: finalBrandId, categoryId: finalCategoryId, manualCategoryName });
+    if (queued.skipped) {
       skippedCount++;
       continue;
     }
-
-    // 1. Create a BackgroundTask record
-    const task = await prisma.backgroundTask.create({
-      data: {
-        type: "reference_label_extraction",
-        status: "pending",
-        companyId: finalCompanyId,
-        brandId: finalBrandId,
-      },
-    });
-
-    // 2. Add to Queue
-    await referenceLabelQueue.add(
-      "processReferenceLabel",
-      {
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        fileBufferBase64: file.buffer.toString("base64"),
-        taskId: task.id,
-        companyId: finalCompanyId,
-        brandId: finalBrandId,
-        country: country.trim(),
-        categoryId: finalCategoryId,
-        manualCategoryName: manualCategoryName?.trim() || null,
-      },
-      {
-        jobId: task.id, 
-        removeOnComplete: true,
-        removeOnFail: 100,
-        attempts: 4,
-        backoff: {
-          type: 'exponential',
-          delay: 15000 // 15 seconds initial delay
-        }
-      }
-    );
 
     tasks.push({
       taskId: task.id,

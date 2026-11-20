@@ -1,6 +1,7 @@
 import catchAsync from "../utils/catchAsync.js";
 import { isBypassed } from "../middleware/testBypass.js";
 import * as assistant from "../services/assistant/assistantService.js";
+import * as actions from "../services/assistant/actions.js";
 
 // In-app assistant (C0/C1). The actor is the signed-in caller; everything the
 // assistant reads goes through the registry as that caller.
@@ -53,8 +54,12 @@ export const deleteConversation = catchAsync(async (req, res) => {
  * Errors before the first event (limits, switch, validation) are ordinary JSON errors.
  * The client closing the connection is the stop button: the loop stops before its next step.
  */
-export const postMessage = catchAsync(async (req, res) => {
-  const actor = actorFrom(req);
+export const postMessage = catchAsync(async (req, res) => streamTurn(req, res, (opts) => assistant.sendMessage(actorFrom(req), req.params.id, req.body, opts)));
+
+/** A card finished: the model is told and continues (same stream as a message). */
+export const continueAfterAction = catchAsync(async (req, res) => streamTurn(req, res, (opts) => assistant.continueAfterAction(actorFrom(req), req.params.id, req.params.actionId, opts)));
+
+async function streamTurn(req, res, run) {
   const wantsStream = String(req.headers.accept || "").includes("text/event-stream");
   const ac = new AbortController();
   res.on("close", () => {
@@ -70,7 +75,7 @@ export const postMessage = catchAsync(async (req, res) => {
   const onEvent = wantsStream ? (e) => send(e.type, e) : () => {};
 
   try {
-    const out = await assistant.sendMessage(actor, req.params.id, req.body, { onEvent, signal: ac.signal });
+    const out = await run({ onEvent, signal: ac.signal });
     if (!wantsStream) return res.status(200).json({ status: "success", data: out });
     send("message", out);
     res.end();
@@ -79,6 +84,28 @@ export const postMessage = catchAsync(async (req, res) => {
     send("error", { message: err.message, statusCode: err.statusCode || 500 });
     res.end();
   }
+}
+
+// ── files and confirmation cards (C2) ─────────────────────────────────────────
+export const uploadAttachments = catchAsync(async (req, res) => {
+  const attachments = await assistant.uploadAttachments(actorFrom(req), req.params.id, req.files || [], { companyId: req.body?.companyId });
+  res.status(201).json({ status: "success", data: { attachments } });
+});
+
+export const approveAction = catchAsync(async (req, res) => {
+  await assistant.assertEnabled(actorFrom(req));
+  res.status(200).json({ status: "success", data: { action: await actions.approveAction(actorFrom(req), req.params.actionId) } });
+});
+
+export const cancelAction = catchAsync(async (req, res) => {
+  await assistant.assertEnabled(actorFrom(req));
+  res.status(200).json({ status: "success", data: { action: await actions.cancelAction(actorFrom(req), req.params.actionId) } });
+});
+
+/** A running card's job, from the existing background task (progress, stage, message). */
+export const actionProgress = catchAsync(async (req, res) => {
+  await assistant.assertEnabled(actorFrom(req));
+  res.status(200).json({ status: "success", data: await actions.refreshAction(actorFrom(req), req.params.actionId) });
 });
 
 /** "Load more" / "Show all" (?all=true) on a table block: more pages from the same tool, no model call. */

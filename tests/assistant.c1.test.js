@@ -99,17 +99,24 @@ async function main() {
     const all = registry.allTools();
     assert(`at least 40 tools (${all.length})`, all.length >= 40);
     assert("every tool has a model-facing description, a zod schema and a module", all.every((t) => t.description.length >= 40 && t.args instanceof z.ZodObject && t.module));
-    assert("every C1 tool is read-only", all.every((t) => t.risk === "read"));
+    assert("every tool reads, or is a write with a confirmation preview in one company", all.every((t) => t.risk === "read" || (typeof t.preview === "function" && t.needsCompany)));
     const covered = new Set(all.map((t) => t.module));
     for (const m of ["products", "catalogues", "labels", "regulatory", "certificates", "invoices", "companies", "users", "dashboard", "ai_costs", "reports"]) assert(`module ${m} has tools`, covered.has(m));
     const schemas = all.map((t) => JSON.stringify(registry.argsSchemaFor(t, admin)));
     assert("declarations carry no pattern / $schema / additionalProperties", schemas.every((j) => !/"pattern"|"\$schema"|additionalProperties/.test(j)));
     assert("company sessions are never offered a companyId argument", registry.toolsFor(actorA).every((t) => !("companyId" in (registry.argsSchemaFor(t, actorA).properties || {}))));
 
-    registry.defineTool({ name: "test_delete_products", module: "products", risk: "write", label: "x", description: "TEST ONLY: a write tool, to prove C1 refuses anything that isn't a read.", args: z.object({}), run: async () => { throw new Error("must never run"); } });
-    assert("a write tool is never offered", !registry.toolsFor(admin).some((t) => t.name === "test_delete_products"));
-    const w = await registry.runTool("test_delete_products", {}, ctxFor(admin));
-    assert("a write tool is refused even when the model asks for it", w.status === "refused" && /only read/.test(w.error), w);
+    let forbidden = null;
+    try {
+      registry.defineTool({ name: "test_delete_products", module: "products", risk: "write", label: "x", description: "TEST ONLY: a delete tool, which the chat may never have.", args: z.object({}), preview: async () => ({}), run: async () => { throw new Error("must never run"); } });
+    } catch (e) {
+      forbidden = e;
+    }
+    assert("a delete tool can't even be defined (C2: no chat tool deletes)", /may not/.test(forbidden?.message || ""), forbidden?.message);
+    let ran = 0;
+    registry.defineTool({ name: "test_touch_product", module: "products", risk: "write", label: "x", description: "TEST ONLY: a write tool, to prove a model call never runs it without a card.", args: z.object({}), preview: async () => ({ title: "t" }), run: async () => ++ran });
+    const w = await registry.runTool("test_touch_product", {}, { ...ctxFor(admin, cA.id) });
+    assert("a write tool asked for without a confirmation path is refused and never runs", w.status === "error" && /confirmation/.test(w.error) && ran === 0, w);
 
     const companyNames = registry.toolsFor(actorA).map((t) => t.name);
     for (const n of ["list_companies", "list_users", "list_roles", "get_dashboard_stats", "get_label_review_inbox"]) assert(`company session is not offered ${n}`, !companyNames.includes(n));

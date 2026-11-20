@@ -6,6 +6,8 @@ import { setAiCompany } from "../ai/aiContext.js";
 import { runTool } from "./registry/index.js";
 import { nextRows } from "./agent/blocks.js";
 import { factsOf } from "./agent/grounding.js";
+import { storeAttachments, attachmentView } from "./attachments.js";
+import { proposeAction, actionView, refreshAction, actionEventText } from "./actions.js";
 
 // The assistant's conversations, messages, per-company switch and limits (C0).
 // The actor is the signed-in caller (actorFrom in the controller): a company
@@ -124,15 +126,18 @@ async function loadOwn(actor, id) {
   return c;
 }
 
-const messageView = (m) => ({
-  id: m.id, role: m.role, text: m.text, companyId: m.companyId, page: m.page, toolCalls: m.toolCalls, links: m.links, blocks: m.blocks || [], grounding: m.grounding || null, error: m.error, modelId: m.modelId,
+const messageView = (m, actions = []) => ({
+  id: m.id, role: m.role, text: m.text, attachments: m.attachments || [], actions: actions.filter((a) => a.messageId === m.id).map(actionView), companyId: m.companyId, page: m.page, toolCalls: m.toolCalls, links: m.links, blocks: m.blocks || [], grounding: m.grounding || null, error: m.error, modelId: m.modelId,
   modelCalls: m.modelCalls, tokens: { input: m.inputTokens, cached: m.cachedTokens, output: m.outputTokens, thinking: m.thinkingTokens }, costUsd: m.costUsd === null ? null : Number(m.costUsd), createdAt: m.createdAt,
 });
 
 export async function getConversation(actor, id) {
   const c = await loadOwn(actor, id);
-  const messages = await prisma.assistantMessage.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } });
-  return { ...(await conversationView(c)), messages: messages.map(messageView) };
+  const [messages, actions] = await Promise.all([
+    prisma.assistantMessage.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } }),
+    prisma.assistantAction.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } }),
+  ]);
+  return { ...(await conversationView(c)), messages: messages.map((m) => messageView(m, actions)) };
 }
 
 export async function deleteConversation(actor, id) {
@@ -158,7 +163,19 @@ async function messageCost(conversationId, messageId) {
  * POST /assistant/conversations/:id/messages. onEvent streams progress; signal stops it.
  * deps.generate replaces the model (tests). → the stored assistant message
  */
-export async function sendMessage(actor, conversationId, { text, page, companyId }, { onEvent = () => {}, signal = null, generate = null } = {}) {
+/**
+ * POST …/attachments: files for this conversation, stored in its company (a company
+ * session: its own; a system user: the conversation's picked company — never "All").
+ */
+export async function uploadAttachments(actor, conversationId, files, { companyId } = {}) {
+  await assertEnabled(actor);
+  const conv = await loadOwn(actor, conversationId);
+  let scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
+  if (actor.kind === "user" && scope !== conv.companyId) await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope } });
+  return storeAttachments({ conversationId, companyId: scope, actor, files });
+}
+
+export async function sendMessage(actor, conversationId, { text, page, companyId, attachmentIds = [] }, { onEvent = () => {}, signal = null, generate = null, eventFor = null } = {}) {
   const conv = await loadOwn(actor, conversationId);
   const body = String(text || "").trim();
   if (!body) throw new AppError("Type a message", 400);
@@ -169,11 +186,18 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
   const scopeKey = scopeKeyOf(actor);
   const pg = pageOf(page);
+  // files sent with this message: this conversation's, in this message's company
+  const files = attachmentIds.length ? await prisma.assistantAttachment.findMany({ where: { id: { in: attachmentIds.filter((x) => UUID.test(String(x))) }, conversationId } }) : [];
+  if (files.length !== new Set(attachmentIds).size) throw new AppError("Attachment not found!", 404);
+  if (files.some((a) => a.companyId !== scope)) throw new AppError(scope ? "These files belong to another company than the one picked — attach them again." : "Pick a company first: files belong to one company, not \"All companies\".", 400);
   const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true, toolCalls: true } });
   // what later answers are checked against: every tool result of this conversation
   const earlierFacts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "assistant", facts: { not: null } }, select: { facts: true }, orderBy: { createdAt: "desc" }, take: 30 })).map((m) => m.facts);
-  const userMsg = await prisma.assistantMessage.create({ data: { conversationId, role: "user", text: body, scopeKey, companyId: scope, page: pg ?? undefined } });
-  await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(conv.title ? {} : { title: body.slice(0, 80) }) } });
+  const userMsg = await prisma.assistantMessage.create({ data: { conversationId, role: eventFor ? "event" : "user", text: body, scopeKey, companyId: scope, page: pg ?? undefined, attachments: files.length ? files.map(attachmentView) : undefined } });
+  await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(conv.title || eventFor ? {} : { title: body.slice(0, 80) }) } });
+  // the person's own words: the only source (besides a supplier COA) for lab results and batch facts
+  const userTexts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "user" }, select: { text: true } })).map((m) => m.text);
+  const proposed = [];
 
   setAiCompany(scope); // bill this message's calls to its scope; null = all companies (not body.companyId "all")
   const replyId = crypto.randomUUID();
@@ -185,6 +209,15 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
     knownRefs: history.flatMap((m) => (Array.isArray(m.links) ? m.links : [])),
     facts: earlierFacts,
+    conversationId,
+    userTexts,
+    attachments: files.map(attachmentView),
+    propose: async (p) => {
+      const row = await proposeAction({ conversationId, messageId: replyId, actor, ...p });
+      proposed.push(row);
+      onEvent({ type: "action", action: actionView(row) });
+      return row;
+    },
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId: replyId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
   const result = await runAgent({
@@ -219,7 +252,19 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     },
   });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-  return { userMessageId: userMsg.id, message: messageView(reply) };
+  return { userMessageId: userMsg.id, message: messageView(reply, proposed) };
+}
+
+/**
+ * POST …/actions/:actionId/continue: a card finished (done / failed) → an "event" turn
+ * telling the model the result, so it can say so and offer the next step.
+ */
+export async function continueAfterAction(actor, conversationId, actionId, opts = {}) {
+  const { action } = await refreshAction(actor, actionId);
+  if (action.status === "running" || action.status === "pending") throw new AppError("The action hasn't finished yet.", 409);
+  const row = await prisma.assistantAction.findUnique({ where: { id: actionId }, select: { conversationId: true } });
+  if (row.conversationId !== conversationId) throw new AppError("Action not found!", 404);
+  return sendMessage(actor, conversationId, { text: actionEventText(action), page: null }, { ...opts, eventFor: actionId });
 }
 
 /**

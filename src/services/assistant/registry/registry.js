@@ -10,8 +10,12 @@ import { shapeResult } from "./trim.js";
 //
 // Every call goes through runTool, which is where the rules live — not in the
 // tools and not in the prompt:
-//   - risk: only ALLOWED_RISKS run (C1 = read). The model asking for any other
-//     tool, or a tool that isn't offered to this caller, is refused.
+//   - risk: a read tool runs. A write / sensitive tool (C2) NEVER runs from a model
+//     call: it only proposes a confirmation card (ctx.propose); executeApproved runs
+//     it, with the card's stored args, after the person pressed Run. The model asking
+//     for a tool that isn't offered to this caller is refused.
+//   - what the chat can never do: no tool may finalize, delete, activate, apply a
+//     catalogue diff or change users / roles / companies (defineTool refuses one).
 //   - permissions: the same rule restrictToPermission applies (company session:
 //     the module allowlist; system user: role permissions).
 //   - company: a company session always runs against its own company — a
@@ -22,7 +26,10 @@ import { shapeResult } from "./trim.js";
 
 export const RISKS = ["read", "write", "sensitive"];
 /** C1: read-only. Write tools come in C2. */
-export const ALLOWED_RISKS = ["read"];
+/** C2: reads run; writes and sensitive tools only through an approved confirmation card. */
+export const ALLOWED_RISKS = ["read", "write", "sensitive"];
+/** Never available from the chat — not even behind a card. */
+export const FORBIDDEN_ACTIONS = /finali[sz]|delete|remove|archive|activate|apply|revoke|approve|(^|_)(users?|roles?|compan(y|ies)|permissions?|settings|plans?|subscriptions?)(_|$)/;
 
 const tools = new Map();
 
@@ -40,7 +47,12 @@ export function defineTool(def) {
   if (!(def.args instanceof z.ZodObject)) throw new Error(`Tool "${def.name}": args must be a zod object`);
   if ("companyId" in def.args.shape) throw new Error(`Tool "${def.name}": companyId is added by the registry, don't declare it`);
   if (typeof def.run !== "function") throw new Error(`Tool "${def.name}" has no run()`);
-  const tool = { permissions: [], systemOnly: false, companyArg: true, needsCompany: false, core: false, ...def };
+  if (def.risk !== "read") {
+    if (FORBIDDEN_ACTIONS.test(def.name)) throw new Error(`Tool "${def.name}": the chat may not ${def.name.replace(/_/g, " ")} — no such action is offered, even with confirmation`);
+    if (typeof def.preview !== "function") throw new Error(`Write tool "${def.name}" needs a preview() for its confirmation card`);
+  }
+  // every write runs in one explicit company: "All companies" is read-only
+  const tool = { permissions: [], systemOnly: false, companyArg: true, needsCompany: false, core: false, ...def, ...(def.risk !== "read" ? { needsCompany: true } : {}) };
   tools.set(def.name, Object.freeze(tool));
   return tool;
 }
@@ -129,9 +141,22 @@ export async function runTool(name, rawArgs, ctx) {
   try {
     companyId = await resolveCompany(tool, args, ctx);
     delete args.companyId;
-    const parsed = tool.args.safeParse(args);
-    if (!parsed.success) throw new ToolError(`Invalid arguments: ${parsed.error.issues.map((i) => `${i.path.join(".") || "args"}: ${i.message}`).join("; ")}`, "invalid_args");
-    const data = await withTimeout(Promise.resolve(tool.run(parsed.data, { actor: ctx.actor, companyId, page: ctx.page || null, isSystem: ctx.actor.kind === "user" })), TOOL_TIMEOUT_MS, name);
+    const parsed = parseArgs(tool, args);
+    const tctx = toolCtx(ctx, companyId);
+    if (tool.risk !== "read") {
+      // a change: never run here — a card the person must approve, with exactly these args
+      if (typeof ctx.propose !== "function") throw new ToolError(`${name} changes data and needs your confirmation, which isn't available here.`, "no_confirmation");
+      if (tool.guard) await tool.guard(parsed, tctx);
+      const preview = await withTimeout(Promise.resolve(tool.preview(parsed, tctx)), TOOL_TIMEOUT_MS, name);
+      const card = await ctx.propose({ tool: name, args: parsed, companyId, preview });
+      return finish({
+        ok: true,
+        status: "needs_confirmation",
+        data: { actionId: card.id, title: preview.title, summary: preview.summary, details: preview.details, aiCalls: preview.aiCalls, missing: preview.missing, needsConfirmation: true, note: "Shown to the user as a confirmation card. NOTHING has happened yet: it runs only if they press the button. Don't say it was done; tell them what the card will do." },
+        companyId,
+      });
+    }
+    const data = await withTimeout(Promise.resolve(tool.run(parsed, tctx)), TOOL_TIMEOUT_MS, name);
     return finish({ ok: true, status: "ok", data: shapeResult(data), companyId });
   } catch (err) {
     // a service's 404 for another tenant's id reads the same as one that doesn't exist
@@ -150,4 +175,39 @@ const REFUSALS = {
 function messageOf(err) {
   const msg = err?.message || String(err);
   return msg.length > 400 ? `${msg.slice(0, 400)}…` : msg;
+}
+
+function parseArgs(tool, args) {
+  const parsed = tool.args.safeParse(args);
+  if (!parsed.success) throw new ToolError(`Invalid arguments: ${parsed.error.issues.map((i) => `${i.path.join(".") || "args"}: ${i.message}`).join("; ")}`, "invalid_args");
+  return parsed.data;
+}
+
+/** What run / preview / guard see: the caller, the one company, the conversation, the user's own words. */
+const toolCtx = (ctx, companyId) => ({
+  actor: ctx.actor,
+  companyId,
+  page: ctx.page || null,
+  isSystem: ctx.actor.kind === "user",
+  conversationId: ctx.conversationId || null,
+  userTexts: ctx.userTexts || [],
+});
+
+/**
+ * Runs an approved card's tool with exactly its stored args, in its company, as the
+ * person who approved it. Only the action service calls this, after checking the
+ * card (owner, status, expiry, args hash). Permissions are checked again here:
+ * a role changed after the card was shown still counts.
+ */
+export async function executeApproved(name, args, ctx) {
+  const tool = getTool(name);
+  if (!tool || tool.risk === "read") throw new ToolError(`${name} is not an action`, "not_an_action");
+  const refusal = refusalFor(tool, ctx.actor);
+  if (refusal) throw new ToolError(REFUSALS[refusal](name), refusal);
+  if (!ctx.companyId) throw new ToolError("An action runs in one company", "company_required");
+  if (ctx.actor.kind === "company" && ctx.companyId !== ctx.actor.companyId) throw new ToolError("Company not found!", "company_not_found");
+  const parsed = parseArgs(tool, args);
+  const tctx = toolCtx(ctx, ctx.companyId);
+  if (tool.guard) await tool.guard(parsed, tctx);
+  return shapeResult(await withTimeout(Promise.resolve(tool.run(parsed, tctx)), Number(process.env.ASSISTANT_ACTION_TIMEOUT_MS) || 120_000, name));
 }

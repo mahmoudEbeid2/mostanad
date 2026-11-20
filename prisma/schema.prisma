@@ -1472,8 +1472,10 @@ model AssistantConversation {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  messages  AssistantMessage[]
-  toolCalls AssistantToolCall[]
+  messages    AssistantMessage[]
+  toolCalls   AssistantToolCall[]
+  attachments AssistantAttachment[]
+  actions     AssistantAction[]
 
   @@index([ownerType, ownerId, updatedAt])
   @@map("assistant_conversations")
@@ -1483,8 +1485,9 @@ model AssistantMessage {
   id             String                @id @default(uuid())
   conversationId String                @map("conversation_id")
   conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String // user | assistant
+  role           String // user | assistant | event (an action finished: what the model is told, shown as a line)
   text           String                @db.Text
+  attachments    Json? // [{ id, name, mimeType, sizeBytes }] files sent with a user message
   scopeKey       String                @map("scope_key") // whose limits it counts against: "system" | the caller's company id
   companyId      String?               @map("company_id") // the scope it ran against (null = all companies)
   page           Json? // the page the user was on: { route, entityType?, entityId? }
@@ -1542,4 +1545,58 @@ model AssistantSetting {
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@map("assistant_settings")
+}
+
+// A file sent in the assistant chat. Stored like every other upload (fileStore,
+// uploads/certificates/{companyId}/…) in the conversation's company — never
+// "All companies". Tools take its id; the model never gets the bytes.
+model AssistantAttachment {
+  id             String                @id @default(uuid())
+  conversationId String                @map("conversation_id")
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  companyId      String                @map("company_id")
+  ownerType      String                @map("owner_type")
+  ownerId        String                @map("owner_id")
+  fileId         String                @map("file_id") // stored_files.id
+  name           String
+  mimeType       String                @map("mime_type")
+  sizeBytes      Int                   @map("size_bytes")
+  pages          Int? // PDFs
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([conversationId])
+  @@index([companyId])
+  @@map("assistant_attachments")
+}
+
+// A change the assistant proposed (C2): a confirmation card. It runs only when the
+// person approves it, with exactly the stored args (argsHash is checked at Run),
+// within 15 minutes. Audit: who asked, the card, who approved or cancelled and
+// when, the result.
+model AssistantAction {
+  id             String                @id @default(uuid())
+  conversationId String                @map("conversation_id")
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?               @map("message_id") // the assistant message that showed it
+  ownerType      String                @map("owner_type") // who asked
+  ownerId        String                @map("owner_id")
+  companyId      String                @map("company_id") // one explicit company, always
+  tool           String
+  args           Json // exactly what Run executes
+  argsHash       String                @map("args_hash") // sha256 of tool + company + canonical args
+  preview        Json // the card: { title, summary, details: [{ label, value }], aiCalls, missing[], runLabel }
+  status         String                @default("pending") // pending | running | done | failed | cancelled | expired
+  expiresAt      DateTime              @map("expires_at")
+  decidedByType  String?               @map("decided_by_type")
+  decidedById    String?               @map("decided_by_id")
+  decidedAt      DateTime?             @map("decided_at")
+  taskId         String?               @map("task_id") // a long job's background task
+  result         Json?
+  error          String?
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  @@index([conversationId, createdAt])
+  @@index([ownerType, ownerId, createdAt])
+  @@map("assistant_actions")
 }

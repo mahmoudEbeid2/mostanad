@@ -23,33 +23,14 @@ export const verifyLabel = catchAsync(async (req, res, next) => {
 
   const companyId = req.company ? req.company.id : (req.query.companyId || req.body.companyId || null);
 
-  // 1. Save uploaded file to temp storage
-  const filePath = saveTempFile(req.file.buffer, req.file.originalname);
-
-  // 2. Create BackgroundTask in DB
-  const task = await prisma.backgroundTask.create({
-    data: {
-      type: "label_verification",
-      status: "pending",
-      companyId: companyId,
-    },
-  });
-
-  // 3. Queue the job in BullMQ
-  await addLabelJob(task.id, {
-    filePath,
-    fileName: req.file.originalname,
-    mimeType: req.file.mimetype,
-    country,
-    companyId,
-  });
+  const { taskId } = await startLabelVerification({ buffer: req.file.buffer, originalName: req.file.originalname, mimeType: req.file.mimetype, country, companyId });
 
   // 4. Return 202 Accepted immediately
   res.status(202).json({
     status: "accepted",
     message: "Label verification has been accepted and is processing in the background.",
     data: {
-      jobId: task.id,
+      jobId: taskId,
     },
   });
 });

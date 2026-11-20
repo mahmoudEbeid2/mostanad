@@ -81,7 +81,9 @@ function userTurn(text, ctx) {
   const who = ctx.actor.kind === "company" ? `a company user of "${ctx.actor.name}" (sees only this company)` : `system user ${ctx.actor.name || ctx.actor.id}`;
   const scope = ctx.actor.kind === "company" ? ctx.actor.name : ctx.scope?.companyId ? `${ctx.scope.companyName || "company"} (id ${ctx.scope.companyId})` : "All companies";
   const page = ctx.page?.entityType ? `${ctx.page.entityType} ${ctx.page.entityId}` : ctx.page?.route || "none";
-  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}\n\n${text}`;
+  // attached files are named by id for the tools — the model never gets their bytes
+  const files = (ctx.attachments || []).map((a) => `[attached: ${a.id} · ${a.name} · ${a.mimeType} · ${Math.round(a.sizeBytes / 1024)} KB${a.pages ? ` · ${a.pages} pages` : ""}]`).join("\n");
+  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}${files ? `\n${files}` : ""}\n\n${text}`;
 }
 
 const sumUsage = (acc, u = {}) => ({
@@ -99,7 +101,7 @@ const sumUsage = (acc, u = {}) => ({
 export async function runAgent({ text, history = [], ctx, generate, onEvent = () => {}, signal = null, limits = {} }) {
   const lim = { ...LIMITS, ...limits };
   const available = allModules().filter((m) => toolsFor(ctx.actor, { modules: [m] }).some((t) => t.module === m && !t.core));
-  let chosen = selectModules(text, ctx.page).filter((m) => available.includes(m));
+  let chosen = selectModules(text, ctx.page, { files: (ctx.attachments || []).length > 0 }).filter((m) => available.includes(m));
   const offeredTools = () => toolsFor(ctx.actor, { modules: chosen });
   const declarations = () => [...describeTools(offeredTools(), ctx.actor).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(available.length ? [loadToolsDecl(available)] : [])];
 
@@ -112,7 +114,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   let usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0, thinkingTokens: 0 };
   let modelCalls = 0;
   const blocks = new Map(); // tool name → the latest table block of this turn
-  const turnFacts = [];
+  const turnFacts = factsOf([ctx.attachments || [], ctx.scope?.companyName || null]); // the files and the company the person is working in may be named
   let retried = null; // the unknown names of a first, blocked answer
   const facts = () => turnFacts.join("\n").slice(0, lim.maxFactsChars);
   const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...extra });
@@ -193,6 +195,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
 /** A short line about a tool result, for the chips in the UI and the stored message. */
 export function summarize(result) {
   if (!result.ok) return result.error;
+  if (result.status === "needs_confirmation") return "waiting for your OK";
   const d = result.data;
   if (d && typeof d === "object") {
     if ("verdict" in d && Array.isArray(d.results)) return d.verdict === "none" ? "no match" : d.verdict === "exact" ? (d.several ? `${d.results.filter((r) => r.via.some((v) => ["code", "alias", "exact_name"].includes(v))).length} exact matches` : `exact match: ${d.results[0].name}`) : `${d.results.length} close match${d.results.length === 1 ? "" : "es"}, not exact`;
