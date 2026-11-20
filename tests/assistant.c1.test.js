@@ -275,6 +275,37 @@ async function main() {
     assert("model calls per day enforced (429)", limited?.statusCode === 429 && /AI calls/.test(limited.message), limited?.message);
     await assistant.updateSettings(cA.id, { modelCallsPerDay: 1000 });
 
+    // ── 5b. the ledger row of a model call (SDK stubbed in-process: nothing is sent) ──
+    console.log("\nAI cost ledger");
+    const { default: geminiClient } = await import("../src/services/ai/geminiClient.js");
+    const { __setLedgerWriteForTests } = await import("../src/services/ai/aiLedger.js");
+    const { withAiContext, setAiCompany } = await import("../src/services/ai/aiContext.js");
+    const { geminiGenerate } = await import("../src/services/assistant/agent/geminiTurn.js");
+    const rows = [];
+    const realAi = geminiClient._ai;
+    __setLedgerWriteForTests(async (d) => rows.push(d));
+    geminiClient._ai = { models: { generateContent: async () => ({ candidates: [{ content: { role: "model", parts: [{ text: "hi" }] } }], usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 5 } }) } };
+    process.env.GEMINI_DISABLED = "false";
+    try {
+      const turn = { systemInstruction: "s", contents: [{ role: "user", parts: [{ text: "x" }] }], tools: [], mode: "AUTO" };
+      // a system user's "All companies" arrives as body.companyId "all", which protect copied into the context
+      await withAiContext({ companyId: "all", userId: "req-user" }, () => {
+        setAiCompany(null);
+        return geminiGenerate({ userId: admin.id, entityId: "conv-all", meta: { messageId: "m-all" } })(turn);
+      });
+      await withAiContext({ companyId: "all" }, () => {
+        setAiCompany(cA.id);
+        return geminiGenerate({ companyId: cA.id, entityId: "conv-a", meta: { messageId: "m-a" } })(turn);
+      });
+    } finally {
+      process.env.GEMINI_DISABLED = "true";
+      geminiClient._ai = realAi;
+      __setLedgerWriteForTests(null);
+    }
+    assert("every model call is a ledger row tagged assistant.chat + the conversation", rows.length === 2 && rows.every((r) => r.feature === "assistant.chat" && r.entityType === "assistant_conversation") && rows[0].entityId === "conv-all" && rows[0].meta?.messageId === "m-all", rows);
+    assert("All companies bills to no company (never \"all\")", rows[0].companyId === null && rows[0].userId === admin.id, rows[0]);
+    assert("a company scope bills to that company", rows[1].companyId === cA.id, rows[1]);
+
     // ── 6. API ──────────────────────────────────────────────────────────────
     console.log("\nAPI");
     const hA = asCompany(cA.id);

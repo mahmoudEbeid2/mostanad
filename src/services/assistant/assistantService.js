@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
 import { runAgent } from "./agent/agentLoop.js";
 import { geminiGenerate, ASSISTANT_MODEL } from "./agent/geminiTurn.js";
+import { setAiCompany } from "../ai/aiContext.js";
 
 // The assistant's conversations, messages, per-company switch and limits (C0).
 // The actor is the signed-in caller (actorFrom in the controller): a company
@@ -169,6 +170,7 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const userMsg = await prisma.assistantMessage.create({ data: { conversationId, role: "user", text: body, scopeKey, companyId: scope, page: pg ?? undefined } });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(conv.title ? {} : { title: body.slice(0, 80) }) } });
 
+  setAiCompany(scope); // bill this message's calls to its scope; null = all companies (not body.companyId "all")
   const replyId = crypto.randomUUID();
   const ledger = { companyId: scope, userId: actor.kind === "user" ? actor.id : null, entityId: conversationId, meta: { messageId: replyId } };
   const ctx = {

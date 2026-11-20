@@ -44,6 +44,18 @@ export function assignAiContext(ctx) {
   if (store) Object.assign(store, pick(ctx));
 }
 
+/**
+ * Sets the company the current context bills to — or, with null, clears it
+ * (a system user's "All companies": the request body's companyId "all" that
+ * protect copied in is not a company). No-op outside a context.
+ */
+export function setAiCompany(companyId) {
+  const store = als.getStore();
+  if (!store) return;
+  if (companyId) store.companyId = companyId;
+  else delete store.companyId;
+}
+
 /** The current context merged with a call site's own values. */
 export function currentAiContext(overrides = {}) {
   return { ...(als.getStore() || {}), ...pick(overrides) };
