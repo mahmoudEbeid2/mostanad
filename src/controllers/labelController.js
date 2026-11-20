@@ -1,8 +1,7 @@
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../utils/appError.js";
 import { prisma } from "../lib/prisma.js";
-import { saveTempFile } from "../utils/fileHelper.js";
-import { addLabelJob } from "../lib/queue.js";
+import { startLabelVerification } from "../services/label/labelUploads.js";
 
 /**
  * POST /products/verify-label
