@@ -228,7 +228,9 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
  * No model call. The rows are kept on the message (and become facts later answers
  * may use). → { block }
  */
-export async function loadMore(actor, conversationId, messageId, blockId) {
+export const SHOW_ALL_MAX = 200;
+
+export async function loadMore(actor, conversationId, messageId, blockId, { all = false } = {}) {
   await assertEnabled(actor);
   await loadOwn(actor, conversationId);
   const msg = UUID.test(String(messageId)) ? await prisma.assistantMessage.findFirst({ where: { id: messageId, conversationId, role: "assistant" } }) : null;
@@ -242,11 +244,18 @@ export async function loadMore(actor, conversationId, messageId, blockId) {
     companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
-  const result = await runTool(block.tool, { ...block.args, page: block.nextPage }, ctx);
-  if (!result.ok) throw new AppError(result.error || "Couldn't load more rows", result.status === "refused" ? 403 : 400);
-  const next = nextRows(block, result.data);
-  const updated = { ...block, rows: [...block.rows, ...next.rows], more: next.more, nextPage: next.nextPage, total: next.total };
-  const facts = [msg.facts || "", ...factsOf(result.data)].join("\n").slice(0, 200_000);
+  if (all && (block.total ?? 0) > SHOW_ALL_MAX) throw new AppError(`Show all is for up to ${SHOW_ALL_MAX} rows (this list has ${block.total}) — use Load more`, 400);
+  let updated = block;
+  const newFacts = [];
+  // "Show all": the same tool, page after page, until the cursor runs out (≤ SHOW_ALL_MAX rows)
+  do {
+    const result = await runTool(block.tool, { ...block.args, page: updated.nextPage }, ctx);
+    if (!result.ok) throw new AppError(result.error || "Couldn't load more rows", result.status === "refused" ? 403 : 400);
+    const next = nextRows(updated, result.data);
+    updated = { ...updated, rows: [...updated.rows, ...next.rows], more: next.more, nextPage: next.nextPage, total: next.total };
+    newFacts.push(...factsOf(result.data));
+  } while (all && updated.nextPage && updated.rows.length < SHOW_ALL_MAX);
+  const facts = [msg.facts || "", ...newFacts].join("\n").slice(0, 200_000);
   await prisma.assistantMessage.update({ where: { id: messageId }, data: { blocks: blocks.map((b) => (b.id === blockId ? updated : b)), facts } });
-  return { block: updated, added: next.rows.length };
+  return { block: updated, added: updated.rows.length - block.rows.length };
 }

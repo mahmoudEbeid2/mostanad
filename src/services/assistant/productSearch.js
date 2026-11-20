@@ -23,10 +23,16 @@ const TASHKEEL = "[ً-ْ]"; // short-vowel marks
 const fold = (s) => [...String(s || "").toLowerCase()].map((c) => (FOLD_FROM.includes(c) ? FOLD_TO[FOLD_FROM.indexOf(c)] : c)).join("").replace(new RegExp(TASHKEEL, "g"), "").replace(/\s+/g, " ").trim();
 const NAME_SQL = Prisma.sql`regexp_replace(translate(lower(p."name"), ${FOLD_FROM}, ${FOLD_TO}), ${TASHKEEL}, '', 'g')`;
 
+// case-, space- and Arabic-spelling-insensitive: "AD3E +CK" = "ad3e+ck", "DOXYCOLINE - L" = "doxycoline-l"
+const keyOf = (s) => fold(s).replace(/\s+/g, "");
+const KEY_SQL = (col) => Prisma.sql`regexp_replace(${col}, '[[:space:]]+', '', 'g')`;
+// a name like "DCP 18%" must not turn into a LIKE wildcard
+const likeEscape = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 const companyWhere = (companyId) => (companyId ? { companyId } : {});
 
 /**
- * → { verdict: "clear"|"ambiguous"|"none", results: [{ productId, name, productCode, brand, company?, score, via[], matchedQuery, snippet? }], notes[] }
+ * → { verdict: "exact"|"close"|"none", several?: true, results: [{ productId, name, productCode, brand, company?, score, via[], matchedQuery, snippet? }], notes[] }
  */
 export async function searchProductsForAssistant({ companyId = null, queries = [], limit = TOP }) {
   const terms = [...new Set(queries.map((q) => String(q || "").trim()).filter((q) => q.length >= 2))].slice(0, 6);
@@ -42,28 +48,33 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
   };
 
   for (const q of terms) {
-    const codes = await prisma.product.findMany({ where: { ...companyWhere(companyId), productCode: { equals: q, mode: "insensitive" } }, select: { id: true } });
-    for (const p of codes) add(p.id, 1, "code", q);
+    const scope = companyId ? Prisma.sql`p."company_id" = ${companyId}` : Prisma.sql`true`;
+    const key = keyOf(q);
+    // exact code or exact full name always wins (case-, space- and Arabic-spelling-insensitive),
+    // over the same products — same scope, no filters — the list tool shows
+    const exact = await prisma.$queryRaw`
+      SELECT p."id", (${KEY_SQL(Prisma.sql`lower(coalesce(p."product_code", ''))`)} = ${key}) AS "byCode"
+      FROM "products" p
+      WHERE ${scope} AND (${KEY_SQL(Prisma.sql`lower(coalesce(p."product_code", ''))`)} = ${key} OR ${KEY_SQL(NAME_SQL)} = ${key})`;
+    for (const r of exact) add(r.id, 1, r.byCode ? "code" : "exact_name", q);
 
     const aliases = await prisma.productAlias.findMany({ where: { ...companyWhere(companyId), aliasNorm: normalizeName(q) }, select: { productId: true } });
     for (const a of aliases) add(a.productId, 0.95, "alias", q);
 
     const f = fold(q);
+    const like = `%${likeEscape(f)}%`;
     const rows = await prisma.$queryRaw`
       SELECT p."id", ${NAME_SQL} AS "nm", greatest(similarity(${NAME_SQL}, ${f}), word_similarity(${f}, ${NAME_SQL})) AS "sim",
-             (${NAME_SQL} LIKE ${"%" + f + "%"}) AS "contains"
+             (${NAME_SQL} LIKE ${like}) AS "contains"
       FROM "products" p
-      WHERE ${companyId ? Prisma.sql`p."company_id" = ${companyId}` : Prisma.sql`true`}
-        AND (${NAME_SQL} % ${f} OR ${f} <% ${NAME_SQL} OR ${NAME_SQL} LIKE ${"%" + f + "%"})
-      ORDER BY 2 DESC
+      WHERE ${scope}
+        AND (${NAME_SQL} % ${f} OR ${f} <% ${NAME_SQL} OR ${NAME_SQL} LIKE ${like})
+      ORDER BY 3 DESC
       LIMIT 20`;
     for (const r of rows) {
       const sim = Number(r.sim) || 0;
       const nm = String(r.nm || "").replace(/\s+/g, " ").trim();
-      if (nm === f) {
-        add(r.id, 0.97, "exact_name", q); // the whole name, folded
-        continue;
-      }
+      if (hits.get(r.id)?.via.has("exact_name") || hits.get(r.id)?.via.has("code")) continue;
       // the query as whole words of the name ("Vitaminol" in "Vitaminol 500") is strong; a similar spelling is not
       const words = ` ${nm} `.includes(` ${f} `);
       const score = words ? Math.max(0.9, 0.9 * sim) : r.contains ? Math.max(0.6, 0.85 * sim) : 0.85 * sim;
@@ -104,24 +115,21 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
         ref: { type: "product", id, name: p.name },
       };
     });
-  return { verdict: verdictOf(results), results, notes };
+  return { verdict: verdictOf(results), ...(severalExact(results) ? { several: true } : {}), results, notes };
 }
 
 const STRONG = ["code", "alias", "exact_name"];
-export const CLEAR_SIMILARITY = 0.9; // a name match must be this strong…
-export const CLEAR_GAP = 0.15; // …and this far ahead of the next one
 
 /**
- * "clear": one product matched by its exact code, a saved alias or its exact name — or a
- * name match ≥ CLEAR_SIMILARITY with a CLEAR_GAP to the next. Anything else that matched is
- * "close": a similar spelling (DOXYVET → MOXYVET) is never presented as the same product.
+ * "exact": matched by its exact code, a saved alias or its exact full name (case-,
+ * space- and Arabic-spelling-insensitive). Anything else that matched is "close": a
+ * similar spelling (DOXYVET → MOXYVET) is never presented as the product asked for.
  * "none": nothing matched.
  */
 export function verdictOf(results) {
   if (!results.length) return "none";
-  const [a, b] = results;
-  const strong = (r) => r && r.via.some((v) => STRONG.includes(v));
-  if (strong(a) && !(strong(b) && b.score >= a.score)) return "clear";
-  if (a.score >= CLEAR_SIMILARITY && (!b || a.score - b.score >= CLEAR_GAP)) return "clear";
-  return "close";
+  return results[0].via.some((v) => STRONG.includes(v)) ? "exact" : "close";
 }
+
+/** Several products match exactly (the same name in two companies, a code printed twice): ask which. */
+export const severalExact = (results) => results.filter((r) => r.via.some((v) => STRONG.includes(v))).length > 1;

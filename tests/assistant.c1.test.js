@@ -175,9 +175,9 @@ async function main() {
     console.log("\nProduct search");
     const q = (queries) => searchProductsForAssistant({ companyId: cA.id, queries });
     let r = await q([`vta-a${s}`]);
-    assert("exact code (any case) → clear, via code", r.verdict === "clear" && r.results[0].productId === A.product.id && r.results[0].via.includes("code"), r);
+    assert("exact code (any case) → exact, via code", r.verdict === "exact" && r.results[0].productId === A.product.id && r.results[0].via.includes("code"), r);
     r = await q([`فيتا خاص a${s}`]);
-    assert("Arabic saved alias → clear, via alias", r.verdict === "clear" && r.results[0].productId === A.arabic.id && r.results[0].via.includes("alias"), r);
+    assert("Arabic saved alias → exact, via alias", r.verdict === "exact" && r.results[0].productId === A.arabic.id && r.results[0].via.includes("alias"), r);
     r = await q([`Vitaminl 50 a${s}`]);
     assert("misspelling → the right product first", r.results[0]?.productId === A.product.id, r);
     r = await q([`فتامينول a${s}`]);

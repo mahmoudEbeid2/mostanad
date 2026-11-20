@@ -3,6 +3,7 @@ import { makeAssert, createCompany } from "./certificates-v2/helpers.js";
 import * as assistant from "../src/services/assistant/assistantService.js";
 import { entityCandidates, checkGrounding, corpusOf, stripTypedLists, numberCandidates } from "../src/services/assistant/agent/grounding.js";
 import { searchProductsForAssistant } from "../src/services/assistant/productSearch.js";
+import { runTool } from "../src/services/assistant/registry/index.js";
 import { countEntities, periodRange } from "../src/services/assistant/reads.js";
 
 // Item 1 of the C2 brief: the assistant invented 25 products ("اعرض الباقي" with no tool
@@ -88,6 +89,8 @@ async function main() {
       denied = e;
     }
     assert("someone else can't load more of my table (404)", denied?.statusCode === 404);
+    const all = await assistant.loadMore(admin, conv.id, r2.message.id, r2.message.blocks[0].id, { all: true });
+    assert("Show all fetches every remaining page with the cursor", all.block.rows.length === 61 - 25 && all.block.nextPage === null && all.block.rows.at(-1).ref.id === dbOrder[60].id, all.block.rows.length);
 
     // ── grounding units ──────────────────────────────────────────────────────
     console.log("\nGrounding check");
@@ -102,13 +105,53 @@ async function main() {
     // ── search labels ────────────────────────────────────────────────────────
     console.log("\nSearch labels");
     let r = await searchProductsForAssistant({ companyId: co.id, queries: ["DOXYVET"] });
-    assert("DOXYVET → MOXYVET is 'close', never 'clear'", r.verdict === "close" && r.results[0]?.productId === moxy.id, r);
+    assert("DOXYVET → MOXYVET is 'close', never 'exact'", r.verdict === "close" && r.results[0]?.productId === moxy.id, r);
     r = await searchProductsForAssistant({ companyId: co.id, queries: ["moxyvet"] });
-    assert("the exact name → clear", r.verdict === "clear" && r.results[0].via.includes("exact_name"), r);
+    assert("the exact name → exact", r.verdict === "exact" && r.results[0].via.includes("exact_name"), r);
     r = await searchProductsForAssistant({ companyId: co.id, queries: [`mx-${s}`] });
-    assert("the exact code → clear", r.verdict === "clear");
+    assert("the exact code → exact", r.verdict === "exact");
+    r = await searchProductsForAssistant({ companyId: co.id, queries: ["completely-unknown-qq"] });
+    assert("nothing → none", r.verdict === "none");
+    const doxy = await prisma.product.create({ data: { companyId: other.id, name: "DOXYVET", createdAt: new Date("2026-01-01T00:00:00Z") } });
+    await prisma.product.create({ data: { companyId: other.id, name: "MOXYVET", createdAt: new Date("2026-01-01T00:00:00Z") } });
+    r = await searchProductsForAssistant({ companyId: other.id, queries: ["DOXYVET"] });
+    assert("…and where DOXYVET exists it comes back exact, not MOXYVET", r.verdict === "exact" && r.results[0].productId === doxy.id, r);
+
+    // every product the list tool shows is found by its exact name and code
+    console.log("\nEvery listed product is findable (exact name and code)");
+    const tricky = ["AD3E +CK", "FLOVET+", "FLOVET 10", "DCP 18%", "DOXYCOLINE - L", "SULFAVET-480", "VITA-C MAX 100%", "L-LYSINE HCL 98.5%", "B-COMPLEX", "VET PLUS", "UNI-CHOL 60%", "فيتامينول", "under_score"];
+    for (const [i, name] of tricky.entries()) await prisma.product.create({ data: { companyId: co.id, name: `${name} ${s}`, productCode: `T${i}-${name.replace(/\s/g, "").slice(0, 6)}-${s}` } });
+    const vetline = await prisma.company.findFirst({ where: { products: { some: {} }, NOT: { id: { in: [co.id, other.id] } } }, orderBy: { products: { _count: "desc" } } });
+    const listAll = async (actor, scopeId) => {
+      const rows = [];
+      for (let page = 1; page < 50; page++) {
+        const res = await runTool("list_products", { sort: "name", limit: 25, page }, { actor, scope: { companyId: scopeId }, companyExists: async () => true });
+        rows.push(...res.data.items);
+        if (!res.data.nextPage) break;
+      }
+      return rows;
+    };
+    for (const [label, actor, scopeId] of [
+      ["admin, All companies", admin, null],
+      ["a company user", { kind: "company", id: co.id, name: co.name, companyId: co.id }, co.id],
+      ...(vetline ? [[`${vetline.name} (real local data) as its company`, { kind: "company", id: vetline.id, name: vetline.name, companyId: vetline.id }, vetline.id]] : []),
+    ]) {
+      const listed = await listAll(actor, scopeId);
+      const missed = [];
+      for (const row of listed) {
+        const byName = await searchProductsForAssistant({ companyId: scopeId, queries: [row.name] });
+        if (byName.verdict !== "exact" || !byName.results.some((x) => x.productId === row.id && x.via.includes("exact_name"))) missed.push(`name:${row.name}`);
+        const spaced = await searchProductsForAssistant({ companyId: scopeId, queries: [row.name.toLowerCase().replace(/\s+/g, "")] });
+        if (!spaced.results.some((x) => x.productId === row.id && x.via.includes("exact_name"))) missed.push(`nospace:${row.name}`);
+        if (row.productCode) {
+          const byCode = await searchProductsForAssistant({ companyId: scopeId, queries: [` ${row.productCode.toLowerCase()} `] });
+          if (!byCode.results.some((x) => x.productId === row.id && x.via.includes("code"))) missed.push(`code:${row.productCode}`);
+        }
+      }
+      assert(`${label}: all ${listed.length} listed products found exactly by name (any case, no spaces) and code`, listed.length > 0 && missed.length === 0, missed.slice(0, 10));
+    }
     r = await searchProductsForAssistant({ companyId: co.id, queries: [`Prod 0 ${s}`] });
-    assert("several similar names → close", r.verdict === "close" && r.results.length > 1);
+    assert("several similar names → close, with every candidate", r.verdict === "close" && r.results.length > 1);
 
     // ── counts: Cairo week, every company ───────────────────────────────────
     console.log("\nCounts");
@@ -119,7 +162,7 @@ async function main() {
     const c1 = await countEntities(other.id, { entity: "products", period: "this_week", now });
     assert("the week boundary is midnight in Cairo, not UTC", c1.total === 1 && c1.from === "2026-11-14" && c1.timezone === "Africa/Cairo", c1);
     const c2 = await countEntities(null, { entity: "products", groupBy: "company", period: "this_week", now });
-    assert("per company for All companies lists every company, zero included", c2.groups.some((g) => g.key === other.id && g.count === 1) && c2.groups.some((g) => g.key === co.id && g.count === 1) && c2.groups.some((g) => g.count === 0) && c2.groups.length === (await prisma.company.count()), { groups: c2.groups.length, companies: await prisma.company.count() });
+    assert("per company for All companies lists every company, zero included", c2.groups.some((g) => g.key === other.id && g.count === 1) && c2.groups.some((g) => g.key === co.id && g.count > 0) && c2.groups.some((g) => g.count === 0) && c2.groups.length === (await prisma.company.count()), { groups: c2.groups.length, companies: await prisma.company.count() });
     const c3 = await countEntities(co.id, { entity: "products", groupBy: "company", period: "this_week", now });
     assert("…and a company sees only its own row", c3.groups.length === 1 && c3.groups[0].key === co.id);
   } finally {

@@ -179,7 +179,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           if (block) blocks.set(name, block);
         }
       }
-      const choices = name === "search_products" && result.ok && result.data?.verdict === "close" && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
+      const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
       const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}) };
       if (name !== LOAD_TOOLS) toolCalls.push(entry);
       if (name !== LOAD_TOOLS) onEvent({ type: "tool_end", ...entry });
@@ -195,7 +195,7 @@ export function summarize(result) {
   if (!result.ok) return result.error;
   const d = result.data;
   if (d && typeof d === "object") {
-    if ("verdict" in d && Array.isArray(d.results)) return d.verdict === "none" ? "no match" : d.verdict === "clear" ? `exact match: ${d.results[0].name}` : `${d.results.length} close match${d.results.length === 1 ? "" : "es"}, not exact`;
+    if ("verdict" in d && Array.isArray(d.results)) return d.verdict === "none" ? "no match" : d.verdict === "exact" ? (d.several ? `${d.results.filter((r) => r.via.some((v) => ["code", "alias", "exact_name"].includes(v))).length} exact matches` : `exact match: ${d.results[0].name}`) : `${d.results.length} close match${d.results.length === 1 ? "" : "es"}, not exact`;
     if ("total" in d && "shown" in d) return `${d.shown} of ${d.total}`;
     if ("total" in d && Array.isArray(d.groups)) return `total ${d.total}`;
     if ("total" in d) return `${d.total} found`;

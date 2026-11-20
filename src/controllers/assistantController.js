@@ -81,9 +81,9 @@ export const postMessage = catchAsync(async (req, res) => {
   }
 });
 
-/** "Load more" on a table block: the next page from the same tool, no model call. */
+/** "Load more" / "Show all" (?all=true) on a table block: more pages from the same tool, no model call. */
 export const loadMore = catchAsync(async (req, res) => {
-  const data = await assistant.loadMore(actorFrom(req), req.params.id, req.params.messageId, req.params.blockId);
+  const data = await assistant.loadMore(actorFrom(req), req.params.id, req.params.messageId, req.params.blockId, { all: req.query.all === "true" });
   res.status(200).json({ status: "success", data });
 });
 
