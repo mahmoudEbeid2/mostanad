@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import puppeteer from "puppeteer";
 import { prisma } from "../src/lib/prisma.js";
-import { makeAssert, api, asAdmin, createCompany } from "./certificates-v2/helpers.js";
+import { makeAssert, api, createCompany } from "./certificates-v2/helpers.js";
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -157,6 +157,13 @@ try {
   assert("opened from the nav: no context chip, no Back link", !(await page.$(T("context-chip"))) && !(await page.$(T("back-link"))));
   assert("suggested questions are offered", (await page.$$(T("suggestion"))).length >= 3);
   assert("no floating button on /assistant itself", !(await page.$(T("assistant-fab"))));
+  await page.click(T("conversation-title"));
+  await page.keyboard.type("hi ");
+  await page.keyboard.sendCharacter("مرحبا");
+  assert("typing anywhere on the page goes into the message box (Arabic too)", (await page.$eval(T("assistant-input"), (e) => e.value)) === "hi مرحبا" && (await page.evaluate(() => document.activeElement?.dataset.testid)) === "assistant-input", await page.$eval(T("assistant-input"), (e) => e.value));
+  await page.$eval(T("assistant-input"), (e) => e.blur());
+  await page.click(T("assistant-input"), { clickCount: 3 });
+  await page.keyboard.press("Backspace");
   assert("the E2 line is shown", (await text(T("assistant-page"))).includes("Every change asks you first."));
   await until((s) => document.querySelectorAll(`${s} option`).length > 1, T("assistant-scope"));
   assert("system admin: a company picker with All companies", (await page.$eval(T("assistant-scope"), (e) => e.value)) === "all");
@@ -316,6 +323,7 @@ try {
   await page.click(T("back-link"));
   await page.waitForFunction((id) => location.pathname === `/invoices/${id}`, { timeout: 8000 }, invoice.id);
   assert("Back returns to the invoice", true);
+  await page.click("main"); // the page has focus, as when a person works on it
   await page.keyboard.down("Control");
   await page.keyboard.press("k");
   await page.keyboard.up("Control");
@@ -343,7 +351,7 @@ try {
   await contains(T("assistant-messages"), "own company");
   assert("a company message sends no companyId", !("companyId" in sent.at(-1)), sent.at(-1));
   await shot("e1-company");
-  await api("PATCH", `/assistant/settings/${company.id}`, asAdmin, { enabled: false });
+  await prisma.assistantSetting.update({ where: { scopeKey: company.id }, data: { enabled: false } }); // the admin switch (its API is covered by assistant.c1.test.js)
   await page.goto(`${FRONT}/products`, { waitUntil: "networkidle2" });
   await sleep(500);
   assert("switched off: no sidebar item and no ✦ button", !(await page.$(T("nav-assistant"))) && !(await page.$(T("assistant-button"))));
