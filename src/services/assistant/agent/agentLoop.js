@@ -133,7 +133,8 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
         if (result.ok) collectRefs(result.data, refs);
       }
-      const entry = { name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result) };
+      const choices = name === "search_products" && result.ok && result.data?.verdict === "ambiguous" ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
+      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(choices ? { choices } : {}) };
       if (name !== LOAD_TOOLS) toolCalls.push(entry);
       if (name !== LOAD_TOOLS) onEvent({ type: "tool_end", ...entry });
       responses.push({ functionResponse: { ...(call.id ? { id: call.id } : {}), name, response: asFunctionResponse(result) } });

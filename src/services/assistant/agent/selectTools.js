@@ -15,7 +15,7 @@ const KEYWORDS = {
   dashboard: ["dashboard", "stats", "statistics", "revenue", "subscription", "لوحة", "إحصائ", "احصائ", "اشتراك", "إيراد"],
   ai_costs: ["cost", "costs", "spend", "tokens", " ai ", "gemini", "تكلفة", "تكاليف", "ذكاء"],
 };
-const PAGE_MODULE = { product: "products", invoice: "invoices", certificate: "certificates", template: "certificates", label: "labels", catalogue: "catalogues", regulatory: "regulatory" };
+const PAGE_MODULE = { product: "products", invoice: "invoices", certificate: "certificates", template: "certificates", label: "labels", catalogue: "catalogues", catalogue_version: "catalogues", regulatory: "regulatory" };
 const DEFAULT_MODULES = ["products", "invoices", "certificates"];
 
 export function selectModules(text, page = null) {

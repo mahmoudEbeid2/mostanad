@@ -13,7 +13,7 @@ export const DEFAULTS = {
   system: { enabled: true, messagesPerUserPerHour: Number(process.env.ASSISTANT_MESSAGES_PER_HOUR) || 30, modelCallsPerDay: Number(process.env.ASSISTANT_SYSTEM_CALLS_PER_DAY) || 300 },
   company: { enabled: false, messagesPerUserPerHour: Number(process.env.ASSISTANT_MESSAGES_PER_HOUR) || 30, modelCallsPerDay: Number(process.env.ASSISTANT_COMPANY_CALLS_PER_DAY) || 100 },
 };
-const PAGE_TYPES = ["product", "invoice", "certificate", "template", "label", "catalogue", "regulatory"];
+const PAGE_TYPES = ["product", "invoice", "certificate", "template", "label", "catalogue", "catalogue_version", "regulatory"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TEXT = 4000;
 
