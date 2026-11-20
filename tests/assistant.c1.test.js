@@ -315,7 +315,8 @@ async function main() {
     await prisma.$disconnect();
   }
   console.log(`\n${counts.passed} passed, ${counts.failed} failed`);
-  if (counts.failed) process.exit(1);
+  // the services it imports keep queue / Redis connections open: exit explicitly
+  process.exit(counts.failed ? 1 : 0);
 }
 
 main().catch(async (e) => {
