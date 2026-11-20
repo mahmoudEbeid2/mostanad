@@ -111,6 +111,11 @@ export const MODELS = {
   // producing structured content, not a one-word label).
   CHAT_AGENT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 2048, temperature: 0.2 },
 
+  // In-app assistant (C1): a function-calling loop over read-only tools, several
+  // calls per message (choose tools → read results → answer). Choosing a tool
+  // and reading its result is light reasoning: a small fixed budget, not dynamic.
+  ASSISTANT: { id: MODEL_IDS.GEMINI_2_5_FLASH, thinkingBudget: 512, temperature: 0.1 },
+
   // §14.5.7 — plausibility layer's "is this worth flagging at all" judgment
   // (concentration/dose/compatibility/withdrawal-period suspicion, before any
   // knowledgeResolver citation search runs). Deliberately a separate entry

@@ -1455,3 +1455,88 @@ model CataloguePage {
   @@index([companyId])
   @@map("catalogue_pages")
 }
+
+// ── In-app assistant (phase C0/C1) ──────────────────────────────────────────
+// The owner of a conversation is the signed-in caller: a system user
+// (ownerType "user", ownerId = users.id) or a company session (ownerType
+// "company", ownerId = companies.id). companyId is the conversation's current
+// scope: always the company for a company session; for a system user a company
+// or null ("All companies", reading and reports only).
+model AssistantConversation {
+  id        String    @id @default(uuid())
+  ownerType String    @map("owner_type") // user | company
+  ownerId   String    @map("owner_id")
+  companyId String?   @map("company_id")
+  title     String?
+  deletedAt DateTime? @map("deleted_at") // soft delete
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  messages  AssistantMessage[]
+  toolCalls AssistantToolCall[]
+
+  @@index([ownerType, ownerId, updatedAt])
+  @@map("assistant_conversations")
+}
+
+model AssistantMessage {
+  id             String                @id @default(uuid())
+  conversationId String                @map("conversation_id")
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant
+  text           String                @db.Text
+  scopeKey       String                @map("scope_key") // whose limits it counts against: "system" | the caller's company id
+  companyId      String?               @map("company_id") // the scope it ran against (null = all companies)
+  page           Json? // the page the user was on: { route, entityType?, entityId? }
+  toolCalls      Json?                 @map("tool_calls") // [{ name, args, ok, summary, error, ms, companyId }]
+  links          Json? // [{ type, id, name }] entities the answer may link to (seen in tool results)
+  error          String?
+  modelId        String?               @map("model_id")
+  modelCalls     Int                   @default(0) @map("model_calls")
+  inputTokens    Int                   @default(0) @map("input_tokens")
+  cachedTokens   Int                   @default(0) @map("cached_tokens")
+  outputTokens   Int                   @default(0) @map("output_tokens")
+  thinkingTokens Int                   @default(0) @map("thinking_tokens")
+  costUsd        Decimal?              @map("cost_usd") @db.Decimal(18, 10) // sum of the ledger rows; null = unpriced
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([conversationId, createdAt])
+  @@index([scopeKey, createdAt])
+  @@map("assistant_messages")
+}
+
+// Audit: one row per tool call the model asked for, whether run, refused or failed.
+model AssistantToolCall {
+  id             String                @id @default(uuid())
+  conversationId String                @map("conversation_id")
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?               @map("message_id")
+  ownerType      String                @map("owner_type")
+  ownerId        String                @map("owner_id")
+  tool           String
+  args           Json?
+  companyId      String?               @map("company_id") // the company it ran against (null = all companies)
+  status         String // ok | error | refused
+  error          String?
+  durationMs     Int                   @default(0) @map("duration_ms")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([conversationId, createdAt])
+  @@index([ownerType, ownerId, createdAt])
+  @@map("assistant_tool_calls")
+}
+
+// Per-company switch and limits, set by a system admin. scopeKey "system" is
+// the row for system users. No row = the defaults (system on, companies off).
+model AssistantSetting {
+  id                     String   @id @default(uuid())
+  scopeKey               String   @unique @map("scope_key") // "system" | a company id
+  enabled                Boolean
+  messagesPerUserPerHour Int?     @map("messages_per_user_per_hour") // null = default
+  modelCallsPerDay       Int?     @map("model_calls_per_day") // null = default
+  updatedByUserId        String?  @map("updated_by_user_id")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("assistant_settings")
+}

@@ -112,6 +112,11 @@ export const permissions = [
   // covers the whole project, system users only.
   { name: "Read AI Costs", slug: "read_ai_costs", module: "ai_costs" },
   { name: "Manage AI Billing", slug: "manage_ai_billing", module: "ai_billing" },
+
+  // In-app assistant: the per-company switch and limits. Module "assistant_settings"
+  // is not in COMPANY_ALLOWED_MODULES — system users only. Using the assistant
+  // needs no permission of its own (every tool checks the caller's).
+  { name: "Manage Assistant Settings", slug: "manage_assistant_settings", module: "assistant_settings" },
 ];
 
 async function main() {
