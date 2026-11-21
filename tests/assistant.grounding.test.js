@@ -156,6 +156,8 @@ async function main() {
     // ── counts: Cairo week, every company ───────────────────────────────────
     console.log("\nCounts");
     const now = new Date("2026-11-20T10:00:00Z"); // Friday in Cairo
+    // a product of co inside that fixed week (the ones made above carry today's date, which moves on)
+    await prisma.product.create({ data: { companyId: co.id, name: `week ${s}`, createdAt: new Date("2026-11-16T10:00:00Z") } });
     assert("this week (Cairo) = Sat 14 – Fri 20 Nov", JSON.stringify(periodRange("this_week", now)) === JSON.stringify(["2026-11-14", "2026-11-21"]));
     await prisma.product.create({ data: { companyId: other.id, name: `in ${s}`, createdAt: new Date("2026-11-13T22:30:00Z") } }); // Sat 00:30 Cairo (UTC+2)
     await prisma.product.create({ data: { companyId: other.id, name: `out ${s}`, createdAt: new Date("2026-11-13T21:30:00Z") } }); // Fri 23:30 Cairo
