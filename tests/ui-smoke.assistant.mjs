@@ -353,6 +353,23 @@ try {
   await page.waitForFunction(() => location.pathname === "/assistant", { timeout: 8000 });
   assert("Ctrl+K opens the assistant with the page as context", page.url().includes(`from=invoice:${invoice.id}`));
 
+  console.log("\n⌨️ Message box");
+  const boxHeight = () => page.$eval(T("assistant-input"), (e) => e.getBoundingClientRect().height);
+  await page.waitForSelector(T("assistant-input"), { timeout: 8000 });
+  await page.click(T("assistant-input"));
+  const h0 = await boxHeight();
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.type(`line ${i}`);
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("Enter");
+    await page.keyboard.up("Shift");
+  }
+  assert("the box grows with the text (Shift+Enter is a new line)", (await boxHeight()) > h0 + 30, { h0, h1: await boxHeight() });
+  assert("the hint says Enter sends, Shift+Enter is a new line", (await text(T("composer-hint"))).includes("Shift+Enter"));
+  await page.keyboard.press("Escape");
+  assert("Esc clears the box, which shrinks back", (await page.$eval(T("assistant-input"), (e) => e.value)) === "" && (await boxHeight()) <= h0 + 1);
+  await page.$eval(T("assistant-input"), (e) => e.blur());
+
   console.log("\n✦ Settings");
   await page.waitForSelector('button[title="Assistant settings"]', { timeout: 8000 });
   await page.click('button[title="Assistant settings"]');
