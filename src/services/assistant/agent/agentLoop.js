@@ -136,11 +136,13 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     if (!calls.length || lastChance) {
       const raw = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
       // checked on what the model wrote, before typed lists are removed for display
-      const answer = stripTypedLists(raw);
+      const stripped = stripTypedLists(raw);
+      // typed rows go only when a table block shows them; one record's fields (get_product…) have no block, so the model's list is the answer
+      const answer = blocks.size ? stripped : raw;
       const corpus = corpusOf([...(ctx.facts || []), ...turnFacts, text, ...history.filter((m) => m.role === "user").map((m) => m.text)]);
       const toolCallsThisTurn = toolCalls.filter((c) => c.ok).length;
       const g = checkGrounding(raw, corpus, { toolCallsThisTurn });
-      if (answer !== raw && toolCallsThisTurn === 0) {
+      if (stripped !== raw && toolCallsThisTurn === 0) {
         g.ok = false; // a list typed without asking the system is never data
         g.unknown.push("(a list typed without a tool call)");
       }
