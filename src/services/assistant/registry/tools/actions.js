@@ -4,7 +4,7 @@ import { ToolError } from "../access.js";
 import { prisma } from "../../../../lib/prisma.js";
 import { loadAttachment, attachmentFile } from "../../attachments.js";
 import { pdfText } from "../../../certificates/labResults/coaService.js";
-import { uploadInvoice, loadInvoice, updateItem, updateInvoice } from "../../../certificates/invoices/invoiceService.js";
+import { uploadInvoice, loadInvoice, updateItem, updateInvoice, confirmInvoice } from "../../../certificates/invoices/invoiceService.js";
 import { newProductDraft, createProductFromLine } from "../../../certificates/invoices/newProductService.js";
 import { startPrepare } from "../../../certificates/prepare/prepareService.js";
 import { startGeneration } from "../../../certificates/generation/batchService.js";
@@ -14,7 +14,8 @@ import { listTypes } from "../../../certificates/types/certificateTypeService.js
 import { uploadCoas } from "../../../certificates/labResults/coaService.js";
 import { uploadCatalogue } from "../../../catalogues/catalogueService.js";
 import { startLabelVerification, queueReferenceLabel } from "../../../label/labelUploads.js";
-import { updateProduct } from "../../../productService.js";
+import { updateProduct, createProduct } from "../../../productService.js";
+import { createProductSchema } from "../../../../validators/productValidator.js";
 import { id } from "./common.js";
 
 // C2 actions. A model call to any of these only PROPOSES a confirmation card
@@ -205,6 +206,36 @@ defineTool({
     const out = await createProductFromLine(inv.id, item.id, ctx.companyId, { mode: "needed", name: item.data?.name, ...(a.values || {}) }, userIdOf(ctx));
     const product = out.product || out;
     return { productId: product.id, name: product.name, lineNo: item.lineNo, ref: product.id ? { type: "product", id: product.id, name: product.name } : null };
+  },
+});
+
+defineTool({
+  name: "confirm_invoice",
+  module: "invoices",
+  risk: "write",
+  permissions: ["update_invoices"],
+  label: "Confirming the invoice",
+  description: "Proposes confirming an invoice under review (the invoice page's Confirm): every line must be matched to a product or ignored first. A confirmed invoice is ready for Generate. Shows a card first.",
+  args: z.object({ invoiceId: id("invoice") }),
+  preview: async (a, ctx) => {
+    const inv = await loadInvoice(a.invoiceId, ctx.companyId);
+    if (inv.status !== "review") throw new ToolError(`Invoice ${invoiceLabel(inv)} is ${inv.status}, not under review — nothing to confirm`, "not_in_review");
+    const lines = await prisma.invoiceItem.findMany({ where: { invoiceId: inv.id }, select: { matchStatus: true } });
+    return {
+      title: "Confirm invoice",
+      summary: `Invoice ${invoiceLabel(inv)} is marked reviewed and ready for Generate.`,
+      runLabel: "Confirm",
+      details: [
+        { label: "Invoice", value: `${invoiceLabel(inv)} · ${await companyName(ctx.companyId)}` },
+        { label: "Lines", value: `${lines.filter((l) => l.matchStatus === "matched").length} matched · ${lines.filter((l) => l.matchStatus === "ignored").length} ignored` },
+      ],
+      aiCalls: null,
+      missing: [],
+    };
+  },
+  run: async (a, ctx) => {
+    const inv = await confirmInvoice(a.invoiceId, ctx.companyId, userIdOf(ctx));
+    return { invoiceId: inv.id, status: inv.status, link: `/invoices/${inv.id}` };
   },
 });
 
@@ -452,5 +483,48 @@ defineTool({
     }
     const updated = await updateProduct(p.id, data, ctx.companyId);
     return { productId: updated.id, name: updated.name, changed: a.changes.map((c) => c.field), ref: { type: "product", id: updated.id, name: updated.name } };
+  },
+});
+
+// The products API's own validator (POST /products), without companyId (the registry adds it) and
+// without specifications (a free-form record; set those afterwards with update_product_fields).
+export const CREATE_PRODUCT_ARGS = createProductSchema.body.omit({ companyId: true, specifications: true });
+
+defineTool({
+  name: "create_product",
+  module: "products",
+  risk: "write",
+  permissions: ["create_products"],
+  label: "Adding the product",
+  description:
+    "Proposes adding a product to the company (the Products page's Add): name, brand (list_brands), category (list_categories), composition (activeIngredients: [{ name, concentration }]) and any other product field the user gave. " +
+    "Values come from the user's own words; ids from lookups. Shows a card first.",
+  args: CREATE_PRODUCT_ARGS,
+  guard: (a, ctx) => Object.entries(a).forEach(([k, v]) => typeof v === "string" && assertVerbatim(k, v, ctx)),
+  preview: async (a, ctx) => {
+    const brand = a.brandId ? await prisma.brand.findFirst({ where: { id: a.brandId, companyId: ctx.companyId }, select: { name: true } }) : null;
+    if (a.brandId && !brand) throw new ToolError("Brand not found!", "not_found");
+    const category = a.categoryId ? await prisma.category.findUnique({ where: { id: a.categoryId }, select: { name: true } }) : null;
+    if (a.categoryId && !category) throw new ToolError("Category not found!", "not_found");
+    const same = await prisma.product.findFirst({ where: { companyId: ctx.companyId, name: { equals: a.name, mode: "insensitive" } }, select: { id: true } });
+    const text = (v) => (Array.isArray(v) ? v.map((x) => (typeof x === "object" ? [x.name, x.concentration].filter(Boolean).join(" ") : x)).join(", ") : String(v));
+    return {
+      title: `Add ${a.name}`,
+      summary: `A new product ${a.name} is added to ${await companyName(ctx.companyId)}.`,
+      runLabel: "Add",
+      details: [
+        { label: "Company", value: await companyName(ctx.companyId) },
+        { label: "Name", value: a.name },
+        ...(brand ? [{ label: "Brand", value: brand.name }] : []),
+        ...(category ? [{ label: "Category", value: category.name }] : []),
+        ...Object.entries(a).filter(([k, v]) => !["name", "brandId", "categoryId"].includes(k) && v !== null && v !== undefined && !(Array.isArray(v) && !v.length)).map(([k, v]) => ({ label: k, value: text(v) })),
+      ],
+      aiCalls: null,
+      missing: same ? [`A product named ${a.name} already exists in this company`] : [],
+    };
+  },
+  run: async (a, ctx) => {
+    const product = await createProduct(ctx.companyId, a);
+    return { productId: product.id, name: product.name, ref: { type: "product", id: product.id, name: product.name } };
   },
 });

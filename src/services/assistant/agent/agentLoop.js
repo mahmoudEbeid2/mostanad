@@ -83,7 +83,8 @@ function userTurn(text, ctx) {
   const page = ctx.page?.entityType ? `${ctx.page.entityType} ${ctx.page.entityId}` : ctx.page?.route || "none";
   // attached files are named by id for the tools — the model never gets their bytes
   const files = (ctx.attachments || []).map((a) => `[attached: ${a.id} · ${a.name} · ${a.mimeType} · ${Math.round(a.sizeBytes / 1024)} KB${a.pages ? ` · ${a.pages} pages` : ""}]`).join("\n");
-  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}${files ? `\n${files}` : ""}\n\n${text}`;
+  const drafts = (ctx.openDrafts || []).length ? `\n[open drafts: ${ctx.openDrafts.join(" | ")}]` : "";
+  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}${files ? `\n${files}` : ""}${drafts}\n\n${text}`;
 }
 
 const sumUsage = (acc, u = {}) => ({
@@ -184,7 +185,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         }
       }
       const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
-      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}) };
+      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}) };
       if (name !== LOAD_TOOLS) toolCalls.push(entry);
       if (name !== LOAD_TOOLS) onEvent({ type: "tool_end", ...entry });
       responses.push({ functionResponse: { ...(call.id ? { id: call.id } : {}), name, response: asFunctionResponse(result) } });
@@ -198,6 +199,13 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
 export function summarize(result) {
   if (!result.ok) return result.error;
   if (result.status === "needs_confirmation") return "waiting for your OK";
+  if (result.data?.draft) {
+    const d = result.data.draft;
+    if (d.status === "ready") return "waiting for your OK";
+    if (d.blockedBy.length) return `blocked: ${d.blockedBy.map((b) => b.label).join("; ")}`;
+    if (d.missing.length) return `still needed: ${d.missing.map((n) => d.fields.find((f) => f.name === n)?.label || (n === "companyId" ? "Company" : n)).join(", ")}`;
+    return d.status;
+  }
   const d = result.data;
   if (d && typeof d === "object") {
     if ("verdict" in d && Array.isArray(d.results)) return d.verdict === "none" ? "no match" : d.verdict === "exact" ? (d.several ? `${d.results.filter((r) => r.via.some((v) => ["code", "alias", "exact_name"].includes(v))).length} exact matches` : `exact match: ${d.results[0].name}`) : `${d.results.length} close match${d.results.length === 1 ? "" : "es"}, not exact`;

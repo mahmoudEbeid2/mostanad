@@ -2,6 +2,7 @@ import catchAsync from "../utils/catchAsync.js";
 import { isBypassed } from "../middleware/testBypass.js";
 import * as assistant from "../services/assistant/assistantService.js";
 import * as actions from "../services/assistant/actions.js";
+import * as drafts from "../services/assistant/drafts/draftService.js";
 
 // In-app assistant (C0/C1). The actor is the signed-in caller; everything the
 // assistant reads goes through the registry as that caller.
@@ -122,4 +123,24 @@ export const listSettings = catchAsync(async (req, res) => {
 export const updateSettings = catchAsync(async (req, res) => {
   const setting = await assistant.updateSettings(req.params.scopeKey, req.body, req.user?.id || null);
   res.status(200).json({ status: "success", data: { setting } });
+});
+
+// ── operation drafts ─────────────────────────────────────────────────────────
+export const listDrafts = catchAsync(async (req, res) => {
+  const actor = actorFrom(req);
+  await assistant.assertEnabled(actor);
+  await assistant.getConversation(actor, req.params.id); // 404 for someone else's conversation
+  res.status(200).json({ status: "success", data: { drafts: await drafts.conversationDrafts(actor, req.params.id) } });
+});
+
+export const submitDraftFields = catchAsync(async (req, res) => {
+  const actor = actorFrom(req);
+  await assistant.assertEnabled(actor);
+  res.status(200).json({ status: "success", data: { draft: await drafts.submitDraftFields(actor, req.params.draftId, req.body.values) } });
+});
+
+export const cancelDraft = catchAsync(async (req, res) => {
+  const actor = actorFrom(req);
+  await assistant.assertEnabled(actor);
+  res.status(200).json({ status: "success", data: { draft: await drafts.cancelDraft(actor, req.params.draftId) } });
 });

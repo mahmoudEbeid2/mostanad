@@ -131,7 +131,7 @@ async function main() {
     const adminConv = await assistant.createConversation(admin, { companyId: "all" });
     m = script([[call("match_invoice_line", { invoiceId: A.invoice.id, lineNo: 1, productId: A.product.id })], [{ text: "Which company?" }]]);
     const allTurn = await assistant.sendMessage(admin, adminConv.id, { text: "match line 1" }, { generate: m.generate });
-    assert("with All companies a write makes no card and the model is told to ask which company", allTurn.message.actions.length === 0 && /needs one company/.test(allTurn.message.toolCalls[0].error));
+    assert("with All companies a write makes no card: its draft asks which company", allTurn.message.actions.length === 0 && /still needed: Company/.test(allTurn.message.toolCalls[0].summary), allTurn.message.toolCalls[0]);
     m = script([[call("match_invoice_line", { invoiceId: A.invoice.id, lineNo: 1, productId: A.product.id })], [{ text: "Card ready." }]]);
     const adminTurn = await assistant.sendMessage(admin, adminConv.id, { text: "for company A", companyId: cA.id }, { generate: m.generate });
     assert("…with a company picked, the card runs in that company", adminTurn.message.actions[0]?.companyId === cA.id);
@@ -145,7 +145,8 @@ async function main() {
       if (t.name.startsWith("test_")) continue;
       const args = Object.fromEntries(Object.keys(t.args.shape).filter((k) => k in hostile).map((k) => [k, hostile[k]]));
       const r = await registry.runTool(t.name, { ...args, companyId: cB.id }, { actor: actorA, scope: { companyId: cA.id }, conversationId: conv.id, userTexts: [], propose: async () => { throw new Error(`card proposed for ${t.name}`); } });
-      if (r.ok || r.companyId !== cA.id) assert(`${t.name} on company B's data makes no card`, false, r);
+      // the draft stays in company A; B's ids are rejected by the lookups' checks, so nothing becomes a card
+      if (r.status === "needs_confirmation" || r.companyId !== cA.id || r.data?.draft?.status === "ready") assert(`${t.name} on company B's data makes no card`, false, r);
     }
     assert("no write tool proposes a card on another company's invoice / product / file", (await prisma.assistantAction.count()) === before);
     let foreign = null;
@@ -159,19 +160,20 @@ async function main() {
     // ── protected data ───────────────────────────────────────────────────────
     console.log("\nLab results and batch facts");
     const ctx = (userTexts) => ({ actor: actorA, scope: { companyId: cA.id }, conversationId: conv.id, userTexts, propose: async (p) => ({ id: "card", ...p }) });
+    const refusedValue = (r, field) => r.ok && r.status === "draft" && r.data.draft.rejected?.some((x) => x.field === field) && !r.data.draft.actionId;
     let r = await registry.runTool("update_product_fields", { productId: A.product.id, changes: [{ field: "specifications.Batch No", value: "LOT-555" }] }, ctx(["set the batch please"]));
-    assert("a batch fact the person didn't type is refused in the tool", !r.ok && /lab result or batch fact/.test(r.error), r);
+    assert("a batch fact the person didn't type is refused (stays missing, no card)", refusedValue(r, "changes") && /person's messages/.test(r.data.draft.rejected[0].reason), r.data?.draft?.rejected);
     r = await registry.runTool("update_product_fields", { productId: A.product.id, changes: [{ field: "specifications.pH result", value: "6.8" }] }, ctx(["what's the ph?"]));
-    assert("a lab result the person didn't type is refused", !r.ok && /lab result or batch fact/.test(r.error));
+    assert("a lab result the person didn't type is refused", refusedValue(r, "changes"));
     r = await registry.runTool("update_product_fields", { productId: A.product.id, changes: [{ field: "specifications.Batch No", value: "LOT-555" }] }, ctx(["the batch is LOT-555"]));
-    assert("…the same value typed verbatim by the person gets a card", r.status === "needs_confirmation");
-    r = await registry.runTool("create_product_from_line", { invoiceId: A.invoice.id, lineNo: 1, values: { expiryDate: "2027-01-01" } }, ctx([]));
-    assert("create_product_from_line has no batch / date fields at all", !r.ok && /Invalid arguments/.test(r.error));
+    assert("…the same value typed verbatim by the person gets a card", r.status === "needs_confirmation", r.data?.draft);
+    r = await registry.runTool("create_product_from_line", { invoiceId: A.invoice.id, lineNo: 1, values: { expiryDate: "2027-01-01" } }, ctx(["expiry 2027-01-01"]));
+    assert("create_product_from_line has no batch / date fields at all (the date is rejected, never stored)", /expiryDate/.test(r.data?.draft?.rejected?.find((x) => x.field === "values")?.reason || "") && !r.data.draft.fields.some((f) => f.name === "values" && f.value), r.data?.draft?.rejected);
     assert("lab results come in only through upload_supplier_coa (the COA verifier)", registry.getTool("upload_supplier_coa")?.risk === "write" && !registry.allTools().some((t) => /lab_result/.test(t.name) && t.risk !== "read"));
 
     // ── real actions through a card ─────────────────────────────────────────
     console.log("\nActions run through the existing services");
-    const prodTurn = await registry.runTool("update_product_fields", { productId: A.product.id, changes: [{ field: "storage", value: "Below 25 °C" }, { field: "specifications.pH", value: "6.5-7.5" }] }, { ...ctx([]), propose: (p) => actions.proposeAction({ conversationId: conv.id, messageId: null, actor: actorA, ...p }) });
+    const prodTurn = await registry.runTool("update_product_fields", { productId: A.product.id, changes: [{ field: "storage", value: "Below 25 °C" }, { field: "specifications.pH", value: "6.5-7.5" }] }, { ...ctx(["storage Below 25 °C and pH 6.5-7.5"]), propose: (p) => actions.proposeAction({ conversationId: conv.id, messageId: null, actor: actorA, ...p }) });
     const prodCard = await prisma.assistantAction.findUnique({ where: { id: prodTurn.data.actionId } });
     assert("the card shows old → new", prodCard.preview.details.some((d) => d.value === "Cool place → Below 25 °C") && prodCard.preview.details.some((d) => d.value === "— → 6.5-7.5"), prodCard.preview);
     assert("…and nothing changed yet", (await prisma.product.findUnique({ where: { id: A.product.id } })).storage === "Cool place");

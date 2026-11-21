@@ -11,9 +11,10 @@ import { shapeResult } from "./trim.js";
 // Every call goes through runTool, which is where the rules live — not in the
 // tools and not in the prompt:
 //   - risk: a read tool runs. A write / sensitive tool (C2) NEVER runs from a model
-//     call: it only proposes a confirmation card (ctx.propose); executeApproved runs
-//     it, with the card's stored args, after the person pressed Run. The model asking
-//     for a tool that isn't offered to this caller is refused.
+//     call: it opens or updates an operation draft (drafts/draftService.js), which
+//     makes a confirmation card only once nothing is missing or blocking;
+//     executeApproved runs it, with the card's stored args, after the person pressed
+//     Run. The model asking for a tool that isn't offered to this caller is refused.
 //   - what the chat can never do: no tool may finalize, delete, activate, apply a
 //     catalogue diff or change users / roles / companies (defineTool refuses one).
 //   - permissions: the same rule restrictToPermission applies (company session:
@@ -144,23 +145,24 @@ export async function runTool(name, rawArgs, ctx) {
 
   let companyId = null;
   try {
+    if (tool.risk !== "read") {
+      // a change: never run here — the values go into the operation's draft (partial is fine), which
+      // becomes ONE card the person must approve once nothing is missing or blocking
+      try {
+        companyId = await resolveCompany(tool, args, ctx);
+      } catch (err) {
+        if (err.code !== "company_required") throw err; // "All companies": the draft asks which company
+      }
+      delete args.companyId;
+      const session = await sessionOf(ctx);
+      if (!session) throw new ToolError(`${name} changes data and needs your confirmation, which isn't available here.`, "no_confirmation");
+      const view = await withTimeout(session.open({ tool: name, values: args, companyId }), TOOL_TIMEOUT_MS, name);
+      return finish({ ok: true, status: draftStatus(view), data: await draftData(view), companyId: view.companyId });
+    }
     companyId = await resolveCompany(tool, args, ctx);
     delete args.companyId;
     const parsed = parseArgs(tool, args);
     const tctx = toolCtx(ctx, companyId);
-    if (tool.risk !== "read") {
-      // a change: never run here — a card the person must approve, with exactly these args
-      if (typeof ctx.propose !== "function") throw new ToolError(`${name} changes data and needs your confirmation, which isn't available here.`, "no_confirmation");
-      if (tool.guard) await tool.guard(parsed, tctx);
-      const preview = await withTimeout(Promise.resolve(tool.preview(parsed, tctx)), TOOL_TIMEOUT_MS, name);
-      const card = await ctx.propose({ tool: name, args: parsed, companyId, preview });
-      return finish({
-        ok: true,
-        status: "needs_confirmation",
-        data: { actionId: card.id, title: preview.title, summary: preview.summary, details: preview.details, aiCalls: preview.aiCalls, missing: preview.missing, needsConfirmation: true, note: "Shown to the user as a confirmation card. NOTHING has happened yet: it runs only if they press the button. Don't say it was done; tell them what the card will do." },
-        companyId,
-      });
-    }
     const data = await withTimeout(Promise.resolve(tool.run(parsed, tctx)), TOOL_TIMEOUT_MS, name);
     return finish({ ok: true, status: "ok", data: shapeResult(data), companyId });
   } catch (err) {
@@ -196,7 +198,25 @@ const toolCtx = (ctx, companyId) => ({
   isSystem: ctx.actor.kind === "user",
   conversationId: ctx.conversationId || null,
   userTexts: ctx.userTexts || [],
+  drafts: () => sessionOf(ctx),
 });
+
+/** The turn's draft session (sendMessage sets ctx.drafts; a ctx with a conversation gets one). */
+async function sessionOf(ctx) {
+  if (ctx.drafts) return ctx.drafts;
+  if (!ctx.conversationId) return null;
+  const { draftSession } = await import("../drafts/draftService.js");
+  ctx.drafts = draftSession(ctx);
+  return ctx.drafts;
+}
+
+/** A draft step as a tool result: "needs_confirmation" once its card is shown, else "draft". */
+export const draftStatus = (view) => (view.status === "ready" ? "needs_confirmation" : "draft");
+export async function draftData(view) {
+  const { forModel } = await import("../drafts/draftService.js");
+  const out = forModel(view);
+  return view.status === "ready" ? { ...out, actionId: view.actionId, needsConfirmation: true, note: "Shown to the user as a confirmation card. NOTHING has happened yet: it runs only if they press the button. Don't say it was done; tell them what the card will do." } : out;
+}
 
 /**
  * Runs an approved card's tool with exactly its stored args, in its company, as the

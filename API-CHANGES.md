@@ -631,3 +631,26 @@ Additive; no migration.
   daily AI-call budget. 404 when `editOf` is not a visible user message of the conversation.
 - `GET /assistant/conversations/:id`: hidden messages are left out.
 - Additive migration `20261121140000_assistant_message_edit` (`assistant_messages.superseded_at`, nullable).
+
+## Assistant — operation drafts (slot filling)
+
+- Every write the assistant proposes is now collected in a **draft** first. A write-tool call (or the new `start_draft`)
+  opens or updates the operation's draft; code checks each value against the field's own schema (the tool's zod args —
+  `create_product`'s are `createProductSchema` from the products API), fills what it can from the page, this message's
+  files and single-result lookups, offers several results as a choice, and lists the prerequisites with the tools that fix
+  them. A confirmation card is made **only** from a ready draft (`assistant_actions.draft_id`); Run refuses a card with no
+  ready draft, or whose draft's values no longer hash the same (409), or whose draft expired (410). An API error on Run
+  sends the draft back to `collecting` with the field(s) it concerns marked.
+- New model tools: `start_draft`, `update_draft`, `list_drafts`. New write tools: `confirm_invoice`, `create_product`.
+- `GET /assistant/conversations/:id` — **new** `drafts: [draft]` (each with its card, `aiCalls`, `costUsd`).
+- `GET /assistant/conversations/:id/drafts` — **new**. The conversation's drafts.
+- `POST /assistant/drafts/:draftId/fields` — **new**. Body `{ values: { field: value } }`: the form card (values the
+  person typed or chose; still validated). → `{ draft }` (ready → its card is on it).
+- `POST /assistant/drafts/:draftId/cancel` — **new**. → `{ draft }`; its pending card is cancelled too.
+- SSE: **new** `draft` event `{ type: "draft", draft }` whenever a draft changes during an answer.
+- Message `toolCalls[]` entries carry `draftId`; card (`action`) views carry `draftId`; a card's `preview.fields`
+  lists every value with its `source` (context | lookup | user | default).
+- Drafts expire 24 h after their last change, or when what they act on changed after their card was shown.
+- Audit: every draft change is an `assistant_tool_calls` row (`tool: "draft:<operation>"`, status `draft_set` /
+  `draft_rejected` / `draft_status`). AI calls made while working on a draft carry `meta.draftId` in the ledger.
+- Additive migration `20261121160000_assistant_drafts` (`assistant_drafts`, `assistant_actions.draft_id`).

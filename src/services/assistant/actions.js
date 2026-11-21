@@ -3,8 +3,9 @@ import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
 import { executeApproved } from "./registry/index.js";
 import { presentError } from "../ai/aiErrorMessage.js";
+import { draftForRun, markConfirmed, markExecuted, markFailed, draftCardCancelled } from "./drafts/draftService.js";
 
-// Confirmation cards (C2). A write tool the model calls becomes a card: the exact
+// Confirmation cards (C2). A card is made only from a ready draft (drafts/draftService.js): the exact
 // args are stored with a hash; Run executes exactly those, as the person who
 // pressed it, within 15 minutes; Cancel closes it. Every step is on the row (who
 // asked, the card, who decided and when, the result) and in the tool-call audit.
@@ -36,14 +37,15 @@ export function actionView(row) {
     result: row.result,
     error: row.error,
     messageId: row.messageId,
+    draftId: row.draftId ?? null,
     createdAt: row.createdAt,
   };
 }
 
-/** A write tool call → a pending card. Called by the registry (ctx.propose), never runs anything. */
-export async function proposeAction({ conversationId, messageId, actor, tool, args, companyId, preview, now = new Date() }) {
+/** A ready draft → a pending card. Called by the draft service (ctx.propose), never runs anything. */
+export async function proposeAction({ conversationId, messageId, actor, tool, args, companyId, preview, draftId = null, now = new Date() }) {
   return prisma.assistantAction.create({
-    data: { conversationId, messageId, ownerType: actor.kind, ownerId: actor.id, companyId, tool, args, argsHash: argsHashOf({ tool, companyId, args }), preview, status: "pending", expiresAt: new Date(now.getTime() + ACTION_TTL_MS) },
+    data: { conversationId, messageId, draftId, ownerType: actor.kind, ownerId: actor.id, companyId, tool, args, argsHash: argsHashOf({ tool, companyId, args }), preview, status: "pending", expiresAt: new Date(now.getTime() + ACTION_TTL_MS) },
   });
 }
 
@@ -76,19 +78,32 @@ export async function approveAction(actor, id, { now = new Date() } = {}) {
     await audit(row, actor, "refused", { error: "args changed after the card was shown" });
     throw new AppError("The action's details changed after it was shown, so it won't run. Ask again.", 409);
   }
+  // only a ready, unchanged draft's card runs (no draft → no write)
+  let draft;
+  try {
+    draft = await draftForRun(actor, row);
+  } catch (err) {
+    await audit(row, actor, err.statusCode === 410 ? "expired" : "refused", { error: err.message });
+    if (err.statusCode === 410) await prisma.assistantAction.updateMany({ where: { id, status: "pending" }, data: { status: "expired" } });
+    throw err;
+  }
   // claim it: two clicks never run it twice
   const claimed = await prisma.assistantAction.updateMany({ where: { id, status: "pending" }, data: { status: "running", decidedByType: actor.kind, decidedById: actor.id, decidedAt: now } });
   if (!claimed.count) throw new AppError("This action is already being run.", 409);
+  await markConfirmed(draft);
   const userTexts = (await prisma.assistantMessage.findMany({ where: { conversationId: row.conversationId, role: "user" }, select: { text: true } })).map((m) => m.text);
   const started = Date.now();
   try {
     const result = await executeApproved(row.tool, row.args, { actor, companyId: row.companyId, conversationId: row.conversationId, userTexts });
     const taskId = result?.taskId || null;
     await audit(row, actor, "approved_ok", { durationMs: Date.now() - started });
+    await markExecuted(draft, result);
     return actionView(await prisma.assistantAction.update({ where: { id }, data: { status: taskId ? "running" : "done", taskId, result } }));
   } catch (err) {
     await audit(row, actor, "approved_error", { error: String(err.message).slice(0, 1000), durationMs: Date.now() - started });
-    return actionView(await prisma.assistantAction.update({ where: { id }, data: { status: "failed", error: String(err.message).slice(0, 2000) } }));
+    // back to the draft: the field(s) the error is about are marked, nothing is retried with other values
+    const fields = await markFailed(draft, err.message);
+    return actionView(await prisma.assistantAction.update({ where: { id }, data: { status: "failed", error: String(err.message).slice(0, 2000), result: { draftId: draft.id, fields } } }));
   }
 }
 
@@ -98,7 +113,16 @@ export async function cancelAction(actor, id, { now = new Date() } = {}) {
   const done = await prisma.assistantAction.updateMany({ where: { id, status: "pending" }, data: { status: "cancelled", decidedByType: actor.kind, decidedById: actor.id, decidedAt: now } });
   if (!done.count) throw new AppError("This action was just decided.", 409);
   await audit(row, actor, "cancelled");
+  await draftCardCancelled(row);
   return actionView(await prisma.assistantAction.findUnique({ where: { id } }));
+}
+
+/** A pending card retired by its draft (changed, cancelled, expired) — not the person's Cancel. */
+export async function cancelPending(actor, id, reason, { status = "cancelled", now = new Date() } = {}) {
+  const row = await prisma.assistantAction.findUnique({ where: { id } });
+  if (!row || row.status !== "pending") return;
+  const done = await prisma.assistantAction.updateMany({ where: { id, status: "pending" }, data: { status, decidedByType: actor.kind, decidedById: actor.id, decidedAt: now } });
+  if (done.count) await audit(row, actor, status, { error: reason });
 }
 
 /**

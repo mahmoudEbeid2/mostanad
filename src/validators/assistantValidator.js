@@ -8,6 +8,9 @@ export const assistantSchemas = {
   byId: { params: id },
   action: { params: z.object({ actionId: z.string().uuid() }) },
   continue: { params: z.object({ id: z.string().uuid(), actionId: z.string().uuid() }) },
+  draft: { params: z.object({ draftId: z.string().uuid() }) },
+  // each value is checked by the draft against its field's own schema
+  draftFields: { params: z.object({ draftId: z.string().uuid() }), body: z.object({ values: z.record(z.string().min(1).max(60), z.unknown()) }).strict() },
   more: { params: z.object({ id: z.string().uuid(), messageId: z.string().uuid(), blockId: z.string().uuid() }) },
   message: {
     params: id,

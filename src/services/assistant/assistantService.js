@@ -8,6 +8,7 @@ import { nextRows } from "./agent/blocks.js";
 import { factsOf } from "./agent/grounding.js";
 import { storeAttachments, attachmentView } from "./attachments.js";
 import { proposeAction, actionView, refreshAction, actionEventText, cancelAction } from "./actions.js";
+import { draftSession, openDraftsNote, conversationDrafts } from "./drafts/draftService.js";
 
 // The assistant's conversations, messages, per-company switch and limits (C0).
 // The actor is the signed-in caller (actorFrom in the controller): a company
@@ -137,7 +138,7 @@ export async function getConversation(actor, id) {
     prisma.assistantMessage.findMany({ where: { conversationId: id, supersededAt: null }, orderBy: { createdAt: "asc" } }),
     prisma.assistantAction.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } }),
   ]);
-  return { ...(await conversationView(c)), messages: messages.map((m) => messageView(m, actions)) };
+  return { ...(await conversationView(c)), messages: messages.map((m) => messageView(m, actions)), drafts: await conversationDrafts(actor, id) };
 }
 
 export async function deleteConversation(actor, id) {
@@ -220,6 +221,7 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const ctx = {
     actor,
     scope: { companyId: scope, companyName: await companyName(scope) },
+    drafts: null,
     page: pg,
     companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
     knownRefs: history.flatMap((m) => (Array.isArray(m.links) ? m.links : [])),
@@ -233,8 +235,14 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
       onEvent({ type: "action", action: actionView(row) });
       return row;
     },
+    // operation drafts: the cards come from them; the UI's draft card updates live
+    messageId: replyId,
+    ledgerMeta: ledger.meta,
+    onDraft: (draft) => onEvent({ type: "draft", draft }),
+    openDrafts: await openDraftsNote(actor, conversationId),
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId: replyId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
+  ctx.drafts = draftSession(ctx);
   const result = await runAgent({
     text: body,
     history: history.reverse().map(({ role, text: t, toolCalls }) => ({ role, text: t, toolCalls })),

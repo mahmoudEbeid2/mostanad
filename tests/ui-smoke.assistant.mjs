@@ -10,6 +10,8 @@ import path from "path";
 import puppeteer from "puppeteer";
 import { prisma } from "../src/lib/prisma.js";
 import { makeAssert, api, createCompany } from "./certificates-v2/helpers.js";
+import * as assistantService from "../src/services/assistant/assistantService.js";
+import { draftSession } from "../src/services/assistant/drafts/draftService.js";
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -70,6 +72,7 @@ page.on("request", async (req) => {
   let m = /\/assistant\/actions\/([^/?]+)\/(approve|cancel)$/.exec(url);
   if (m && req.method() === "POST") {
     const a = cards.get(m[1]);
+    if (!a) return req.continue(); // a real card (the drafts section): the API runs it
     const decided = { ...a, decidedAt: new Date().toISOString(), decidedBy: "you" };
     const next = m[2] === "cancel" ? { ...decided, status: "cancelled" } : { ...decided, status: "running", taskId: crypto.randomUUID() };
     cards.set(a.id, next);
@@ -78,6 +81,7 @@ page.on("request", async (req) => {
   m = /\/assistant\/actions\/([^/?]+)$/.exec(url);
   if (m && req.method() === "GET") {
     const a = cards.get(m[1]);
+    if (!a) return req.continue();
     progressTicks++;
     const done = progressTicks >= 2;
     const next = done ? { ...a, status: "done", result: { link: `/invoices/${invoice.id}` } } : a;
@@ -369,6 +373,42 @@ try {
   await page.keyboard.press("Escape");
   assert("Esc clears the box, which shrinks back", (await page.$eval(T("assistant-input"), (e) => e.value)) === "" && (await boxHeight()) <= h0 + 1);
   await page.$eval(T("assistant-input"), (e) => e.blur());
+
+  console.log("\n🧩 Operation drafts (the real API)");
+  // a draft as the model would start it: "add a product for Smoke Brand" — the brand found, the rest still needed
+  const smokeBrand = await prisma.brand.create({ data: { name: `Smoke Brand ${ts}`, companyId: company.id } });
+  const smokeCat = await prisma.category.create({ data: { name: `AAA Smoke Cat ${ts}` } });
+  const me = { kind: "user", id: user.id, name: user.name, permissions: null };
+  const dconv = await assistantService.createConversation(me, { companyId: company.id });
+  await prisma.assistantConversation.update({ where: { id: dconv.id }, data: { title: `Drafts ${ts}` } });
+  const companyExists = async (id) => !!(await prisma.company.findUnique({ where: { id } }));
+  const seeded = await draftSession({ actor: me, scope: { companyId: company.id }, conversationId: dconv.id, userTexts: [], companyExists }).open({ tool: "create_product", hints: { brandId: `Smoke Brand ${ts}` } });
+  await page.goto(`${FRONT}/assistant`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(T("assistant-history"), { timeout: 8000 });
+  await page.evaluate((t) => [...document.querySelectorAll('[data-testid="assistant-history"] button, [data-testid="assistant-history"] a')].find((b) => b.innerText.includes(t))?.click(), `Drafts ${ts}`);
+  await page.waitForSelector(T("draft-card"), { timeout: 8000 });
+  assert("the open draft is listed at the top, with Resume and Cancel", (await text(T("open-drafts"))).includes("Add a product") && !!(await page.$(T("draft-resume"))));
+  assert("its card: the brand found by a lookup, with its source badge", (await text(T("draft-filled"))).includes(`Smoke Brand ${ts}`) && (await text(T("draft-filled"))).includes("Found"));
+  assert("…and one form for what only you can answer (name, composition, category as buttons)", (await text(T("draft-form"))).includes("Name") && (await text(T("draft-form"))).includes("Composition") && (await page.$$(T("draft-choice"))).length >= 1);
+  await page.type('[data-testid="draft-form"] input[aria-label="Name"]', `Smoke Product ${ts}`);
+  await page.type('[data-testid="draft-form"] input[aria-label="Ingredient 1"]', "Vitamin E");
+  await page.type('[data-testid="draft-form"] input[aria-label="Concentration 1"]', "5%");
+  await page.evaluate((t) => [...document.querySelectorAll('[data-testid="draft-choice"]')].find((b) => b.innerText.trim() === t)?.click(), `AAA Smoke Cat ${ts}`);
+  await page.click(T("draft-submit"));
+  await page.waitForSelector(`${T("draft-card")} ${T("action-card")}`, { timeout: 8000 });
+  const fieldsText = await text(T("action-fields"));
+  assert("Continue → ready: ONE confirmation card listing every value with its source", ["Company", "Name", "Composition", "Category", "Brand"].every((l) => fieldsText.includes(l)) && ["Page", "Found", "You typed"].every((b) => fieldsText.includes(b)), fieldsText);
+  assert("nothing was created before Run", !(await prisma.product.findFirst({ where: { companyId: company.id, name: `Smoke Product ${ts}` } })));
+  await shot("e3-draft-ready");
+  await page.click(`${T("draft-card")} ${T("action-run")}`);
+  const shownDone = await page.waitForFunction(() => document.querySelector('[data-testid="draft-card"]')?.dataset.status === "executed", { timeout: 10000 }).then(() => true, () => false);
+  const smokeProduct = await prisma.product.findFirst({ where: { companyId: company.id, name: `Smoke Product ${ts}` } });
+  const smokeDraft = await prisma.assistantDraft.findUnique({ where: { id: seeded.id } });
+  assert("Run adds the product with exactly those values; the draft is Done", smokeProduct?.brandId === smokeBrand.id && smokeProduct.categoryId === smokeCat.id && smokeProduct.activeIngredients?.[0]?.concentration === "5%" && smokeDraft.status === "executed", { product: smokeProduct?.name, draft: smokeDraft.status, error: smokeDraft.error });
+  assert("…and its card says so", shownDone, await text(T("draft-card")));
+  await prisma.product.deleteMany({ where: { companyId: company.id } });
+  await prisma.brand.delete({ where: { id: smokeBrand.id } });
+  await prisma.category.delete({ where: { id: smokeCat.id } });
 
   console.log("\n✦ Settings");
   await page.waitForSelector('button[title="Assistant settings"]', { timeout: 8000 });

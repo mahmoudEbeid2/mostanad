@@ -30,6 +30,10 @@ router.post("/actions/:actionId/approve", validate(s.action), c.approveAction);
 router.post("/actions/:actionId/cancel", validate(s.action), c.cancelAction);
 router.get("/actions/:actionId", validate(s.action), c.actionProgress);
 router.post("/conversations/:id/actions/:actionId/continue", validate(s.continue), c.continueAfterAction);
+// operation drafts: the form card (values the person typed or chose), cancel, and a conversation's drafts
+router.get("/conversations/:id/drafts", validate(s.byId), c.listDrafts);
+router.post("/drafts/:draftId/fields", validate(s.draftFields), c.submitDraftFields);
+router.post("/drafts/:draftId/cancel", validate(s.draft), c.cancelDraft);
 
 router.get("/settings", restrictToPermission("manage_assistant_settings"), c.listSettings);
 router.patch("/settings/:scopeKey", restrictToPermission("manage_assistant_settings"), validate(s.settings), c.updateSettings);

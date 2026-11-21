@@ -1476,6 +1476,7 @@ model AssistantConversation {
   toolCalls   AssistantToolCall[]
   attachments AssistantAttachment[]
   actions     AssistantAction[]
+  drafts      AssistantDraft[]
 
   @@index([ownerType, ownerId, updatedAt])
   @@map("assistant_conversations")
@@ -1574,11 +1575,44 @@ model AssistantAttachment {
 // person approves it, with exactly the stored args (argsHash is checked at Run),
 // within 15 minutes. Audit: who asked, the card, who approved or cancelled and
 // when, the result.
+// An operation being collected (slot filling): one row per pending write. Each field
+// { value, source: context|lookup|user|default, evidence, confirmed, options?, error? }.
+// A confirmation card is made from it only when nothing is missing or blocking (ready);
+// Run executes exactly its args (args_hash). Expires 24 h after its last change, or when
+// what it acts on changed after its card was shown (watch).
+model AssistantDraft {
+  id             String                @id @default(uuid())
+  conversationId String                @map("conversation_id")
+  conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ownerType      String                @map("owner_type")
+  ownerId        String                @map("owner_id")
+  companyId      String?               @map("company_id")
+  tool           String
+  fields         Json
+  missing        Json // [field name]
+  blockedBy      Json                  @map("blocked_by") // [{ key, label, detail, fix: [tool] }]
+  status         String                @default("collecting") // collecting | ready | confirmed | executed | cancelled | expired
+  actionId       String?               @map("action_id") // its confirmation card, once ready
+  argsHash       String?               @map("args_hash")
+  watch          String? // fingerprint of what it acts on, taken when its card was shown
+  error          String?
+  result         Json?
+  messageIds     Json?                 @map("message_ids") // assistant messages that worked on it: its AI calls in the ledger
+  expiresAt      DateTime              @map("expires_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  @@index([conversationId, status])
+  @@index([ownerType, ownerId, updatedAt])
+  @@map("assistant_drafts")
+}
+
 model AssistantAction {
   id             String                @id @default(uuid())
   conversationId String                @map("conversation_id")
   conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   messageId      String?               @map("message_id") // the assistant message that showed it
+  draftId        String?               @map("draft_id") // the ready draft it was made from (every card since drafts)
   ownerType      String                @map("owner_type") // who asked
   ownerId        String                @map("owner_id")
   companyId      String                @map("company_id") // one explicit company, always
