@@ -7,7 +7,7 @@ import { runTool } from "./registry/index.js";
 import { nextRows } from "./agent/blocks.js";
 import { factsOf } from "./agent/grounding.js";
 import { storeAttachments, attachmentView } from "./attachments.js";
-import { proposeAction, actionView, refreshAction, actionEventText } from "./actions.js";
+import { proposeAction, actionView, refreshAction, actionEventText, cancelAction } from "./actions.js";
 
 // The assistant's conversations, messages, per-company switch and limits (C0).
 // The actor is the signed-in caller (actorFrom in the controller): a company
@@ -134,7 +134,7 @@ const messageView = (m, actions = []) => ({
 export async function getConversation(actor, id) {
   const c = await loadOwn(actor, id);
   const [messages, actions] = await Promise.all([
-    prisma.assistantMessage.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } }),
+    prisma.assistantMessage.findMany({ where: { conversationId: id, supersededAt: null }, orderBy: { createdAt: "asc" } }),
     prisma.assistantAction.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } }),
   ]);
   return { ...(await conversationView(c)), messages: messages.map((m) => messageView(m, actions)) };
@@ -175,11 +175,23 @@ export async function uploadAttachments(actor, conversationId, files, { companyI
   return storeAttachments({ conversationId, companyId: scope, actor, files });
 }
 
-export async function sendMessage(actor, conversationId, { text, page, companyId, attachmentIds = [] }, { onEvent = () => {}, signal = null, generate = null, eventFor = null } = {}) {
+/**
+ * editOf: a user message of this conversation to edit or resend — it and every message after it
+ * are hidden (supersededAt) and this message takes their place. Its files and page are kept
+ * unless the body gives others. Hidden messages still count against the limits.
+ */
+export async function sendMessage(actor, conversationId, { text, page, companyId, attachmentIds, editOf = null }, { onEvent = () => {}, signal = null, generate = null, eventFor = null } = {}) {
   const conv = await loadOwn(actor, conversationId);
   const body = String(text || "").trim();
   if (!body) throw new AppError("Type a message", 400);
   if (body.length > MAX_TEXT) throw new AppError(`A message can be at most ${MAX_TEXT} characters`, 400);
+  const edited = editOf && UUID.test(String(editOf)) ? await prisma.assistantMessage.findFirst({ where: { id: editOf, conversationId, role: "user", supersededAt: null } }) : null;
+  if (editOf && !edited) throw new AppError("Message not found!", 404);
+  if (edited) {
+    attachmentIds ??= (Array.isArray(edited.attachments) ? edited.attachments : []).map((a) => a.id).filter(Boolean);
+    page ??= edited.page;
+  }
+  attachmentIds ??= [];
   const limits = await checkLimits(actor);
 
   // the scope: a company session → its company, always; a system user may switch it per message
@@ -190,13 +202,16 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const files = attachmentIds.length ? await prisma.assistantAttachment.findMany({ where: { id: { in: attachmentIds.filter((x) => UUID.test(String(x))) }, conversationId } }) : [];
   if (files.length !== new Set(attachmentIds).size) throw new AppError("Attachment not found!", 404);
   if (files.some((a) => a.companyId !== scope)) throw new AppError(scope ? "These files belong to another company than the one picked — attach them again." : "Pick a company first: files belong to one company, not \"All companies\".", 400);
-  const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true, toolCalls: true } });
+  if (edited) await supersedeFrom(actor, edited);
+  const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null, supersededAt: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true, toolCalls: true } });
   // what later answers are checked against: every tool result of this conversation
-  const earlierFacts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "assistant", facts: { not: null } }, select: { facts: true }, orderBy: { createdAt: "desc" }, take: 30 })).map((m) => m.facts);
+  const earlierFacts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "assistant", facts: { not: null }, supersededAt: null }, select: { facts: true }, orderBy: { createdAt: "desc" }, take: 30 })).map((m) => m.facts);
   const userMsg = await prisma.assistantMessage.create({ data: { conversationId, role: eventFor ? "event" : "user", text: body, scopeKey, companyId: scope, page: pg ?? undefined, attachments: files.length ? files.map(attachmentView) : undefined } });
-  await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(conv.title || eventFor ? {} : { title: body.slice(0, 80) }) } });
+  // editing the first message renames the conversation, as sending it did
+  const retitle = !eventFor && (!conv.title || (edited && !(await prisma.assistantMessage.count({ where: { conversationId, role: "user", supersededAt: null, id: { not: userMsg.id } } }))));
+  await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope, ...(retitle ? { title: body.slice(0, 80) } : {}) } });
   // the person's own words: the only source (besides a supplier COA) for lab results and batch facts
-  const userTexts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "user" }, select: { text: true } })).map((m) => m.text);
+  const userTexts = (await prisma.assistantMessage.findMany({ where: { conversationId, role: "user", supersededAt: null }, select: { text: true } })).map((m) => m.text);
   const proposed = [];
 
   setAiCompany(scope); // bill this message's calls to its scope; null = all companies (not body.companyId "all")
@@ -253,6 +268,21 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
   return { userMessageId: userMsg.id, message: messageView(reply, proposed) };
+}
+
+/** Hides `from` and every later message of its conversation; their cards still waiting for Run are cancelled (audited as a Cancel). */
+async function supersedeFrom(actor, from) {
+  const later = await prisma.assistantMessage.findMany({ where: { conversationId: from.conversationId, supersededAt: null, createdAt: { gte: from.createdAt } }, select: { id: true } });
+  const ids = later.map((m) => m.id);
+  await prisma.assistantMessage.updateMany({ where: { id: { in: ids } }, data: { supersededAt: new Date() } });
+  const pending = await prisma.assistantAction.findMany({ where: { conversationId: from.conversationId, messageId: { in: ids }, status: "pending" }, select: { id: true } });
+  for (const a of pending) {
+    try {
+      await cancelAction(actor, a.id);
+    } catch (err) {
+      if (err.statusCode !== 409) throw err; // decided meanwhile (Run or Cancel won the race): leave it as decided
+    }
+  }
 }
 
 /**

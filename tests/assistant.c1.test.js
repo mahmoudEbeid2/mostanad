@@ -282,6 +282,31 @@ async function main() {
     assert("model calls per day enforced (429)", limited?.statusCode === 429 && /AI calls/.test(limited.message), limited?.message);
     await assistant.updateSettings(cA.id, { modelCallsPerDay: 1000 });
 
+    // ── 5a. edit / resend a message ──
+    console.log("\nEdit and resend");
+    const ec = await assistant.createConversation(actorA);
+    const first = await assistant.sendMessage(actorA, ec.id, { text: "first question" }, { generate: script([[{ text: "first answer" }]]).generate });
+    const second = await assistant.sendMessage(actorA, ec.id, { text: "second question" }, { generate: script([[{ text: "second answer" }]]).generate });
+    const card = await prisma.assistantAction.create({ data: { conversationId: ec.id, messageId: second.message.id, ownerType: "company", ownerId: cA.id, companyId: cA.id, tool: "match_invoice_line", args: {}, argsHash: "x", preview: { title: "t" }, expiresAt: new Date(Date.now() + 600_000) } });
+    const edited = await assistant.sendMessage(actorA, ec.id, { text: "second, edited", editOf: second.userMessageId }, { generate: script([[{ text: "edited answer" }]]).generate });
+    let view = await assistant.getConversation(actorA, ec.id);
+    assert("edit: the message and its answer are replaced", view.messages.map((x) => x.text).join("|") === "first question|first answer|second, edited|edited answer", view.messages.map((x) => x.text));
+    const hidden = await prisma.assistantMessage.findMany({ where: { conversationId: ec.id, supersededAt: { not: null } } });
+    assert("…the old ones are hidden, not deleted (the limits still count them)", hidden.length === 2);
+    assert("…a card of the replaced answer still waiting is cancelled", (await prisma.assistantAction.findUnique({ where: { id: card.id } })).status === "cancelled");
+    const edSeen = script([[{ text: "again" }]]);
+    await assistant.sendMessage(actorA, ec.id, { text: "first question", editOf: first.userMessageId }, { generate: edSeen.generate });
+    view = await assistant.getConversation(actorA, ec.id);
+    assert("resend from the first message: the conversation starts over from it", view.messages.map((x) => x.text).join("|") === "first question|again", view.messages.map((x) => x.text));
+    assert("…the model no longer sees the replaced turns", !JSON.stringify(edSeen.seen[0].contents).includes("second, edited"));
+    let notFound = null;
+    try {
+      await assistant.sendMessage(actorA, ec.id, { text: "x", editOf: edited.userMessageId }, { generate: script([[{ text: "x" }]]).generate });
+    } catch (e) {
+      notFound = e;
+    }
+    assert("editing a hidden message is refused (404)", notFound?.statusCode === 404);
+
     // ── 5b. the ledger row of a model call (SDK stubbed in-process: nothing is sent) ──
     console.log("\nAI cost ledger");
     const { default: geminiClient } = await import("../src/services/ai/geminiClient.js");

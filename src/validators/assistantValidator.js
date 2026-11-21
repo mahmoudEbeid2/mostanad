@@ -16,6 +16,7 @@ export const assistantSchemas = {
         text: z.string().trim().min(1).max(4000),
         companyId: scope.optional(), // system users: switch the conversation's company (or "all"); ignored for a company session
         attachmentIds: z.array(z.string().uuid()).max(10).optional(),
+        editOf: z.string().uuid().optional(), // edit / resend: this user message and everything after it are replaced by this one
         page: z.object({ route: z.string().max(200).optional(), entityType: z.string().max(30).optional(), entityId: z.string().max(64).optional() }).optional(),
       })
       .strict(),

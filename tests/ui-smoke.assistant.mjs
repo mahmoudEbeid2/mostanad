@@ -102,7 +102,7 @@ page.on("request", async (req) => {
     status: 200,
     contentType: "text/event-stream",
     headers: cors,
-    body: sse([["status", { type: "status", text: "Thinking…" }], ...r.toolCalls.flatMap((c) => [["tool_start", { type: "tool_start", tool: c.name, label: c.label, args: c.args }], ["tool_end", { type: "tool_end", ...c }]]), ["message", { userMessageId: "u", message }]]),
+    body: sse([["status", { type: "status", text: "Thinking…" }], ...r.toolCalls.flatMap((c) => [["tool_start", { type: "tool_start", tool: c.name, label: c.label, args: c.args }], ["tool_end", { type: "tool_end", ...c }]]), ["message", { userMessageId: crypto.randomUUID(), message }]]),
   });
 });
 
@@ -319,6 +319,29 @@ try {
   await ask("and in general?");
   await contains(T("assistant-messages"), "ok");
   assert("× removes the context for the next message", !sent.at(-1).page?.entityType && !(await page.$(T("context-chip"))));
+
+  console.log("\n✏️ Edit and resend");
+  const answers = async () => (await page.$$(T("assistant-answer"))).length;
+  const before = await answers();
+  reply = { text: "Resent answer.", toolCalls: [] };
+  let mine = await page.$$(T("user-message"));
+  const resendOf = sent.length;
+  await mine.at(-1).hover();
+  await (await mine.at(-1).$(T("resend-message"))).click();
+  await contains(T("assistant-messages"), "Resent answer.");
+  assert("Resend sends the same text with editOf, and no new page context", sent.length === resendOf + 1 && sent.at(-1).text === "and in general?" && /^[0-9a-f-]{36}$/.test(sent.at(-1).editOf || "") && !("page" in sent.at(-1)), sent.at(-1));
+  assert("…its old answer is replaced, not added to", (await answers()) === before && !(await page.$$eval(T("assistant-answer"), (els) => els.some((e) => e.innerText.trim() === "ok"))));
+  reply = { text: "Edited answer.", toolCalls: [] };
+  mine = await page.$$(T("user-message"));
+  await mine[0].hover();
+  await (await mine[0].$(T("edit-message"))).click();
+  await page.waitForSelector(T("edit-input"));
+  await page.$eval(T("edit-input"), (e) => e.select());
+  await page.keyboard.type("only line 1?");
+  await page.keyboard.press("Enter");
+  await contains(T("assistant-messages"), "Edited answer.");
+  assert("Edit sends the new text with editOf", sent.at(-1).text === "only line 1?" && !!sent.at(-1).editOf, sent.at(-1));
+  assert("…and everything after the edited message is gone", (await page.$$(T("user-message"))).length === 1 && (await answers()) === 1 && !(await text(T("assistant-messages"))).includes("no batch number"));
   await shot("e1-from-invoice");
   await page.click(T("back-link"));
   await page.waitForFunction((id) => location.pathname === `/invoices/${id}`, { timeout: 8000 }, invoice.id);

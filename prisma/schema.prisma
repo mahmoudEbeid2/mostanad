@@ -1504,6 +1504,7 @@ model AssistantMessage {
   outputTokens   Int                   @default(0) @map("output_tokens")
   thinkingTokens Int                   @default(0) @map("thinking_tokens")
   costUsd        Decimal?              @map("cost_usd") @db.Decimal(18, 10) // sum of the ledger rows; null = unpriced
+  supersededAt   DateTime?             @map("superseded_at") // edited or resent away: hidden from the chat and the model, still counted by the limits
   createdAt      DateTime              @default(now()) @map("created_at")
 
   @@index([conversationId, createdAt])

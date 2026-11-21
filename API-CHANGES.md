@@ -621,3 +621,13 @@ Additive; no migration.
 - `flags` (certificates): **new** `unconfirmed`, blocks Finalize: the value is an estimate nobody confirmed. Generation prints those values on the draft.
   **New** `empty_optional`, informational.
 - Additive migration `20261105120000_template_field_not_applicable`.
+
+## Assistant — edit / resend a message
+
+- `POST /assistant/conversations/:id/messages`: **new** optional body field `editOf` (a user message id of this conversation).
+  That message and every message after it are hidden (`supersededAt`), and this message takes their place: edit = new `text`,
+  resend = the same `text`. Left out, `attachmentIds` and `page` are taken from the edited message. Cards of the hidden answers
+  still waiting for Run are cancelled (audited as a Cancel). Hidden messages still count against the hourly message limit and the
+  daily AI-call budget. 404 when `editOf` is not a visible user message of the conversation.
+- `GET /assistant/conversations/:id`: hidden messages are left out.
+- Additive migration `20261121140000_assistant_message_edit` (`assistant_messages.superseded_at`, nullable).
