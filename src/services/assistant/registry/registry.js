@@ -96,6 +96,11 @@ export function cleanSchema(node) {
     if (!SCHEMA_KEYS.has(k) || k === "format" || k === "description") continue;
     out[k] = k === "properties" ? Object.fromEntries(Object.entries(v).map(([p, s]) => [p, cleanSchema(s)])) : cleanSchema(v);
   }
+  // Gemini rejects a `required` name with no matching property (e.g. an enum-keyed record once additionalProperties is dropped)
+  if (out.required) {
+    out.required = out.required.filter((p) => out.properties && p in out.properties);
+    if (!out.required.length) delete out.required;
+  }
   // a format Gemini doesn't know (uuid, …) is said in the description instead
   const fmt = node.format && !["date-time", "enum"].includes(node.format) ? ` (${node.format})` : "";
   if (node.format && !fmt) out.format = node.format;

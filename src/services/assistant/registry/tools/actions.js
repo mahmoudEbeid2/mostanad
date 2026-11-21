@@ -180,7 +180,7 @@ defineTool({
   description:
     "Proposes creating a product from an unmatched invoice line (the 'New product' flow): the product is created in the invoice's company and matched to the line. values: product fields the user gave " +
     `(${NEW_PRODUCT_FIELDS.join(", ")}). The card lists the fields the line's certificates need that are still empty. Never batch numbers, dates or lab results.`,
-  args: z.object({ invoiceId: id("invoice"), lineNo: z.number().int().min(1), values: z.record(z.enum(NEW_PRODUCT_FIELDS), z.string().max(2000)).optional() }),
+  args: z.object({ invoiceId: id("invoice"), lineNo: z.number().int().min(1), values: z.strictObject(Object.fromEntries(NEW_PRODUCT_FIELDS.map((f) => [f, z.string().max(2000).optional()]))).optional() }),
   guard: (a, ctx) => Object.entries(a.values || {}).forEach(([k, v]) => assertVerbatim(k, v, ctx)),
   preview: async (a, ctx) => {
     const { inv, item } = await lineOf(a.invoiceId, a.lineNo, ctx.companyId);
