@@ -28,6 +28,7 @@ COPY src/services/certificates/engine/renderer.js \
      src/services/certificates/engine/glyphLookAlikes.js \
      src/services/certificates/engine/glyphPlan.js \
      src/services/certificates/engine/fallbackFaces.js \
+     src/services/certificates/engine/labelFit.js \
      ./src/services/certificates/engine/
 COPY src/services/certificates/renderService/server.js ./src/services/certificates/renderService/
 # fallback fonts: files the engine reads, not system fonts, so `sans-serif` and every
