@@ -6,6 +6,7 @@ import "./tools/labels.js";
 import "./tools/organisation.js";
 import "./tools/actions.js";
 import "./tools/productCopy.js";
+import "./tools/invoiceLines.js";
 import "./tools/labelLayout.js";
 import "./tools/drafts.js"; // after the write tools: start_draft lists them
 

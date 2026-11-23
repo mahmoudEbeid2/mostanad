@@ -171,7 +171,7 @@ const linesMatched = {
   key: "lines_matched",
   label: "Every invoice line is matched to a product (or ignored)",
   needs: ["invoiceId"],
-  fix: ["match_invoice_line", "create_product_from_line"],
+  fix: ["match_invoice_lines", "create_products_from_lines"],
   check: async (d) => {
     const open = await prisma.invoiceItem.findMany({ where: { invoice: { id: d.fields.invoiceId, companyId: d.companyId }, matchStatus: "needs_match" }, orderBy: { lineNo: "asc" }, select: { lineNo: true, data: true } });
     return open.length ? { detail: `${open.length === 1 ? "Line" : "Lines"} ${open.map((l) => `${l.lineNo} (${l.data?.name || "—"})`).join(", ")} ${open.length === 1 ? "needs" : "need"} a product` } : null;
@@ -181,7 +181,7 @@ const someMatched = {
   key: "some_matched",
   label: "At least one invoice line is matched to a product",
   needs: ["invoiceId"],
-  fix: ["match_invoice_line", "create_product_from_line"],
+  fix: ["match_invoice_lines", "create_products_from_lines"],
   check: async (d) => ((await prisma.invoiceItem.count({ where: { invoice: { id: d.fields.invoiceId, companyId: d.companyId }, matchStatus: "matched" } })) ? null : { detail: "No line is matched to a product yet" }),
 };
 const invoiceReady = {
@@ -238,6 +238,40 @@ const invoiceWatch = async (f, d) => {
   const inv = await prisma.invoice.findFirst({ where: { id: f.invoiceId, companyId: d.companyId }, select: { status: true, updatedAt: true } });
   return inv ? `invoice:${inv.status}:${inv.updatedAt.toISOString()}` : "invoice:gone";
 };
+// a card for invoice LINES watches only those lines (and the invoice's status): approving line 1's
+// card no longer expires the cards of lines 2–7 (QA 2026-11-23)
+const linesWatch = async (f, d) => {
+  if (!f.invoiceId) return null;
+  const nos = Array.isArray(f.lines) ? f.lines.map((l) => l.lineNo) : f.lineNo ? [f.lineNo] : [];
+  const inv = await prisma.invoice.findFirst({ where: { id: f.invoiceId, companyId: d.companyId }, select: { status: true } });
+  if (!inv) return "invoice:gone";
+  const items = await prisma.invoiceItem.findMany({ where: { invoiceId: f.invoiceId, lineNo: { in: nos } }, select: { lineNo: true, matchStatus: true, productId: true }, orderBy: { lineNo: "asc" } });
+  return `invoice:${inv.status === "review" || inv.status === "ready" ? "open" : inv.status}|${items.map((i) => `${i.lineNo}:${i.matchStatus}:${i.productId || ""}`).join(",")}`;
+};
+
+/** Every open line of the invoice with the matcher's proposal: its AI / strong candidate → match, else → create. */
+const lineProposal = ({ createOnly = false } = {}) => ({
+  kind: "context",
+  source: "matcher",
+  needs: ["invoiceId"],
+  resolve: async (d) => {
+    const items = await prisma.invoiceItem.findMany({ where: { invoice: { id: d.fields.invoiceId, companyId: d.companyId }, matchStatus: "needs_match" }, orderBy: { lineNo: "asc" }, select: { lineNo: true, matchCandidates: true } });
+    if (!items.length) return null;
+    const value = items.map((it) => {
+      const top = Array.isArray(it.matchCandidates) ? it.matchCandidates[0] : null;
+      if (!createOnly && top?.productId && (top.ai || (top.score ?? 0) >= 0.6)) return { lineNo: it.lineNo, action: "match", productId: top.productId };
+      return createOnly ? { lineNo: it.lineNo } : { lineNo: it.lineNo, action: "create" };
+    });
+    return { value, evidence: createOnly ? "every line that has no product" : "the invoice's matcher: its best candidate per line, else a new product" };
+  },
+  verify: async (value, d) => {
+    const { checkLines } = await import("../registry/tools/invoiceLines.js");
+    const rows = (Array.isArray(value) ? value : []).map((r) => ({ action: "create", ...r }));
+    await checkLines(d.fields.invoiceId, rows, d.companyId);
+    return { display: rows.map((r) => `${r.lineNo}: ${r.action}`).join(", ") };
+  },
+});
+
 const productWatch = async (f, d) => {
   if (!f.productId) return null;
   const p = await prisma.product.findFirst({ where: { id: f.productId, companyId: d.companyId }, select: { updatedAt: true } });
@@ -347,7 +381,7 @@ export const SPECS = {
     title: "Match an invoice line to a product",
     key: ["invoiceId", "lineNo"],
     fields: { invoiceId: INVOICE, lineNo: [line({ open: true })], productId: [product] },
-    watch: invoiceWatch,
+    watch: linesWatch,
     errors: [[/line/i, "lineNo"], [/product/i, "productId"], [/invoice/i, "invoiceId"]],
   },
   create_product_from_line: {
@@ -355,8 +389,22 @@ export const SPECS = {
     key: ["invoiceId", "lineNo"],
     fields: { invoiceId: INVOICE, lineNo: [line({ open: true })], values: [user()] },
     prerequisites: [lineOpen],
-    watch: invoiceWatch,
+    watch: linesWatch,
     errors: [[/line/i, "lineNo"], [/invoice/i, "invoiceId"]],
+  },
+  match_invoice_lines: {
+    title: "Match the invoice lines",
+    key: ["invoiceId"],
+    fields: { invoiceId: INVOICE, lines: [lineProposal()] },
+    watch: linesWatch,
+    errors: [[/line/i, "lines"], [/product/i, "lines"], [/invoice/i, "invoiceId"]],
+  },
+  create_products_from_lines: {
+    title: "Create products from the invoice lines",
+    key: ["invoiceId"],
+    fields: { invoiceId: INVOICE, lines: [lineProposal({ createOnly: true })] },
+    watch: linesWatch,
+    errors: [[/line/i, "lines"], [/invoice/i, "invoiceId"]],
   },
   confirm_invoice: { title: "Confirm the invoice", key: ["invoiceId"], fields: { invoiceId: INVOICE }, prerequisites: [inReview, linesMatched], watch: invoiceWatch, errors: [[/line|match/i, "invoiceId"]] },
   prepare_certificates: { title: "Prepare certificates", key: ["invoiceId"], fields: { invoiceId: INVOICE }, prerequisites: [someMatched], watch: invoiceWatch },

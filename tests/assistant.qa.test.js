@@ -98,6 +98,54 @@ async function main() {
     assert("start_draft declares value as text | number | true/false", JSON.stringify(decl.parameters).includes('"number"') && JSON.stringify(decl.parameters).includes('"boolean"'), JSON.stringify(decl.parameters).slice(0, 300));
     const ask = (await import("../src/services/assistant/drafts/specs.js")).specFor("update_product_fields").fields.find((f) => f.name === "changes");
     assert("the draft form offers the fields to change as a list labelled in Arabic and English", ask.fieldOptions?.some((o) => o.value === "withdrawalPeriod" && o.label === "فترة السحب / Withdrawal period"), ask.fieldOptions?.slice(0, 3));
+
+    console.log("\nPhase 4 — many invoice lines in one card");
+    const drafts = await import("../src/services/assistant/drafts/draftService.js");
+    const actions = await import("../src/services/assistant/actions.js");
+    const { runTool } = await import("../src/services/assistant/registry/index.js");
+    const other = await createCompany(`qa4o${s}`);
+    const sele = await prisma.product.create({ data: { companyId: co.id, name: `SELE GOLD ${s}`, productCode: `SG-${s}` } });
+    await prisma.product.create({ data: { companyId: other.id, name: `MAXPROTECT ${s}` } });
+    const inv4 = await prisma.invoice.create({ data: { companyId: co.id, sourceFileId: crypto.randomUUID(), status: "review", header: { invoiceNumber: `BRN-${s}`, invoiceDate: { raw: "01/01/2099", iso: "2099-01-01" } } } });
+    await prisma.invoiceItem.create({ data: { invoiceId: inv4.id, lineNo: 1, data: { name: `SELE GOLD ${s}` }, dataExtracted: {}, matchStatus: "needs_match", matchCandidates: [{ productId: sele.id, name: sele.name, score: 0.92, reasons: [] }] } });
+    await prisma.invoiceItem.create({ data: { invoiceId: inv4.id, lineNo: 2, data: { name: `MAXPROTECT ${s}` }, dataExtracted: {}, matchStatus: "needs_match" } });
+    await prisma.invoiceItem.create({ data: { invoiceId: inv4.id, lineNo: 3, data: { name: `Brand new ${s}` }, dataExtracted: {}, matchStatus: "needs_match" } });
+    const conv4 = await assistant.createConversation(admin, { companyId: co.id });
+    const env4 = { actor: admin, scope: { companyId: co.id }, conversationId: conv4.id, userTexts: ["طابقهم واللي ملوش منتج اعمله منتج جديد"], audit: async () => {}, companyExists: async () => true };
+    const sess = drafts.draftSession(env4);
+    let v = await sess.open({ tool: "match_invoice_lines", values: { invoiceId: inv4.id }, companyId: co.id });
+    const lines4 = v.fields.find((f) => f.name === "lines")?.value;
+    assert("'طابقهم…': ONE ready card proposing every line from the matcher (match the strong candidate, else create)", v.status === "ready" && (lines4 || []).map((l) => `${l.lineNo}:${l.action}:${l.productId || ""}`).join() === `1:match:${sele.id},2:create:,3:create:`, lines4);
+    const card4 = await prisma.assistantAction.findUnique({ where: { id: v.actionId } });
+    assert("the card lists each line with its action, and names another company that has the product", card4.preview.details.length === 3 && /SELE GOLD/.test(card4.preview.details[0].value) && /exists in qa4o/.test(card4.preview.details[1].value), card4.preview.details);
+    v = await drafts.submitDraftFields(admin, v.id, { lines: [{ lineNo: 1, action: "match", productId: sele.id }, { lineNo: 2, action: "ignore" }, { lineNo: 3, action: "create" }] });
+    assert("rows can be changed on the card (line 2 → ignore): a new card, still one", v.status === "ready" && v.fields.find((f) => f.name === "lines").value[1].action === "ignore");
+    const ran = await actions.approveAction(admin, v.actionId);
+    const after = await prisma.invoiceItem.findMany({ where: { invoiceId: inv4.id }, orderBy: { lineNo: "asc" }, select: { matchStatus: true, productId: true } });
+    assert("one button: line 1 matched, line 2 ignored, line 3 a new product — each reported", ran.status === "done" && ran.result.done === 3 && after[0].productId === sele.id && after[1].matchStatus === "ignored" && after[2].matchStatus === "matched" && after[2].productId, { ran: ran.result, after });
+
+    const inv5 = await prisma.invoice.create({ data: { companyId: co.id, sourceFileId: crypto.randomUUID(), status: "review", header: { invoiceNumber: `PER-${s}` } } });
+    for (const n of [1, 2]) await prisma.invoiceItem.create({ data: { invoiceId: inv5.id, lineNo: n, data: { name: `Line ${n}` }, dataExtracted: {}, matchStatus: "needs_match" } });
+    const d1 = await sess.open({ tool: "match_invoice_line", values: { invoiceId: inv5.id, lineNo: 1, productId: sele.id }, companyId: co.id });
+    const d2 = await sess.open({ tool: "match_invoice_line", values: { invoiceId: inv5.id, lineNo: 2, productId: sele.id }, companyId: co.id });
+    await actions.approveAction(admin, d1.actionId);
+    const still = (await sess.list()).find((x) => x.id === d2.id);
+    assert("approving line 1's card leaves line 2's card valid (it watches only its own line)", still?.status === "ready", still?.status);
+    await prisma.invoiceItem.updateMany({ where: { invoiceId: inv5.id, lineNo: 2 }, data: { matchStatus: "ignored" } });
+    const expired = (await drafts.conversationDrafts(admin, conv4.id)).find((x) => x.id === d2.id);
+    assert("…but a change to line 2 itself expires it", expired?.status === "expired", expired?.status);
+    const refreshed = await drafts.refreshDraft(admin, d2.id);
+    assert("Refresh rebuilds the expired card from its values, checked again now (a new draft, a new card)", refreshed.id !== d2.id && refreshed.tool === "match_invoice_line" && refreshed.status === "ready" && refreshed.actionId && refreshed.actionId !== d2.actionId, refreshed.error || refreshed.status);
+
+    const inv6 = await prisma.invoice.create({ data: { companyId: co.id, sourceFileId: crypto.randomUUID(), status: "review", header: { invoiceNumber: `GEN-${s}` } } });
+    await prisma.invoiceItem.create({ data: { invoiceId: inv6.id, lineNo: 1, data: { name: "x" }, dataExtracted: {}, matchStatus: "needs_match" } });
+    const gen = await sess.open({ tool: "generate_certificates", values: { invoiceId: inv6.id }, companyId: co.id });
+    assert("prerequisites in order: unmatched lines block first, 'confirm the invoice' isn't offered yet", gen.blockedBy.map((b) => b.key).join() === "lines_matched" && gen.blockedBy[0].fix[0] === "match_invoice_lines", gen.blockedBy);
+    const fix = await drafts.startFixDraft(admin, gen.id, "lines_matched");
+    assert("'Do this step' starts the fix operation's draft directly (the invoice carried over)", fix.tool === "match_invoice_lines" && fix.fields.find((f) => f.name === "invoiceId")?.value === inv6.id, fix);
+    t = await runTool("search_invoices", { limit: 1 }, { actor: admin, scope: { companyId: co.id }, audit: async () => {} });
+    assert("'latest invoice' = newest invoice date (2099-01-01), not upload order", t.data.items[0]?.invoiceNumber === `BRN-${s}`, t.data.items.map((i) => i.invoiceNumber));
+    await cleanupCompany(other.id).catch(() => {});
   } finally {
     await prisma.invoice.deleteMany({ where: { companyId: co.id } }).catch(() => {});
     await prisma.product.deleteMany({ where: { name: `Qa ${s}` } }).catch(() => {});

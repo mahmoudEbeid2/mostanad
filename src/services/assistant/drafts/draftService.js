@@ -276,6 +276,11 @@ async function step(draft, spec, { values = {}, hints = {}, clear = [], by = "mo
       if (out) blockedBy.push({ key: p.key, label: p.label, detail: out.detail, fix: p.fix });
     }
   }
+  // steps in order: while lines still need products, "confirm" / "fill the data" aren't the next step
+  // (QA 2026-11-23: it proposed confirming an invoice whose seven lines were all unmatched)
+  if (blockedBy.some((b) => b.key === "lines_matched" || b.key === "some_matched")) {
+    for (let i = blockedBy.length - 1; i >= 0; i--) if (["invoice_ready", "data_complete"].includes(blockedBy[i].key)) blockedBy.splice(i, 1);
+  }
   if (!companyId && !fields.companyId?.options && env.actor.kind === "user") {
     const data = await run("list_companies", { limit: 12 });
     const options = (data?.items || []).map((c) => ({ value: c.id, label: c.name }));
@@ -487,6 +492,43 @@ export async function submitDraftFields(actor, draftId, values, env = {}) {
   const companyExists = async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } }));
   const lastMessage = Array.isArray(row.messageIds) ? row.messageIds.at(-1) : null;
   return step(row, specFor(row.tool), { values: { ...values }, by: "user" }, { actor, scope: { companyId: conv?.companyId ?? null }, conversationId: row.conversationId, companyExists, messageId: lastMessage, userTexts: [], ...env });
+}
+
+const uiEnv = async (actor, row, env = {}) => {
+  const conv = await prisma.assistantConversation.findUnique({ where: { id: row.conversationId }, select: { companyId: true } });
+  const companyExists = async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } }));
+  const lastMessage = Array.isArray(row.messageIds) ? row.messageIds.at(-1) : null;
+  const userTexts = (await prisma.assistantMessage.findMany({ where: { conversationId: row.conversationId, role: "user", supersededAt: null }, select: { text: true } })).map((m) => m.text);
+  return { actor, scope: { companyId: conv?.companyId ?? null }, conversationId: row.conversationId, companyExists, messageId: lastMessage, userTexts, ...env };
+};
+
+/**
+ * POST /assistant/drafts/:id/fix { key } — "Do this step": the prerequisite's fix operation starts as its
+ * own draft right away (the invoice carried over), instead of posting a long English text as the
+ * person's message (QA 2026-11-23). → the new draft's view
+ */
+export async function startFixDraft(actor, draftId, key, env = {}) {
+  const row = await loadOwnDraft(actor, draftId);
+  const blocker = (Array.isArray(row.blockedBy) ? row.blockedBy : []).find((b) => b.key === key);
+  if (!blocker || !blocker.fix?.length) throw new AppError("That step has no operation to start here; do it on its page.", 400);
+  const carry = Object.fromEntries(["invoiceId", "productId", "labelId"].map((k) => [k, row.fields?.[k]?.value]).filter(([, v]) => v !== undefined));
+  const session = draftSession(await uiEnv(actor, row, env));
+  return session.open({ tool: blocker.fix[0], values: carry, companyId: row.companyId });
+}
+
+/**
+ * POST /assistant/drafts/:id/refresh — an expired draft (what it acts on changed after its card was
+ * shown) rebuilt: a new draft with the same values, checked again now; a fresh card when still ready.
+ */
+export async function refreshDraft(actor, draftId, env = {}) {
+  const row = await loadOwnDraft(actor, draftId);
+  if (row.status !== "expired") throw new AppError(`This draft is ${row.status}; nothing to refresh.`, 409);
+  const fields = Object.fromEntries(Object.entries(row.fields || {}).filter(([, f]) => f.value !== undefined).map(([k, f]) => [k, { ...f, error: undefined }]));
+  const fresh = await prisma.assistantDraft.create({
+    data: { conversationId: row.conversationId, ownerType: row.ownerType, ownerId: row.ownerId, companyId: row.companyId, tool: row.tool, fields, missing: [], blockedBy: [], status: "collecting", messageIds: row.messageIds ?? undefined, expiresAt: new Date(Date.now() + DRAFT_TTL_MS) },
+  });
+  await auditDraft({}, fresh, "draft_status", { from: null, to: "collecting", refreshedFrom: row.id });
+  return step(fresh, specFor(row.tool), { by: "user" }, await uiEnv(actor, row, env));
 }
 
 /** POST /assistant/drafts/:id/cancel */

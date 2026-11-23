@@ -139,6 +139,18 @@ export const submitDraftFields = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { draft: await drafts.submitDraftFields(actor, req.params.draftId, req.body.values) } });
 });
 
+export const startFixDraft = catchAsync(async (req, res) => {
+  const actor = actorFrom(req);
+  await assistant.assertEnabled(actor);
+  res.status(201).json({ status: "success", data: { draft: await drafts.startFixDraft(actor, req.params.draftId, String(req.body?.key || "")) } });
+});
+
+export const refreshDraft = catchAsync(async (req, res) => {
+  const actor = actorFrom(req);
+  await assistant.assertEnabled(actor);
+  res.status(201).json({ status: "success", data: { draft: await drafts.refreshDraft(actor, req.params.draftId) } });
+});
+
 export const cancelDraft = catchAsync(async (req, res) => {
   const actor = actorFrom(req);
   await assistant.assertEnabled(actor);

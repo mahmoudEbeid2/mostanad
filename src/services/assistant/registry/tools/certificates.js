@@ -10,7 +10,7 @@ import { listVersions } from "../../../certificates/certificates/editService.js"
 import { listTemplates, getTemplate, getVersionDetail } from "../../../certificates/templates/templateService.js";
 import { listTypes } from "../../../certificates/types/certificateTypeService.js";
 import { getMetrics } from "../../../certificates/maintenance/maintenanceService.js";
-import { findInvoices } from "../../reads.js";
+import { findInvoices, invoicesByDate } from "../../reads.js";
 
 const INVOICE_STATUSES = ["uploaded", "extracting", "review", "ready", "generating", "generated", "partially_failed", "failed"];
 const CERT_STATUSES = ["pending", "draft", "final", "failed"];
@@ -25,12 +25,13 @@ defineTool({
   permissions: ["read_invoices"],
   label: "Searching invoices",
   description:
-    "Find invoices by invoice number or customer name (`q`, partial match) and/or status, newest first. Returns id, number, customer, status, line count and certificate counts. " +
+    "Find invoices by invoice number or customer name (`q`, partial match) and/or status, newest invoice date first (\"the latest invoice\" = limit 1). Returns id, number, customer, status, line count and certificate counts. " +
     `Statuses: ${INVOICE_STATUSES.join(", ")}.`,
   args: z.object({ q: z.string().max(80).optional(), status: z.enum(INVOICE_STATUSES).optional(), ...pageArgs }),
   run: async (a, ctx) => {
     const { page: p, limit } = pg(a);
-    const { total, invoices } = ctx.companyId || !a.q ? await listInvoices(ctx.companyId || undefined, { status: a.status, q: a.q, page: p, limit }) : await findInvoices(null, { q: a.q, status: a.status, page: p, limit });
+    // no search text: newest by invoice date ("the latest invoice"), not by upload order
+    const { total, invoices } = !a.q ? await invoicesByDate(ctx.companyId || null, { status: a.status, page: p, limit }) : ctx.companyId ? await listInvoices(ctx.companyId, { status: a.status, q: a.q, page: p, limit }) : await findInvoices(null, { q: a.q, status: a.status, page: p, limit });
     const items = invoices.map((inv) => ({
       id: inv.id,
       invoiceNumber: invoiceNo(inv),

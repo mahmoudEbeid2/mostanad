@@ -34,6 +34,9 @@ router.post("/conversations/:id/actions/:actionId/continue", validate(s.continue
 router.get("/conversations/:id/drafts", validate(s.byId), c.listDrafts);
 router.post("/drafts/:draftId/fields", validate(s.draftFields), c.submitDraftFields);
 router.post("/drafts/:draftId/cancel", validate(s.draft), c.cancelDraft);
+// "Do this step" (the prerequisite's fix operation as its own draft) and Refresh for an expired card
+router.post("/drafts/:draftId/fix", validate(s.draft), c.startFixDraft);
+router.post("/drafts/:draftId/refresh", validate(s.draft), c.refreshDraft);
 
 router.get("/settings", restrictToPermission("manage_assistant_settings"), c.listSettings);
 router.patch("/settings/:scopeKey", restrictToPermission("manage_assistant_settings"), validate(s.settings), c.updateSettings);

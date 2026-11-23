@@ -144,7 +144,8 @@ async function main() {
     const env3 = { ...envFor(actorA, conv3.id, ["generate the certificates"], page) };
     const s3 = drafts.draftSession(env3);
     let gen = await s3.open({ tool: "generate_certificates" });
-    assert("generate: the invoice from the page; blocked by the unmatched line and the unconfirmed invoice, each with its fix", f(gen, "invoiceId").source === "context" && gen.blockedBy.map((b) => b.key).join() === "lines_matched,invoice_ready" && gen.blockedBy[0].fix.includes("match_invoice_line") && gen.blockedBy[1].fix.includes("confirm_invoice") && !gen.actionId, gen.blockedBy);
+    // steps in order (QA 2026-11-23): while a line is unmatched, matching is the only next step shown — confirming comes after
+    assert("generate: the invoice from the page; blocked first by the unmatched line (fix: the lines card), confirmation not offered yet", f(gen, "invoiceId").source === "context" && gen.blockedBy.map((b) => b.key).join() === "lines_matched" && gen.blockedBy[0].fix.includes("match_invoice_lines"), gen.blockedBy);
     const match = await s3.open({ tool: "match_invoice_line" });
     assert("match: invoice from the page, the only open line, the product by the line's printed name (exact) — ready", match.status === "ready" && f(match, "lineNo").value === 1 && f(match, "productId").value === A.product.id && /exact match/.test(f(match, "productId").evidence), match.fields);
     await actions.approveAction(actorA, match.actionId);
