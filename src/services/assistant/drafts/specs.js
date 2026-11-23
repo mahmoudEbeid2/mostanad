@@ -7,6 +7,7 @@ import { GENERATABLE } from "../../certificates/generation/batchService.js";
 import { getNeeds } from "../../certificates/dataNeeds/dataNeedsService.js";
 import { SIZE_PRESETS } from "../../label/layout/layoutSpec.js";
 import { COPYABLE_FIELDS, COPY_FIELD_GROUPS } from "../../productCopyService.js";
+import { bilingual } from "../i18n.js";
 
 // Operation specs (drafts): for every write tool, what each argument is and how it can be
 // filled, and what must be true before the operation can run.
@@ -424,6 +425,16 @@ export const SPECS = {
 const LABELS = { invoiceId: "Invoice", lineNo: "Line", productId: "Product", brandId: "Brand", categoryId: "Category", attachmentId: "File", attachmentIds: "Files", certificateTypeIds: "Certificate types", activeIngredients: "Composition", companyId: "Company" };
 export const labelOf = (name) => LABELS[name] || name.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
+/** The enum of a { field, value } list's `field` (the fields an operation may change) → [{ value, label }] */
+function changeFieldOptions(schema) {
+  let s = schema;
+  while (s?._zod?.def?.innerType) s = s._zod.def.innerType;
+  const field = s?._zod?.def?.element?._zod?.def?.shape?.field;
+  const options = field?._zod?.def?.type === "union" ? field._zod.def.options : [field];
+  const en = options.find((o) => o?._zod?.def?.type === "enum");
+  return en ? Object.values(en._zod.def.entries).map((k) => ({ value: k, label: bilingual(k) })) : null;
+}
+
 /** Field metadata from the tool's zod args (type, required, enum, format) + how it may be resolved. */
 export function specFor(toolName) {
   const tool = getTool(toolName);
@@ -448,6 +459,8 @@ export function specFor(toolName) {
       how: resolvers.map((r) => (r.kind === "lookup" ? `lookup (${r.tool})` : r.kind === "context" ? r.source : "user")),
       multiple: resolvers.some((r) => r.multiple) || s.type === "array",
       form: resolvers.find((r) => r.form)?.form || null,
+      // a { field, value } list (update_product_fields): the fields it may change, labelled in both languages
+      fieldOptions: resolvers.some((r) => r.form === "changes") ? changeFieldOptions(tool.args.shape[name]) : null,
     };
   });
   return { tool, title: spec.title, key: spec.key || [], fields, prerequisites: spec.prerequisites || [], watch: spec.watch || null, errors: spec.errors || [] };

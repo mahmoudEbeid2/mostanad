@@ -17,6 +17,8 @@ import { replayText, toolRecord } from "./history.js";
 
 export const LIMITS = {
   maxToolCalls: Number(process.env.ASSISTANT_MAX_TOOL_CALLS) || 12,
+  // start_draft / update_draft fill one operation field by field (7 invoice lines = 7+ steps): their own allowance
+  maxDraftCalls: Number(process.env.ASSISTANT_MAX_DRAFT_CALLS) || 24,
   maxModelCalls: Number(process.env.ASSISTANT_MAX_MODEL_CALLS) || 8,
   historyMessages: 10,
   maxFactsChars: 100_000,
@@ -118,6 +120,11 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const turnFacts = factsOf([ctx.attachments || [], ctx.scope?.companyName || null]); // the files and the company the person is working in may be named
   let retried = null; // the unknown names of a first, blocked answer
   let claimRetried = false; // a first answer that claimed an action no tool prepared
+  // the call budget counts real work: a call refused for its arguments, or repeated after failing, doesn't
+  let spent = 0;
+  let draftSpent = 0;
+  const failed = new Map(); // name + args → the error it gave
+  const DRAFT_TOOLS = new Set(["start_draft", "update_draft"]);
   const guardEvents = [];
   const facts = () => turnFacts.join("\n").slice(0, lim.maxFactsChars);
   const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...(guardEvents.length ? { guard: guardEvents } : {}), ...extra });
@@ -125,7 +132,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   onEvent({ type: "status", text: "Thinking…" });
   while (modelCalls < lim.maxModelCalls) {
     if (signal?.aborted) return out({ text: null, stopped: true });
-    const lastChance = modelCalls + 1 >= lim.maxModelCalls || toolCalls.length >= lim.maxToolCalls;
+    const lastChance = modelCalls + 1 >= lim.maxModelCalls || (spent >= lim.maxToolCalls && draftSpent >= lim.maxDraftCalls);
     let res;
     modelCalls++;
     try {
@@ -187,8 +194,13 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
       if (signal?.aborted) return out({ text: null, stopped: true });
       const name = call.name;
       let result;
-      if (toolCalls.length >= lim.maxToolCalls) {
-        result = { ok: false, status: "refused", error: `Tool call limit (${lim.maxToolCalls}) reached for this message — answer with what you have.`, companyId: null, ms: 0 };
+      const isDraft = DRAFT_TOOLS.has(name);
+      const key = `${name}:${JSON.stringify(call.args || {})}`;
+      if (failed.has(key)) {
+        // the same call that already failed: not run again, not counted — the model gets the fix hint
+        result = { ok: false, status: "error", error: `You already made this exact call and it failed: ${failed.get(key)} Don't repeat it — change the arguments as the error says, or tell the person what is missing.`, companyId: null, ms: 0, repeat: true };
+      } else if (isDraft ? draftSpent >= lim.maxDraftCalls : spent >= lim.maxToolCalls) {
+        result = { ok: false, status: "refused", error: `Tool call limit (${isDraft ? lim.maxDraftCalls : lim.maxToolCalls}) reached for this message — answer with what you have.`, companyId: null, ms: 0 };
       } else if (name === LOAD_TOOLS) {
         const add = (Array.isArray(call.args?.modules) ? call.args.modules : []).filter((m) => available.includes(m));
         chosen = [...new Set([...chosen, ...add])].sort();
@@ -211,6 +223,12 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
       }
       const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
       const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}) };
+      if (!result.ok && !result.repeat) failed.set(key, result.error);
+      // a call refused for its arguments (or repeated) costs nothing from the budget
+      if (name !== LOAD_TOOLS && !result.repeat && !(!result.ok && /^Invalid arguments/.test(result.error || ""))) {
+        if (isDraft) draftSpent++;
+        else spent++;
+      }
       if (name !== LOAD_TOOLS) toolCalls.push(entry);
       if (name !== LOAD_TOOLS) onEvent({ type: "tool_end", ...entry });
       responses.push({ functionResponse: { ...(call.id ? { id: call.id } : {}), name, response: asFunctionResponse(result) } });

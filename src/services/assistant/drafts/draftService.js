@@ -3,6 +3,7 @@ import AppError from "../../../utils/appError.js";
 import { getTool, runTool, refusalFor } from "../registry/index.js";
 import { fold } from "../agent/grounding.js";
 import { specFor, labelOf } from "./specs.js";
+import { coerceToSchema } from "./coerce.js";
 
 // Operation drafts (slot filling). A write the model asks for is never a card straight away:
 // it is a draft that collects the operation's values across steps and turns —
@@ -174,7 +175,8 @@ async function step(draft, spec, { values = {}, hints = {}, clear = [], by = "mo
     }
     try {
       if (!companyId && field.resolvers.some((r) => r.verify)) throw new Error("Pick the company first");
-      const value = typed(field, raw);
+      // the form of the value is read leniently into the field's type; its content never changes
+      const value = typed(field, coerceToSchema(field.schema, raw, env.userTexts || []));
       const parsed = field.schema.safeParse(value);
       if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.length ? `${i.path.join(".")}: ` : ""}${i.message}`).join("; "));
       const v = parsed.data;
@@ -374,7 +376,7 @@ export async function draftView(row, { rejected = [], notes = [], withAction = t
   const missing = Array.isArray(row.missing) ? row.missing : [];
   const list = (spec?.fields || []).map((f) => {
     const e = fields[f.name] || {};
-    return { name: f.name, label: f.label, required: f.required, how: f.how, type: f.type, enum: f.enum, multiple: f.multiple, form: f.form, value: e.value, display: e.display ?? null, source: e.source ?? null, evidence: e.evidence ?? null, confirmed: !!e.confirmed, options: e.options ?? null, error: e.error ?? null };
+    return { name: f.name, label: f.label, required: f.required, how: f.how, type: f.type, enum: f.enum, multiple: f.multiple, form: f.form, fieldOptions: f.fieldOptions || null, value: e.value, display: e.display ?? null, source: e.source ?? null, evidence: e.evidence ?? null, confirmed: !!e.confirmed, options: e.options ?? null, error: e.error ?? null };
   });
   const companyOptions = fields.companyId?.options || null;
   const byName = Object.fromEntries(list.map((f) => [f.name, f]));
@@ -385,7 +387,7 @@ export async function draftView(row, { rejected = [], notes = [], withAction = t
       .filter((n) => byName[n])
       .map((n) => byName[n])
       .filter((f) => f.options?.length || f.how.includes("user"))
-      .map((f) => ({ name: f.name, label: f.label, required: true, type: f.options?.length ? "choice" : f.form || (f.enum ? "choice" : FORM_TYPES[f.type] || (f.type === "array" ? "list" : "text")), multiple: f.multiple, options: f.options || (f.enum ? f.enum.map((v) => ({ value: v, label: String(v) })) : null), error: f.error })),
+      .map((f) => ({ name: f.name, label: f.label, required: true, type: f.options?.length ? "choice" : f.form || (f.enum ? "choice" : FORM_TYPES[f.type] || (f.type === "array" ? "list" : "text")), multiple: f.multiple, options: f.options || (f.enum ? f.enum.map((v) => ({ value: v, label: String(v) })) : null), ...(f.fieldOptions ? { fieldOptions: f.fieldOptions } : {}), error: f.error })),
   ];
   const toFind = missing.filter((n) => byName[n] && !ask.some((a) => a.name === n)).map((n) => ({ name: n, label: byName[n].label, how: byName[n].how }));
   const action = withAction && row.actionId ? await prisma.assistantAction.findUnique({ where: { id: row.actionId } }) : null;

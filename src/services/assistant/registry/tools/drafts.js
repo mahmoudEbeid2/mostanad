@@ -8,7 +8,11 @@ import { ToolError } from "../access.js";
 // ready — these tools never change data themselves.
 
 const operations = allTools().filter((t) => t.risk !== "read").map((t) => t.name);
-const pairs = (key) => z.array(z.object({ field: z.string().min(1).max(60), [key]: z.string().max(4000) })).max(30).optional();
+// A value may be text, a number, true/false, or a list / object (sent as such or as JSON text):
+// the draft reads it into the field's own type (drafts/coerce.js). QA 2026-11-23: a number or an
+// object here used to fail the whole call ("expected string, received number").
+const anyValue = z.preprocess((v) => (v !== null && typeof v === "object" ? JSON.stringify(v) : v), z.union([z.string().max(8000), z.number(), z.boolean()]));
+const pairs = (key) => z.array(z.object({ field: z.string().min(1).max(60), [key]: key === "value" ? anyValue : z.string().max(4000) })).max(30).optional();
 const toObject = (list, key) => Object.fromEntries((list || []).map((p) => [p.field, p[key]]));
 const sessionOf = async (ctx) => {
   const s = await ctx.drafts?.();
@@ -24,7 +28,7 @@ defineTool({
   risk: "read",
   label: "Starting the operation",
   description:
-    `Starts collecting an operation the person asked for (one of: ${operations.join(", ")}). values: what is already known, as [{ field, value }] (value as text; JSON for lists/objects) — ` +
+    `Starts collecting an operation the person asked for (one of: ${operations.join(", ")}). values: what is already known, as [{ field, value }] (value: text, a number, true/false, or a list/object as JSON text) — ` +
     "only values a tool returned or the person said; never invent one. hints: [{ field, text }] for fields code should look up (a brand / product / invoice name). " +
     "Returns what is filled (with its source), what is missing, what to ask the person and which prerequisites block it. The same as calling the operation's own tool.",
   args: z.object({ tool: z.string().min(3).max(64), values: pairs("value"), hints: pairs("text") }),
