@@ -6,6 +6,11 @@ import {
   updateProduct,
   deleteProduct,
   extractProductAi,
+  getCopyFields,
+  copyProduct,
+  copyProductsBulkCtrl,
+  getSourceDiff,
+  updateFromSourceCtrl,
 } from "../controllers/productController.js";
 import { verifyLabel } from "../controllers/labelController.js";
 import { uploadCatalog } from "../controllers/catalogController.js";
@@ -17,6 +22,9 @@ import {
   updateProductSchema,
   getProductByIdSchema,
   deleteProductSchema,
+  copyProductSchema,
+  copyProductsBulkSchema,
+  updateFromSourceSchema,
 } from "../validators/productValidator.js";
 import { verifyLabelSchema } from "../validators/labelValidator.js";
 
@@ -54,6 +62,13 @@ router.post(
   validate(verifyLabelSchema),
   verifyLabel
 );
+
+// Copy to another brand (same product data under another brand's name)
+router.get("/products/copy-fields", restrictToPermission("read_products"), getCopyFields);
+router.post("/products/copy-bulk", restrictToPermission("create_products"), validate(copyProductsBulkSchema), copyProductsBulkCtrl);
+router.post("/products/:id/copy", restrictToPermission("create_products"), validate(copyProductSchema), copyProduct);
+router.get("/products/:id/source-diff", restrictToPermission("read_products"), validate(getProductByIdSchema), getSourceDiff);
+router.post("/products/:id/update-from-source", restrictToPermission("update_products"), validate(updateFromSourceSchema), updateFromSourceCtrl);
 
 // Scoped under products
 router

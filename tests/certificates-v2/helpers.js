@@ -6,7 +6,8 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../../src/lib/prisma.js";
 
-export const BASE_URL = "http://127.0.0.1:3000/api/v1";
+// TEST_API_URL: point the suites at another running API (e.g. a second stack on another port)
+export const BASE_URL = process.env.TEST_API_URL || "http://127.0.0.1:3000/api/v1";
 export const FIXTURES = path.join(process.cwd(), "fixtures", "certificates");
 export const fixture = (name) => fs.readFileSync(path.join(FIXTURES, name));
 

@@ -5,6 +5,7 @@ import "./tools/certificates.js";
 import "./tools/labels.js";
 import "./tools/organisation.js";
 import "./tools/actions.js";
+import "./tools/productCopy.js";
 import "./tools/drafts.js"; // after the write tools: start_draft lists them
 
 export * from "./registry.js";

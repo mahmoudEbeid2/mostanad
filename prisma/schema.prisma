@@ -168,6 +168,12 @@ model Product {
   catalogueRef    Json? @map("catalogue_ref") // { catalogueId, catalogueVersionId, blockId, page } — the block this product was created/updated/linked from
   fieldProvenance Json? @map("field_provenance") // field -> { tier: "C"|"I", catalogueVersionId?, blockId?, page?, quote?, estimated?, basis?, modelId?, promptHash?, at, confirmedByUserId? }
 
+  // "Copy to another brand": the product this one was copied from, while the copy is kept
+  // linked (productCopyService). Null for an original or an unlinked copy.
+  sourceProductId String?   @map("source_product_id")
+  sourceProduct   Product?  @relation("ProductCopies", fields: [sourceProductId], references: [id], onDelete: SetNull)
+  copies          Product[] @relation("ProductCopies")
+
   // Relations
   categoryId String?   @map("category_id")
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -186,6 +192,7 @@ model Product {
   certificateValues ProductCertificateValue[]
   batchResults      BatchResult[]
 
+  @@index([sourceProductId])
   @@map("products")
 }
 
@@ -1635,3 +1642,4 @@ model AssistantAction {
   @@index([ownerType, ownerId, createdAt])
   @@map("assistant_actions")
 }
+

@@ -7,6 +7,7 @@ import {
   deleteProduct as deleteProductService,
 } from "../services/productService.js";
 import { assertCompanyAccess } from "../utils/tenantScope.js";
+import { copyProduct as copyProductService, copyProductsBulk, copyInfo, diffFromSource, updateFromSource, COPY_FIELD_GROUPS, NEVER_COPIED } from "../services/productCopyService.js";
 
 // Tenancy: a company caller only ever sees and changes its own products —
 // another tenant's product is a 404 (never 403), a ?companyId= / body companyId
@@ -33,6 +34,8 @@ export const getAllProducts = catchAsync(async (req, res, next) => {
 // 3. GET PRODUCT BY ID
 export const getProductById = catchAsync(async (req, res, next) => {
   const product = await getProductByIdService(req.params.id, ownCompanyId(req));
+  // "Copied from <A> · <brand>" / "Used by: <copies>" (another tenant's side is never named)
+  product.copyInfo = await copyInfo(product, ownCompanyId(req));
   res.status(200).json({ status: "success", data: { product } });
 });
 
@@ -40,6 +43,32 @@ export const getProductById = catchAsync(async (req, res, next) => {
 export const updateProduct = catchAsync(async (req, res, next) => {
   const product = await updateProductService(req.params.id, req.body, ownCompanyId(req));
   res.status(200).json({ status: "success", data: { product } });
+});
+
+// Copy to another brand (productCopyService). A company caller copies within its
+// own company; a system user may name another company's brand.
+const copyActor = (req) => ({ scopeCompanyId: ownCompanyId(req) || null, userId: req.user?.id || null });
+
+export const getCopyFields = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { groups: COPY_FIELD_GROUPS, neverCopied: NEVER_COPIED } });
+});
+
+export const copyProduct = catchAsync(async (req, res) => {
+  const out = await copyProductService(req.params.id, req.body, copyActor(req));
+  res.status(201).json({ status: "success", data: out });
+});
+
+export const copyProductsBulkCtrl = catchAsync(async (req, res) => {
+  const out = await copyProductsBulk(req.body, copyActor(req));
+  res.status(out.copied ? 201 : 400).json({ status: out.copied ? "success" : "fail", data: out });
+});
+
+export const getSourceDiff = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await diffFromSource(req.params.id, ownCompanyId(req)) });
+});
+
+export const updateFromSourceCtrl = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await updateFromSource(req.params.id, req.body.fields, copyActor(req)) });
 });
 
 // 5. DELETE PRODUCT

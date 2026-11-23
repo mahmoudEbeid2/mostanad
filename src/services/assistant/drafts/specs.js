@@ -5,6 +5,7 @@ import { loadAttachment } from "../attachments.js";
 import { loadInvoice } from "../../certificates/invoices/invoiceService.js";
 import { GENERATABLE } from "../../certificates/generation/batchService.js";
 import { getNeeds } from "../../certificates/dataNeeds/dataNeedsService.js";
+import { COPYABLE_FIELDS, COPY_FIELD_GROUPS } from "../../productCopyService.js";
 
 // Operation specs (drafts): for every write tool, what each argument is and how it can be
 // filled, and what must be true before the operation can run.
@@ -241,6 +242,18 @@ const productWatch = async (f, d) => {
   return p ? `product:${p.updatedAt.toISOString()}` : "product:gone";
 };
 
+/** The product to copy: like `product`, but a system user may copy another company's product. */
+const sourceProduct = {
+  ...product,
+  verify: async (value, d) => {
+    const p = await prisma.product.findFirst({ where: { id: value, ...(d.ctx.actor.kind === "user" ? {} : { companyId: d.companyId }) }, select: { name: true, productCode: true } });
+    if (!p) throw new Error("Product not found!");
+    return { display: `${p.name}${p.productCode ? ` · ${p.productCode}` : ""}` };
+  },
+};
+
+/** A fixed choice shown on the card (the person approves it there): any allowed value. */
+const choice = (label = (v) => (Array.isArray(v) ? v.join(", ") : String(v))) => ({ kind: "context", source: "card", resolve: async () => null, verify: async (value) => ({ display: label(value) }) });
 // ── the specs ───────────────────────────────────────────────────────────────
 const INVOICE = [page("invoice"), invoice];
 export const SPECS = {
@@ -275,6 +288,24 @@ export const SPECS = {
   verify_label: { title: "Check a label", fields: { attachmentId: [attachment()], country: [user()] } },
   upload_label: { title: "Add a reference label", fields: { attachmentId: [attachment()], country: [user()], brandId: [brand] }, errors: [[/exists/i, "attachmentId"]] },
   update_product_fields: { title: "Update product fields", key: ["productId"], fields: { productId: [page("product"), product], changes: [user({ form: "changes" })] }, watch: productWatch, errors: [[/product/i, "productId"], [/batch|lab|field/i, "changes"]] },
+  copy_product_to_brand: {
+    title: "Copy a product to another brand",
+    key: ["sourceProductId"],
+    fields: { sourceProductId: [page("product"), sourceProduct], targetBrandId: [brand], name: [user()], productCode: [user()], fieldGroups: [choice((v) => v.map((k) => COPY_FIELD_GROUPS.find((g) => g.key === k)?.label || k).join(", "))], keepLinked: [choice((v) => (v ? "yes" : "no"))] },
+    errors: [[/brand/i, "targetBrandId"], [/name/i, "name"], [/registration|field/i, "fieldGroups"], [/product/i, "sourceProductId"]],
+  },
+  copy_products_to_brand: {
+    title: "Copy products to another brand",
+    fields: { targetBrandId: [brand], products: [user()], fieldGroups: [choice((v) => v.map((k) => COPY_FIELD_GROUPS.find((g) => g.key === k)?.label || k).join(", "))], keepLinked: [choice((v) => (v ? "yes" : "no"))] },
+    errors: [[/brand/i, "targetBrandId"], [/product|name/i, "products"]],
+  },
+  update_copy_from_source: {
+    title: "Update a copy from its original",
+    key: ["productId"],
+    fields: { productId: [page("product"), product], fields: [choice((v) => v.filter((f) => COPYABLE_FIELDS.includes(f)).join(", "))] },
+    watch: productWatch,
+    errors: [[/original|linked|product/i, "productId"], [/field/i, "fields"]],
+  },
   create_product: {
     title: "Add a product",
     // the product screens and certificates need these; the API alone would accept a name only

@@ -5,7 +5,7 @@
 // with load_tools.
 
 const KEYWORDS = {
-  products: ["product", "products", "ingredient", "composition", "spec", "specification", "ph", "assay", "code", "brand", "category", "dosage", "withdrawal", "storage", "packaging", "missing", "منتج", "منتجات", "مكونات", "تركيب", "مواصف", "كود", "براند", "علامة", "فئة", "جرعة", "سحب", "تخزين", "تعبئة", "ناقص", "تركيبة"],
+  products: ["product", "products", "copy", "duplicate", "انسخ", "نسخ", "نفس المنتج", "ingredient", "composition", "spec", "specification", "ph", "assay", "code", "brand", "category", "dosage", "withdrawal", "storage", "packaging", "missing", "منتج", "منتجات", "مكونات", "تركيب", "مواصف", "كود", "براند", "علامة", "فئة", "جرعة", "سحب", "تخزين", "تعبئة", "ناقص", "تركيبة"],
   catalogues: ["catalogue", "catalog", "brochure", "كتالوج", "كاتالوج", "كتالوغ"],
   invoices: ["invoice", "invoices", "line", "batch", "lab result", "missing", "upload", "prepare", "match", "coa", "ارفع", "طابق", "جهز", "فاتورة", "فواتير", "الفاتوره", "تشغيلة", "دفعة", "ناقص"],
   certificates: ["certificate", "certificates", "template", "templates", "coa", "type", "lab", "generate", "طلع", "طلّع", "شهادة", "شهادات", "قالب", "قوالب", "تحليل", "مختبر", "نوع"],

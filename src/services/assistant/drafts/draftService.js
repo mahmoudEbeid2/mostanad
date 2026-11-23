@@ -26,8 +26,10 @@ const clip = (v, n = 300) => {
 };
 
 // ── checks on one value ─────────────────────────────────────────────────────
-// keys that pick WHERE a value goes (update_product_fields' { field, value }) — the model maps those; the value is the person's
-const SELECTOR_KEYS = new Set(["field"]);
+// keys that pick WHERE a value goes (update_product_fields' { field, value }, copy_products_to_brand's
+// { productId, name }) — the model maps those (an id from a lookup, which the tool's preview checks
+// in the caller's company); the value is the person's
+const SELECTOR_KEYS = new Set(["field", "productId"]);
 /** Every string / number inside a value (not its selector keys). */
 const leaves = (v, out = []) => {
   if (v === null || v === undefined) return out;

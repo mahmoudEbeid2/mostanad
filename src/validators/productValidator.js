@@ -89,3 +89,33 @@ export const deleteProductSchema = {
     id: z.string().uuid("Invalid product ID format"),
   }),
 };
+
+// Copy to another brand (productCopyService). Field names are checked by the service
+// (one list, COPY_FIELD_GROUPS); registrationNumber is refused there with its reason.
+const copyFields = z.array(z.string().min(1).max(60)).max(60).optional().nullable();
+const copyName = z.string().trim().min(2, "The new product needs a name (at least 2 characters)").max(300);
+export const copyProductSchema = {
+  params: z.object({ id: z.string().uuid("Invalid product ID format") }),
+  body: z.object({
+    targetCompanyId: z.string().uuid("Invalid company ID format").optional().nullable(),
+    targetBrandId: z.string({ required_error: "Choose the brand to copy to" }).uuid("Invalid brand ID format"),
+    name: copyName,
+    productCode: z.string().max(120).optional().nullable(),
+    fieldsToCopy: copyFields,
+    keepLinked: z.boolean().optional(),
+  }),
+};
+export const copyProductsBulkSchema = {
+  body: z.object({
+    productIds: z.array(z.string().uuid("Invalid product ID format")).min(1).max(100),
+    targetCompanyId: z.string().uuid("Invalid company ID format").optional().nullable(),
+    targetBrandId: z.string().uuid("Invalid brand ID format"),
+    names: z.array(z.object({ productId: z.string().uuid(), name: copyName.optional(), productCode: z.string().max(120).optional().nullable() })).max(100).optional(),
+    fieldsToCopy: copyFields,
+    keepLinked: z.boolean().optional(),
+  }),
+};
+export const updateFromSourceSchema = {
+  params: z.object({ id: z.string().uuid("Invalid product ID format") }),
+  body: z.object({ fields: z.array(z.string().min(1).max(60)).min(1, "Tick at least one field to update").max(60) }),
+};
