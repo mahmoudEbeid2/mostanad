@@ -18,7 +18,7 @@ export function fold(s) {
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي")
     .replace(ARABIC_DIACRITICS, "")
-    .replace(/[\s ]+/g, " ")
+    .replace(/[\s ]+/g, " ")
     .trim();
 }
 
@@ -42,17 +42,34 @@ const normNumber = (n) => String(Number(String(n).replace(/,/g, "")));
 
 const stripLinks = (s) => s.replace(/\[([^\]\n]+)\]\(entity:[^)]+\)/g, " ").replace(/`[^`]*`/g, " ");
 
-/** Names and codes the answer states (bold text, CODES / UPPER-CASE names, short list items). */
+// Labels are never entities (QA 2026-11-23: "الوصف:", "المكونات النشطة:", "conversion:", "P95", step
+// names and field names blocked correct answers): text ending with ":" or followed by ":", field names
+// (Arabic / English / camelCase) and metric names. Only what LOOKS like a product name or code is
+// checked: a run of 3+ capitals, or letters together with a digit (AMINOVITA, VITA-K3, AD3E, SG-12).
+const METRIC = /^(?:P\d{2,3}(?:\.\d)?|AVG|MAX|MIN|SUM|COUNT|TOTAL|RATE|ROI|KPI|SLA|ETA|ISO\d*)$/i;
+let knownLabels = new Set();
+/** Field / column / metric names (Arabic and English) that are labels, never entities. */
+export function setKnownLabels(labels) {
+  knownLabels = new Set([...labels].map((l) => fold(l).replace(/[:：]\s*$/, "")).filter(Boolean));
+}
+const looksLikeCode = (v) => /[A-Z]{3,}/.test(v) || (/[A-Za-z]/.test(v) && /\d/.test(v));
+const isLabel = (v, after = "") =>
+  /[:：]\s*$/.test(v) || /^\s*[:：]/.test(after) || knownLabels.has(fold(v).replace(/[:：]\s*$/, "")) || /^[a-z]+(?:[A-Z][a-z0-9]+)+$/.test(v.trim()) || METRIC.test(v.trim());
+
+/** Names and codes the answer states (bold names, CODES / UPPER-CASE names) — never labels, field names or metrics. */
 export function entityCandidates(answer) {
   const text = stripLinks(String(answer || ""));
   const out = new Set();
   for (const m of text.matchAll(/\*\*([^*\n]{2,80})\*\*/g)) {
     const v = m[1].trim();
-    if (!/^[\d\s.,%٪]+$/.test(v) && v.split(/\s+/).length <= 6) out.add(v);
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 3);
+    if (/^[\d\s.,%٪]+$/.test(v) || v.split(/\s+/).length > 6 || isLabel(v, after) || !looksLikeCode(v)) continue;
+    out.add(v);
   }
   for (const m of text.matchAll(/(?<![\w-])([A-Z][A-Z0-9]*(?:[-_/][A-Z0-9]+)*)(?![\w-])/g)) {
     const v = m[1];
-    if ((v.length >= 4 || /\d/.test(v)) && !ALLOWED_CAPS.has(v) && !/^[A-Z]$/.test(v)) out.add(v);
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 3);
+    if ((v.length >= 4 || /\d/.test(v)) && !ALLOWED_CAPS.has(v) && !/^[A-Z]$/.test(v) && !isLabel(v, after)) out.add(v);
   }
   return [...out];
 }
@@ -73,21 +90,39 @@ export function checkGrounding(answer, corpus, { toolCallsThisTurn = 0 } = {}) {
   return { ok: unknown.length === 0, unknown };
 }
 
+/** Does the text contain a typed table, or a run of 4+ short list items? */
+export function hasTypedList(text) {
+  return stripTypedLists(text) !== String(text || "").trim();
+}
+
 /**
- * Lists and tables are never typed by the model: markdown tables, and runs of
- * four or more short list items, are removed (the rows are shown as a table block).
+ * Lists and tables the model typed. With `shown` (the values of this turn's blocks), a run is removed
+ * ONLY when those blocks already show it (QA 2026-11-23: one record's fields were stripped and only
+ * "بيانات شركة Vetline هي:" was left). Without `shown`, every typed list goes — used to detect a list
+ * typed without asking the system.
  */
-export function stripTypedLists(text) {
+export function stripTypedLists(text, shown = null) {
+  const values = shown ? [...shown].map((v) => fold(v)).filter((v) => v.length >= 2) : null;
+  const duplicates = (lines) => !values || lines.filter((l) => values.some((v) => fold(l).includes(v))).length * 2 >= lines.length;
   const lines = String(text || "").split("\n");
   const out = [];
   let run = [];
+  let table = [];
   const flush = () => {
-    if (run.length < 4) out.push(...run);
+    if (run.length < 4 || !duplicates(run)) out.push(...run);
+    const rows = table.filter((l) => !/^\s*\|[\s:|-]+\|\s*$/.test(l));
+    if (table.length && values && !duplicates(rows)) out.push(...table);
     run = [];
+    table = [];
   };
   for (const line of lines) {
-    if (/^\s*\|.*\|\s*$/.test(line)) continue; // a markdown table row
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      if (run.length) flush();
+      table.push(line); // a markdown table row
+      continue;
+    }
     if (/^\s*(?:[-*•]|\d+[.)])\s+\S/.test(line) && line.length <= 160) {
+      if (table.length) flush();
       run.push(line);
       continue;
     }

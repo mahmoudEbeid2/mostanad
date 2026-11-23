@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { toolsFor, describeTools, runTool, getTool, cleanSchema, modules as allModules } from "../registry/index.js";
+import { toolsFor, describeTools, runTool, getTool, cleanSchema, allTools, modules as allModules } from "../registry/index.js";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { selectModules } from "./selectTools.js";
 import { tableBlock } from "./blocks.js";
-import { factsOf, corpusOf, checkGrounding, stripTypedLists } from "./grounding.js";
+import { factsOf, corpusOf, checkGrounding, stripTypedLists, hasTypedList, setKnownLabels } from "./grounding.js";
+import { recordBlock, blockValues, COLUMNS as TABLE_COLUMNS } from "./blocks.js";
+import { FIELD_LABELS, labelIn, langOf } from "../i18n.js";
 import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction } from "./answerGuard.js";
 import { replayText, toolRecord } from "./history.js";
 
@@ -24,11 +26,35 @@ export const LIMITS = {
   maxFactsChars: 100_000,
 };
 
-const isArabicText = (s) => /[؀-ۿ]/.test(String(s || ""));
 export const UNGROUNDED_ANSWER = { en: "I couldn't get that from the system.", ar: "لم أستطع الحصول على ذلك من النظام." };
-const groundingRetry = (unknown) =>
+const groundingRetry = (unknown, lang) =>
   `[system check] Your answer named or stated ${unknown.map((u) => `"${u}"`).join(", ")}, which no tool returned in this conversation. ` +
-  "Do not answer from memory and never continue a list yourself. Call the tool that returns this data (for more rows of a list, the same tool with page = nextPage) and answer only from its results — or say it isn't in the system.";
+  "Do not answer from memory and never continue a list yourself. Call the tool that returns this data (for more rows of a list, the same tool with page = nextPage; for how-to questions, help_topics) and answer only from its results — or say it isn't in the system. " +
+  `Answer in ${lang === "ar" ? "Arabic" : "English"}, the language of the person's message.`;
+
+/** The last resort when an answer still names things no tool returned: say WHAT couldn't be verified. */
+export const unverifiedAnswer = (unknown, lang) => {
+  const list = unknown.filter((u) => !u.startsWith("(")).slice(0, 6);
+  const typed = unknown.some((u) => u.startsWith("("));
+  if (lang === "ar") return list.length ? `لم أعرض الإجابة لأنني لم أستطع التحقق من هذه القيم في بيانات النظام: ${list.join("، ")}. اطلب مني البحث عنها بالاسم.` : typed ? "لم أعرض القائمة لأنها لم تأتِ من النظام. اطلب مني عرضها وسأجلبها من النظام." : UNGROUNDED_ANSWER.ar;
+  return list.length ? `I didn't show the answer because I couldn't verify these in the system's data: ${list.join(", ")}. Ask me to look them up by name.` : typed ? "I didn't show the list because it didn't come from the system. Ask me to show it and I'll fetch it." : UNGROUNDED_ANSWER.en;
+};
+
+/** Field and column names in Arabic and English: labels, never entities (grounding) — and the record block's labels. */
+const labelPair = (key) => ({ ar: labelIn(key, "ar"), en: labelIn(key, "en") });
+let labelsReady = false;
+function ensureLabels() {
+  if (labelsReady) return;
+  labelsReady = true;
+  const names = new Set();
+  for (const [k, [ar, en]] of Object.entries(FIELD_LABELS)) [k, ar, en].forEach((x) => names.add(x));
+  for (const t of allTools()) {
+    for (const k of Object.keys(t.args?.shape || {})) names.add(k);
+    names.add(t.label || "");
+  }
+  for (const cols of Object.values(TABLE_COLUMNS)) for (const [k, l] of cols) [k, l].forEach((x) => names.add(x));
+  setKnownLabels(names);
+}
 
 // Earlier turns' tool use is replayed as an internal record in the current turn's context
 // (history.js), never appended to the model's own answers: it imitated that note (QA 2026-11-23).
@@ -111,6 +137,7 @@ const sumUsage = (acc, u = {}) => ({
  * onEvent({ type: "status"|"tool_start"|"tool_end", … }) streams progress.
  */
 export async function runAgent({ text, history = [], ctx, generate, onEvent = () => {}, signal = null, limits = {} }) {
+  ensureLabels();
   const lim = { ...LIMITS, ...limits };
   const available = allModules().filter((m) => toolsFor(ctx.actor, { modules: [m] }).some((t) => t.module === m && !t.core));
   // this message's words + the conversation's recent modules and open drafts (sticky): a follow-up
@@ -175,13 +202,12 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         return out({ text: honestNoAction(text) });
       }
       // checked on what the model wrote, before typed lists are removed for display
-      const stripped = stripTypedLists(raw);
-      // typed rows go only when a table block shows them; one record's fields (get_product…) have no block, so the model's list is the answer
-      const answer = blocks.size ? stripped : raw;
+      // a typed list goes only when a block under the answer already shows those rows / fields
+      const answer = blocks.size ? stripTypedLists(raw, blockValues([...blocks.values()])) : raw;
       const corpus = corpusOf([...(ctx.facts || []), ...turnFacts, text, ...history.filter((m) => m.role === "user").map((m) => m.text)]);
       const toolCallsThisTurn = toolCalls.filter((c) => c.ok).length;
       const g = checkGrounding(raw, corpus, { toolCallsThisTurn });
-      if (stripped !== raw && toolCallsThisTurn === 0) {
+      if (hasTypedList(raw) && toolCallsThisTurn === 0) {
         g.ok = false; // a list typed without asking the system is never data
         g.unknown.push("(a list typed without a tool call)");
       }
@@ -190,11 +216,11 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         if (!retried && !lastChance) {
           retried = g.unknown;
           contents.push(res.content);
-          contents.push({ role: "user", parts: [{ text: groundingRetry(g.unknown) }] });
+          contents.push({ role: "user", parts: [{ text: groundingRetry(g.unknown, langOf(text)) }] });
           onEvent({ type: "status", text: "Checking against the system…" });
           continue;
         }
-        return out({ text: isArabicText(text) ? UNGROUNDED_ANSWER.ar : UNGROUNDED_ANSWER.en, grounding: { blocked: true, unknown: g.unknown, firstUnknown: retried } });
+        return out({ text: unverifiedAnswer(g.unknown, langOf(text)), grounding: { blocked: true, unknown: g.unknown, firstUnknown: retried } });
       }
       const fallback = blocks.size ? "" : "I couldn't produce an answer.";
       return out({ text: withHereLink(sanitizeAnswer(answer || fallback, refs), turnRefs, refs), ...(retried ? { grounding: { blocked: false, firstUnknown: retried } } : {}) });
@@ -230,7 +256,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           collectRefs(result.data, refs);
           collectRefs(result.data, turnRefs);
           turnFacts.push(...factsOf(result.data));
-          const block = tableBlock(name, call.args || {}, result.companyId, result.data, getTool(name)?.label || name);
+          const block = tableBlock(name, call.args || {}, result.companyId, result.data, getTool(name)?.label || name) || recordBlock(name, result.full ?? result.data, getTool(name)?.label || name, labelPair);
           if (block) blocks.set(name, block);
         }
       }

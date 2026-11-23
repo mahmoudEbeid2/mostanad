@@ -176,6 +176,30 @@ async function main() {
     const { specFor } = await import("../src/services/assistant/drafts/specs.js");
     assert("the form offers countries as a choice, not free text", specFor("verify_label").fields.find((f) => f.name === "country").staticOptions?.some((o) => o.value === "EG" && /مصر/.test(o.label)));
     const refsT = new Map([["0b0b0b0b-0000-4000-8000-000000000001", { type: "label", id: "0b0b0b0b-0000-4000-8000-000000000001", name: "ADDOXY" }]]);
+    console.log("\nPhase 6 — grounding and list stripping don't hide correct answers");
+    const G = await import("../src/services/assistant/agent/grounding.js");
+    const corpus = G.corpusOf(["AMINOVITA 3 days Amoxicillin"]);
+    const labelsAnswer = "تفاصيل منتج AMINOVITA:\n**الاسم:** AMINOVITA\n**المكونات النشطة:** Amoxicillin\n**الوصف:** —\nconversion: 3\n**P95**: 1200\n**Upload invoice**";
+    const g6 = G.checkGrounding(labelsAnswer, corpus, { toolCallsThisTurn: 1 });
+    assert("labels ('الوصف:', 'المكونات النشطة:', 'conversion:', P95) and English step names are not entities", g6.ok, g6.unknown);
+    assert("…an invented product code is still blocked", !G.checkGrounding("The closest is **MOXYVET 500**.", corpus, { toolCallsThisTurn: 1 }).ok);
+    const fields6 = "بيانات شركة Vetline هي:\n- الاسم: Vetline\n- نشط: نعم\n- البريد: a@b.c\n- الهاتف: 123\n- المنتجات: 7";
+    assert("one record's typed fields stay when no block shows them", G.stripTypedLists(fields6, []) === fields6);
+    assert("…and go when a block under the answer shows them", G.stripTypedLists(fields6, ["Vetline", "نعم", "a@b.c", "123", "7"]) === "بيانات شركة Vetline هي:");
+    m = script([[call("get_company", { companyId: co.id })], [{ text: `بيانات شركة ${co.name}:\n- الاسم: ${co.name}\n- نشط: نعم\n- x: 1\n- y: 2` }]]);
+    out = await runAgent({ text: "اعرض بيانات الشركة", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {}, companyExists: async () => true }, generate: m.generate });
+    const rb = out.blocks.find((b) => b.type === "record");
+    assert("a single record gets a code-built record card (stored values, Arabic/English labels)", rb?.tool === "get_company" && rb.fields.some((f) => f.key === "name" && f.value === co.name && f.label.ar === "الاسم" && f.label.en === "Name"), rb);
+    assert("…the answer isn't replaced by 'couldn't get that from the system'", !/لم أستطع الحصول/.test(out.text) && out.text.startsWith("بيانات شركة"), out.text);
+    m = script([[call("help_topics", { topic: "certificates" })], [{ text: "الخطوات:\n1. **ارفع الفاتورة**\n2. **طابق السطور**\n3. **أكد الفاتورة**\n4. **جهز الشهادات**\n5. **أصدر الشهادات**" }]]);
+    out = await runAgent({ text: "ازاي اطلع شهادة COA من السيستم؟ اشرحلي الخطوات", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {} }, generate: m.generate });
+    assert("how-to: grounded on help_topics, steps shown (not 'couldn't get that')", out.toolCalls[0]?.ok && /ارفع الفاتورة/.test(out.text) && !out.grounding?.blocked, out.text);
+    t = await runTool("help_topics", { topic: "capabilities" }, { actor: admin, scope: { companyId: co.id }, audit: async () => {} });
+    assert("'ماهي الأدوات التي تدعمها': capabilities come from the registry", t.ok && t.data.capabilities.some((c) => c.module === "invoices" && c.changes.length > 0), t.error);
+    m = script([[{ text: "المنتج المقصود **ZORBAX-77**." }], [{ text: "المنتج المقصود **ZORBAX-77**." }]]);
+    out = await runAgent({ text: "فين منتج zorbax", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {} }, generate: m.generate });
+    assert("a blocked answer is retried in the person's language, then says WHAT couldn't be verified", /Answer in Arabic/.test(JSON.stringify(m.seen[1].contents.at(-1))) && /ZORBAX-77/.test(out.text) && /لم أستطع التحقق/.test(out.text), out.text);
+
     assert("'يمكنك متابعة حالتها هنا' gets a real link", withHereLink("يمكنك متابعة حالتها هنا.", refsT, new Map()).includes("](entity:label/0b0b0b0b-0000-4000-8000-000000000001)") && withHereLink("No pointer.", refsT, new Map()) === "No pointer.");
   } finally {
     await prisma.invoice.deleteMany({ where: { companyId: co.id } }).catch(() => {});

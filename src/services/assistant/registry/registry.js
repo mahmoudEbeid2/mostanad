@@ -164,7 +164,8 @@ export async function runTool(name, rawArgs, ctx) {
     const parsed = parseArgs(tool, args);
     const tctx = toolCtx(ctx, companyId);
     const data = await withTimeout(Promise.resolve(tool.run(parsed, tctx)), TOOL_TIMEOUT_MS, name);
-    return finish({ ok: true, status: "ok", data: shapeResult(data), companyId });
+    // `full`: the untrimmed result, for the code-built record block only — the model reads `data`
+    return finish({ ok: true, status: "ok", data: shapeResult(data), full: data, companyId });
   } catch (err) {
     // a service's 404 for another tenant's id reads the same as one that doesn't exist
     return finish({ ok: false, status: "error", error: messageOf(err), companyId });

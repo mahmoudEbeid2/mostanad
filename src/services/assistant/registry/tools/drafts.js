@@ -63,3 +63,28 @@ defineTool({
     return { total: drafts.length, drafts: drafts.map((d) => ({ id: d.id, title: d.title, tool: d.tool, status: d.status, missing: d.missing, blockedBy: d.blockedBy.map((b) => b.key), updatedAt: d.updatedAt })) };
   },
 });
+
+// How-to answers come from a static, versioned help source (help/helpTopics.js), not from memory.
+defineTool({
+  name: "help_topics",
+  module: "assistant",
+  core: true,
+  risk: "read",
+  label: "Reading the help",
+  description:
+    "How the app works and what you (the assistant) can do. topic: one of the flow keys (certificates = issue a COA/certificate from an invoice, label_check, label_generate, label_resize, supplier_coa, catalogue, copy_product) " +
+    "or \"capabilities\" (what you can read and change, from your own tools); omit for the list of topics. Answer how-to and \"what can you do\" questions only from this.",
+  args: z.object({ topic: z.string().max(40).optional() }),
+  companyArg: false,
+  run: async (a, ctx) => {
+    const { HELP_TOPICS, HELP_VERSION, capabilities } = await import("../../help/helpTopics.js");
+    if (!a.topic) return { version: HELP_VERSION, topics: HELP_TOPICS.map((t) => ({ key: t.key, title: t.title })) };
+    if (a.topic === "capabilities") {
+      const { toolsFor } = await import("../registry.js");
+      return { version: HELP_VERSION, capabilities: capabilities(toolsFor(ctx.actor).filter((t) => !["start_draft", "update_draft", "list_drafts", "help_topics"].includes(t.name))) };
+    }
+    const t = HELP_TOPICS.find((x) => x.key === a.topic);
+    if (!t) throw new ToolError(`No help topic "${a.topic}". Topics: ${HELP_TOPICS.map((x) => x.key).join(", ")}, capabilities`, "not_found");
+    return { version: HELP_VERSION, ...t };
+  },
+});
