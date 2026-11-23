@@ -1,5 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
 import { geminiDisabled } from "./geminiGuard.js";
+import { MODELS, defaultModel, fallbackModel } from "./modelRegistry.js";
+import { priceAt } from "./modelPrices.js";
+import geminiClient from "./geminiClient.js";
 
 // plan.md P8 — whether AI can answer right now, so the UI can say so up front
 // (a banner, AI buttons disabled) instead of letting each action fail.
@@ -31,4 +34,26 @@ export async function getAiStatus({ now = Date.now() } = {}) {
   });
   if (last?.outcome === "failed" && QUOTA_ERROR.test(last.error || "")) return unavailable("quota", last.createdAt.toISOString());
   return { available: true, reason: null, message: null, since: null };
+}
+
+const priceOf = (modelId) => {
+  const p = priceAt(modelId);
+  return p && p.inputPerMillion != null ? { inputPerMillion: p.inputPerMillion, cachedInputPerMillion: p.cachedInputPerMillion, outputPerMillion: p.outputPerMillion, effectiveFrom: p.effectiveFrom } : null;
+};
+
+/**
+ * Read-only: which model each AI task runs on (config: AI_MODEL_DEFAULT,
+ * AI_MODEL_FALLBACK, AI_MODEL_<TASK>), its price, and whether this process's
+ * circuit breaker has paused a model. For the AI settings/status screen.
+ */
+export function getAiModels() {
+  const dflt = defaultModel();
+  const fallback = fallbackModel();
+  return {
+    default: { modelId: dflt, price: priceOf(dflt) },
+    fallback: fallback && fallback !== dflt ? { modelId: fallback, price: priceOf(fallback) } : null,
+    tasks: Object.entries(MODELS).map(([task, m]) => ({ task, modelId: m.id, overridden: m.id !== dflt })),
+    paused: geminiClient.breaker.snapshot().filter((b) => b.paused),
+    retry: { maxAttempts: geminiClient.policy.maxAttempts, totalTimeMs: geminiClient.policy.totalTimeMs, breakerThreshold: geminiClient.policy.breakerThreshold, breakerPauseMs: geminiClient.policy.breakerPauseMs },
+  };
 }

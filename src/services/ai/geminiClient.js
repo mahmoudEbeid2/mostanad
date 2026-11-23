@@ -4,6 +4,8 @@ import { parseGeminiError } from "./geminiErrors.js";
 import { recordGeminiCall, recordGeminiFailedCall } from "./generationMetrics.js";
 import { assertGeminiEnabled } from "./geminiGuard.js";
 import { recordAttempt } from "./aiLedger.js";
+import { currentAiContext } from "./aiContext.js";
+import { fallbackModel, thinkingConfigFor, timeoutForFeature, serviceTierForFeature } from "./modelRegistry.js";
 
 // CLAUDE.md "SHARED RATE LIMITER — the real fix": this is the ONLY place a
 // GoogleGenAI client is constructed in this codebase. Every worker and
@@ -20,10 +22,105 @@ import { recordAttempt } from "./aiLedger.js";
 const GEMINI_RPM = Number(process.env.GEMINI_RPM) || 8;
 const GEMINI_MAX_CONCURRENT = Number(process.env.GEMINI_MAX_CONCURRENT) || 2;
 
+// Retry policy (2026-11-23). Env-tunable; tests set geminiClient.policy directly.
+const envNum = (name, dflt) => {
+  const v = process.env[name];
+  return v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : dflt;
+};
+export const DEFAULT_POLICY = {
+  maxAttempts: envNum("AI_MAX_ATTEMPTS", 4), // per call, the fallback's attempts included
+  totalTimeMs: envNum("AI_RETRY_TOTAL_MS", 180_000), // no retry starts past this, counted from the first attempt
+  baseDelayMs: envNum("AI_RETRY_BASE_MS", 1000),
+  maxDelayMs: envNum("AI_RETRY_MAX_DELAY_MS", 20_000),
+  fallbackAfterOverloads: envNum("AI_FALLBACK_AFTER", 2), // overloads in a row, in one call, before it moves to AI_MODEL_FALLBACK
+  breakerThreshold: envNum("AI_BREAKER_THRESHOLD", 3), // overloads in a row (any caller) that pause a model
+  breakerPauseMs: envNum("AI_BREAKER_PAUSE_MS", 60_000),
+  timeoutMs: null, // null: per feature area (modelRegistry.timeoutForFeature)
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Statuses worth another try. A 429 reaching this check is per-minute or
+// unclassified: a daily quota is refused before it.
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+// "Overloaded": the failures that count toward fallback and the breaker. The
+// model has no capacity right now; another model may.
+const isOverload = (parsed) => Boolean(parsed.timedOut) || parsed.httpStatus === 503 || /overloaded|high demand|UNAVAILABLE/i.test(parsed.googleMessage || "");
+
+/** Retry-After (seconds or an HTTP date) from an SDK error's response headers, in ms; null when absent. */
+export function retryAfterMs(error, now = Date.now()) {
+  const h = error?.headers ?? error?.response?.headers;
+  if (!h) return null;
+  const raw = typeof h.get === "function" ? h.get("retry-after") : h["retry-after"] ?? h["Retry-After"];
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (/^\d+(\.\d+)?$/.test(String(raw).trim())) return Math.ceil(Number(raw) * 1000);
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - now) : null;
+}
+
+/**
+ * Per-model circuit breaker, process-wide (every caller shares the key):
+ * `breakerThreshold` overloads in a row open it for `breakerPauseMs`; while
+ * open the model is skipped (the fallback answers, or the call fails at once).
+ * After the pause the next call goes through: success closes it, another
+ * overload run reopens it.
+ */
+export class CircuitBreaker {
+  constructor(policy) {
+    this.policy = policy;
+    this.models = new Map();
+  }
+  state(model) {
+    if (!this.models.has(model)) this.models.set(model, { overloads: 0, openUntil: 0 });
+    return this.models.get(model);
+  }
+  isOpen(model, now = Date.now()) {
+    return this.state(model).openUntil > now;
+  }
+  /** → true when this overload opened the breaker */
+  overload(model, now = Date.now()) {
+    const st = this.state(model);
+    st.overloads += 1;
+    if (st.overloads >= this.policy.breakerThreshold && st.openUntil <= now) {
+      st.openUntil = now + this.policy.breakerPauseMs;
+      st.overloads = 0;
+      return true;
+    }
+    return false;
+  }
+  success(model) {
+    const st = this.state(model);
+    st.overloads = 0;
+    st.openUntil = 0;
+  }
+  snapshot(now = Date.now()) {
+    return [...this.models.entries()].map(([model, st]) => ({
+      model,
+      paused: st.openUntil > now,
+      overloadsInARow: st.overloads,
+      pausedUntil: st.openUntil > now ? new Date(st.openUntil).toISOString() : null,
+    }));
+  }
+  reset() {
+    this.models.clear();
+  }
+}
+
+// The model that answered, on what generateContentWithRetry / generateJson
+// return: provenance must name it (the fallback may have answered, not the
+// task's configured model). modelUsed(result, configured) reads it.
+const MODEL_USED = Symbol.for("mostanad.ai.modelUsed");
+export const modelUsed = (result, configured) => (result && typeof result === "object" && result[MODEL_USED]) || configured;
+const tagModel = (result, model) => {
+  if (result && typeof result === "object") Object.defineProperty(result, MODEL_USED, { value: model, enumerable: false, configurable: true });
+  return result;
+};
+
 class GeminiClient {
   constructor() {
     this._ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     this.limiter = new GeminiRateLimiter({ requestsPerMinute: GEMINI_RPM, maxConcurrent: GEMINI_MAX_CONCURRENT });
+    this.policy = { ...DEFAULT_POLICY };
+    this.breaker = new CircuitBreaker(this.policy);
     console.log(`[GeminiClient] Rate limiter active: ${GEMINI_RPM} req/min, ${GEMINI_MAX_CONCURRENT} concurrent (override with GEMINI_RPM / GEMINI_MAX_CONCURRENT).`);
   }
 
@@ -34,20 +131,46 @@ class GeminiClient {
     return this._ai;
   }
 
+  /** Tests: replace the policy (the breaker reads the same object) and clear the breaker. */
+  setPolicy(overrides = {}) {
+    Object.assign(this.policy, DEFAULT_POLICY, overrides);
+    this.breaker.reset();
+  }
+
+  /** One request with a client-side timeout: aborts the SDK call and rejects as a retryable timeout. */
+  async _send(request, timeoutMs) {
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(Object.assign(new Error(`timed out after ${timeoutMs} ms`), { timedOut: true }));
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([this.ai.models.generateContent({ ...request, config: { ...request.config, abortSignal: controller.signal } }), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /**
    * The single choke point every generateContent call passes through: rate
-   * limiter first (queues instead of firing over-quota), then a retry loop
-   * that treats 429 and 503 as different problems (CLAUDE.md item 2):
-   *   - 503 (server busy): exponential backoff — Google will recover.
-   *   - 429, per-minute or unclassified: honour Google's own RetryInfo
-   *     retryDelay when given, otherwise a conservative fallback. Worth
-   *     waiting out.
-   *   - 429, daily/project quota: NOT worth waiting out — fails immediately
-   *     with a message that says so, instead of burning the retry budget.
-   *   - anything else (4xx auth/validation errors, malformed request, ...):
-   *     not transient — surfaced on the first attempt, never retried.
+   * limiter first (queues instead of firing over-quota), then:
+   *   - 429 per-minute/unclassified, 500, 502, 503, 504 and timeouts are
+   *     retried — at most policy.maxAttempts tries (never more than `retries`),
+   *     none starting after policy.totalTimeMs — waiting Google's own
+   *     RetryInfo / Retry-After when given, else exponential backoff + jitter;
+   *   - 429 daily/project quota: fails at once — waiting will not help;
+   *   - anything else (4xx auth/validation, malformed request): fails at once;
+   *   - overload (503 / "high demand" / timeout) policy.fallbackAfterOverloads
+   *     times in a row → the remaining tries go to AI_MODEL_FALLBACK, and an
+   *     open circuit breaker on the requested model sends the call there
+   *     directly. The switch is on each ledger row it affects (meta.routing).
+   * thinkingConfig is translated for the model actually called
+   * (thinkingConfigFor), so a 2.5-style budget works on 3.x and on the fallback.
    * Every failed attempt is logged with Google's real status/message/retry
-   * metadata (item 3) — nothing here collapses to "API busy (503/429)".
+   * metadata — nothing here collapses to "API busy (503/429)".
    *
    * AI cost ledger: every attempt that reached Google — answered or failed,
    * first try or retry — writes exactly one ai_calls row (aiLedger), tagged
@@ -59,56 +182,99 @@ class GeminiClient {
     // Checked before the limiter so a blocked call never waits for a slot.
     assertGeminiEnabled(`geminiClient.generateContent(${model})`);
 
-    for (let attempt = 1; attempt <= retries; attempt++) {
+    const policy = this.policy;
+    const maxAttempts = Math.max(1, Math.min(retries, policy.maxAttempts));
+    const feature = currentAiContext(ledger).feature;
+    const timeoutMs = policy.timeoutMs ?? timeoutForFeature(feature);
+    const serviceTier = config.serviceTier ?? serviceTierForFeature(feature);
+    const fallback = fallbackModel();
+    const canFallBack = Boolean(fallback) && fallback !== model;
+    let firstAt = null; // the first request's send time: queueing behind the limiter doesn't count
+    let current = model;
+    let routing = null;
+    let overloadsInARow = 0;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (current === model && this.breaker.isOpen(model)) {
+        if (canFallBack && !this.breaker.isOpen(fallback)) {
+          current = fallback;
+          routing = { fallbackFrom: model, reason: "circuit_open" };
+          console.warn(`[GeminiClient] ${model} is paused (circuit breaker) — sending to fallback ${fallback}`);
+        } else {
+          throw new Error(
+            `Gemini API call failed for ${model} (status 503): the model is overloaded and paused after repeated overloads${canFallBack ? `; the fallback ${fallback} is paused too` : ""}.`
+          );
+        }
+      }
+      const callConfig = { ...config };
+      if (config.thinkingConfig) callConfig.thinkingConfig = thinkingConfigFor(current, config.thinkingConfig);
+      if (serviceTier) callConfig.serviceTier = serviceTier;
+      if (systemInstruction) callConfig.systemInstruction = systemInstruction;
+
       await this.limiter.acquire();
       const startedAt = Date.now();
+      firstAt ??= startedAt;
       try {
-        const response = await this.ai.models.generateContent({
-          model,
-          contents,
-          config: systemInstruction ? { systemInstruction, ...config } : config,
-        });
+        const response = await this._send({ model: current, contents, config: callConfig }, timeoutMs);
         this.limiter.release();
         const latencyMs = Date.now() - startedAt;
-        recordGeminiCall(response.usageMetadata, latencyMs);
-        await recordAttempt({ ledger, modelId: model, attempt, ok: true, usage: response.usageMetadata, latencyMs });
-        return response;
+        this.breaker.success(current);
+        recordGeminiCall(response.usageMetadata, latencyMs, current);
+        await recordAttempt({ ledger, modelId: current, attempt, ok: true, usage: response.usageMetadata, latencyMs, serviceTier, routing });
+        return tagModel(response, current);
       } catch (error) {
         this.limiter.release();
         const latencyMs = Date.now() - startedAt;
         recordGeminiFailedCall(latencyMs); // the request went out (the guard runs before the loop)
-        const parsed = parseGeminiError(error);
+        const parsed = error?.timedOut
+          ? { httpStatus: null, googleMessage: error.message, retryDelayMs: null, quotaScope: null, timedOut: true }
+          : parseGeminiError(error);
+        if (parsed.retryDelayMs == null) parsed.retryDelayMs = retryAfterMs(error);
         lastParsed = parsed;
-        await recordAttempt({ ledger, modelId: model, attempt, ok: false, httpStatus: parsed.httpStatus ?? null, error: parsed.googleMessage, latencyMs });
+        const statusText = parsed.timedOut ? "timeout" : parsed.httpStatus ?? "unknown";
+        await recordAttempt({ ledger, modelId: current, attempt, ok: false, httpStatus: parsed.httpStatus ?? null, error: parsed.googleMessage, latencyMs, serviceTier, routing });
         console.error(
-          `[GeminiClient] ${model} attempt ${attempt}/${retries} failed — ` +
-            `status=${parsed.httpStatus ?? "unknown"} quotaScope=${parsed.quotaScope ?? "n/a"} ` +
+          `[GeminiClient] ${current} attempt ${attempt}/${maxAttempts} failed — ` +
+            `status=${statusText} quotaScope=${parsed.quotaScope ?? "n/a"} ` +
             `retryDelayMs=${parsed.retryDelayMs ?? "n/a"} message="${parsed.googleMessage}"`
         );
 
         if (parsed.httpStatus === 429 && parsed.quotaScope === "daily") {
           throw new Error(
-            `Gemini quota exhausted (daily/project limit, not per-minute) for ${model} — retrying will not help until it resets. ${parsed.googleMessage}`
+            `Gemini quota exhausted (daily/project limit, not per-minute) for ${current} — retrying will not help until it resets. ${parsed.googleMessage}`
           );
         }
-
-        const isRetryableStatus = parsed.httpStatus === 429 || parsed.httpStatus === 503;
-        if (!isRetryableStatus) {
-          throw new Error(`Gemini API call failed for ${model} (status ${parsed.httpStatus ?? "unknown"}): ${parsed.googleMessage}`);
+        if (!parsed.timedOut && !RETRYABLE.has(parsed.httpStatus)) {
+          throw new Error(`Gemini API call failed for ${current} (status ${statusText}): ${parsed.googleMessage}`);
         }
 
-        if (attempt === retries) {
+        const failedOn = current;
+        if (isOverload(parsed)) {
+          overloadsInARow += 1;
+          if (this.breaker.overload(current)) console.warn(`[GeminiClient] ${current}: ${policy.breakerThreshold} overloads in a row — paused for ${policy.breakerPauseMs} ms`);
+          if (current === model && canFallBack && overloadsInARow >= policy.fallbackAfterOverloads && !this.breaker.isOpen(fallback)) {
+            current = fallback;
+            routing = { fallbackFrom: model, reason: "overloaded" };
+            console.warn(`[GeminiClient] ${model} overloaded ${overloadsInARow}× in a row — next try on the fallback ${fallback}`);
+          }
+        } else {
+          overloadsInARow = 0;
+        }
+
+        if (attempt === maxAttempts) {
+          throw new Error(`Gemini API call failed for ${failedOn} after ${attempt} attempts (last status ${statusText}): ${parsed.googleMessage}`);
+        }
+
+        const backoff = Math.min(policy.baseDelayMs * 2 ** (attempt - 1), policy.maxDelayMs);
+        // Google's own timing when given; otherwise "equal jitter": half fixed, half random
+        const delay = parsed.retryDelayMs ?? Math.round(backoff / 2 + Math.random() * (backoff / 2));
+        if (Date.now() - firstAt + delay > policy.totalTimeMs) {
           throw new Error(
-            `Gemini API call failed for ${model} after ${retries} attempts (last status ${parsed.httpStatus}): ${parsed.googleMessage}`
+            `Gemini API call failed for ${failedOn} after ${attempt} attempts (last status ${statusText}; the next try would pass the ${Math.round(policy.totalTimeMs / 1000)} s limit): ${parsed.googleMessage}`
           );
         }
-
-        const delay =
-          parsed.httpStatus === 503
-            ? Math.min(2000 * Math.pow(2, attempt - 1), 15000) // unchanged: exponential backoff for "server busy"
-            : parsed.retryDelayMs ?? Math.min(5000 * attempt, 30000); // 429: honour Google's timing, else a conservative fallback
-        console.log(`[GeminiClient] Retrying ${model} in ${delay}ms (reason: ${parsed.httpStatus === 503 ? "server busy" : "rate limit"})...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        console.log(`[GeminiClient] Retrying ${current} in ${delay}ms (reason: ${parsed.timedOut ? "timeout" : parsed.httpStatus === 429 ? "rate limit" : "server busy"})...`);
+        await sleep(delay);
       }
     }
 
@@ -146,7 +312,7 @@ class GeminiClient {
         cleanText = cleanText.substring(7);
         if (cleanText.endsWith("```")) cleanText = cleanText.substring(0, cleanText.length - 3);
       }
-      return JSON.parse(cleanText.trim());
+      return tagModel(JSON.parse(cleanText.trim()), modelUsed(response, model));
     } catch (error) {
       console.error("[GeminiClient] Failed to parse JSON response:", text ? text.substring(0, 500) : "null");
       throw new Error("AI returned malformed JSON.");

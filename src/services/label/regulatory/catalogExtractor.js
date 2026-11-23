@@ -4,7 +4,7 @@
 // call. Mechanisms live here in code; content (discriminant names, field
 // wording, thresholds) lives entirely in what the model reads off THIS
 // document — nothing authority-specific is hardcoded below.
-import geminiClient from "../../ai/geminiClient.js";
+import geminiClient, { modelUsed } from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { labelSchema } from "../schema/labelSchema.js";
 
@@ -325,7 +325,7 @@ export async function extractTextAndCatalog(fileInlineDataPart, { title, authori
     countryCode: country || null,
     documentLanguages: Array.isArray(response.documentLanguages) ? response.documentLanguages : [],
     extractedAt: new Date().toISOString(),
-    modelId: MODELS.EXTRACT_WITH_CATALOG.id,
+    modelId: modelUsed(response, MODELS.EXTRACT_WITH_CATALOG.id),
     coverage: {
       discriminantsExtracted: discriminants.length,
       fieldsExtracted: fields.length,

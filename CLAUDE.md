@@ -158,6 +158,16 @@ yourself after editing worker code.
   every worker `dev:all` runs, not a paid key's real ceiling. Calls queue
   instead of failing when the process is over budget. Raise both via env for a
   paid project; check the account's actual quota first.
+- **Models are config:** `AI_MODEL_DEFAULT` (every task), `AI_MODEL_FALLBACK`
+  (only while the default is overloaded), `AI_MODEL_<TASK>` (one task elsewhere).
+  `MODELS.X.id` resolves them on every read. 3.x models reject
+  `thinkingBudget: 0`; `geminiClient` translates budgets to `thinkingLevel`
+  (`thinkingConfigFor`) for whichever model it actually calls.
+- **Reliability (geminiClient):** ≤ `AI_MAX_ATTEMPTS` (4) tries within
+  `AI_RETRY_TOTAL_MS`; 429/500/502/503/504/timeouts retried with jittered
+  backoff or Google's RetryInfo/Retry-After; 2 overloads in a row → the
+  fallback (ledger `meta.routing`); 3 in a row (any caller) pause a model for
+  60 s (circuit breaker). Provenance reads the answering model with `modelUsed()`.
 - **429 vs 503:** treated differently, on purpose. 503 (server busy) gets
   exponential backoff. 429 (a quota decision) honours Google's own
   `RetryInfo.retryDelay` when given, and if the violation is a daily/project

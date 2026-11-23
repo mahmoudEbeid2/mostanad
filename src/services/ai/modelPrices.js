@@ -24,15 +24,20 @@ import { MODEL_IDS } from "./modelRegistry.js";
 // While an amount is null the ledger still records every call and its tokens,
 // with costUsd = null; the reports count those calls as "unpriced".
 
+// Filled 2026-11-23 from https://ai.google.dev/gemini-api/docs/pricing (paid
+// tier, Standard, text/image/video input; audio input is priced higher and is
+// not used here). `flex` holds the Flex/Batch rates (half of Standard) for
+// calls sent with serviceTier "flex"; null where the page shows none.
+const r = (inputPerMillion, cachedInputPerMillion, outputPerMillion) => ({ inputPerMillion, cachedInputPerMillion, outputPerMillion });
+
 export const MODEL_PRICES = [
-  {
-    modelId: MODEL_IDS.GEMINI_2_5_FLASH,
-    effectiveFrom: "2025-01-01",
-    inputPerMillion: null, // TODO(owner): fill from the pricing page
-    cachedInputPerMillion: null, // TODO(owner)
-    outputPerMillion: null, // TODO(owner) — includes thinking tokens
-    longContext: null,
-  },
+  // Prices before 2026-11-23 were never filled in: rows written then stay unpriced.
+  { modelId: MODEL_IDS.GEMINI_2_5_FLASH, effectiveFrom: "2026-11-23", ...r(0.3, 0.03, 2.5), flex: r(0.15, 0.03, 1.25), longContext: null },
+  { modelId: MODEL_IDS.GEMINI_3_1_FLASH_LITE, effectiveFrom: "2026-05-07", ...r(0.25, 0.025, 1.5), flex: r(0.125, 0.0125, 0.75), longContext: null },
+  { modelId: MODEL_IDS.GEMINI_3_5_FLASH_LITE, effectiveFrom: "2026-07-21", ...r(0.3, 0.03, 2.5), flex: null, longContext: null },
+  // the page announces a doubling from 2027-01-01
+  { modelId: MODEL_IDS.GEMINI_3_8_FLASH, effectiveFrom: "2026-09-02", ...r(0.75, 0.075, 3.75), flex: r(0.375, 0.0375, 1.875), longContext: null },
+  { modelId: MODEL_IDS.GEMINI_3_8_FLASH, effectiveFrom: "2027-01-01", ...r(1.5, 0.15, 7.5), flex: r(0.75, 0.075, 3.75), longContext: null },
   {
     modelId: MODEL_IDS.GEMINI_2_5_PRO,
     effectiveFrom: "2025-01-01",
@@ -62,12 +67,15 @@ export function priceAt(modelId, at = new Date(), table = MODEL_PRICES) {
 }
 
 /**
- * The rates that apply to one request under `price` (the long-context tier
- * when the prompt is above its threshold), or null when any rate is missing.
+ * The rates that apply to one request under `price` (the Flex rates for a
+ * serviceTier "flex" call, the long-context tier when the prompt is above its
+ * threshold), or null when any rate is missing.
  */
-export function ratesFor(price, inputTokens = 0) {
+export function ratesFor(price, inputTokens = 0, serviceTier = null) {
   if (!price) return null;
-  const tier = price.longContext && inputTokens > price.longContext.aboveInputTokens ? price.longContext : price;
+  const tier =
+    serviceTier === "flex" ? price.flex ?? null : price.longContext && inputTokens > price.longContext.aboveInputTokens ? price.longContext : price;
+  if (!tier) return null;
   const rates = { inputPerMillion: tier.inputPerMillion, cachedInputPerMillion: tier.cachedInputPerMillion, outputPerMillion: tier.outputPerMillion };
   return Object.values(rates).every(isPrice) ? rates : null;
 }

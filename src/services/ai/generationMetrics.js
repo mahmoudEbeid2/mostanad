@@ -21,16 +21,18 @@ export function withGenerationMetrics(fn) {
     thinkingTokens: 0,
     cachedTokens: 0,
     elapsedMs: 0,
+    modelsUsed: new Set(), // the models that answered (the fallback may have, not the configured one)
     startedAt: Date.now(),
   };
   return als.run(store, fn);
 }
 
 /** Called by geminiClient after every attempt that returns a response — success only; a failed attempt has no usageMetadata to bill against. */
-export function recordGeminiCall(usageMetadata, elapsedMs) {
+export function recordGeminiCall(usageMetadata, elapsedMs, modelId = null) {
   const store = als.getStore();
   if (!store) return; // no tracked context active (e.g. a script, or a call outside labelGeneratorWorker) — not an error
   store.calls += 1;
+  if (modelId) store.modelsUsed.add(modelId);
   store.inputTokens += usageMetadata?.promptTokenCount ?? 0;
   store.outputTokens += usageMetadata?.candidatesTokenCount ?? 0;
   store.thinkingTokens += usageMetadata?.thoughtsTokenCount ?? 0;
@@ -61,6 +63,7 @@ export function generationMetricsSnapshot() {
     thinkingTokens: store.thinkingTokens,
     cachedTokens: store.cachedTokens,
     geminiWallClockMs: store.elapsedMs,
+    modelsUsed: [...store.modelsUsed],
     totalWallClockMs: Date.now() - store.startedAt,
   };
 }

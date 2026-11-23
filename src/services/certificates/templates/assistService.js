@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import geminiClient from "../../ai/geminiClient.js";
+import geminiClient, { modelUsed } from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { CertError } from "../errors.js";
 import { loadVersion } from "./templateService.js";
@@ -150,6 +150,6 @@ export async function suggestFields(versionId, companyId) {
   return {
     suggestions,
     rejected: rejected.length,
-    provenance: { modelId: MODELS.CERT_ASSIST.id, promptHash, ms: Date.now() - t0, at: new Date().toISOString() },
+    provenance: { modelId: modelUsed(out, MODELS.CERT_ASSIST.id), promptHash, ms: Date.now() - t0, at: new Date().toISOString() },
   };
 }

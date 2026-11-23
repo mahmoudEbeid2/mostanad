@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import geminiClient from "../../ai/geminiClient.js";
+import geminiClient, { modelUsed } from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { buildContext } from "./contextBuilder.js";
 import { resolveGroundedFields } from "./fieldLadder.js";
@@ -274,7 +274,7 @@ ${unresolvedContentFields.length > 0 ? `- ${unresolvedContentFields.join(", ")}:
   return {
     labelData,
     generationMeta: {
-      modelId: MODELS.LABEL_GENERATE.id,
+      modelId: modelUsed(response, MODELS.LABEL_GENERATE.id),
       temperature: MODELS.LABEL_GENERATE.temperature,
       thinkingBudget: MODELS.LABEL_GENERATE.thinkingBudget,
       schemaVersion: "vet-label@2.0.0",

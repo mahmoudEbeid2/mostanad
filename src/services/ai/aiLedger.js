@@ -74,7 +74,7 @@ export const outcomeOf = (httpStatus) => (httpStatus === 429 ? "quota" : "error"
  * Never throws: a ledger write failing must not fail the AI call, but it is
  * logged, never silent.
  */
-export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpStatus = null, error = null, usage = null, latencyMs = 0, at = new Date() }) {
+export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpStatus = null, error = null, usage = null, latencyMs = 0, at = new Date(), serviceTier = null, routing = null }) {
   const ctx = currentAiContext(ledger);
   const feature = ctx.feature && FEATURES.includes(ctx.feature) ? ctx.feature : UNATTRIBUTED;
   if (feature === UNATTRIBUTED) console.error(`[aiLedger] a Gemini call (${modelId}) has no known feature (got "${ctx.feature ?? ""}") — recorded as "${UNATTRIBUTED}"`);
@@ -85,7 +85,7 @@ export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpSta
     thinkingTokens: usage?.thoughtsTokenCount ?? 0,
   };
   const price = priceAt(modelId, at, priceTable);
-  const rates = ratesFor(price, tokens.inputTokens);
+  const rates = ratesFor(price, tokens.inputTokens, serviceTier);
   const cost = costUsd(tokens, rates);
   const data = {
     companyId: ctx.companyId ?? null,
@@ -96,7 +96,8 @@ export async function recordAttempt({ ledger = {}, modelId, attempt, ok, httpSta
     parentType: ctx.parentType ?? null,
     parentId: ctx.parentId ?? null,
     aiRunId: ctx.aiRunId ?? null,
-    meta: ctx.meta ?? undefined,
+    // routing: geminiClient's model switch for this attempt ({ fallbackFrom, reason }) and a Flex call's tier
+    meta: routing || serviceTier ? { ...(ctx.meta || {}), ...(routing ? { routing } : {}), ...(serviceTier ? { serviceTier } : {}) } : ctx.meta ?? undefined,
     modelId: String(modelId),
     attempt,
     outcome: ok ? "ok" : outcomeOf(httpStatus),

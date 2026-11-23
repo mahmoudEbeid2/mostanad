@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import geminiClient from "../../ai/geminiClient.js";
+import geminiClient, { modelUsed } from "../../ai/geminiClient.js";
 import { MODELS } from "../../ai/modelRegistry.js";
 import { CertError } from "../errors.js";
 import { INVOICE_HEADER_FIELDS, INVOICE_ITEM_FIELDS } from "./invoiceSchema.js";
@@ -170,7 +170,7 @@ export async function extractInvoice(buffer, mimeType, log = null, hints = null)
     ...shaped,
     raw: out,
     provenance: {
-      modelId: MODELS.INVOICE_EXTRACT.id,
+      modelId: modelUsed(out, MODELS.INVOICE_EXTRACT.id),
       promptHash: PROMPT_HASH,
       ms: Date.now() - t0,
       at: new Date().toISOString(),

@@ -1,4 +1,5 @@
 import geminiClient from "./geminiClient.js";
+import { thinkingConfigFor } from "./modelRegistry.js";
 
 // §9.8 / CLAUDE.md: "Batch API (50% cost) for everything non-interactive."
 // Thin wrapper around @google/genai's `ai.batches` module (verified present in
@@ -55,7 +56,8 @@ export function buildInlinedRequest({ contents, systemInstruction, schema, tempe
  * `.state` — QUEUED/PENDING at creation, never immediately terminal).
  */
 export async function createBatch({ model, items }) {
-  const inlinedRequests = items.map(buildInlinedRequest);
+  // a 2.5-style thinking budget, translated for the batch's model (3.x takes a level)
+  const inlinedRequests = items.map(buildInlinedRequest).map((r) => (r.config.thinkingConfig ? { ...r, config: { ...r.config, thinkingConfig: thinkingConfigFor(model, r.config.thinkingConfig) } } : r));
   return geminiClient.ai.batches.create({ model, src: { inlinedRequests } });
 }
 

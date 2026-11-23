@@ -71,6 +71,8 @@ export async function runLogged(opts, fn) {
         thinkingTokens: m.thinkingTokens ?? 0,
         cachedTokens: m.cachedTokens ?? 0,
         ms: Date.now() - t0,
+        // the model(s) that answered — the fallback's id when it took over
+        ...(m.modelsUsed?.length ? { modelId: m.modelsUsed.join(",") } : {}),
       };
     };
     let result;
