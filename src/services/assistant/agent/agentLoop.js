@@ -77,6 +77,17 @@ export function sanitizeAnswer(text, refs) {
     .replace(OTHER_LINK, (m, label) => label);
 }
 
+/**
+ * An answer that says "here" / "هنا" without a link gets one (QA 2026-11-23: "يمكنك متابعة حالتها هنا"
+ * with nothing to click): the entity this turn's tools returned last, else the conversation's last one.
+ */
+export function withHereLink(text, turnRefs, refs) {
+  const t = String(text || "");
+  if (!/(?:^|[\s(])(?:هنا|here)(?=[\s.,،!:)]|$)/i.test(t) || /\]\(entity:[a-z_]+\/[0-9a-fA-F-]{36}\)/.test(t)) return t;
+  const ref = [...turnRefs.values()].at(-1) || [...refs.values()].at(-1);
+  return ref ? `${t}\n\n[${ref.name || ref.type}](entity:${ref.type}/${ref.id})` : t;
+}
+
 function userTurn(text, ctx) {
   const who = ctx.actor.kind === "company" ? `a company user of "${ctx.actor.name}" (sees only this company)` : `system user ${ctx.actor.name || ctx.actor.id}`;
   const scope = ctx.actor.kind === "company" ? ctx.actor.name : ctx.scope?.companyId ? `${ctx.scope.companyName || "company"} (id ${ctx.scope.companyId})` : "All companies";
@@ -113,6 +124,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     { role: "user", parts: [{ text: userTurn(text, { ...ctx, toolRecord: toolRecord(history.slice(-lim.historyMessages)) }) }] },
   ];
   const refs = new Map((ctx.knownRefs || []).map((r) => [r.id, r]));
+  const turnRefs = new Map(); // what this turn's tools returned (the link an answer saying "here" points to)
   const toolCalls = [];
   let usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0, thinkingTokens: 0 };
   let modelCalls = 0;
@@ -185,7 +197,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         return out({ text: isArabicText(text) ? UNGROUNDED_ANSWER.ar : UNGROUNDED_ANSWER.en, grounding: { blocked: true, unknown: g.unknown, firstUnknown: retried } });
       }
       const fallback = blocks.size ? "" : "I couldn't produce an answer.";
-      return out({ text: sanitizeAnswer(answer || fallback, refs), ...(retried ? { grounding: { blocked: false, firstUnknown: retried } } : {}) });
+      return out({ text: withHereLink(sanitizeAnswer(answer || fallback, refs), turnRefs, refs), ...(retried ? { grounding: { blocked: false, firstUnknown: retried } } : {}) });
     }
     contents.push(res.content);
 
@@ -216,6 +228,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
         if (result.ok) {
           collectRefs(result.data, refs);
+          collectRefs(result.data, turnRefs);
           turnFacts.push(...factsOf(result.data));
           const block = tableBlock(name, call.args || {}, result.companyId, result.data, getTool(name)?.label || name);
           if (block) blocks.set(name, block);

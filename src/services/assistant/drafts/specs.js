@@ -8,6 +8,7 @@ import { getNeeds } from "../../certificates/dataNeeds/dataNeedsService.js";
 import { SIZE_PRESETS } from "../../label/layout/layoutSpec.js";
 import { COPYABLE_FIELDS, COPY_FIELD_GROUPS } from "../../productCopyService.js";
 import { bilingual } from "../i18n.js";
+import { countryCode, countryIn, countryLabel, countryOptions } from "../countries.js";
 
 // Operation specs (drafts): for every write tool, what each argument is and how it can be
 // filled, and what must be true before the operation can run.
@@ -345,6 +346,29 @@ const sizeField = (dim) => ({
 });
 const SIZE_FIELDS = { preset: [sizeField("preset")], widthMm: [sizeField("widthMm")], heightMm: [sizeField("heightMm")] };
 
+/**
+ * A country: the person's own words ("مصر", "البلد مصر", "Egypt") stored as its code (EG); the form
+ * offers the known countries as a choice. Never a country nobody named.
+ */
+const country = {
+  kind: "context",
+  source: "message",
+  options: countryOptions(),
+  normalize: (v) => (typeof v === "string" ? countryCode(v) || v : v),
+  resolve: async (d) => {
+    for (const t of [...(d.ctx.userTexts || [])].reverse()) {
+      const code = countryIn(t);
+      if (code) return { value: code, display: countryLabel(code), evidence: "the country in your message" };
+    }
+    return null;
+  },
+  verify: async (value) => {
+    const code = countryCode(value);
+    if (!code) throw new Error(`"${value}" isn't a country this system knows — pick one`);
+    return { display: countryLabel(code) };
+  },
+};
+
 /** A fixed choice shown on the card (the person approves it there): any allowed value. */
 const choice = (label = (v) => (Array.isArray(v) ? v.join(", ") : String(v))) => ({ kind: "context", source: "card", resolve: async () => null, verify: async (value) => ({ display: label(value) }) });
 /** Stretching distorts the text: only when the person asked for it in their own words. */
@@ -376,7 +400,7 @@ const labelUploadRef = {
 // ── the specs ───────────────────────────────────────────────────────────────
 const INVOICE = [page("invoice"), invoice];
 export const SPECS = {
-  upload_invoice: { title: "Upload an invoice", fields: { attachmentId: [attachment()], certificateTypeIds: [certificateTypes], brandId: [brand], country: [user()] } },
+  upload_invoice: { title: "Upload an invoice", fields: { attachmentId: [attachment()], certificateTypeIds: [certificateTypes], brandId: [brand], country: [country] } },
   match_invoice_line: {
     title: "Match an invoice line to a product",
     key: ["invoiceId", "lineNo"],
@@ -418,8 +442,8 @@ export const SPECS = {
   },
   upload_supplier_coa: { title: "Read supplier COAs", key: ["invoiceId"], fields: { invoiceId: INVOICE, attachmentIds: [attachment({ many: true })] }, watch: invoiceWatch },
   upload_catalogue: { title: "Upload a catalogue", fields: { attachmentId: [attachment({ pdfOnly: true })], edition: [user()], manufacturer: [user()], brandId: [brand] }, errors: [[/pdf|file/i, "attachmentId"], [/brand/i, "brandId"]] },
-  verify_label: { title: "Check a label", fields: { attachmentId: [attachment()], country: [user()] } },
-  upload_label: { title: "Add a reference label", fields: { attachmentId: [attachment()], country: [user()], brandId: [brand] }, errors: [[/exists/i, "attachmentId"]] },
+  verify_label: { title: "Check a label", fields: { attachmentId: [attachment()], country: [country] } },
+  upload_label: { title: "Add a reference label", fields: { attachmentId: [attachment()], country: [country], brandId: [brand] }, errors: [[/exists/i, "attachmentId"]] },
   update_product_fields: { title: "Update product fields", key: ["productId"], fields: { productId: [page("product"), product], changes: [user({ form: "changes" })] }, watch: productWatch, errors: [[/product/i, "productId"], [/batch|lab|field/i, "changes"]] },
   resize_label: {
     title: "Change a label's size",
@@ -429,7 +453,7 @@ export const SPECS = {
   },
   upload_label_and_resize: {
     title: "Resize an uploaded label",
-    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "scale" ? "Keep the original design, just scale" : "Rebuild at a new size"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], productId: [product], country: [user()] },
+    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "scale" ? "Keep the original design, just scale" : "Rebuild at a new size"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], productId: [product], country: [country] },
     errors: [[/size|preset|width|height/i, "preset"], [/file|pdf|png|jpeg/i, "attachmentId"], [/product/i, "productId"]],
   },
   confirm_label_upload: {
@@ -509,6 +533,9 @@ export function specFor(toolName) {
       form: resolvers.find((r) => r.form)?.form || null,
       // a { field, value } list (update_product_fields): the fields it may change, labelled in both languages
       fieldOptions: resolvers.some((r) => r.form === "changes") ? changeFieldOptions(tool.args.shape[name]) : null,
+      // a fixed list to pick from in the form (countries), and how a typed value is read into the stored one
+      staticOptions: resolvers.find((r) => r.options)?.options || null,
+      normalize: resolvers.find((r) => r.normalize)?.normalize || null,
     };
   });
   return { tool, title: spec.title, key: spec.key || [], fields, prerequisites: spec.prerequisites || [], watch: spec.watch || null, errors: spec.errors || [] };

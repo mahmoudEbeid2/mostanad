@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
 import { executeApproved } from "./registry/index.js";
 import { presentError } from "../ai/aiErrorMessage.js";
+import { shapeResult } from "./registry/trim.js";
 import { draftForRun, markConfirmed, markExecuted, markFailed, draftCardCancelled } from "./drafts/draftService.js";
 
 // Confirmation cards (C2). A card is made only from a ready draft (drafts/draftService.js): the exact
@@ -136,19 +137,37 @@ export async function refreshAction(actor, id) {
   if (!task || (task.companyId && task.companyId !== row.companyId)) return { action: actionView(row), task: null };
   const view = presentError({ id: task.id, status: task.status, progress: task.progress, stage: task.stage, stages: task.stages, message: task.message, error: task.error, result: null });
   if (task.status === "completed" || task.status === "failed") {
-    const summary = task.result && typeof task.result === "object" ? Object.fromEntries(Object.entries(task.result).filter(([, v]) => ["string", "number", "boolean"].includes(typeof v)).slice(0, 20)) : null;
+    const summary = taskSummary(task.result);
     const updated = await prisma.assistantAction.update({
       where: { id },
-      data: task.status === "completed" ? { status: "done", result: { ...(row.result || {}), task: summary } } : { status: "failed", error: view.error || "The job failed" },
+      // a job that made something to open (a checked label) links to it from the card
+      data: task.status === "completed" ? { status: "done", result: { ...(row.result || {}), task: summary, ...(summary?.summary?.link ? { link: summary.summary.link } : {}) } } : { status: "failed", error: view.error || "The job failed" },
     });
     return { action: actionView(updated), task: view };
   }
   return { action: actionView(row), task: view };
 }
 
-/** What the model is told when a card finished, so it can continue (an "event" turn). */
-export function actionEventText(view) {
+// What a finished job's result keeps for the card and the model: its plain values, plus the outcome
+// a person needs — a label check's verdict and issues (summary), a COA's kept / discarded counts with
+// reasons, a rebuild's fields read and missing. QA 2026-11-23: only plain values were kept, so the
+// assistant could not say what a label check found or why a COA kept nothing.
+const OUTCOME_KEYS = ["summary", "coas", "reasons", "read", "missing", "results", "target"];
+export function taskSummary(result) {
+  if (!result || typeof result !== "object") return null;
+  const out = Object.fromEntries(Object.entries(result).filter(([, v]) => ["string", "number", "boolean"].includes(typeof v)).slice(0, 20));
+  for (const k of OUTCOME_KEYS) if (result[k] !== undefined && result[k] !== null && typeof result[k] === "object") out[k] = shapeResult(result[k]);
+  return out;
+}
+
+/** What the model is told when a card finished, so it can continue (an "event" turn). followUp: a read code already ran for it. */
+export function actionEventText(view, followUp = null) {
   const title = view.preview?.title || view.tool;
   const outcome = view.status === "done" ? "finished" : view.status === "failed" ? `failed: ${view.error}` : view.status;
-  return `[action ${outcome}] "${title}" (${view.tool}). Result: ${JSON.stringify(view.result ?? {}).slice(0, 1500)}. Tell the user the outcome in one or two sentences (with the link) and offer the next step if there is one — as a new card only if they want it.`;
+  return (
+    `[action ${outcome}] "${title}" (${view.tool}). Result: ${JSON.stringify(view.result ?? {}).slice(0, 3000)}.` +
+    (followUp ? ` Already read for you with ${followUp.tool}: ${JSON.stringify(followUp.data).slice(0, 3000)}.` : "") +
+    " Tell the user the outcome now, in their language: a check's verdict and its main issues, how many values were kept or discarded and why, what was read and what is missing — whatever this result has — with the link." +
+    " If something must be shown or confirmed next, show it now in this answer (call the read tool now if you still need one); never say you will do it later. Offer the next step — as a new card only if they want it."
+  );
 }

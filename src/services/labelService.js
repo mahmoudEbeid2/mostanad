@@ -1,5 +1,6 @@
 import * as labelExtractor from "./label/extraction/labelExtractor.js";
 import { validate } from "./label/validation/validationEngine.js";
+import { recordVerification } from "./label/verificationRecord.js";
 import { prisma } from "../lib/prisma.js";
 
 // Engine unification (§4.2, §14.5): an uploaded label and a generated label are judged
@@ -56,7 +57,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     none: "No matching product found for this label.",
   }[dbMatch.matchState];
 
-  return {
+  const out = {
     // Stated at the top, not buried under a "Detailed result" heading (§14.5.4).
     regulatoryStatus,
     productMatchStatus: {
@@ -76,4 +77,7 @@ export const verifyProductLabel = async (fileBuffer, fileName, mimeType, country
     },
     validation: report,
   };
+  // the checked label is kept (origin "extracted") with its report: the result names it, its verdict and top issues
+  out.summary = await recordVerification(out, { companyId, country, fileName });
+  return out;
 };

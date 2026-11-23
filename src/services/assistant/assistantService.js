@@ -283,6 +283,19 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   return { userMessageId: userMsg.id, message: messageView(reply, proposed) };
 }
 
+/** The read a finished card's outcome needs (a rebuilt label's fields to confirm), run as the person. → { tool, data } | null */
+const FOLLOW_UP = {
+  upload_label_and_resize: (r) => (r?.uploadId ? ["get_label_upload", { uploadId: r.uploadId }] : null),
+  confirm_label_upload: (r) => (r?.labelLayout?.labelId ? ["get_label_layout", { labelId: r.labelLayout.labelId }] : null),
+};
+export async function followUpRead(actor, action) {
+  const pick = action.status === "done" && FOLLOW_UP[action.tool]?.(action.result);
+  if (!pick) return null;
+  const [tool, args] = pick;
+  const r = await runTool(tool, args, { actor, scope: { companyId: action.companyId }, companyExists: async () => true });
+  return r.ok ? { tool, data: r.data } : null;
+}
+
 /** Modules of the tools the last 4 answers used, of the open drafts and of cards not yet done. */
 export async function stickyModules(actor, conversationId, history = []) {
   const names = new Set();
@@ -319,7 +332,9 @@ export async function continueAfterAction(actor, conversationId, actionId, opts 
   if (action.status === "running" || action.status === "pending") throw new AppError("The action hasn't finished yet.", 409);
   const row = await prisma.assistantAction.findUnique({ where: { id: actionId }, select: { conversationId: true } });
   if (row.conversationId !== conversationId) throw new AppError("Action not found!", 404);
-  return sendMessage(actor, conversationId, { text: actionEventText(action), page: null }, { ...opts, eventFor: actionId });
+  // what the person must see next is read here, in code, so the answer can show it (QA: "سأقوم الآن بالتحقق" and nothing)
+  const followUp = await followUpRead(actor, action);
+  return sendMessage(actor, conversationId, { text: actionEventText(action, followUp), page: null }, { ...opts, eventFor: actionId });
 }
 
 /**

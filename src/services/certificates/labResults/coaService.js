@@ -245,10 +245,22 @@ export async function runCoaJob({ invoiceId, coaIds = null }, ctx = {}, deps = {
     }
     const result = { accepted, rejected: read.rejected, warnings: read.warnings };
     await prisma.supplierCoa.update({ where: { id: coa.id }, data: { status: "done", pages: read.pages, textSource: read.textSource, result } });
-    out.push({ id: coa.id, status: "done", accepted: accepted.length, rejected: read.rejected.length });
+    // what was read, what was kept and why the rest wasn't: the assistant reports it ("0 kept: batch X isn't on the invoice")
+    out.push({ id: coa.id, fileName: coa.fileName, status: "done", accepted: accepted.length, rejected: read.rejected.length, extracted: accepted.length + read.rejected.length, kept: accepted.length, discarded: read.rejected.length, reasons: discardReasons(read.rejected) });
   }
   ctx.progress?.(95, "Filling every line of those batches", { stage: "supplier_coa" });
   await recheckCode(invoice.id, invoice.companyId);
   if (out.every((c) => c.status === "failed")) throw new CertError("COA_READ_FAILED", `No supplier COA could be read: ${out.map((c) => c.error).join(" | ")}`, 502);
-  return { invoiceId, coas: out };
+  const sum = (k) => out.reduce((n, c) => n + (c[k] || 0), 0);
+  return { invoiceId, coas: out, extracted: sum("extracted"), kept: sum("kept"), discarded: sum("discarded"), reasons: [...new Set(out.flatMap((c) => c.reasons || []))].slice(0, 8) };
+}
+
+/** The distinct reasons values were discarded, with their batch: "batch AVSE1126007: <reason>" (max 5). */
+function discardReasons(rejected = []) {
+  const seen = new Map();
+  for (const r of rejected) {
+    const key = `${r.batchNo ? `batch ${r.batchNo}: ` : ""}${r.reason}`;
+    seen.set(key, (seen.get(key) || 0) + 1);
+  }
+  return [...seen.entries()].slice(0, 5).map(([k, n]) => (n > 1 ? `${k} (×${n})` : k));
 }

@@ -146,6 +146,37 @@ async function main() {
     t = await runTool("search_invoices", { limit: 1 }, { actor: admin, scope: { companyId: co.id }, audit: async () => {} });
     assert("'latest invoice' = newest invoice date (2099-01-01), not upload order", t.data.items[0]?.invoiceNumber === `BRN-${s}`, t.data.items.map((i) => i.invoiceNumber));
     await cleanupCompany(other.id).catch(() => {});
+
+    console.log("\nPhase 5 — results the person actually gets");
+    const { recordVerification } = await import("../src/services/label/verificationRecord.js");
+    const { taskSummary, actionEventText } = await import("../src/services/assistant/actions.js");
+    const { withHereLink } = await import("../src/services/assistant/agent/agentLoop.js");
+    const lt = (en) => ({ translations: { en }, primary: "en" });
+    const verifyResult = {
+      regulatoryStatus: { status: "checked", message: "Checked against EG rules" },
+      productMatchStatus: { state: "none" },
+      product: { extractedDetails: { schemaVersion: "vet-label@2.0.0", productType: "veterinary_drug", productName: lt("ADDOXY 200-LA"), targetAnimalSpecies: { list: ["Cattle"] }, activeIngredients: [] }, extractionMeta: {} },
+      validation: { passed: false, errorCount: 1, warningCount: 1, engineVersion: "t", rulesetIds: [], verdicts: [{ path: "withdrawalPeriod", status: "FAIL", message: "Withdrawal period is required" }, { path: "storage", status: "NEEDS_REVIEW", message: "Storage wording unclear" }, { path: "x", status: "PASS" }] },
+    };
+    const verified = await recordVerification(verifyResult, { companyId: co.id, country: "EG", fileName: "addoxy.pdf" });
+    const lab = await prisma.generatedLabel.findUnique({ where: { id: verified.labelId }, include: { validations: true } });
+    assert("a label check is kept as a label with its report: labelId, validationId, verdict, risk, top issues, link", lab?.origin === "extracted" && lab.validations.length === 1 && verified.verdict === "FAIL" && verified.issues.map((i) => i.field).join() === "withdrawalPeriod,storage" && verified.link === `/labels/detail/${verified.labelId}` && typeof verified.riskScore === "number", verified);
+    const sum = taskSummary({ status: "ok", summary: verified, coas: [{ fileName: "ADDVET OMAN COA 10-26.pdf", extracted: 6, kept: 0, discarded: 6, reasons: ["batch AV-9: not on any invoice line (×6)"] }], kept: 0, discarded: 6 });
+    assert("the finished job keeps its outcome for the card and the model (verdict, issues, COA kept/discarded + reasons)", sum.summary?.verdict === "FAIL" && sum.coas?.[0]?.reasons?.[0]?.includes("not on any invoice line") && sum.kept === 0);
+    const ev = actionEventText({ status: "done", tool: "upload_label_and_resize", preview: { title: "Resize" }, result: { uploadId: "u1" } }, { tool: "get_label_upload", data: { status: "review", empty: ["withdrawalPeriod"] } });
+    assert("the continuation carries the follow-up read and says: show it now, never 'later'", /Already read for you with get_label_upload/.test(ev) && /never say you will do it later/.test(ev));
+    t = await runTool("get_invoice_data_check", { invoiceId: inv6.id }, { actor: admin, scope: { companyId: co.id }, audit: async () => {} });
+    assert("data check with unmatched lines: 'can't check N lines until matched', never 'nothing missing'", t.ok && t.data.uncheckedLines === 1 && /does NOT mean nothing is missing/.test(t.data.note), t.data || t.error);
+    const env5 = { ...env4, userTexts: ["افحص الليبل ده، البلد مصر"] };
+    const att = await prisma.assistantAttachment.create({ data: { conversationId: conv4.id, companyId: co.id, ownerType: "user", ownerId: admin.id, fileId: (await prisma.storedFile.create({ data: { companyId: co.id, kind: "assistant_attachment", path: `certificates/${co.id}/x.pdf`, mimeType: "application/pdf", sizeBytes: 1, sha256: "x" } })).id, name: "label.pdf", mimeType: "application/pdf", sizeBytes: 1 } });
+    v = await drafts.draftSession({ ...env5, attachments: [att] }).open({ tool: "verify_label", values: { attachmentId: att.id }, companyId: co.id });
+    assert("'البلد مصر' fills the country as its code (EG), from the person's words", v.fields.find((f) => f.name === "country")?.value === "EG", v.fields);
+    v = await drafts.draftSession(env4).open({ tool: "upload_label", values: { attachmentId: att.id, country: "مصر" }, companyId: co.id });
+    assert("a country given as 'مصر' is stored as EG", v.fields.find((f) => f.name === "country")?.value === "EG", v.fields.find((f) => f.name === "country"));
+    const { specFor } = await import("../src/services/assistant/drafts/specs.js");
+    assert("the form offers countries as a choice, not free text", specFor("verify_label").fields.find((f) => f.name === "country").staticOptions?.some((o) => o.value === "EG" && /مصر/.test(o.label)));
+    const refsT = new Map([["0b0b0b0b-0000-4000-8000-000000000001", { type: "label", id: "0b0b0b0b-0000-4000-8000-000000000001", name: "ADDOXY" }]]);
+    assert("'يمكنك متابعة حالتها هنا' gets a real link", withHereLink("يمكنك متابعة حالتها هنا.", refsT, new Map()).includes("](entity:label/0b0b0b0b-0000-4000-8000-000000000001)") && withHereLink("No pointer.", refsT, new Map()) === "No pointer.");
   } finally {
     await prisma.invoice.deleteMany({ where: { companyId: co.id } }).catch(() => {});
     await prisma.product.deleteMany({ where: { name: `Qa ${s}` } }).catch(() => {});

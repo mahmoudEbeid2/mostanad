@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { prisma } from "../../../../lib/prisma.js";
 import { defineTool } from "../registry.js";
 import { page, ref } from "../trim.js";
 import { pageArgs, id, pg } from "./common.js";
@@ -99,7 +100,10 @@ defineTool({
   run: async (a, ctx) => {
     const v = await getNeeds(a.invoiceId, ctx.companyId || undefined);
     const keep = (n) => a.includeSettled || !["resolved", "resolved_ai", "provided", "reused", "not_applicable"].includes(n.status);
+    // lines without a product have no certificate data to check: never "nothing missing" for them (QA 2026-11-23)
+    const unmatched = await prisma.invoiceItem.findMany({ where: { invoiceId: a.invoiceId, matchStatus: "needs_match" }, select: { lineNo: true }, orderBy: { lineNo: "asc" } });
     return {
+      ...(unmatched.length ? { uncheckedLines: unmatched.length, uncheckedLineNos: unmatched.map((l) => l.lineNo), note: `${unmatched.length} line(s) can't be checked until they are matched to a product — the check below covers only matched lines; it does NOT mean nothing is missing.` } : {}),
       summary: v.summary,
       computedAt: v.computedAt,
       warnings: v.warnings,
