@@ -3,7 +3,7 @@ import AppError from "../../utils/appError.js";
 import { runAgent } from "./agent/agentLoop.js";
 import { geminiGenerate, ASSISTANT_MODEL } from "./agent/geminiTurn.js";
 import { setAiCompany } from "../ai/aiContext.js";
-import { runTool } from "./registry/index.js";
+import { runTool, getTool } from "./registry/index.js";
 import { nextRows } from "./agent/blocks.js";
 import { factsOf } from "./agent/grounding.js";
 import { storeAttachments, attachmentView } from "./attachments.js";
@@ -243,6 +243,8 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     // an "[action …]" turn reports a finished card: saying it was done is true there
     isEvent: !!eventFor,
     proposedCount: () => proposed.length,
+    // the modules this conversation was just using (last turns' tools, open drafts and cards)
+    stickyModules: await stickyModules(actor, conversationId, history),
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId: replyId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
   ctx.drafts = draftSession(ctx);
@@ -279,6 +281,18 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   });
   await prisma.assistantConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
   return { userMessageId: userMsg.id, message: messageView(reply, proposed) };
+}
+
+/** Modules of the tools the last 4 answers used, of the open drafts and of cards not yet done. */
+export async function stickyModules(actor, conversationId, history = []) {
+  const names = new Set();
+  for (const m of history.filter((x) => x.role === "assistant").slice(0, 4)) for (const c of Array.isArray(m.toolCalls) ? m.toolCalls : []) if (c?.name) names.add(c.name);
+  const [drafts, cards] = await Promise.all([
+    prisma.assistantDraft.findMany({ where: { conversationId, ownerType: actor.kind, ownerId: actor.id, status: { in: ["collecting", "ready"] } }, select: { tool: true }, take: 20 }),
+    prisma.assistantAction.findMany({ where: { conversationId, status: { in: ["pending", "running"] } }, select: { tool: true }, take: 20 }),
+  ]);
+  for (const r of [...drafts, ...cards]) names.add(r.tool);
+  return [...new Set([...names].map((n) => getTool(n)?.module).filter((m) => m && m !== "assistant"))];
 }
 
 /** Hides `from` and every later message of its conversation; their cards still waiting for Run are cancelled (audited as a Cancel). */

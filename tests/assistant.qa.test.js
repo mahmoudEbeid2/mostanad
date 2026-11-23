@@ -3,8 +3,10 @@
 import { prisma } from "../src/lib/prisma.js";
 import { makeAssert, createCompany, cleanupCompany } from "./certificates-v2/helpers.js";
 import * as assistant from "../src/services/assistant/assistantService.js";
+import { runAgent } from "../src/services/assistant/agent/agentLoop.js";
 import { sanitizeOutput, claimsAction } from "../src/services/assistant/agent/answerGuard.js";
 import { toolRecord, replayText } from "../src/services/assistant/agent/history.js";
+import { selectModules } from "../src/services/assistant/agent/selectTools.js";
 
 process.env.GEMINI_DISABLED = "true";
 const { assert, counts } = makeAssert();
@@ -51,6 +53,20 @@ async function main() {
     turn = await assistant.sendMessage(admin, conv.id, { text: `ضيف منتج اسمه Qa ${s}` }, { generate: m.generate });
     assert("a real draft step lets the same words through", turn.message.text === "جهزت لك بطاقة بالمنتج.", turn.message.text);
 
+    console.log("\nPhase 2 — tools never disappear on a follow-up");
+    assert("'اعرض المستندات الرقابية' → regulatory", selectModules("اعرض المستندات الرقابية").includes("regulatory"));
+    assert("folded Arabic: 'الرقابيه' / 'المستندات' match", selectModules("المستند الرقابيه").includes("regulatory"));
+    assert("'ايه حالة آخر مهمة شغالة' → tasks", selectModules("ايه حالة آخر مهمة شغالة؟").includes("tasks"));
+    m = script([[call("list_regulatory_documents", {})], [{ text: "هذه المستندات." }]]);
+    let out = await runAgent({ text: "اعرض الملفات اللي عندنا", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {} }, generate: m.generate });
+    assert("a tool from a module not offered is loaded and run in the same turn (no 'isn't available')", out.toolCalls[0]?.ok === true && !/isn't available/.test(JSON.stringify(out.toolCalls)) && out.guard?.some((g) => g.type === "module_autoloaded" && g.module === "regulatory"), out.toolCalls);
+    const conv2 = await assistant.createConversation(admin, { companyId: co.id });
+    m = script([[call("search_invoices", { limit: 1 })], [{ text: "لا توجد فواتير." }]]);
+    await assistant.sendMessage(admin, conv2.id, { text: "اعرض آخر فاتورة" }, { generate: m.generate });
+    m = script([[{ text: "تمام." }]]);
+    await assistant.sendMessage(admin, conv2.id, { text: "مفيش كارت ظهر. اعمل المنتجات للسبع بنود كلهم" }, { generate: m.generate });
+    const offered = m.seen[0].tools.map((x) => x.name);
+    assert("the follow-up keeps the invoices tools (sticky modules)", offered.includes("get_invoice") && offered.includes("create_product_from_line"), offered);
   } finally {
     await prisma.product.deleteMany({ where: { name: `Qa ${s}` } }).catch(() => {});
     await cleanupCompany(co.id).catch((e) => console.error(e.message));

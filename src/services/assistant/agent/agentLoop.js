@@ -100,7 +100,9 @@ const sumUsage = (acc, u = {}) => ({
 export async function runAgent({ text, history = [], ctx, generate, onEvent = () => {}, signal = null, limits = {} }) {
   const lim = { ...LIMITS, ...limits };
   const available = allModules().filter((m) => toolsFor(ctx.actor, { modules: [m] }).some((t) => t.module === m && !t.core));
-  let chosen = selectModules(text, ctx.page, { files: (ctx.attachments || []).length > 0 }).filter((m) => available.includes(m));
+  // this message's words + the conversation's recent modules and open drafts (sticky): a follow-up
+  // ("there was no card, make all seven") keeps the tools the conversation was using
+  let chosen = [...new Set([...selectModules(text, ctx.page, { files: (ctx.attachments || []).length > 0 }), ...(ctx.stickyModules || [])])].filter((m) => available.includes(m)).sort();
   const offeredTools = () => toolsFor(ctx.actor, { modules: chosen });
   const declarations = () => [...describeTools(offeredTools(), ctx.actor).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(available.length ? [loadToolsDecl(available)] : [])];
 
@@ -192,6 +194,12 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         chosen = [...new Set([...chosen, ...add])].sort();
         result = { ok: true, status: "ok", data: { loaded: add, tools: offeredTools().map((t) => t.name) }, companyId: null, ms: 0 };
       } else {
+        // a tool of a module not loaded for this message: same person, same permissions → load it and run
+        const t = getTool(name);
+        if (t && !chosen.includes(t.module) && available.includes(t.module) && toolsFor(ctx.actor, { modules: [t.module] }).some((x) => x.name === name)) {
+          chosen = [...new Set([...chosen, t.module])].sort();
+          guardEvents.push({ type: "module_autoloaded", module: t.module, tool: name });
+        }
         onEvent({ type: "tool_start", tool: name, label: getTool(name)?.label || name, args: call.args || {} });
         result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
         if (result.ok) {
