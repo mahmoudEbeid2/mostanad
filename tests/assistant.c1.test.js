@@ -1,5 +1,5 @@
 import { prisma } from "../src/lib/prisma.js";
-import { makeAssert, api, asCompany, asAdmin, createCompany } from "./certificates-v2/helpers.js";
+import { makeAssert, api, asCompany, asAdmin, createCompany, BASE_URL } from "./certificates-v2/helpers.js";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import * as registry from "../src/services/assistant/registry/index.js";
@@ -367,7 +367,7 @@ async function main() {
     const adminConv = res.data.data.conversation.id;
     res = await api("POST", "/assistant/conversations", asAdmin, { companyId: uuid() });
     assert("…an unknown company is refused", res.status === 404);
-    const r2 = await fetch(`http://127.0.0.1:3000/api/v1/assistant/conversations/${adminConv}/messages`, { method: "POST", headers: { ...asAdmin, accept: "text/event-stream", "content-type": "application/json" }, body: JSON.stringify({ text: "hi", companyId: "all" }) });
+    const r2 = await fetch(`${BASE_URL}/assistant/conversations/${adminConv}/messages`, { method: "POST", headers: { ...asAdmin, accept: "text/event-stream", "content-type": "application/json" }, body: JSON.stringify({ text: "hi", companyId: "all" }) });
     const body = await r2.text();
     assert("messages stream over SSE (status → message), with the model's real error", r2.headers.get("content-type")?.includes("text/event-stream") && body.includes("event: status") && body.includes("event: message") && body.includes("GEMINI_DISABLED"), body.slice(0, 300));
     res = await api("DELETE", `/assistant/conversations/${conv.id}`, hA);

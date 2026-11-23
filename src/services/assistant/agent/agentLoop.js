@@ -4,6 +4,8 @@ import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { selectModules } from "./selectTools.js";
 import { tableBlock } from "./blocks.js";
 import { factsOf, corpusOf, checkGrounding, stripTypedLists } from "./grounding.js";
+import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction } from "./answerGuard.js";
+import { replayText, toolRecord } from "./history.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
 // model → tool calls → run them as the caller → results back → repeat until
@@ -26,12 +28,8 @@ const groundingRetry = (unknown) =>
   `[system check] Your answer named or stated ${unknown.map((u) => `"${u}"`).join(", ")}, which no tool returned in this conversation. ` +
   "Do not answer from memory and never continue a list yourself. Call the tool that returns this data (for more rows of a list, the same tool with page = nextPage) and answer only from its results — or say it isn't in the system.";
 
-/** What an earlier assistant turn did, replayed with its text so the model knows the cursors (never the rows). */
-export function historyNote(toolCalls) {
-  const done = (toolCalls || []).filter((c) => c.ok && c.name);
-  if (!done.length) return "";
-  return `\n\n[tools used in this answer: ${done.map((c) => `${c.name}(${JSON.stringify(c.args || {})}) → ${c.summary || "done"}${c.nextPage ? `, nextPage=${c.nextPage}` : ""}`).join("; ")}. Rows are not repeated here: call the tool again to read them.]`;
-}
+// Earlier turns' tool use is replayed as an internal record in the current turn's context
+// (history.js), never appended to the model's own answers: it imitated that note (QA 2026-11-23).
 
 const LOAD_TOOLS = "load_tools";
 
@@ -84,7 +82,7 @@ function userTurn(text, ctx) {
   // attached files are named by id for the tools — the model never gets their bytes
   const files = (ctx.attachments || []).map((a) => `[attached: ${a.id} · ${a.name} · ${a.mimeType} · ${Math.round(a.sizeBytes / 1024)} KB${a.pages ? ` · ${a.pages} pages` : ""}]`).join("\n");
   const drafts = (ctx.openDrafts || []).length ? `\n[open drafts: ${ctx.openDrafts.join(" | ")}]` : "";
-  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}${files ? `\n${files}` : ""}${drafts}\n\n${text}`;
+  return `[context] user: ${who} · current company: ${scope} · today: ${(ctx.now || new Date()).toISOString().slice(0, 10)} · page: ${page}${files ? `\n${files}` : ""}${drafts}${ctx.toolRecord || ""}\n\n${text}`;
 }
 
 const sumUsage = (acc, u = {}) => ({
@@ -107,8 +105,8 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const declarations = () => [...describeTools(offeredTools(), ctx.actor).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(available.length ? [loadToolsDecl(available)] : [])];
 
   const contents = [
-    ...history.slice(-lim.historyMessages).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.role === "assistant" ? `${m.text || "(no text)"}${historyNote(m.toolCalls)}` : m.text }] })),
-    { role: "user", parts: [{ text: userTurn(text, ctx) }] },
+    ...history.slice(-lim.historyMessages).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: replayText(m) }] })),
+    { role: "user", parts: [{ text: userTurn(text, { ...ctx, toolRecord: toolRecord(history.slice(-lim.historyMessages)) }) }] },
   ];
   const refs = new Map((ctx.knownRefs || []).map((r) => [r.id, r]));
   const toolCalls = [];
@@ -117,8 +115,10 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const blocks = new Map(); // tool name → the latest table block of this turn
   const turnFacts = factsOf([ctx.attachments || [], ctx.scope?.companyName || null]); // the files and the company the person is working in may be named
   let retried = null; // the unknown names of a first, blocked answer
+  let claimRetried = false; // a first answer that claimed an action no tool prepared
+  const guardEvents = [];
   const facts = () => turnFacts.join("\n").slice(0, lim.maxFactsChars);
-  const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...extra });
+  const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...(guardEvents.length ? { guard: guardEvents } : {}), ...extra });
 
   onEvent({ type: "status", text: "Thinking…" });
   while (modelCalls < lim.maxModelCalls) {
@@ -135,7 +135,24 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     const parts = res?.content?.parts || [];
     const calls = parts.filter((p) => p.functionCall).map((p) => p.functionCall);
     if (!calls.length || lastChance) {
-      const raw = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
+      const cleaned = sanitizeOutput(parts.filter((p) => p.text && !p.thought).map((p) => p.text).join(""));
+      if (cleaned.removed.length) {
+        guardEvents.push({ type: "sanitized", removed: cleaned.removed });
+        console.warn(`[assistant] removed internal markers from an answer: ${cleaned.removed.join(", ")}`);
+      }
+      const raw = cleaned.text;
+      // an answer claiming a change or a card when this turn prepared none: once more, then the truth
+      if (!ctx.isEvent && claimsAction(raw) && !preparedSomething(toolCalls, ctx.proposedCount?.() || 0)) {
+        guardEvents.push({ type: "false_action_claim", retried: claimRetried });
+        console.warn(`[assistant] answer claimed an action no tool prepared${claimRetried ? " (after retry)" : ""}: ${raw.slice(0, 160)}`);
+        if (!claimRetried && !lastChance) {
+          claimRetried = true;
+          contents.push(res.content);
+          contents.push({ role: "user", parts: [{ text: NO_ACTION_RETRY }] });
+          continue;
+        }
+        return out({ text: honestNoAction(text) });
+      }
       // checked on what the model wrote, before typed lists are removed for display
       const stripped = stripTypedLists(raw);
       // typed rows go only when a table block shows them; one record's fields (get_product…) have no block, so the model's list is the answer

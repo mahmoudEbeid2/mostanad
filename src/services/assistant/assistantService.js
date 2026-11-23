@@ -240,6 +240,9 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     ledgerMeta: ledger.meta,
     onDraft: (draft) => onEvent({ type: "draft", draft }),
     openDrafts: await openDraftsNote(actor, conversationId),
+    // an "[action …]" turn reports a finished card: saying it was done is true there
+    isEvent: !!eventFor,
+    proposedCount: () => proposed.length,
     audit: (e) => prisma.assistantToolCall.create({ data: { conversationId, messageId: replyId, ...owner(actor), tool: e.tool, args: e.args ?? undefined, companyId: e.companyId, status: e.status, error: e.error, durationMs: Math.round(e.durationMs) } }).catch((err) => console.error(`[assistant] audit row for ${e.tool} not written: ${err.message}`)),
   };
   ctx.drafts = draftSession(ctx);
@@ -266,7 +269,7 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
       links: result.refs,
       blocks: result.blocks?.length ? result.blocks : undefined,
       facts: result.facts || null,
-      grounding: result.grounding ?? undefined,
+      grounding: result.grounding || result.guard ? { ...(result.grounding || {}), ...(result.guard ? { guard: result.guard } : {}) } : undefined,
       error,
       modelId: ASSISTANT_MODEL.id,
       modelCalls: result.modelCalls,
