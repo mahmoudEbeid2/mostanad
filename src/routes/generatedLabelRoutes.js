@@ -6,12 +6,18 @@ import {
 } from "../controllers/generatedLabelController.js";
 import { postApprove, getApprovals, postRevoke } from "../controllers/labelApprovalController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
+import { getLayoutSizes, getLayout, postLayoutPreview, postLayout } from "../controllers/labelLayoutController.js";
 
 const router = express.Router();
 
 router.use(protect);
 
 router.get("/", restrictToPermission("read_labels"), getAllLabels);
+// printable layout & size (label/layout) — before /:id
+router.get("/layout-sizes", restrictToPermission("read_labels"), getLayoutSizes);
+router.get("/:id/layout", restrictToPermission("read_labels"), getLayout);
+router.post("/:id/layout/preview", restrictToPermission("read_labels"), postLayoutPreview);
+router.post("/:id/layout", restrictToPermission("update_labels"), postLayout);
 router.get("/:id", restrictToPermission("read_labels"), getLabel);
 router.patch("/:id", restrictToPermission("update_labels"), patchLabel);
 router.get("/:id/versions", restrictToPermission("read_labels"), getLabelVersions);

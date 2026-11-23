@@ -88,6 +88,8 @@ model Company {
   regulatoryDocuments  RegulatoryDocument[]
   referenceLabels      ReferenceLabel[]
   generatedLabels      GeneratedLabel[]
+  labelLayouts         LabelLayout[]
+  labelUploads         LabelUpload[]
   certificateTypes     CertificateType[]
   certificateTemplates CertificateTemplate[]
   invoices             Invoice[]
@@ -535,6 +537,7 @@ model GeneratedLabel {
   validations  ValidationReport[]
   chatMessages LabelChatMessage[]
   approvals    LabelApproval[]
+  layouts      LabelLayout[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1643,3 +1646,58 @@ model AssistantAction {
   @@map("assistant_actions")
 }
 
+// Printable label layouts (services/label/layout): one row per saved size of a
+// label ("Layout & size": a new version each time), or per scaled upload.
+// The content is never stored here — a "layout" row lays out its label's
+// labelData; a "scale" row places an uploaded file on the page as it is.
+model LabelLayout {
+  id              String          @id @default(uuid())
+  companyId       String          @map("company_id")
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  labelId         String?         @map("label_id")
+  label           GeneratedLabel? @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  uploadId        String?         @map("upload_id")
+  upload          LabelUpload?    @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  version         Int             @default(1)
+  mode            String          @default("layout") // layout | scale
+  widthMm         Float           @map("width_mm")
+  heightMm        Float           @map("height_mm")
+  settings        Json // the resolved layout: margins, sections, font, min font, columns (layout) | { stretch } (scale)
+  fit             Json // the fit report: fits, fontPt, columns, sections[], smallestTextPt, warnings
+  pdfFileId       String?         @map("pdf_file_id") // StoredFile; null when the label doesn't fit
+  previewFileId   String?         @map("preview_file_id") // StoredFile (PNG)
+  labelVersion    Int?            @map("label_version") // the label's content version laid out
+  createdByUserId String?         @map("created_by_user_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@unique([labelId, version])
+  @@index([companyId])
+  @@index([uploadId])
+  @@map("label_layouts")
+}
+
+// A label the client already has as a file (PDF / PNG / JPEG), uploaded to get
+// it at another size: "rebuild" reads it into a label (labelExtractor) and lays
+// that out; "scale" puts the file itself on the new page.
+model LabelUpload {
+  id              String        @id @default(uuid())
+  companyId       String        @map("company_id")
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId       String?       @map("product_id")
+  fileId          String        @map("file_id") // StoredFile (kind label_upload)
+  originalName    String?       @map("original_name")
+  mimeType        String        @map("mime_type")
+  mode            String // rebuild | scale
+  status          String        @default("uploaded") // uploaded | extracting | review | ready | failed
+  labelId         String?       @map("label_id") // rebuild: the label read from the file
+  taskId          String?       @map("task_id")
+  error           String?
+  country         String?
+  createdByUserId String?       @map("created_by_user_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  layouts         LabelLayout[]
+
+  @@index([companyId])
+  @@map("label_uploads")
+}

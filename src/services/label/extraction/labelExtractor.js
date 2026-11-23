@@ -23,6 +23,8 @@ function toLocalizedText(text) {
   return { translations: { en: text.trim() }, primary: "en" };
 }
 
+const localizedList = (v) => (Array.isArray(v) ? v.map(toLocalizedText).filter(Boolean) : []);
+
 function mapToLabelData(extracted, country) {
   const ingredients = Array.isArray(extracted.activeIngredients) ? extracted.activeIngredients : [];
   return {
@@ -52,16 +54,16 @@ function mapToLabelData(extracted, country) {
       source: "inferred", // extracted from the uploaded document itself, not a matched reference
     },
     aimOfUse: toLocalizedText(extracted.aimOfUse) || { translations: { en: "" }, primary: "en" },
-    indications: [],
+    indications: localizedList(extracted.indications),
     routeOfAdministration: toLocalizedText(extracted.routeOfAdministration),
     directionOfUse: toLocalizedText(extracted.directionOfUse) || { translations: { en: "" }, primary: "en" },
-    contraindications: null,
-    warnings: [],
+    contraindications: toLocalizedText(extracted.contraindications),
+    warnings: localizedList(extracted.warnings),
     sideEffects: null,
     withdrawalPeriod: toLocalizedText(extracted.withdrawalPeriod),
-    userSafety: [],
+    userSafety: localizedList(extracted.userSafety),
     storage: toLocalizedText(extracted.storage) || { translations: { en: "" }, primary: "en" },
-    shelfLifeAfterOpening: null,
+    shelfLifeAfterOpening: toLocalizedText(extracted.shelfLifeAfterOpening),
     disposal: null,
     netWeight: toLocalizedText(extracted.netWeight) || { translations: { en: "" }, primary: "en" },
     packaging: toLocalizedText(extracted.packaging),
@@ -75,7 +77,7 @@ function mapToLabelData(extracted, country) {
     expiryDate: extracted.expiryDate || null,
     prescriptionStatus: "NA",
     usageDeclaration: [],
-    keepOutOfReachOfChildren: true,
+    keepOutOfReachOfChildren: typeof extracted.keepOutOfReachOfChildren === "boolean" ? extracted.keepOutOfReachOfChildren : true,
     estimatedFields: [],
   };
 }
@@ -218,6 +220,12 @@ Return ONLY a raw JSON object with whatever of these fields the label visibly st
   "batchNo": "string or null",
   "productionDate": "string or null",
   "expiryDate": "string or null",
+  "indications": ["string — each indication / disease the label lists"],
+  "contraindications": "string or null",
+  "warnings": ["string — each warning or precaution printed"],
+  "userSafety": ["string — each instruction for the person handling the product"],
+  "shelfLifeAfterOpening": "string or null",
+  "keepOutOfReachOfChildren": "true if the label prints a keep-out-of-reach-of-children statement, false if it doesn't, null if unreadable",
   "extractionMeta": {
     "targetAnimalSpeciesList": {
       "confidence": "number 0-1 — how sure you are you found EVERY species shown (icons included); 0 if you saw no species text or icons at all",
@@ -272,6 +280,14 @@ Do not include markdown formatting.
         ambiguous: false,
       };
     }
+    // the fields added for "rebuild at a new size" (label/layout): read → meta, so a rebuilt label prints them
+    for (const key of ["contraindications", "shelfLifeAfterOpening"]) {
+      if (extracted[key]) extractionMeta[key] = { confidence: extracted.extractionMeta?.[key]?.confidence ?? 0.95, snippet: extracted[key], bbox: null, ambiguous: false };
+    }
+    for (const key of ["indications", "warnings", "userSafety"]) {
+      if (Array.isArray(extracted[key]) && extracted[key].some((x) => typeof x === "string" && x.trim())) extractionMeta[key] = { confidence: 0.95, snippet: extracted[key].join(" | "), bbox: null, ambiguous: false };
+    }
+    if (typeof extracted.keepOutOfReachOfChildren === "boolean") extractionMeta.keepOutOfReachOfChildren = { confidence: 0.95, snippet: String(extracted.keepOutOfReachOfChildren), bbox: null, ambiguous: false };
     extractionMeta.targetAnimalSpecies = buildSpeciesExtractionMeta(extracted);
 
     return {

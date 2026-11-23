@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma.js";
 import { verifyProductLabel } from "../services/labelService.js";
 import io from "socket.io-client";
 import { geminiWorkerName } from "../services/ai/geminiGuard.js";
+import { processRebuildTask } from "../services/label/layout/labelUploadService.js";
 
 const BACKEND_WS_URL = process.env.BACKEND_WS_URL || "http://localhost:3000";
 const socket = io(BACKEND_WS_URL);
@@ -26,6 +27,10 @@ const worker = new Worker(
   (job) => withAiJobContext(job, async () => {
     const { filePath, fileName, mimeType, country, companyId } = job.data;
     const taskId = job.opts.jobId;
+    // "Upload label to resize" → rebuild: read the uploaded label into a label (labelUploadService)
+    if (job.data.kind === "rebuild") {
+      return processRebuildTask(taskId, job.data, { emit: (u) => socket.emit("job_status_update", { jobId: taskId, companyId, type: "label_rebuild_extraction", ...u }) });
+    }
 
     console.log(`[Label Worker] Starting job ${job.id} (Task ${taskId})`);
 

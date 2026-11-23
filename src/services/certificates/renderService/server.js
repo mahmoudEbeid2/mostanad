@@ -12,6 +12,7 @@
 //   POST /v1/fill                 { html, values, defs, … }        → { html, flags, geometry, thumbnail }
 //   POST /v1/inspect              { html, fields, inspectDefs }    → { fields, groups }
 //   POST /v1/pdf                  { html }                         → application/pdf (X-Pages, X-Width-Px, X-Height-Px)
+//   POST /v1/label-layout         { html, widthMm, heightMm, … }   → { fit, pdf|null, png } (printable labels)
 // JSON results carry Buffers as { $b64 } (renderWire.js).
 //
 // Errors: 401 UNAUTHORIZED · 400 BAD_REQUEST · 404 NOT_FOUND · 413 TOO_LARGE ·
@@ -37,6 +38,7 @@ const OPS = {
   "/v1/fill": ({ html, ...opts }) => ops.fill(html, opts),
   "/v1/inspect": ({ html, ...opts }) => ops.inspect(html, opts),
   "/v1/pdf": ({ html }) => renderer.printPdf(html),
+  "/v1/label-layout": ({ html, ...opts }) => ops.labelLayout(html, opts),
 };
 
 const digest = (s) => crypto.createHash("sha256").update(String(s)).digest();

@@ -1,6 +1,7 @@
 import * as renderer from "./renderer.js";
 import { planGlyphs } from "./glyphPlan.js";
 import { fallbackFontCss } from "./fallbackFaces.js";
+import { checkLabelOpts, layoutLabelOn } from "./labelFit.js";
 
 // Composite operations that need several engine calls on ONE loaded document.
 // They used to be closures passed to renderer.withDocument() by prepareEngine
@@ -69,3 +70,9 @@ export const inspect = (html, { fields, inspectDefs = [], lineCells = false }) =
     }),
     { label: "fields:inspect" }
   );
+
+/** Printable label (engine/labelFit.js): auto-fit at the exact page size → { fit, pdf|null, png } */
+export const labelLayout = (html, opts = {}) => {
+  checkLabelOpts(opts);
+  return renderer.withDocument(html, (page) => layoutLabelOn(page, opts), { label: "label-layout", media: "print" });
+};

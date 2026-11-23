@@ -84,6 +84,9 @@ export async function printPdf(html) {
   return { pdf: buf, pages: Number(headers.get("x-pages")), widthPx: Number(headers.get("x-width-px")), heightPx: Number(headers.get("x-height-px")) };
 }
 
+/** Printable label (engine/labelFit.js) → { fit, pdf: Buffer|null, png: Buffer } */
+export const labelLayout = (html, opts) => call("/v1/label-layout", { html, ...opts });
+
 // The former withDocument() closures (engine/renderOps.js), one call each
 export const prepareClear = (html, opts) => call("/v1/prepare-clear", { html, ...opts });
 export const prepareRoundTrip = (html, opts) => call("/v1/prepare-roundtrip", { html, ...opts });

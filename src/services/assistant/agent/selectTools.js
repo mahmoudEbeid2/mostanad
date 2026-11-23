@@ -9,7 +9,7 @@ const KEYWORDS = {
   catalogues: ["catalogue", "catalog", "brochure", "كتالوج", "كاتالوج", "كتالوغ"],
   invoices: ["invoice", "invoices", "line", "batch", "lab result", "missing", "upload", "prepare", "match", "coa", "ارفع", "طابق", "جهز", "فاتورة", "فواتير", "الفاتوره", "تشغيلة", "دفعة", "ناقص"],
   certificates: ["certificate", "certificates", "template", "templates", "coa", "type", "lab", "generate", "طلع", "طلّع", "شهادة", "شهادات", "قالب", "قوالب", "تحليل", "مختبر", "نوع"],
-  labels: ["label", "labels", "validation", "verdict", "reference", "ملصق", "ملصقات", "ليبل", "تحقق", "مرجع"],
+  labels: ["label", "labels", "size", "resize", "dimension", " cm", "مقاس", "حجم", "أبعاد", "الليبل", "validation", "verdict", "reference", "ملصق", "ملصقات", "ليبل", "تحقق", "مرجع"],
   regulatory: ["regulatory", "regulation", "eda", "sfda", "requirement", "rule", "authority", "لوائح", "تنظيم", "هيئة", "متطلبات", "قاعدة", "قواعد"],
   users: ["user", "users", "role", "roles", "permission", "staff", "مستخدم", "مستخدمين", "دور", "صلاحي"],
   dashboard: ["dashboard", "stats", "statistics", "revenue", "subscription", "لوحة", "إحصائ", "احصائ", "اشتراك", "إيراد"],
