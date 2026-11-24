@@ -1,0 +1,154 @@
+{
+  "date": "2026-11-23T18:09:28.575Z",
+  "model": "gemini-2.5-flash",
+  "invoices": [
+    {
+      "invoice": "INV_A",
+      "fields": [
+        {
+          "field": "header.invoiceNumber",
+          "expected": "PI-2026-0311",
+          "got": "PI-2026-0311",
+          "ok": true
+        },
+        {
+          "field": "header.invoiceDate",
+          "expected": "12/10/2026",
+          "got": "12/10/2026",
+          "ok": true
+        },
+        {
+          "field": "line1.batchNo",
+          "expected": "AVVS1126041",
+          "got": "AVVS1126041",
+          "ok": true
+        },
+        {
+          "field": "line1.expiryDate",
+          "expected": "04/2028",
+          "got": "04/2028",
+          "ok": true
+        },
+        {
+          "field": "line1.quantity",
+          "expected": 200,
+          "got": 200,
+          "ok": true
+        },
+        {
+          "field": "line2.batchNo",
+          "expected": "AVSE1126007",
+          "got": "AVSE1126007",
+          "ok": true
+        },
+        {
+          "field": "line2.expiryDate",
+          "expected": "03/2028",
+          "got": "03/2028",
+          "ok": true
+        },
+        {
+          "field": "line2.quantity",
+          "expected": 100,
+          "got": 100,
+          "ok": true
+        }
+      ],
+      "error": null,
+      "ms": 4472
+    },
+    {
+      "invoice": "INV_B",
+      "fields": [
+        {
+          "field": "header.invoiceNumber",
+          "expected": "TR-26-0907",
+          "got": "TR-26-0907",
+          "ok": true
+        },
+        {
+          "field": "header.invoiceDate",
+          "expected": "18.09.2026",
+          "got": "18.09.2026",
+          "ok": true
+        },
+        {
+          "field": "line1.batchNo",
+          "expected": "HSPhar02609001",
+          "got": "HSPhar02609001",
+          "ok": true
+        },
+        {
+          "field": "line1.quantity",
+          "expected": 500,
+          "got": 500,
+          "ok": true
+        }
+      ],
+      "error": null,
+      "ms": 3074
+    },
+    {
+      "invoice": "INV_C",
+      "fields": [
+        {
+          "field": "header.invoiceNumber",
+          "expected": "INV-C-5521",
+          "got": "INV-C-5521",
+          "ok": true
+        },
+        {
+          "field": "header.invoiceDate",
+          "expected": "2026-10-01",
+          "got": "2026-10-01",
+          "ok": true
+        },
+        {
+          "field": "line1.batchNo",
+          "expected": "C-778",
+          "got": "C-778",
+          "ok": true
+        },
+        {
+          "field": "line1.expiryDate",
+          "expected": "08/2029",
+          "got": "08/2029",
+          "ok": true
+        },
+        {
+          "field": "line1.quantity",
+          "expected": 40,
+          "got": null,
+          "ok": false
+        },
+        {
+          "field": "line2.batchNo",
+          "expected": "T-112",
+          "got": "T-112",
+          "ok": true
+        },
+        {
+          "field": "line2.expiryDate",
+          "expected": "07/2028",
+          "got": "07/2028",
+          "ok": true
+        },
+        {
+          "field": "line2.quantity",
+          "expected": 60,
+          "got": null,
+          "ok": false
+        }
+      ],
+      "error": null,
+      "ms": 3453
+    }
+  ],
+  "totals": {
+    "fieldsRight": 18,
+    "fieldsChecked": 20,
+    "accuracy": 0.9,
+    "failedCalls": 0,
+    "avgMs": 3666
+  }
+}

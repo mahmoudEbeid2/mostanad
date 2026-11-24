@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-23T18:10:21.654Z",
+  "model": "gemini-3.5-flash-lite",
+  "invoices": [
+    {
+      "invoice": "INV_A",
+      "fields": [],
+      "error": "Invoice extraction failed: Gemini API call failed for gemini-3.5-flash-lite (status 503): the model is overloaded and paused after repeated overloads.",
+      "ms": 17221
+    },
+    {
+      "invoice": "INV_B",
+      "fields": [],
+      "error": "Invoice extraction failed: Gemini API call failed for gemini-3.5-flash-lite (status 503): the model is overloaded and paused after repeated overloads.",
+      "ms": 0
+    },
+    {
+      "invoice": "INV_C",
+      "fields": [],
+      "error": "Invoice extraction failed: Gemini API call failed for gemini-3.5-flash-lite (status 503): the model is overloaded and paused after repeated overloads.",
+      "ms": 0
+    }
+  ],
+  "totals": {
+    "fieldsRight": 0,
+    "fieldsChecked": 0,
+    "accuracy": null,
+    "failedCalls": 3,
+    "avgMs": 5740
+  }
+}

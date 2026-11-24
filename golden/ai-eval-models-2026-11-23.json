@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-23T18:10:21.236Z",
+  "models": [
+    "gemini-3.5-flash-lite"
+  ],
+  "rows": [
+    {
+      "model": "gemini-3.5-flash-lite",
+      "eval": "invoice",
+      "label": "Invoice extraction",
+      "exit": 0,
+      "accuracy": null,
+      "detail": "0/0 fields",
+      "attempts": 3,
+      "answered": 0,
+      "failures": {
+        "503": 3
+      },
+      "avgLatencyMs": null,
+      "costUsd": 0,
+      "modelsSeen": [
+        "gemini-3.5-flash-lite"
+      ]
+    }
+  ]
+}
