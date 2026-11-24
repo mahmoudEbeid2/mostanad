@@ -1731,3 +1731,79 @@ model LabelUpload {
   @@index([companyId])
   @@map("label_uploads")
 }
+
+// ---------- Auto-intake: drop any files, the system recognises and files them ----------
+// A drop of files (one upload, folder or .zip). Nothing is created in the rest of the
+// system until the person presses "نفّذ الكل" (execute) on its review card.
+model IntakeBatch {
+  id              String    @id @default(uuid())
+  ownerType       String    @map("owner_type") // user | company
+  ownerId         String    @map("owner_id")
+  companyId       String?   @map("company_id") // a company session: always its own; a system user: the optional hint
+  conversationId  String?   @map("conversation_id") // dropped in the assistant chat
+  status          String    @default("uploading") // uploading | classifying | review | executing | done | failed
+  classifyTaskId  String?   @map("classify_task_id")
+  executeTaskId   String?   @map("execute_task_id")
+  summary         Json? // the plain result after execute: created / done / needs a person
+  aiCalls         Int       @default(0) @map("ai_calls")
+  executedAt      DateTime? @map("executed_at")
+  executedByUserId String?  @map("executed_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  items   IntakeItem[]
+  created IntakeCreated[]
+
+  @@index([ownerType, ownerId, createdAt])
+  @@map("intake_batches")
+}
+
+// One dropped file — or one document of a split bundle (parentId, pages from–to).
+model IntakeItem {
+  id             String      @id @default(uuid())
+  batchId        String      @map("batch_id")
+  batch          IntakeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  parentId       String?     @map("parent_id") // a part of a split bundle, or a file from a .zip
+  name           String
+  relPath        String?     @map("rel_path") // its path inside a dropped folder / .zip
+  sizeBytes      Int         @map("size_bytes")
+  receivedBytes  Int         @default(0) @map("received_bytes") // a chunked upload resumes from here
+  sha256         String?
+  mimeType       String?     @map("mime_type")
+  fileId         String?     @map("file_id") // stored_files.id once the upload is complete
+  pageFrom       Int?        @map("page_from")
+  pageTo         Int?        @map("page_to")
+  companyId      String?     @map("company_id") // the company it was filed under (set at execute)
+  status         String      @default("uploading") // uploading | uploaded | classified | duplicate | executing | done | failed | skipped
+  classification Json? // what it is, whose, evidence, confidence, the proposed action (never edited)
+  decision       Json? // the person's changes on the review card
+  revision       Int         @default(0) // bumps on every classification / decision: the card's staleness check
+  result         Json? // what execute did (ids, task ids, links, what still needs a person)
+  error          String?
+  aiCalls        Int         @default(0) @map("ai_calls")
+  costUsd        Decimal?    @map("cost_usd") @db.Decimal(18, 10)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  @@index([batchId])
+  @@index([companyId, sha256])
+  @@map("intake_items")
+}
+
+// A company / brand / product / certificate type intake created, with the file it came from —
+// so what intake made can be reviewed later.
+model IntakeCreated {
+  id         String      @id @default(uuid())
+  batchId    String      @map("batch_id")
+  batch      IntakeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  itemId     String?     @map("item_id")
+  entityType String      @map("entity_type") // company | brand | product | certificate_type
+  entityId   String      @map("entity_id")
+  name       String
+  companyId  String?     @map("company_id")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+  @@map("intake_created")
+}

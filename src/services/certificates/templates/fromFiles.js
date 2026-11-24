@@ -11,13 +11,16 @@ import { createTemplateFromUpload, uploadNewVersion, detectSourceFormat } from "
 // has a template (same type, brand, country) gets the file as a new draft
 // version instead. Nothing is activated here.
 
-/** The certificate types a file name can name. COO and COC are one kind of document for the client. */
+/**
+ * The certificate types a file name can name. COC is the client's "Certificate of
+ * Composition" (ADDVET OMAN COC 10-26.pdf), not of origin: COO and COC are two types.
+ */
 export const KNOWN_TYPES = {
   FSC: { name: "Free Sale Certificate", also: [] },
   COA: { name: "Certificate of Analysis", also: [] },
   HC: { name: "Health Certificate", also: [] },
-  COO: { name: "Certificate of Origin", also: ["COC"] },
-  COC: { name: "Certificate of Conformity", also: ["COO"] },
+  COO: { name: "Certificate of Origin", also: [] },
+  COC: { name: "Certificate of Composition", also: [] },
   GMP: { name: "Good Manufacturing Practice Certificate", also: [] },
   ISO: { name: "ISO Certificate", also: [] },
 };
@@ -26,7 +29,7 @@ const WORDS = [
   [/analysis/i, "COA"],
   [/health/i, "HC"],
   [/origin/i, "COO"],
-  [/conformity|compliance/i, "COC"],
+  [/composition|conformity|compliance/i, "COC"],
 ];
 
 /** "MAXVET COA.pdf" → "COA"; null when the name doesn't say. */
@@ -40,8 +43,8 @@ export function typeCodeFromName(name) {
   return null;
 }
 
-/** The company's type for a code: the code itself, else its alias (COO ⇄ COC). → type | null */
-async function findType(companyId, code) {
+/** The company's type for a code (or a listed alias). → type | null */
+export async function findType(companyId, code) {
   const types = await prisma.certificateType.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true } });
   const want = [code, ...(KNOWN_TYPES[code]?.also || [])];
   for (const c of want) {

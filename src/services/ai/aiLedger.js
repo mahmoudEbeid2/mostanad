@@ -33,6 +33,7 @@ export const FEATURES = [
   "certificates.web_lookup",
   "certificates.coa",
   "assistant.chat",
+  "intake.classify",
 ];
 export const UNATTRIBUTED = "unattributed";
 

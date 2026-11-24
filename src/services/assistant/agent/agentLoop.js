@@ -275,6 +275,8 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           turnFacts.push(...factsOf(result.data));
           const block = tableBlock(name, call.args || {}, result.companyId, result.data, getTool(name)?.label || name) || recordBlock(name, result.full ?? result.data, getTool(name)?.label || name, labelPair);
           if (block) blocks.set(name, block);
+          // files sorted by start_intake: their review card goes under the answer (the UI loads it by id)
+          if (result.data?.intakeBatchId) blocks.set(`intake:${result.data.intakeBatchId}`, { id: `intake-${result.data.intakeBatchId}`, type: "intake", tool: name, batchId: result.data.intakeBatchId, title: "Files" });
         }
       }
       const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;

@@ -21,6 +21,7 @@ import assuranceRoutes from "./assuranceRoutes.js";
 import certificatesV2Routes from "./certificatesV2Routes.js";
 import catalogueRoutes from "./catalogueRoutes.js";
 import assistantRoutes from "./assistantRoutes.js";
+import intakeRoutes from "./intakeRoutes.js";
 import { getReviewInbox } from "../controllers/assuranceController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { health as converterHealth } from "../services/certificates/conversion/pdf2htmlexClient.js";
@@ -62,6 +63,7 @@ router.use("/regulatory-documents", regulatoryDocumentRoutes); // internal prote
 router.use("/regulatory-rules", regulatoryRuleRoutes); // internal protect applied in regulatoryRuleRoutes.js
 router.use("/assurance", assuranceRoutes); // internal protect applied in assuranceRoutes.js
 router.use("/assistant", assistantRoutes); // in-app assistant (C0/C1) — protect applied in assistantRoutes.js
+router.use("/intake", intakeRoutes); // auto-intake: drop any files
 router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
 router.use("/", certificatesV2Routes); // Certificates V2 — protect + permission applied per route
 router.use("/", catalogueRoutes); // product catalogues (plan.md §15) — protect + permission applied per route

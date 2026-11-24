@@ -1,0 +1,269 @@
+{
+ "$comment": "What each real file of the auto-intake test folder is (checked by hand, 25 Nov 2026). The test classifies fixtures/intake/samples.json and compares.",
+ "files": {
+  "1 SULFAPRIM.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "SULFAPRIM",
+   "volume": null,
+   "parts": 0,
+   "design": true
+  },
+  "1 SULFAPRIM.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "SULFAPRIM",
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "12 ADD-E120 1L.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADD-E120",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "12 ADD-E120 1L.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADD-E120",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "12 H-DURIN 1L.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "H-DURIN",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "12 H-DURIN 1L.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "H-DURIN",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "14 H-RESPI 1L new.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "H-RESPI",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "14 H-RESPI 1L new.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "H-RESPI",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "17_CURCUMARIN 1L.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "CURCUMARIN",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "17_CURCUMARIN 1L.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "CURCUMARIN",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "1_OLIGOVET_100ML.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "OLIGOVET",
+   "volume": "100ML",
+   "parts": 0,
+   "design": true
+  },
+  "1_OLIGOVET_100ML.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "OLIGOVET",
+   "volume": "100ML",
+   "parts": 0,
+   "design": false
+  },
+  "27 - ADDOXY 200-LA.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDOXY 200-LA",
+   "volume": null,
+   "parts": 0,
+   "design": true
+  },
+  "27 - ADDOXY 200-LA.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDOXY 200-LA",
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "3_ADDHEPA 1L.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDHEPA",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "3_ADDHEPA 1L.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDHEPA",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "40 - ADDMECTIN 1% _100ML.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDMECTIN 1%",
+   "volume": "100ML",
+   "parts": 0,
+   "design": true
+  },
+  "40 - ADDMECTIN 1% _100ML.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "ADDMECTIN 1%",
+   "volume": "100ML",
+   "parts": 0,
+   "design": false
+  },
+  "8 AMINOVITA 1L new.ai": {
+   "docType": "label",
+   "certCode": null,
+   "product": "AMINOVITA",
+   "volume": "1L",
+   "parts": 0,
+   "design": true
+  },
+  "8 AMINOVITA 1L new.pdf": {
+   "docType": "label",
+   "certCode": null,
+   "product": "AMINOVITA",
+   "volume": "1L",
+   "parts": 0,
+   "design": false
+  },
+  "ADDVET HC OMAN 10-26.ai": {
+   "docType": "certificate_template",
+   "certCode": "HC",
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "ADDVET HC OMAN 10-26.pdf": {
+   "docType": "certificate_filled",
+   "certCode": "HC",
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "ADDVET OMAN COA 10-26.ai": {
+   "docType": "certificate_template",
+   "certCode": "COA",
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "ADDVET OMAN COA 10-26.pdf": {
+   "docType": "certificate_filled",
+   "certCode": "COA",
+   "product": null,
+   "volume": null,
+   "parts": 10,
+   "design": false
+  },
+  "ADDVET OMAN COC 10-26.ai": {
+   "docType": "certificate_template",
+   "certCode": "COC",
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "ADDVET OMAN COC 10-26.pdf": {
+   "docType": "certificate_filled",
+   "certCode": "COC",
+   "product": null,
+   "volume": null,
+   "parts": 10,
+   "design": false
+  },
+  "Addvet Feed Catalogue 2025.pdf": {
+   "docType": "catalogue",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "Addvet Injection Catalogue 2025.pdf": {
+   "docType": "catalogue",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "BRN2025002 - ROSHAN.pdf": {
+   "docType": "invoice",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "Concentrates Catalogue 2025.pdf": {
+   "docType": "catalogue",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "FSCAVIV22-066.pdf": {
+   "docType": "certificate_filled",
+   "certCode": "FSC",
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "MADADD2610001.pdf": {
+   "docType": "manufacturing_order",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  },
+  "Supplement Catalogue 2024 V2.pdf": {
+   "docType": "catalogue",
+   "certCode": null,
+   "product": null,
+   "volume": null,
+   "parts": 0,
+   "design": false
+  }
+ }
+}

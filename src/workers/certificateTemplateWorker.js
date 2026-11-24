@@ -5,6 +5,8 @@ import { runPrepareJob } from "../services/certificates/templates/prepareService
 import { runRepairJob } from "../services/certificates/templates/repairService.js";
 import { buildDictionary } from "../services/certificates/dictionary/dataDictionary.js";
 import { rebuildAllDictionaries } from "../services/certificates/dictionary/rebuildScheduler.js";
+import { runClassify } from "../services/intake/intakeClassify.js";
+import { runExecute, runTemplateFields, runAttachEvidence } from "../services/intake/intakeExecute.js";
 
 // Certificates V2 template worker (plan §5.2): `convert` (upload → sanitize →
 // analyse) and `prepare` (clear fields + gate). Thin by design — the work is
@@ -20,6 +22,11 @@ const handlers = {
     return { version: row.version, entries: row.entries.length };
   },
   rebuildDictionaries: () => rebuildAllDictionaries(),
+  // auto-intake ("ارفع ملفاتك"): recognise a drop, file it, and the two follow-ups (retried until ready)
+  intakeClassify: ({ batchId }, ctx) => runClassify(batchId, ctx),
+  intakeExecute: ({ batchId, userId }, ctx) => runExecute(batchId, ctx, { userId }),
+  intakeTemplateFields: (data) => runTemplateFields(data),
+  intakeAttachEvidence: (data) => runAttachEvidence(data),
 };
 
 export const certificateTemplateWorker = startWorker({
