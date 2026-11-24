@@ -85,6 +85,7 @@ async function run() {
   // every file a duplicate → 400 that says which and when
   r = await call("POST", "/reference-labels", asAdmin, form([one], { companyId: coA.id }));
   assert("all duplicates → 400 naming the file and date", r.status === 400 && /one-\d+\.png \(already uploaded on 2026-11-20\)/.test(r.data?.message || ""), r.data);
+  assert("…with the per-file lists for the upload screen", r.data?.data?.tasks?.length === 0 && r.data.data.skipped?.[0]?.fileName === one && r.data.data.skipped[0].uploadedAt, r.data);
 
   // a company caller cannot upload into another company
   r = await call("POST", "/reference-labels", asCompany(coA.id), form([`three-${ts}.png`], { companyId: coB.id }));

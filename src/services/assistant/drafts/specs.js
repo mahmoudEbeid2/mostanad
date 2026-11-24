@@ -453,7 +453,7 @@ export const SPECS = {
   },
   upload_label_and_resize: {
     title: "Resize an uploaded label",
-    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "scale" ? "Keep the original design, just scale" : "Rebuild at a new size"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], productId: [product], country: [country] },
+    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "rebuild" ? "Rebuild — re-typed without the original design" : "Keep the original design, just scale"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], productId: [product], country: [country] },
     errors: [[/size|preset|width|height/i, "preset"], [/file|pdf|png|jpeg/i, "attachmentId"], [/product/i, "productId"]],
   },
   confirm_label_upload: {

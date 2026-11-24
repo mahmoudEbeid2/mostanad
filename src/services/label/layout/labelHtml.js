@@ -19,6 +19,51 @@ export function textOf(v, lang) {
 }
 const list = (arr, lang) => (Array.isArray(arr) ? arr.map((x) => textOf(x, lang)).filter(Boolean) : []);
 
+/** "Calves, Lambs & Kids." → "calves lambs kids" — for comparing lines, never printed. */
+const JOINERS = new Set(["and", "or", "&", "و", "او", "أو"]);
+export const normLine = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/[\u064B-\u0652]/g, "") // Arabic diacritics
+    .split(/[^\p{L}\p{N}%&]+/u)
+    .filter((w) => w && !JOINERS.has(w))
+    .join(" ");
+const words = (s) => new Set(normLine(s).split(" ").filter(Boolean));
+
+/**
+ * The same text printed twice (client report 24 Nov: the Indications paragraph
+ * and "Calves, Lambs, Kids, Poultry" each twice). Across the label, a line
+ * equal to one already printed is dropped; within a section, a line whose
+ * words all appear in one earlier line of that section (the species list
+ * inside the indications paragraph, aimOfUse repeated in indications) is
+ * dropped too. Short lines (one word) only drop on an exact repeat.
+ */
+export function dedupeSections(sections) {
+  const seen = new Set();
+  return sections.map((s) => {
+    if (s.key === "batch") return s;
+    const kept = [];
+    for (const line of s.lines) {
+      const n = normLine(line);
+      if (!n) continue;
+      if (seen.has(n)) continue;
+      const w = words(line);
+      if (w.size > 1 && kept.some((k) => { const kw = words(k); return kw.size > w.size && [...w].every((x) => kw.has(x)); })) continue;
+      // an earlier, shorter line this one fully contains is the repeat: keep the longer one
+      for (let i = kept.length - 1; i >= 0; i--) {
+        const kw = words(kept[i]);
+        if (kw.size > 1 && kw.size < w.size && [...kw].every((x) => w.has(x))) {
+          seen.delete(normLine(kept[i]));
+          kept.splice(i, 1);
+        }
+      }
+      seen.add(n);
+      kept.push(line);
+    }
+    return { ...s, lines: kept };
+  });
+}
+
 /**
  * → { sections: [{ key, title, lines: [string] }], empty: [labelData field] }.
  * `lang` picks the translation; `titles` the language of the section headings.
@@ -52,7 +97,7 @@ export function sectionsFromLabelData(labelData = {}, { lang = "en" } = {}) {
     { key: "company", lines: [textOf(d.manufacturer, lang), textOf(d.marketingAuthorisationHolder, lang), textOf(d.importer, lang), textOf(d.countryOfProduction, lang)].filter(Boolean) },
   ];
   const titles = SECTION_TITLES[lang] || SECTION_TITLES.en;
-  return { sections: sections.map((s) => ({ ...s, title: titles[s.key] })), empty };
+  return { sections: dedupeSections(sections).map((s) => ({ ...s, title: titles[s.key] })), empty };
 }
 
 /**

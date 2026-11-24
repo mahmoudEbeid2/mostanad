@@ -50,8 +50,8 @@ export const HELP_TOPICS = [
     key: "label_resize",
     title: { ar: "تغيير مقاس ليبل", en: "Change a label's size" },
     steps: {
-      ar: ["لليبل محفوظ: افتح صفحته ← تبويب «المقاس والتنسيق» واختر المقاس (مثل 10×12 سم).", "لملف ليبل عندك: «رفع ليبل لتغيير مقاسه» — إعادة بناء (يُقرأ النص وتراجعه) أو تكبير/تصغير التصميم كما هو.", "المعاينة توضّح ما يناسب المقاس وما يحتاج مساحة أكبر؛ ثم احفظ وحمّل PDF."],
-      en: ["For a stored label: open it → the Layout & size tab, pick the size (e.g. 10×12 cm).", "For a label file you have: Upload label to resize — rebuild (its text is read and you check it) or scale the design as it is.", "The preview shows what fits and what needs more room; then save and download the PDF."],
+      ar: ["لليبل محفوظ: افتح صفحته ← تبويب «المقاس والتنسيق» واختر المقاس (مثل 10×12 سم).", "لملف ليبل عندك: «رفع ليبل لتغيير مقاسه» — الافتراضي تكبير/تصغير التصميم كما هو؛ أو «إعادة بناء» إذا اخترتها (يُقرأ النص ويُعاد كتابته بدون التصميم الأصلي).", "المعاينة توضّح ما يناسب المقاس وما يحتاج مساحة أكبر؛ ثم احفظ وحمّل PDF."],
+      en: ["For a stored label: open it → the Layout & size tab, pick the size (e.g. 10×12 cm).", "For a label file you have: Upload label to resize — by default the design is scaled as it is; choose rebuild only to re-type the text without the original design.", "The preview shows what fits and what needs more room; then save and download the PDF."],
     },
   },
   {

@@ -11,6 +11,7 @@ import { prisma } from "../src/lib/prisma.js";
 import { makeAssert, api, asCompany, createCompany, cleanupCompany, form } from "./certificates-v2/helpers.js";
 import { SAMPLE_LABEL_DATA } from "./fixtures/labelLayoutSample.js";
 import { textSizes } from "../src/services/label/layout/labelPdf.js";
+import { sectionsFromLabelData } from "../src/services/label/layout/labelHtml.js";
 import { putFile } from "../src/services/certificates/storage/fileStore.js";
 import { runRebuildExtraction, onlyWhatWasRead } from "../src/services/label/layout/labelUploadService.js";
 import * as registry from "../src/services/assistant/registry/index.js";
@@ -91,6 +92,9 @@ async function main() {
     r = await api("POST", "/label-uploads", A, form({ mode: "scale", layout: JSON.stringify({ preset: "100x120" }) }, { buffer: pdf15, name: "label-10x15.pdf", type: "application/pdf" }));
     const sc = r.data?.data?.layout;
     assert("10×15 PDF → 10×12: 201, mode scale, fit-not-stretch, 80 %", r.status === 201 && sc?.mode === "scale" && sc.fit.stretch === false && sc.fit.scalePct === 80, r.data);
+    // client report 24 Nov: every upload was rebuilt (design lost) — no mode now means scale
+    r = await api("POST", "/label-uploads", A, form({ layout: JSON.stringify({ preset: "100x120" }) }, { buffer: pdf15, name: "no-mode.pdf", type: "application/pdf" }));
+    assert("upload without a mode → scale (the design kept), not a rebuild", r.status === 201 && r.data?.data?.layout?.mode === "scale" && r.data.data.upload.mode === "scale", r.data);
     const scPdf = await api("GET", `/label-layouts/${sc.id}/pdf`, A);
     const scBox = await pdfBox(scPdf.buffer);
     assert(`scaled PDF exactly 100 × 120 mm (${scBox.wMm.toFixed(3)} × ${scBox.hMm.toFixed(3)})`, near(scBox.wMm, 100) && near(scBox.hMm, 120));
@@ -132,6 +136,17 @@ async function main() {
     assert("batch / dates from the file are not carried into the new label", rebuilt.labelData.batchNo === null && rebuilt.labelData.expiryDate === null);
     const pure = onlyWhatWasRead({ productName: lt("X"), activeIngredients: [{ translations: { en: "Unknown" }, primary: "en", amount: "q.s." }] }, { productName: {} });
     assert("onlyWhatWasRead drops a stand-in ingredient", pure.labelData.activeIngredients.length === 0 && pure.missing.includes("activeIngredients"));
+    // client report 24 Nov (FLUMAX): the indications paragraph and the species list each printed twice
+    const flumaxAim = "For the treatment of respiratory infections in calves, lambs, kids and poultry.";
+    const dup = onlyWhatWasRead(
+      { productName: lt("FLUMAX"), aimOfUse: lt(flumaxAim), indications: [lt(flumaxAim), lt("Respiratory infections"), lt("Respiratory infections.")], warnings: [lt("Do not use in laying hens"), lt("Do not use in laying hens.")] },
+      { productName: {}, aimOfUse: {}, indications: {}, warnings: {} }
+    );
+    assert("rebuild review: an indication repeating the aim of use, and repeated items, are dropped", dup.labelData.indications.length === 1 && dup.labelData.indications[0].translations.en === "Respiratory infections" && dup.labelData.warnings.length === 1, dup.labelData);
+    const printed = sectionsFromLabelData({ productName: lt("FLUMAX"), aimOfUse: lt(flumaxAim), indications: [lt(flumaxAim)], targetAnimalSpecies: { list: ["Calves", "Lambs", "Kids", "Poultry"] }, storage: lt("Store below 25C"), netWeight: lt("100 ml"), packaging: lt("100 ml"), warnings: [lt("Poultry")] }).sections;
+    const lines = (k) => printed.find((x) => x.key === k).lines;
+    assert("printed label: the indications paragraph once, the species list (inside it) not again", lines("indications").length === 1 && lines("indications")[0] === flumaxAim, lines("indications"));
+    assert("printed label: an identical line in one section is printed once; a one-word line elsewhere is kept", lines("storage").join("|") === "Store below 25C|100 ml" && lines("warnings").join("|") === "Poultry", { storage: lines("storage"), warnings: lines("warnings") });
     r = await api("GET", `/label-uploads/${up.id}`, A);
     const fields = r.data?.data?.label?.fields || [];
     assert("review: every field shown with read / not read", r.status === 200 && r.data.data.upload.status === "review" && fields.find((f) => f.field === "productName")?.read === true && fields.find((f) => f.field === "withdrawalPeriod")?.read === false);
@@ -170,6 +185,9 @@ async function main() {
     t = await registry.runTool("upload_label_and_resize", { attachmentId: att.id, mode: "scale", preset: "100x120" }, ctx(["scale it to 10x12"]));
     card = t.data?.actionId ? await prisma.assistantAction.findUnique({ where: { id: t.data.actionId } }) : null;
     const d2 = Object.fromEntries((card?.preview?.details || []).map((d) => [d.label, d.value]));
+    t = await registry.runTool("upload_label_and_resize", { attachmentId: att.id, preset: "100x120" }, ctx(["make it 10x12"]));
+    const noMode = t.data?.actionId ? await prisma.assistantAction.findUnique({ where: { id: t.data.actionId } }) : null;
+    assert("assistant card without a mode → keep the design, scale", /Keep the original design/.test(noMode?.preview?.details?.find((d) => d.label === "Mode")?.value || ""), noMode?.preview?.details);
     const uploadsBefore = await prisma.labelUpload.count({ where: { companyId: coA.id } });
     assert("upload_label_and_resize → a card (file, mode, size, company), nothing uploaded yet", card?.status === "pending" && d2.File === "label-10x15.pdf" && /scale/i.test(d2.Mode) && d2.Size === "10 × 12 cm" && d2.Company, d2);
     const up2 = await actions.approveAction(actorA, card.id);

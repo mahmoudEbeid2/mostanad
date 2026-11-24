@@ -417,7 +417,7 @@ defineTool({
   risk: "write",
   permissions: ["update_labels"],
   label: "Adding the reference label",
-  description: "Proposes adding an attached approved label as a reference label of the current company (read in the background, about 1 AI call).",
+  description: "Proposes adding an attached approved label as a reference label of the current company (read in the background, about 1 AI call). Use this when the user uploads or sends a label to keep, store or use as a reference — never upload_label_and_resize unless they ask to change its size.",
   args: z.object({ attachmentId: attachmentArg, country: z.string().min(2).max(60), brandId: z.string().uuid().optional() }),
   preview: async (a, ctx) => {
     const att = await attachment(a, ctx);

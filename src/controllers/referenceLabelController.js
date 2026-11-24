@@ -121,7 +121,9 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   const failedText = failed.map((f) => `${f.fileName} (${f.reason})`).join(", ");
   if (tasks.length === 0) {
     const parts = [skipped.length && `Skipped: ${skippedText}.`, failed.length && `Failed: ${failedText}.`].filter(Boolean);
-    return next(new AppError(`No file was queued. ${parts.join(" ")}`, failed.length ? 500 : 400));
+    // the per-file lists ride along so the upload screen can show each file's result
+    const statusCode = failed.length ? 500 : 400;
+    return res.status(statusCode).json({ status: statusCode === 400 ? "fail" : "error", message: `No file was queued. ${parts.join(" ")}`, data: { tasks, skipped, failed } });
   }
 
   let message = `${tasks.length} reference(s) queued for AI analysis.`;

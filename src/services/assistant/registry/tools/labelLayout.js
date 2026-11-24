@@ -112,9 +112,10 @@ defineTool({
   permissions: ["update_labels"],
   label: "Uploading the label",
   description:
-    "Proposes resizing a label FILE the user attached (PDF, PNG or JPEG). mode: rebuild (default, recommended — the label's text is read by AI into a label, the user checks the fields, then it is laid out at the new size) " +
-    "or scale (the original design placed on the new page, proportions kept; reports the scale and the smallest text size; stretch only if the user insists, it distorts the text). " +
-    "Ask rebuild or scale if the user didn't say (default rebuild). After a rebuild upload finishes, call get_label_upload, show the user the fields read and the empty ones, and ask them to confirm before confirm_label_upload.",
+    "Proposes resizing a label FILE the user attached (PDF, PNG or JPEG) — only when the user asks to change its size; a label they only want to keep or use as a reference goes to upload_label. " +
+    "mode: scale (default — the original design placed on the new page, proportions kept; reports the scale and the smallest text size; stretch only if the user insists, it distorts the text) " +
+    "or rebuild (only on the user's explicit choice — the text is read by AI and re-typed in a plain layout WITHOUT the original design; the user checks the fields, then it is laid out at the new size). " +
+    "Default scale. After a rebuild upload finishes, call get_label_upload, show the user the fields read and the empty ones, and ask them to confirm before confirm_label_upload.",
   args: z.object({
     attachmentId: z.string().uuid().describe("The id of the label file attached in this conversation"),
     mode: z.enum(["rebuild", "scale"]).optional(),
@@ -132,17 +133,17 @@ defineTool({
     const company = await prisma.company.findUnique({ where: { id: ctx.companyId }, select: { name: true } });
     const product = a.productId ? await prisma.product.findFirst({ where: { id: a.productId, companyId: ctx.companyId }, select: { name: true } }) : null;
     if (a.productId && !product) throw new ToolError("Product not found!", "not_found");
-    const mode = a.mode || "rebuild";
+    const mode = a.mode || "scale";
     return {
       title: `Resize ${att.name} to ${sizeLabel(target)}`,
       summary:
         mode === "rebuild"
-          ? "The label's text is read by AI into a label (nothing is filled in that the file doesn't show). You check the fields next; only then is it laid out at the new size."
+          ? "The label's text is read by AI and re-typed in a plain layout — the original design (artwork, colours, logo) is NOT kept. Nothing is filled in that the file doesn't show; you check the fields next, then it is laid out at the new size."
           : `The original design is placed on a ${sizeLabel(target)} page, proportions kept${a.stretch ? " — STRETCHED to fill: the text will be distorted" : ""}.`,
       runLabel: mode === "rebuild" ? "Read the label" : "Scale",
       details: [
         { label: "File", value: att.name },
-        { label: "Mode", value: mode === "rebuild" ? "Rebuild at a new size" : a.stretch ? "Scale — stretch to fill (distorts text)" : "Keep the original design, just scale" },
+        { label: "Mode", value: mode === "rebuild" ? "Rebuild — re-typed without the original design" : a.stretch ? "Scale — stretch to fill (distorts text)" : "Keep the original design, just scale" },
         { label: "Size", value: sizeLabel(target) },
         { label: "Company", value: company?.name || ctx.companyId },
         ...(product ? [{ label: "Product", value: product.name }] : []),
@@ -154,7 +155,7 @@ defineTool({
   run: async (a, ctx) => {
     const att = await loadAttachment(a.attachmentId, { conversationId: ctx.conversationId, companyId: ctx.companyId });
     const file = await attachmentFile(att);
-    const out = await uploadLabelFile({ buffer: file.buffer, originalName: att.name, mimeType: att.mimeType, companyId: ctx.companyId, productId: a.productId || null, mode: a.mode || "rebuild", layout: sizeOf(a), stretch: !!a.stretch, country: a.country || null, userId: userIdOf(ctx) });
+    const out = await uploadLabelFile({ buffer: file.buffer, originalName: att.name, mimeType: att.mimeType, companyId: ctx.companyId, productId: a.productId || null, mode: a.mode || "scale", layout: sizeOf(a), stretch: !!a.stretch, country: a.country || null, userId: userIdOf(ctx) });
     if (out.layout) return { uploadId: out.upload.id, labelLayout: layoutResult(out.layout, null), note: "Scaled. Tell the user the scale %, the smallest text size (or that it can't be measured) and any warning." };
     return { uploadId: out.upload.id, taskId: out.taskId, note: "Reading the label. When it finishes, call get_label_upload and show the user the fields read and the empty ones; ask them to confirm (or correct) before confirm_label_upload." };
   },

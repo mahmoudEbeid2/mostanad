@@ -156,6 +156,12 @@ try {
   const input = await page.$('input[aria-label="Label file"]');
   await input.uploadFile(tmp);
   await has("client-label-10x15.pdf");
+  // client report 24 Nov: every upload was rebuilt and lost its design — scale is the default now
+  const defaultMode = await page.$eval('input[name="mode"]:checked', (e) => e.closest("label").innerText);
+  assert("the resize modal opens on \"Keep the original design, just scale\"", /Keep the original design/.test(defaultMode), defaultMode);
+  await page.evaluate(() => [...document.querySelectorAll('input[name="mode"]')].find((e) => /Rebuild/.test(e.closest("label").innerText)).click());
+  await has("The original design is not kept");
+  assert("choosing rebuild says the design is not kept", true);
   await clickText("label", "Keep the original design, just scale");
   await clickText("button", "10 × 12 cm");
   await page.select('select[aria-label="Company"]', company.id).catch(() => {});
@@ -164,7 +170,8 @@ try {
   await page.waitForSelector(T("resize-result"), { timeout: 30000 });
   await has("Scaled to 80 %");
   const result = await page.$eval(T("resize-result"), (e) => e.innerText);
-  assert("scale result: 10 × 12 cm, 80 %, the smallest text and its warning below the minimum", /10 × 12 cm/.test(result) && /Smallest text: 5\.6 pt/.test(result) && /below the 6 pt minimum/.test(result), result);
+  const smallest = Number(result.match(/Smallest text: ([\d.]+) pt/)?.[1]);
+  assert("scale result: 10 × 12 cm, 80 %, the smallest text, and the warning exactly when it is below 6 pt", /10 × 12 cm/.test(result) && smallest > 0 && /below the 6 pt minimum/.test(result) === smallest < 6, result);
   await until(() => { const c = document.querySelector('[data-testid="pdf-preview"]'); return c && c.dataset.rendered === "true" && c.height > c.width; });
   assert("the scaled PDF is previewed (pdf.js) and can be downloaded", !!(await page.$(T("resize-download"))));
   await shot("resize-result");

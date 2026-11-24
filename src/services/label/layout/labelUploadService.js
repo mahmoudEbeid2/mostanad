@@ -6,15 +6,18 @@ import { addLabelJob } from "../../../lib/queue.js";
 import { resolveLayout, sizeLabel, DEFAULT_MIN_FONT_PT } from "./layoutSpec.js";
 import { scaleToPage, pageSizeMm } from "./labelPdf.js";
 import { layoutView, saveLabelLayout, minFontRule } from "./layoutService.js";
+import { textOf, normLine } from "./labelHtml.js";
 
 // "Upload a label and change its size" — labels the client already has as files.
-//   rebuild (recommended): the file is read into a label by the existing label
-//     extraction (labelExtractor, origin "extracted"); every field is shown to the
+//   scale (the default): the file itself is put on the new page (proportions
+//     kept, centred) — the artwork is kept — with its scale, the smallest text
+//     size after scaling (PDF text layer only) and a warning below the minimum;
+//     "stretch" only with an explicit warning.
+//   rebuild (only when chosen): the file is read into a label by the existing
+//     label extraction (labelExtractor, origin "extracted") and re-typed in a
+//     plain layout, without the original design; every field is shown to the
 //     person to check — what the file doesn't state stays EMPTY and is listed,
 //     nothing is filled in — and once they confirm, it is laid out like any label.
-//   scale: the file itself is put on the new page (proportions kept, centred),
-//     with its scale, the smallest text size after scaling (PDF text layer only)
-//     and a warning below the minimum; "stretch" only with an explicit warning.
 // Files are StoredFiles of the upload's company; every read is tenant-scoped.
 
 export const UPLOAD_TYPES = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg" };
@@ -41,7 +44,7 @@ async function loadUpload(id, companyId) {
  * scale: done now (a LabelLayout row with the PDF). rebuild: a background
  * extraction (BackgroundTask + labelQueue); the label then waits for review.
  */
-export async function uploadLabelFile({ buffer, originalName, mimeType, companyId, productId = null, mode = "rebuild", layout: layoutInput = {}, stretch = false, country = null, userId = null }) {
+export async function uploadLabelFile({ buffer, originalName, mimeType, companyId, productId = null, mode = "scale", layout: layoutInput = {}, stretch = false, country = null, userId = null }) {
   if (!companyId) throw new AppError("Choose the company the label belongs to", 400);
   if (!UPLOAD_TYPES[mimeType]) throw new AppError("Upload a PDF, PNG or JPEG label", 400);
   if (!buffer?.length) throw new AppError("The file is empty", 400);
@@ -81,7 +84,7 @@ async function scaleUpload(upload, { layout, stretch, userId }) {
   const warnings = [];
   if (stretch) warnings.push(STRETCH_WARNING);
   if (!out.textMeasurable) warnings.push(out.source.kind === "image" ? "This is an image: its smallest text size can't be measured. Check the printed size by eye." : "This PDF has no text layer (outlined or scanned): its smallest text size can't be measured.");
-  else if (out.smallestTextPt < minFontPt) warnings.push(`After scaling, the smallest text is ${out.smallestTextPt} pt — below the ${minFontPt} pt minimum${rule ? ` (${rule.ruleKey})` : ""}. Consider "Rebuild at a new size" instead.`);
+  else if (out.smallestTextPt < minFontPt) warnings.push(`After scaling, the smallest text is ${out.smallestTextPt} pt — below the ${minFontPt} pt minimum${rule ? ` (${rule.ruleKey})` : ""}. A larger size keeps it legible; "Rebuild" re-types the text larger but drops the original design.`);
   const fit = {
     mode: "scale",
     fits: true,
@@ -174,6 +177,7 @@ export function onlyWhatWasRead(labelData, meta = {}) {
     if (!readKeys.has(f) || isEmpty(d[f])) empty(f);
   }
   if (Array.isArray(d.activeIngredients)) d.activeIngredients = d.activeIngredients.filter((i) => String(i?.translations?.en || i?.primary || "").trim() && i.translations?.en !== "Unknown");
+  dedupeRead(d);
   d.countryOfProduction = readKeys.has("countryOfProduction") ? d.countryOfProduction : null;
   d.batchNo = null; // a label file's batch / dates belong to one print run: the new label has blanks
   d.productionDate = null;
@@ -181,6 +185,26 @@ export function onlyWhatWasRead(labelData, meta = {}) {
   const read = REVIEW_FIELDS.filter((f) => !isEmpty(d[f]) && d[f] !== null);
   const missing = REVIEW_FIELDS.filter((f) => !read.includes(f));
   return { labelData: d, read, missing };
+}
+
+/**
+ * The same text read twice from one label (an extraction often puts the aim of
+ * use into indications as well, or repeats a warning): list items that repeat
+ * an earlier item, or the aim of use, are dropped before the person reviews
+ * them. Mutates `d`.
+ */
+function dedupeRead(d) {
+  const aim = normLine(textOf(d.aimOfUse, "en"));
+  for (const f of ["indications", "warnings", "userSafety"]) {
+    if (!Array.isArray(d[f])) continue;
+    const seen = new Set(f === "indications" && aim ? [aim] : []);
+    d[f] = d[f].filter((x) => {
+      const n = normLine(textOf(x, "en"));
+      if (!n || seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
+  }
 }
 
 /**

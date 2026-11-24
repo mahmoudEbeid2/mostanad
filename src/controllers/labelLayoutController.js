@@ -59,7 +59,7 @@ export const postLabelUpload = catchAsync(async (req, res) => {
     mimeType: req.file.mimetype === "image/jpg" ? "image/jpeg" : req.file.mimetype,
     companyId,
     productId: req.body.productId || null,
-    mode: req.body.mode || "rebuild",
+    mode: req.body.mode || "scale",
     layout: parseJson(req.body.layout, "layout") || {},
     stretch: req.body.stretch === true || req.body.stretch === "true",
     country: req.body.country || null,
