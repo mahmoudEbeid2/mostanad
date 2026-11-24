@@ -10,9 +10,9 @@ import { checkLabelOpts, layoutLabelOn } from "./labelFit.js";
 // the service. The bodies are the former closures, unchanged.
 
 /** Decides how each value character is drawn and loads the fallback faces it needs → the plan for fill. */
-async function loadGlyphPlan(page, opts) {
+async function loadGlyphPlan(page, { companyFontData = null, ...opts }) {
   const plan = planGlyphs(opts);
-  if (plan?.faces.length) await renderer.engine(page, "addFallbackFonts", await fallbackFontCss(plan.faces), plan.faces.map(({ name, chars }) => ({ name, chars })));
+  if (plan?.faces.length) await renderer.engine(page, "addFallbackFonts", await fallbackFontCss(plan.faces, { companyFontData }), plan.faces.map(({ name, chars }) => ({ name, chars })));
   return plan;
 }
 
@@ -32,11 +32,11 @@ export const prepareClear = (html, { inspectDefs = [], clearFields }) =>
   );
 
 /** prepare step 2 (§7.5): refill with the samples, measure, screenshot → { fill, rects, shots } */
-export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, fontFallbacks = null, groupDefs = [], measureKeys }) =>
+export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, fontFallbacks = null, companyFontData = null, groupDefs = [], measureKeys }) =>
   renderer.withDocument(
     html,
     async (page) => {
-      const plan = await loadGlyphPlan(page, { values: samples, defs, groups: groupDefs, fontCoverage, fontFallbacks });
+      const plan = await loadGlyphPlan(page, { values: samples, defs, groups: groupDefs, fontCoverage, fontFallbacks, companyFontData });
       const fill = await renderer.engine(page, "fill", samples, defs, fontCoverage, groupDefs, plan);
       const rects = await renderer.engine(page, "measure", measureKeys);
       const shots = await renderer.screenshotPagesOf(page);
@@ -46,11 +46,11 @@ export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, fon
   );
 
 /** fill a prepared document (§7.4, §7.8) → { html, flags, geometry, thumbnail } */
-export const fill = (html, { values, defs, fontCoverage = null, fontFallbacks = null, groups = [], thumbnailScale = null, label = "fill" }) =>
+export const fill = (html, { values, defs, fontCoverage = null, fontFallbacks = null, companyFontData = null, groups = [], thumbnailScale = null, label = "fill" }) =>
   renderer.withDocument(
     html,
     async (page) => {
-      const plan = await loadGlyphPlan(page, { values, defs, groups, fontCoverage, fontFallbacks });
+      const plan = await loadGlyphPlan(page, { values, defs, groups, fontCoverage, fontFallbacks, companyFontData });
       const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups, plan);
       const out = await renderer.serialize(page);
       const thumbnail = thumbnailScale ? (await renderer.screenshotPagesOf(page, { scale: thumbnailScale }))[0]?.png || null : null;

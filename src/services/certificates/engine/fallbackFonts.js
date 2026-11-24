@@ -43,14 +43,22 @@ function covers(face, ch) {
   return false;
 }
 
-/** The fonts tried for one design font, matched font first → [{ family, face, name }]. */
+/**
+ * The fonts tried for one design font, matched font first → [{ family, face, name }].
+ * A company font set on the entry (entry.company: { id, name, coverage }) comes
+ * before the shipped match; its face.file is "company:<id>" (bytes sent with the render).
+ */
 export function fallbackFaces(entry) {
-  if (!entry?.fallbackFamily || !isFallbackFamily(entry.fallbackFamily)) return [];
+  const company = Array.isArray(entry?.company?.coverage) ? [{ family: entry.company.name, face: { file: `company:${entry.company.id}`, coverage: entry.company.coverage, weight: entry.company.weight, style: entry.company.style }, name: entry.company.name }] : [];
+  if (!entry?.fallbackFamily || !isFallbackFamily(entry.fallbackFamily)) return company;
   const families = [...new Set([entry.fallbackFamily, ...FALLBACK_CHAIN])];
-  return families.map((family) => {
-    const face = pickFace(family, entry.weight, entry.style);
-    return { family, face, name: faceName(family, face) };
-  });
+  return [
+    ...company,
+    ...families.map((family) => {
+      const face = pickFace(family, entry.weight, entry.style);
+      return { family, face, name: faceName(family, face) };
+    }),
+  ];
 }
 
 /** The first font that can draw `ch` for this design font, or null. */

@@ -1,5 +1,6 @@
 import { CertError } from "../errors.js";
 import { decodeBuffers, TOKEN_HEADER } from "./renderWire.js";
+import { fontBytes, companyFontIds } from "../fonts/companyFontService.js";
 
 // Client for the cert-renderer service (renderService/server.js, plan §5.3).
 // Same function names and result shapes as the in-process renderer had, so the
@@ -89,8 +90,13 @@ export const labelLayout = (html, opts) => call("/v1/label-layout", { html, ...o
 
 // The former withDocument() closures (engine/renderOps.js), one call each
 export const prepareClear = (html, opts) => call("/v1/prepare-clear", { html, ...opts });
-export const prepareRoundTrip = (html, opts) => call("/v1/prepare-roundtrip", { html, ...opts });
-export const fill = (html, opts) => call("/v1/fill", { html, ...opts });
+// a company font set on a design font travels as bytes: the renderer has no access to the file store
+const withFontBytes = async (opts) => {
+  const ids = companyFontIds(opts?.fontFallbacks);
+  return ids.length ? { ...opts, companyFontData: await fontBytes(ids) } : opts;
+};
+export const prepareRoundTrip = async (html, opts) => call("/v1/prepare-roundtrip", { html, ...(await withFontBytes(opts)) });
+export const fill = async (html, opts) => call("/v1/fill", { html, ...(await withFontBytes(opts)) });
 export const inspect = (html, opts) => call("/v1/inspect", { html, ...opts });
 
 /** → { ok, renderer, pending, url } or { ok: false, error, url } */

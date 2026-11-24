@@ -10,6 +10,7 @@ import { computeFontFallbacks } from "../analysis/fontFallbackMatch.js";
 import { FALLBACK_FAMILIES, faceName, isFallbackFamily, pickFace } from "../engine/fallbackFonts.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { listFields, listGroups, fieldsHash } from "./fieldService.js";
+import { listCompanyFonts, loadCompanyFont, entryFor as companyEntry, withCompanySuggestions } from "../fonts/companyFontService.js";
 
 // Templates and their immutable versions (CERTIFICATES_V2_PLAN.md §4, §8).
 
@@ -252,7 +253,8 @@ export async function convertVersion(versionId, ctx = {}) {
         pages: pages.map((p) => ({ ...p, widthPt: +(p.widthPx * PX_TO_PT).toFixed(2), heightPt: +(p.heightPx * PX_TO_PT).toFixed(2) })),
         lines,
         fontCoverage,
-        fontFallbacks: computeFontFallbacks(html),
+        // the shipped match for each design font; one of the company's own fonts when it is that family
+        fontFallbacks: withCompanySuggestions(computeFontFallbacks(html), await listCompanyFonts(version.template.companyId, { withCoverage: true })).fontFallbacks,
         conversion,
       },
     });
@@ -376,19 +378,33 @@ export async function getTemplate(id, companyId) {
 const fontMatches = (v) =>
   Object.entries(v.fontFallbacks || {})
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-    .map(([fontClass, m]) => ({ fontClass, ...m, fallbackName: isFallbackFamily(m.fallbackFamily) ? faceName(m.fallbackFamily, pickFace(m.fallbackFamily, m.weight, m.style)) : m.fallbackFamily }));
+    .map(([fontClass, { company, ...m }]) => ({
+      fontClass,
+      ...m,
+      companyFontId: company?.id || null,
+      fallbackName: company ? company.name : isFallbackFamily(m.fallbackFamily) ? faceName(m.fallbackFamily, pickFace(m.fallbackFamily, m.weight, m.style)) : m.fallbackFamily,
+    }));
 
 /**
  * PATCH /template-versions/:id/font-fallbacks: the owner overrides one automatic match.
  * Only before activation, like every other part of a version; it can't affect the
  * prepare gate, which refills the design with characters its fonts have.
  */
-export async function setFontFallback(id, companyId, { fontClass, fallbackFamily }) {
+export async function setFontFallback(id, companyId, { fontClass, fallbackFamily, companyFontId }) {
   const v = await loadVersion(id, companyId);
   const current = v.fontFallbacks?.[fontClass];
   if (!current) throw new CertError("UNKNOWN_FONT", `This version has no font "${fontClass}"`, 422);
-  if (!isFallbackFamily(fallbackFamily)) throw new CertError("INVALID_FONT", `"${fallbackFamily}" is not a shipped font`, 422, { families: FALLBACK_FAMILIES });
-  const fontFallbacks = { ...v.fontFallbacks, [fontClass]: { ...current, fallbackFamily, source: "owner" } };
+  let next;
+  if (companyFontId) {
+    // one of the company's own fonts (uploaded on this screen); the shipped match stays as the next font tried
+    const font = await loadCompanyFont(companyFontId, v.template.companyId);
+    next = { ...current, company: companyEntry(font), source: "owner" };
+  } else {
+    if (!isFallbackFamily(fallbackFamily)) throw new CertError("INVALID_FONT", `"${fallbackFamily}" is not a shipped font`, 422, { families: FALLBACK_FAMILIES });
+    const { company, ...rest } = current;
+    next = { ...rest, fallbackFamily, source: "owner" };
+  }
+  const fontFallbacks = { ...v.fontFallbacks, [fontClass]: next };
   const { count } = await prisma.templateVersion.updateMany({ where: { id, status: { in: ["draft", "ready"] } }, data: { fontFallbacks } });
   if (!count) throw new CertError("VERSION_NOT_DRAFT", `Font matches can only be changed before activation (this version is ${v.status}). Create a new version.`, 409);
   return { fontMatches: fontMatches({ fontFallbacks }) };
@@ -404,6 +420,7 @@ export async function getVersionDetail(id, companyId) {
     template: { id: template.id, name: template.name, companyId: template.companyId, scope: template.scope, activeVersionId: template.activeVersionId, archivedAt: template.archivedAt },
     fontMatches: fontMatches(v),
     fallbackFontFamilies: FALLBACK_FAMILIES,
+    companyFonts: await listCompanyFonts(template.companyId),
     fields,
     groups,
     fieldsHash: hash,

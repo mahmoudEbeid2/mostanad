@@ -4,6 +4,7 @@ import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
 import { CertError } from "../services/certificates/errors.js";
 import { MAX_TEMPLATE_BYTES } from "../services/certificates/templates/templateService.js";
+import { MAX_FONT_BYTES } from "../services/certificates/fonts/companyFontService.js";
 import { typeSchemas, templateSchemas, versionSchemas, productSearchSchema, invoiceSchemas, newProductSchemas, certificateSchemas, aiSchemas, mappingSchemas, dataNeedSchemas, insightSchemas, aiCostSchemas, labResultSchemas } from "../validators/certificatesV2Validator.js";
 import * as types from "../controllers/certificatesV2/certificateTypeController.js";
 import * as templates from "../controllers/certificatesV2/certificateTemplateController.js";
@@ -49,6 +50,9 @@ router.post(
   validate(templateSchemas.byId),
   templates.uploadVersion
 );
+const uploadFont = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FONT_BYTES, files: 1 } });
+router.get("/certificate-fonts", guard("read_certificate_templates"), validate(aiSchemas.company), templates.listCompanyFonts);
+router.post("/certificate-fonts", guard("update_certificate_templates"), uploadFont.single("file"), validate(aiSchemas.company), templates.uploadCompanyFont);
 router.post("/certificate-templates/:id/archive", guard("update_certificate_templates"), validate(templateSchemas.byId), templates.archiveTemplate);
 
 // ── template versions ───────────────────────────────────────────────────────

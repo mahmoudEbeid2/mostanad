@@ -91,6 +91,7 @@ model Company {
   labelLayouts         LabelLayout[]
   labelUploads         LabelUpload[]
   certificateTypes     CertificateType[]
+  companyFonts         CompanyFont[]
   certificateTemplates CertificateTemplate[]
   invoices             Invoice[]
   certificateBatches   CertificateBatch[]
@@ -784,6 +785,28 @@ model StoredFile {
 
   @@index([companyId, kind])
   @@map("stored_files")
+}
+
+// A company's own font for its certificate templates (.ttf/.otf/.woff2): drawn for the
+// characters a design's embedded subset lacks (companyFontService). One row per face.
+model CompanyFont {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  family           String // "Axiforma"
+  name             String // "Axiforma Book" — the face, as shown
+  weight           Int      @default(400)
+  style            String   @default("normal") // normal | italic
+  format           String // ttf | otf | woff2
+  fileId           String   @map("file_id") // stored_files.id
+  coverage         Json // [[from, to]…] code points it draws
+  originalName     String?  @map("original_name")
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, family, weight, style])
+  @@map("company_fonts")
 }
 
 model CertificateType {

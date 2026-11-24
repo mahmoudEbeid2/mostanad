@@ -8,6 +8,19 @@ import { getSourceCatalogue } from "../../services/certificates/templates/source
 import { companySourceCatalogue } from "../../services/certificates/dictionary/dataDictionary.js";
 import { searchProducts } from "../../services/certificates/matching/productSearch.js";
 import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
+import * as companyFonts from "../../services/certificates/fonts/companyFontService.js";
+import AppError from "../../utils/appError.js";
+
+// a company's own fonts for its templates (the "Design fonts" selects)
+export const listCompanyFonts = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: { fonts: await companyFonts.listCompanyFonts(companyFor(req)) } });
+});
+
+export const uploadCompanyFont = catchAsync(async (req, res, next) => {
+  if (!req.file) return next(new AppError("Choose a font file (.ttf, .otf or .woff2)", 400));
+  const data = await companyFonts.uploadCompanyFont({ companyId: companyFor(req), userId: actorId(req), file: req.file });
+  res.status(201).json({ status: "success", data });
+});
 
 export const createTemplate = catchAsync(async (req, res) => {
   const data = await templateService.createTemplateFromUpload({
