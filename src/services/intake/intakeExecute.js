@@ -196,9 +196,11 @@ export async function summarize(batchId) {
   const waiting = evidence.filter((i) => i.result.waiting?.length);
   const failed = items.filter((i) => i.status === "failed");
   const duplicates = items.filter((i) => i.status === "duplicate").length;
+  // what needs a person: one line per kind (the waiting certificates are one line, not one per page)
+  const batchesWaiting = [...new Set(waiting.flatMap((i) => i.result.waiting))];
   const needs = [
     ...templates.map((i) => ({ kind: "template_fields", item: i.name, link: i.result.link, ar: `راجع حقول قالب ${i.result.template.code}`, en: `Check the fields of the ${i.result.template.code} template` })),
-    ...waiting.map((i) => ({ kind: "evidence_waiting", item: i.name, ar: `${i.name}: هتتربط بالفاتورة لما تشغيلة ${i.result.waiting.join("، ")} تظهر في فاتورة`, en: `${i.name}: attached when batch ${i.result.waiting.join(", ")} appears on an invoice` })),
+    ...(waiting.length ? [{ kind: "evidence_waiting", items: waiting.map((i) => i.name), batches: batchesWaiting, ar: `${waiting.length} شهادة محفوظة هتتربط بفواتيرها لما التشغيلات تظهر في فاتورة (${batchesWaiting.slice(0, 4).join("، ")}${batchesWaiting.length > 4 ? "…" : ""})`, en: `${waiting.length} kept certificate(s) are attached to their invoices once the batches appear on one (${batchesWaiting.slice(0, 4).join(", ")}${batchesWaiting.length > 4 ? "…" : ""})` }] : []),
     ...failed.map((i) => ({ kind: "failed", item: i.name, ar: `${i.name}: ${i.error}`, en: `${i.name}: ${i.error}` })),
   ];
   const parts = (list) => list.filter(([n]) => n > 0);
@@ -209,8 +211,8 @@ export async function summarize(batchId) {
     done: { labels, templates: templates.length, invoices, catalogues, evidence: evidence.length, attached: evidence.filter((i) => i.result.attached).length, duplicates, failed: failed.length },
     needs,
     text: {
-      ar: `اتعمل: ${madeAr || "مفيش"}.${duplicates ? ` ${duplicates} ملف متكرر اتساب.` : ""}${needs.length ? ` محتاج منك: ${needs.map((x) => x.ar).join("؛ ")}.` : ""}`,
-      en: `Done: ${madeEn || "nothing"}.${duplicates ? ` ${duplicates} duplicate file(s) skipped.` : ""}${needs.length ? ` Needs you: ${needs.map((x) => x.en).join("; ")}.` : ""}`,
+      ar: `اتعمل: ${madeAr || "مفيش"}.${duplicates ? ` ${duplicates} ملف متكرر اتساب.` : ""}${needs.length ? ` محتاج منك: ${needs.length === 1 ? needs[0].ar : `${needs.length} حاجات تحت`}.` : ""}`,
+      en: `Done: ${madeEn || "nothing"}.${duplicates ? ` ${duplicates} duplicate file(s) skipped.` : ""}${needs.length ? ` Needs you: ${needs.length === 1 ? needs[0].en : `${needs.length} things below`}.` : ""}`,
     },
   };
 }
