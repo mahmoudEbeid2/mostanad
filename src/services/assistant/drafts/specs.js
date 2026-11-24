@@ -457,6 +457,7 @@ export const SPECS = {
     watch: invoiceWatch,
     errors: [[/type/i, "certificateTypeIds"], [/invoice|template/i, "invoiceId"]],
   },
+  create_brand: { title: "Add a brand", fields: { name: [user()] }, errors: [[/brand|exists/i, "name"]] },
   create_certificate_templates: {
     title: "Make certificate templates from files",
     fields: { attachmentIds: [attachment({ many: true })], codes: [user()], brandId: [brand], country: [country] },

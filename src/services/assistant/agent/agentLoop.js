@@ -3,10 +3,10 @@ import { toolsFor, describeTools, runTool, getTool, cleanSchema, allTools, modul
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { selectModules } from "./selectTools.js";
 import { tableBlock } from "./blocks.js";
-import { factsOf, corpusOf, checkGrounding, stripTypedLists, hasTypedList, setKnownLabels } from "./grounding.js";
+import { factsOf, corpusOf, checkGrounding, stripTypedLists, hasTypedList, setKnownLabels, stripRecordFields } from "./grounding.js";
 import { recordBlock, blockValues, COLUMNS as TABLE_COLUMNS } from "./blocks.js";
 import { FIELD_LABELS, labelIn, langOf } from "../i18n.js";
-import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction } from "./answerGuard.js";
+import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList } from "./answerGuard.js";
 import { replayText, toolRecord } from "./history.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
@@ -159,6 +159,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const turnFacts = factsOf([ctx.attachments || [], ctx.scope?.companyName || null]); // the files and the company the person is working in may be named
   let retried = null; // the unknown names of a first, blocked answer
   let claimRetried = false; // a first answer that claimed an action no tool prepared
+  let listRetried = false; // a first answer that announced rows with nothing behind them
   // the call budget counts real work: a call refused for its arguments, or repeated after failing, doesn't
   let spent = 0;
   let draftSpent = 0;
@@ -201,9 +202,25 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         }
         return out({ text: honestNoAction(text) });
       }
+      // rows announced ("إليك المنتجات…:") when this message fetched nothing to show: once more, then the truth
+      // (typed rows are the grounding check's: it names the values it couldn't verify)
+      if (!ctx.isEvent && toolCalls.filter((c) => c.ok).length === 0 && !blocks.size && announcesList(raw) && !hasTypedList(raw)) {
+        guardEvents.push({ type: "list_without_data", retried: listRetried });
+        console.warn(`[assistant] answer announced a list with no tool call${listRetried ? " (after retry)" : ""}: ${raw.slice(0, 160)}`);
+        if (!listRetried && !lastChance) {
+          listRetried = true;
+          contents.push(res.content);
+          contents.push({ role: "user", parts: [{ text: NO_LIST_RETRY }] });
+          continue;
+        }
+        return out({ text: honestNoList(text) });
+      }
       // checked on what the model wrote, before typed lists are removed for display
       // a typed list goes only when a block under the answer already shows those rows / fields
-      const answer = blocks.size ? stripTypedLists(raw, blockValues([...blocks.values()])) : raw;
+      const records = [...blocks.values()].filter((b) => b.type === "record");
+      const listed = blocks.size ? stripTypedLists(raw, blockValues([...blocks.values()])) : raw;
+      // every known field name counts, not only the card's (an empty field isn't on the card but was typed as "(فارغ)")
+      const answer = records.length ? stripRecordFields(listed, [...records, { fields: Object.entries(FIELD_LABELS).map(([key, [ar, en]]) => ({ key, label: { ar, en } })) }]) : listed;
       const corpus = corpusOf([...(ctx.facts || []), ...turnFacts, text, ...history.filter((m) => m.role === "user").map((m) => m.text)]);
       const toolCallsThisTurn = toolCalls.filter((c) => c.ok).length;
       const g = checkGrounding(raw, corpus, { toolCallsThisTurn });

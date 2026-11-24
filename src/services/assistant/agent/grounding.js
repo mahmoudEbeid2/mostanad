@@ -101,6 +101,26 @@ export function hasTypedList(text) {
  * "بيانات شركة Vetline هي:" was left). Without `shown`, every typed list goes — used to detect a list
  * typed without asking the system.
  */
+/**
+ * With a record card under the answer, the card's fields typed in the text
+ * ("- packaging: (فارغ)", "**Name:** X") are dropped — the card shows them, with
+ * labels; raw keys and "(empty)" never reach the person (client report 24 Nov).
+ * records: the answer's record blocks ({ fields: [{ key, label: { en, ar } }] }).
+ */
+export function stripRecordFields(text, records = []) {
+  const names = new Set(records.flatMap((r) => (r.fields || []).flatMap((f) => [f.key, f.label?.en, f.label?.ar])).filter(Boolean).map((n) => fold(String(n))));
+  if (!names.size) return String(text || "");
+  return String(text || "")
+    .split("\n")
+    .filter((line) => {
+      const m = /^\s*(?:[-*•]|\d+[.)])?\s*\**\s*([^:：*\n]{1,60}?)\s*\**\s*[:：]/.exec(line);
+      return !(m && names.has(fold(m[1])));
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function stripTypedLists(text, shown = null) {
   const values = shown ? [...shown].map((v) => fold(v)).filter((v) => v.length >= 2) : null;
   const duplicates = (lines) => !values || lines.filter((l) => values.some((v) => fold(l).includes(v))).length * 2 >= lines.length;

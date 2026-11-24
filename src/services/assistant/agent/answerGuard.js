@@ -70,3 +70,25 @@ export const honestNoAction = (userText) =>
 /** Did this turn actually prepare or run a change? (a draft step, a card, or a write's result) */
 export const preparedSomething = (toolCalls, proposedCount = 0) =>
   proposedCount > 0 || (toolCalls || []).some((c) => c.ok && (c.draftId || c.status === "needs_confirmation" || c.status === "draft"));
+
+// "إليك المنتجات لشركة Vetline:", "Here are the products:" — an answer that announces
+// rows. Client report 24 Nov: after an earlier list the model copied that turn's
+// note ("25 of 25") and announced Vetline's products with no tool call, so no table
+// came and the person asked "فين". Rows only ever come from a tool's block.
+const ANNOUNCES_LIST = [
+  /(?:^|\s)(?:إليك|اليك|إليكم|فيما يلي|هذه هي|هذه قائمة|دي قائمة|دي المنتجات|ده الجدول)/,
+  /\b(?:here (?:are|is)|below (?:are|is)|the following|these are)\b/i,
+];
+export const announcesList = (text) => {
+  const t = String(text || "").trim();
+  return ANNOUNCES_LIST.some((re) => re.test(t)) || /[:：]$/.test(t);
+};
+
+export const NO_LIST_RETRY =
+  "[system check] Your answer announces a list, but you called no tool in this message, so there are no rows to show — the table under an answer comes only from a tool's result. " +
+  "Call the list tool now (e.g. list_products with the companyId, list_brands, search_invoices), or tell the person plainly that you didn't fetch it.";
+
+export const honestNoList = (userText) =>
+  isArabic(userText)
+    ? "لم أجلب القائمة من النظام في هذه الرسالة، فلا توجد صفوف لعرضها. اطلبها مرة أخرى (مثلاً: اعرض منتجات الشركة) وسأجلبها."
+    : "I didn't fetch that list from the system in this message, so there are no rows to show. Ask me again (e.g. \"show the company's products\") and I'll fetch it.";

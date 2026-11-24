@@ -7,6 +7,8 @@ import { searchProductsForAssistant } from "../../productSearch.js";
 import { productsMissingData, PRODUCT_FIELDS, listBrands, getBrand } from "../../reads.js";
 import { listProfile } from "../../../certificates/dataNeeds/productProfile.js";
 import { getAllCategories } from "../../../categoryService.js";
+import { createBrand } from "../../../brandService.js";
+import { ToolError } from "../access.js";
 import { prisma } from "../../../../lib/prisma.js";
 
 const PRODUCT_DETAIL = [
@@ -156,5 +158,43 @@ defineTool({
     const parentIds = [...new Set(categories.map((c) => c.parentId).filter(Boolean))];
     const parents = parentIds.length ? Object.fromEntries((await prisma.category.findMany({ where: { id: { in: parentIds } }, select: { id: true, name: true } })).map((c) => [c.id, c.name])) : {};
     return page(categories.map((c) => ({ id: c.id, name: c.name, ...(c.sortOrder !== null && !c.parentId ? { main: true } : {}), ...(c.parentId ? { under: parents[c.parentId] } : {}) })), meta?.total, { page: p, limit });
+  },
+});
+
+// Client report 24 Nov ("انت عندك كل ملفات addvet"): a name that is neither a company
+// nor a brand. The assistant says so and offers this card for a brand of the current
+// company; companies are added on the Companies page (the chat never changes companies).
+defineTool({
+  name: "create_brand",
+  module: "products",
+  risk: "write",
+  permissions: ["create_products"],
+  needsCompany: true,
+  label: "Adding the brand",
+  description:
+    "Proposes adding a brand to the current company (a confirmation card). Use it when the user names a brand the company doesn't have and wants it — after list_brands found no exact match. " +
+    "Companies are never created here: for a missing company, say it is added on the Companies page.",
+  args: z.object({ name: z.string().trim().min(2).max(80) }),
+  preview: async (a, ctx) => {
+    const { rows } = await listBrands(ctx.companyId, { q: a.name, limit: 25 });
+    const exact = rows.find((b) => b.match === "exact");
+    if (exact) throw new ToolError(`This company already has the brand ${exact.name}`, "exists");
+    const company = await prisma.company.findUnique({ where: { id: ctx.companyId }, select: { name: true } });
+    return {
+      title: `Add brand ${a.name}`,
+      summary: `A new brand "${a.name}" for ${company?.name || "this company"}. Products, reference labels and certificate templates can then be put under it.`,
+      runLabel: "Add brand",
+      details: [
+        { label: "Company", value: company?.name || ctx.companyId },
+        { label: "Brand", value: a.name },
+        ...(rows.length ? [{ label: "Similar brands already there", value: rows.map((b) => b.name).join(", ") }] : []),
+      ],
+      aiCalls: null,
+      missing: [],
+    };
+  },
+  run: async (a, ctx) => {
+    const b = await createBrand({ name: a.name, companyId: ctx.companyId });
+    return { brandId: b.id, name: b.name, link: "/brands", ref: { type: "brand", id: b.id, name: b.name } };
   },
 });
