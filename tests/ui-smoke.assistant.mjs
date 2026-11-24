@@ -389,11 +389,19 @@ try {
   await page.waitForSelector(T("draft-card"), { timeout: 8000 });
   assert("the open draft is listed at the top, with Resume and Cancel", (await text(T("open-drafts"))).includes("Add a product") && !!(await page.$(T("draft-resume"))));
   assert("its card: the brand found by a lookup, with its source badge", (await text(T("draft-filled"))).includes(`Smoke Brand ${ts}`) && (await text(T("draft-filled"))).includes("Found"));
-  assert("…and one form for what only you can answer (name, composition, category as buttons)", (await text(T("draft-form"))).includes("Name") && (await text(T("draft-form"))).includes("Composition") && (await page.$$(T("draft-choice"))).length >= 1);
+  // the category choice: buttons, or a select once there are more than 8 (e68bc5b)
+  assert("…and one form for what only you can answer (name, composition, category to choose)", (await text(T("draft-form"))).includes("Name") && (await text(T("draft-form"))).includes("Composition") && ((await page.$$(T("draft-choice"))).length >= 1 || !!(await page.$(`${T("draft-form")} select[aria-label="Category"]`))));
   await page.type('[data-testid="draft-form"] input[aria-label="Name"]', `Smoke Product ${ts}`);
   await page.type('[data-testid="draft-form"] input[aria-label="Ingredient 1"]', "Vitamin E");
   await page.type('[data-testid="draft-form"] input[aria-label="Concentration 1"]', "5%");
-  await page.evaluate((t) => [...document.querySelectorAll('[data-testid="draft-choice"]')].find((b) => b.innerText.trim() === t)?.click(), `AAA Smoke Cat ${ts}`);
+  await page.evaluate((t) => {
+    const b = [...document.querySelectorAll('[data-testid="draft-choice"]')].find((x) => x.innerText.trim() === t);
+    if (b) return b.click();
+    const sel = document.querySelector('[data-testid="draft-form"] select[aria-label="Category"]');
+    const opt = [...sel.options].find((o) => o.text.trim() === t);
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(sel, opt.value);
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, `AAA Smoke Cat ${ts}`);
   await page.click(T("draft-submit"));
   await page.waitForSelector(`${T("draft-card")} ${T("action-card")}`, { timeout: 8000 });
   const fieldsText = await text(T("action-fields"));
@@ -409,6 +417,46 @@ try {
   await prisma.product.deleteMany({ where: { companyId: company.id } });
   await prisma.brand.delete({ where: { id: smokeBrand.id } });
   await prisma.category.delete({ where: { id: smokeCat.id } });
+
+  console.log("\n✦ Files in \"All companies\" (client report 24 Nov)");
+  await page.click(T("new-conversation"));
+  await page.select(T("assistant-scope"), "all");
+  await sleep(300);
+  // a file the browser refuses (not a PDF/image): its chip fails, and the send is held, never silent
+  await page.evaluate(async (sel) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array([104, 105])], "notes.txt", { type: "text/plain" }));
+    document.querySelector(sel).dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, T("composer"));
+  await page.waitForSelector(T("file-error"), { timeout: 8000 });
+  const pdfAll = path.join(process.cwd(), "fixtures", "certificates", "outlined_text.pdf");
+  await (await page.$(T("file-input"))).uploadFile(pdfAll);
+  await page.waitForSelector(T("file-needs-company"), { timeout: 15000 });
+  assert('attaching in "All companies" works; the chip says the company is asked on send', (await text(T("pending-files"))).includes("company asked on send"));
+  const unboundRow = await prisma.assistantAttachment.findFirst({ where: { name: "outlined_text.pdf", companyId: null, ownerId: user.id }, orderBy: { createdAt: "desc" } });
+  assert("…stored in the conversation with no company yet", !!unboundRow);
+  const sentBefore = sent.length;
+  reply = { text: "Got the certificate.", toolCalls: [] };
+  await ask("دي الشهادة");
+  await page.waitForSelector(T("send-held"), { timeout: 8000 });
+  assert("a failed file holds the send and is named (nothing sent)", sent.length === sentBefore && (await text(T("send-held"))).includes("notes.txt"));
+  await page.click(T("send-without-failed"));
+  await page.waitForSelector(T("pick-company"), { timeout: 8000 });
+  assert('then: "Which company are these files for?" with the companies as choices (still nothing sent)', sent.length === sentBefore && (await text(T("pick-company"))).includes("Which company"));
+  await page.evaluate((name) => {
+    const b = [...document.querySelectorAll('[data-testid="pick-company"] button')].find((x) => x.innerText.trim() === name);
+    if (b) return b.click();
+    const sel = document.querySelector('[data-testid="pick-company"] select');
+    const id = [...sel.options].find((o) => o.text === name).value;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(sel, id);
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, company.name);
+  await contains(T("assistant-messages"), "Got the certificate.");
+  const last = sent.at(-1);
+  const bound = await prisma.assistantAttachment.findUnique({ where: { id: unboundRow.id } });
+  assert("picking the company binds the file and sends the message in that company with it", last.companyId === company.id && last.attachmentIds?.[0] === unboundRow.id && bound.companyId === company.id, { last, bound: bound.companyId });
+  assert("…the picker now shows that company", (await page.$eval(T("assistant-scope"), (e) => e.value)) === company.id);
+  await shot("files-all-companies");
 
   console.log("\n✦ Settings");
   await page.waitForSelector('button[title="Assistant settings"]', { timeout: 8000 });
@@ -446,6 +494,7 @@ try {
   await prisma.assistantSetting.deleteMany({ where: { scopeKey: company.id } });
   await prisma.invoice.delete({ where: { id: invoice.id } });
   await prisma.storedFile.deleteMany({ where: { companyId: company.id, kind: "assistant_attachment" } });
+  await prisma.category.deleteMany({ where: { name: `AAA Smoke Cat ${ts}`, products: { none: {} } } }).catch(() => {}); // a crashed run left it behind
   await prisma.user.delete({ where: { id: user.id } });
   await prisma.role.delete({ where: { id: role.id } });
   await prisma.company.delete({ where: { id: company.id } });

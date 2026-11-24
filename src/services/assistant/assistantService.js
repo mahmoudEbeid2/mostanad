@@ -6,7 +6,7 @@ import { setAiCompany } from "../ai/aiContext.js";
 import { runTool, getTool } from "./registry/index.js";
 import { nextRows } from "./agent/blocks.js";
 import { factsOf } from "./agent/grounding.js";
-import { storeAttachments, attachmentView } from "./attachments.js";
+import { storeAttachments, attachmentView, bindAttachments } from "./attachments.js";
 import { proposeAction, actionView, refreshAction, actionEventText, cancelAction } from "./actions.js";
 import { draftSession, openDraftsNote, conversationDrafts } from "./drafts/draftService.js";
 
@@ -166,7 +166,9 @@ async function messageCost(conversationId, messageId) {
  */
 /**
  * POST …/attachments: files for this conversation, stored in its company (a company
- * session: its own; a system user: the conversation's picked company — never "All").
+ * session: its own; a system user: the conversation's picked company). In "All
+ * companies" they are kept unbound; the company is asked when the message is sent
+ * (bindConversationAttachments, or the message's own company).
  */
 export async function uploadAttachments(actor, conversationId, files, { companyId } = {}) {
   await assertEnabled(actor);
@@ -174,6 +176,17 @@ export async function uploadAttachments(actor, conversationId, files, { companyI
   let scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
   if (actor.kind === "user" && scope !== conv.companyId) await prisma.assistantConversation.update({ where: { id: conversationId }, data: { companyId: scope } });
   return storeAttachments({ conversationId, companyId: scope, actor, files });
+}
+
+/** POST …/attachments/bind { companyId, attachmentIds } — the company for files attached in "All companies". */
+export async function bindConversationAttachments(actor, conversationId, { companyId, attachmentIds } = {}) {
+  await assertEnabled(actor);
+  await loadOwn(actor, conversationId);
+  const ids = (Array.isArray(attachmentIds) ? attachmentIds : []).filter((x) => UUID.test(String(x)));
+  if (!ids.length) throw new AppError("Send attachmentIds", 400);
+  const scope = actor.kind === "company" ? actor.companyId : await systemScope(companyId);
+  if (!scope) throw new AppError("Pick one company for the files, not \"All companies\".", 400);
+  return bindAttachments(conversationId, ids, scope);
 }
 
 /**
@@ -202,7 +215,14 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   // files sent with this message: this conversation's, in this message's company
   const files = attachmentIds.length ? await prisma.assistantAttachment.findMany({ where: { id: { in: attachmentIds.filter((x) => UUID.test(String(x))) }, conversationId } }) : [];
   if (files.length !== new Set(attachmentIds).size) throw new AppError("Attachment not found!", 404);
-  if (files.some((a) => a.companyId !== scope)) throw new AppError(scope ? "These files belong to another company than the one picked — attach them again." : "Pick a company first: files belong to one company, not \"All companies\".", 400);
+  // files attached in "All companies" join the message's company; with no company
+  // picked yet the person is asked which one (code pick_company)
+  if (files.some((a) => !a.companyId)) {
+    if (!scope) throw Object.assign(new AppError("Which company are these files for? Pick one, then send again.", 409), { code: "pick_company", attachmentIds: files.filter((a) => !a.companyId).map((a) => a.id) });
+    const bound = await bindAttachments(conversationId, files.map((a) => a.id), scope);
+    files.splice(0, files.length, ...bound.map((b) => ({ ...files.find((f) => f.id === b.id), companyId: b.companyId })));
+  }
+  if (files.some((a) => a.companyId !== scope)) throw new AppError(scope ? "These files belong to another company than the one picked — attach them again." : "These files belong to one company: pick it instead of \"All companies\" to work on them.", 400);
   if (edited) await supersedeFrom(actor, edited);
   const history = await prisma.assistantMessage.findMany({ where: { conversationId, error: null, supersededAt: null }, orderBy: { createdAt: "desc" }, take: 10, select: { role: true, text: true, links: true, toolCalls: true } });
   // what later answers are checked against: every tool result of this conversation

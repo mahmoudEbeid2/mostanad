@@ -25,6 +25,7 @@ router.delete("/conversations/:id", validate(s.byId), c.deleteConversation);
 router.post("/conversations/:id/messages", validate(s.message), c.postMessage);
 router.post("/conversations/:id/messages/:messageId/blocks/:blockId/more", validate(s.more), c.loadMore);
 router.post("/conversations/:id/attachments", validate(s.byId), uploadFiles.array("files", MAX_ATTACHMENTS), c.uploadAttachments);
+router.post("/conversations/:id/attachments/bind", validate(s.byId), c.bindAttachments);
 // confirmation cards: Run / Cancel / progress of its job / the model continues once it finished
 router.post("/actions/:actionId/approve", validate(s.action), c.approveAction);
 router.post("/actions/:actionId/cancel", validate(s.action), c.cancelAction);

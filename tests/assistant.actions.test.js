@@ -218,7 +218,8 @@ async function main() {
     assert("attach to another company's conversation → 404", res.status === 404);
     const allConv = (await api("POST", "/assistant/conversations", asAdmin, { companyId: "all" })).data.data.conversation;
     res = await api("POST", `/assistant/conversations/${allConv.id}/attachments`, asAdmin, form({}, { field: "files", buffer: PNG, name: "x.png", type: "image/png" }));
-    assert("attach with All companies → 400 pick a company", res.status === 400 && /Pick a company/.test(res.data.message));
+    // client report 24 Nov: kept unbound; the company is asked when the message is sent (assistant.attachments.test.js)
+    assert("attach with All companies → 201, kept in the conversation with no company yet", res.status === 201 && res.data.data.attachments[0].companyId === null, res.data);
     m = script([[call("test_count_write", { n: 11 })], [{ text: "Card." }]]);
     const apiCard = (await assistant.sendMessage(actorA, conv.id, { text: "count 11" }, { generate: m.generate })).message.actions[0];
     res = await api("POST", `/assistant/actions/${apiCard.id}/approve`, asCompany(cB.id));

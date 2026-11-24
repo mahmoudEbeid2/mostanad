@@ -1572,7 +1572,7 @@ model AssistantAttachment {
   id             String                @id @default(uuid())
   conversationId String                @map("conversation_id")
   conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  companyId      String                @map("company_id")
+  companyId      String?               @map("company_id") // null = attached in "All companies", not bound to a company yet
   ownerType      String                @map("owner_type")
   ownerId        String                @map("owner_id")
   fileId         String                @map("file_id") // stored_files.id

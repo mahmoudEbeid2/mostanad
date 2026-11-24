@@ -29,17 +29,23 @@ const handlePrismaValidationError = (err) => {
 const sendErrorDev = (err, res) => {
   res.status(err.statusCode).json({
     status: err.status,
+    ...operationalExtra(err),
     error: err,
     message: err.message,
     stack: err.stack,
   });
 };
 
+// an AppError may carry a machine-readable code (and its ids) the UI acts on,
+// e.g. the assistant's pick_company with the files that need a company
+const operationalExtra = (err) => (err.isOperational && typeof err.code === "string" ? { code: err.code, ...(Array.isArray(err.attachmentIds) ? { attachmentIds: err.attachmentIds } : {}) } : {});
+
 const sendErrorProd = (err, res) => {
   console.error("ERROR OCCURRED:", err.stack || err);
   res.status(err.statusCode || 500).json({
     status: err.status || "error",
     message: err.message || "Internal Server Error",
+    ...operationalExtra(err),
   });
 };
 

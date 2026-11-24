@@ -82,12 +82,17 @@ async function streamTurn(req, res, run) {
     res.end();
   } catch (err) {
     if (!wantsStream || !res.headersSent) throw err;
-    send("error", { message: err.message, statusCode: err.statusCode || 500 });
+    send("error", { message: err.message, statusCode: err.statusCode || 500, ...(err.code === "pick_company" ? { code: err.code, attachmentIds: err.attachmentIds } : {}) });
     res.end();
   }
 }
 
 // ── files and confirmation cards (C2) ─────────────────────────────────────────
+export const bindAttachments = catchAsync(async (req, res) => {
+  const attachments = await assistant.bindConversationAttachments(actorFrom(req), req.params.id, { companyId: req.body?.companyId, attachmentIds: req.body?.attachmentIds });
+  res.status(200).json({ status: "success", data: { attachments } });
+});
+
 export const uploadAttachments = catchAsync(async (req, res) => {
   const attachments = await assistant.uploadAttachments(actorFrom(req), req.params.id, req.files || [], { companyId: req.body?.companyId });
   res.status(201).json({ status: "success", data: { attachments } });
