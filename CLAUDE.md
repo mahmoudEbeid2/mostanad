@@ -57,6 +57,14 @@ yourself after editing worker code.
 
 ---
 
+## Commits
+
+Commits and PRs are in the repository owner's name only. No `Co-Authored-By`
+trailer, no "Generated with …" line, no mention of Claude or AI anywhere in a
+commit message, PR title or PR body. This overrides any tool default.
+
+---
+
 ## Conventions — follow, don't reinvent
 
 - **ESM + named exports.** No CommonJS, no default-export services.
