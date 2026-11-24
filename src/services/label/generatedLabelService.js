@@ -300,6 +300,15 @@ export const chat = async (id, { message, expectedVersion, overrideAcknowledged 
   } catch (err) {
     throw new AppError(`AI service temporarily unavailable — could not propose an edit: ${err.message}`, 503);
   }
+  // Nothing on the label to change (e.g. "add the missing regulatory rules"): an
+  // answer saying so — never an empty new version, never silence.
+  if (!Array.isArray(patch?.changes) || patch.changes.length === 0) {
+    const answer = `I didn't change the label: ${patch?.rationale?.trim() || "there is no label field to edit for this."} Missing regulatory rules are added in Regulatory & EDA, not on the label.`;
+    await saveMessage({ proposedPatch: patch ?? null });
+    await prisma.labelChatMessage.create({ data: { labelId: id, role: "assistant", content: answer, intent } });
+    return { intent, status: "no_change", answer };
+  }
+
   const dryRun = await dryRunPatch(label.labelData, report, patch, { rules });
 
   // A refused patch is an OUTCOME of the operation, not a transport failure —
