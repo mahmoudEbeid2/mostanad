@@ -946,6 +946,7 @@ model Invoice {
   country          String? // chosen at upload, else extracted destination (A4)
   certificateTypeIds Json? @map("certificate_type_ids") // null = every type with an active template, also ones activated later; string[] = only those types
   status           String    @default("uploaded") // uploaded|extracting|review|ready|generating|generated|partially_failed|failed
+  origin           String    @default("upload") // upload | direct (certificates for a product without an invoice: hidden from invoice lists)
   sourceFileId     String    @map("source_file_id")
   header           Json? // reviewed header (what generation uses)
   headerExtracted  Json?     @map("header_extracted") // raw AI output, never edited (audit)

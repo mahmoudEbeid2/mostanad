@@ -17,7 +17,7 @@ export async function loadCertificate(id, companyId) {
 const CARD_INCLUDE = {
   certificateType: { select: { id: true, code: true, name: true } },
   product: { select: { id: true, name: true, productCode: true } },
-  invoice: { select: { id: true, header: true, country: true } },
+  invoice: { select: { id: true, header: true, country: true, origin: true } },
   templateVersion: { select: { id: true, versionNumber: true, template: { select: { id: true, name: true, country: true, brand: { select: { name: true } } } } } },
   items: { orderBy: { position: "asc" }, select: { invoiceItem: { select: { id: true, lineNo: true, data: true } } } },
   versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true, values: true, thumbnailFileId: true, htmlFileId: true, pdfFileId: true } },
@@ -41,6 +41,7 @@ export function toCard(c) {
     batchId: c.batchId,
     invoiceId: c.invoiceId,
     invoiceNumber: c.invoice?.header?.invoiceNumber || null,
+    withoutInvoice: c.invoice?.origin === "direct", // made for a product, no invoice (generate_certificate_for_product)
     batchNo: c.scope === "per_product" ? lines[0]?.data?.batchNo || null : null,
     lineNos: lines.map((l) => l.lineNo),
     template: c.templateVersion ? { id: c.templateVersion.template.id, name: c.templateVersion.template.name, versionNumber: c.templateVersion.versionNumber, country: c.templateVersion.template.country, brand: c.templateVersion.template.brand?.name || null } : null,

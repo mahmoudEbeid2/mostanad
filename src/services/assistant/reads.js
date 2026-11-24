@@ -101,7 +101,7 @@ export async function findInvoices(companyId, { q, status, page = 1, limit = 10 
       WHERE ${companyId ? Prisma.sql`company_id = ${companyId}` : Prisma.sql`true`}
         AND (header->>'invoiceNumber' ILIKE ${like} OR header->>'customerName' ILIKE ${like})`
   ).map((r) => r.id);
-  const where = { id: { in: ids }, ...(companyId ? { companyId } : {}), ...(status ? { status } : {}) };
+  const where = { id: { in: ids }, origin: { not: "direct" }, ...(companyId ? { companyId } : {}), ...(status ? { status } : {}) };
   const [total, invoices] = await Promise.all([
     prisma.invoice.count({ where }),
     prisma.invoice.findMany({ where, orderBy: { createdAt: "desc" }, skip: skipOf(page, limit), take: take(limit), omit: { textContent: true }, include: { company: { select: { name: true } }, _count: { select: { items: true } } } }),
@@ -273,7 +273,7 @@ export async function countEntities(companyId, { entity, groupBy = "none", perio
 export async function invoicesByDate(companyId, { status = null, page = 1, limit = 10 } = {}) {
   const take = Math.min(Number(limit) || 10, 100);
   const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
-  const where = Prisma.sql`WHERE TRUE ${companyId ? Prisma.sql`AND company_id = ${companyId}` : Prisma.empty} ${status ? Prisma.sql`AND status = ${status}` : Prisma.empty}`;
+  const where = Prisma.sql`WHERE origin <> 'direct' ${companyId ? Prisma.sql`AND company_id = ${companyId}` : Prisma.empty} ${status ? Prisma.sql`AND status = ${status}` : Prisma.empty}`;
   const [ids, [{ n }]] = await Promise.all([
     prisma.$queryRaw`SELECT id FROM invoices ${where} ORDER BY COALESCE(NULLIF(header->'invoiceDate'->>'iso', ''), to_char(created_at, 'YYYY-MM-DD')) DESC, created_at DESC LIMIT ${take} OFFSET ${skip}`,
     prisma.$queryRaw`SELECT count(*)::int AS n FROM invoices ${where}`,

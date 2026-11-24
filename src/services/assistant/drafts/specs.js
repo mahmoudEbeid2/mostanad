@@ -124,6 +124,23 @@ const category = {
 };
 
 /** Certificate types (several may be picked): offered as a choice, never guessed. */
+/** One certificate type (a product's certificate without an invoice). */
+const certificateType = {
+  kind: "lookup",
+  tool: "list_certificate_types",
+  resolve: async (d, hint) => {
+    const data = await d.run("list_certificate_types", {});
+    const all = (data?.items || []).filter((t) => t.isActive);
+    const hit = hint ? all.filter((t) => t.code.toLowerCase() === String(hint).toLowerCase()) : [];
+    return one((hit.length ? hit : all).map((t) => ({ value: t.id, label: `${t.code} · ${t.name}` })), hint ? `list_certificate_types: "${hint}"` : "the company's only certificate type");
+  },
+  verify: async (value, d) => {
+    const t = await prisma.certificateType.findFirst({ where: { id: value, companyId: d.companyId, isActive: true }, select: { code: true } });
+    if (!t) throw new Error("Certificate type not found in this company");
+    return { display: t.code };
+  },
+};
+
 const certificateTypes = {
   kind: "lookup",
   tool: "list_certificate_types",
@@ -439,6 +456,16 @@ export const SPECS = {
     prerequisites: [linesMatched, invoiceReady, dataComplete],
     watch: invoiceWatch,
     errors: [[/type/i, "certificateTypeIds"], [/invoice|template/i, "invoiceId"]],
+  },
+  create_certificate_templates: {
+    title: "Make certificate templates from files",
+    fields: { attachmentIds: [attachment({ many: true })], codes: [user()], brandId: [brand], country: [country] },
+    errors: [[/brand/i, "brandId"], [/which certificate|type/i, "codes"], [/file|template/i, "attachmentIds"]],
+  },
+  generate_certificate_for_product: {
+    title: "Make a certificate for a product (no invoice)",
+    fields: { productId: [page("product"), product], certificateTypeId: [certificateType], country: [country], coaAttachmentIds: [attachment({ many: true })], batchNo: [user()], productionDate: [user()], expiryDate: [user()], quantity: [user()], unit: [user()], packing: [user()] },
+    errors: [[/template/i, "certificateTypeId"], [/batch/i, "batchNo"], [/product/i, "productId"], [/type/i, "certificateTypeId"], [/coa|file/i, "coaAttachmentIds"]],
   },
   upload_supplier_coa: { title: "Read supplier COAs", key: ["invoiceId"], fields: { invoiceId: INVOICE, attachmentIds: [attachment({ many: true })] }, watch: invoiceWatch },
   upload_catalogue: { title: "Upload a catalogue", fields: { attachmentId: [attachment({ pdfOnly: true })], edition: [user()], manufacturer: [user()], brandId: [brand] }, errors: [[/pdf|file/i, "attachmentId"], [/brand/i, "brandId"]] },

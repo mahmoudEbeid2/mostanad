@@ -216,7 +216,7 @@ async function searchInvoiceIds(companyId, q) {
 const TEXT_OMIT = { textContent: true };
 
 export async function listInvoices(companyId, { status, q, page = 1, limit = 20 } = {}) {
-  const where = { companyId, ...(status ? { status } : {}) };
+  const where = { companyId, origin: { not: "direct" }, ...(status ? { status } : {}) };
   if (q && String(q).trim()) where.id = { in: await searchInvoiceIds(companyId, String(q).trim()) };
   const take = Math.min(Number(limit) || 20, 100);
   const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
