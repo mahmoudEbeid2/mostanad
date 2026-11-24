@@ -6,6 +6,7 @@ import { io } from "socket.io-client";
 import geminiClient from "../services/ai/geminiClient.js";
 import { geminiWorkerName } from "../services/ai/geminiGuard.js";
 import { MODELS } from "../services/ai/modelRegistry.js";
+import { brandFromLabel } from "../services/referenceLabelService.js";
 
 const redisConfig = getRedisConfig();
 const backendWsUrl = process.env.BACKEND_WS_URL || "http://localhost:3000";
@@ -84,6 +85,7 @@ const referenceLabelWorker = new Worker(
         10. "contraindications": the label's stated contraindications text, verbatim, or null if not stated.
         11. "feed_classification": the label's stated feed/regulatory classification (e.g. "Feed Additive", "Premix", "Medicated Feed"), or null if not stated.
         12. "route_of_administration": the label's stated route of administration (e.g. "Oral", "Intramuscular injection", "In-feed"), or null if not stated.
+        13. "brand_name": the brand / trade mark printed on the label (the company's product line, e.g. "MAXVET"), exactly as printed, or null if none is printed. Not the product name and not the manufacturer's legal name unless that is the brand printed.
 
         Fields 9-12 exist so a future product can be matched against this exact reference and cite it — copy the source text verbatim rather than paraphrasing, and use null (not a guess) when the document genuinely does not state it.
 
@@ -117,12 +119,18 @@ const referenceLabelWorker = new Worker(
         fullText = responseText;
       }
 
+      // No brand chosen on the form: the brand printed on the label, matched
+      // against the company's brands. One clear match is used; several are
+      // kept as choices (extractedData.brand_match) for the person to pick.
+      const brand = brandId ? { brandId } : await brandFromLabel(companyId, extractedData);
+      if (brand.match) extractedData.brand_match = brand.match;
+
       // Save to database
       const referenceLabel = await prisma.referenceLabel.create({
         data: {
           name: fileName,
           companyId: companyId || null,
-          brandId: brandId || null,
+          brandId: brand.brandId || null,
           categoryId: categoryId || null,
           manualCategoryName: manualCategoryName || extractedData.category_hint || null,
           country: country || extractedData.accepted_country || null,

@@ -1,13 +1,22 @@
+import { resolveBrand } from "./brandMatch.js";
 import { prisma } from "../lib/prisma.js";
 import AppError from "../utils/appError.js";
 
-export const getAll = async (queryString) => {
+// Tenancy (CLAUDE.md invariant 10): a company caller (companyId set) reads its
+// own references plus the global ones, and changes only its own. null = a
+// system user, who sees every company's.
+
+export const getAll = async (queryString, { companyId = null } = {}) => {
   const { page = 1, limit = 100, sort, search, ...filters } = queryString;
   const where = {};
 
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== "") where[key] = value;
   });
+  if (companyId) {
+    delete where.companyId; // ?companyId= naming another company is ignored
+    where.AND = [{ OR: [{ companyId }, { companyId: null }] }];
+  }
 
   if (search) {
     where.OR = [
@@ -43,7 +52,7 @@ export const getAll = async (queryString) => {
   return { labels, total };
 };
 
-export const getById = async (id) => {
+export const getById = async (id, { companyId = null } = {}) => {
   const label = await prisma.referenceLabel.findUnique({
     where: { id },
     include: {
@@ -53,7 +62,7 @@ export const getById = async (id) => {
     },
   });
 
-  if (!label) {
+  if (!label || (companyId && label.companyId && label.companyId !== companyId)) {
     throw new AppError("No reference label found with that ID", 404);
   }
 
@@ -106,12 +115,13 @@ export const createManual = async (data) => {
   });
 };
 
-export const deleteById = async (id) => {
+export const deleteById = async (id, { companyId = null } = {}) => {
   const label = await prisma.referenceLabel.findUnique({
     where: { id },
   });
 
-  if (!label) {
+  // a company deletes only its own references (never a global one)
+  if (!label || (companyId && label.companyId !== companyId)) {
     throw new AppError("No reference label found with that ID", 404);
   }
 
@@ -119,3 +129,33 @@ export const deleteById = async (id) => {
     where: { id },
   });
 };
+
+/**
+ * The brand printed on a reference label (extractedData.brand_name) matched
+ * against the company's brands (brandMatch). → { brandId | null, match }
+ * match = { printed, candidates: [{ id, name, score }], chosen: id | null } —
+ * kept on the reference so several candidates can be offered as choices.
+ * A global reference (no company) has no brands to match.
+ */
+export async function brandFromLabel(companyId, extractedData) {
+  const printed = typeof extractedData?.brand_name === "string" ? extractedData.brand_name.trim() : "";
+  if (!companyId || !printed) return { brandId: null, match: printed ? { printed, candidates: [], chosen: null } : null };
+  const r = await resolveBrand(companyId, printed);
+  return { brandId: r.brandId, match: { printed, candidates: r.candidates, chosen: r.brandId } };
+}
+
+/**
+ * PATCH /reference-labels/:id { brandId } — the person picks the brand (one of
+ * the candidates read from the label, or any brand of the reference's
+ * company; null clears it). Tenant-scoped: a company caller only its own.
+ */
+export async function setBrand(id, brandId, { companyId = null } = {}) {
+  const ref = await prisma.referenceLabel.findUnique({ where: { id }, select: { id: true, companyId: true, extractedData: true } });
+  if (!ref || (companyId && ref.companyId !== companyId)) throw new AppError("Reference label not found!", 404);
+  if (brandId) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId }, select: { companyId: true } });
+    if (!brand || brand.companyId !== ref.companyId) throw new AppError("That brand is not one of this reference's company's brands", 400);
+  }
+  const extractedData = ref.extractedData?.brand_match ? { ...ref.extractedData, brand_match: { ...ref.extractedData.brand_match, chosen: brandId || null } } : ref.extractedData;
+  return prisma.referenceLabel.update({ where: { id }, data: { brandId: brandId || null, extractedData }, include: { brand: { select: { id: true, name: true } } } });
+}

@@ -40,6 +40,10 @@ router
 router
   .route("/:id")
   .get(referenceLabelController.getReferenceLabel)
+  .patch(
+    restrictToPermission("update_eda_requirements"),
+    referenceLabelController.updateReferenceLabelBrand
+  )
   .delete(
     restrictToPermission("delete_eda_requirements"),
     referenceLabelController.deleteReferenceLabel

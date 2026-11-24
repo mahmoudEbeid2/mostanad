@@ -7,6 +7,7 @@ import { searchProductsForAssistant } from "../../productSearch.js";
 import { productsMissingData, PRODUCT_FIELDS, listBrands, getBrand } from "../../reads.js";
 import { listProfile } from "../../../certificates/dataNeeds/productProfile.js";
 import { getAllCategories } from "../../../categoryService.js";
+import { prisma } from "../../../../lib/prisma.js";
 
 const PRODUCT_DETAIL = [
   "id", "name", "productCode", "description", "indications", "targetSpecies", "physicalForm", "appearance", "activeIngredients", "dosage", "mixingInstructions",
@@ -117,12 +118,12 @@ defineTool({
   risk: "read",
   permissions: ["read_products"],
   label: "Listing brands",
-  description: "Brands, with how many products each has. Optional `q` filters by name.",
+  description: "Brands, with how many products each has. Optional `q` finds a brand by name, ignoring case, spaces, ® and a letter off; each hit says match: exact or close (close = not the name the user typed — say so). The list is read now: call it again whenever the user asks about a brand again, a brand may have just been added.",
   args: z.object({ q: z.string().max(80).optional(), ...pageArgs }),
   run: async (a, ctx) => {
     const { page: p, limit } = pg(a);
     const { total, rows } = await listBrands(ctx.companyId, { q: a.q, page: p, limit });
-    return page(rows.map((b) => ({ id: b.id, name: b.name, isActive: b.isActive, products: b._count.products, ...(ctx.companyId ? {} : { company: b.company.name }) })), total, { page: p, limit });
+    return page(rows.map((b) => ({ id: b.id, name: b.name, isActive: b.isActive, products: b._count.products, ...(b.match ? { match: b.match } : {}), ...(ctx.companyId ? {} : { company: b.company.name }) })), total, { page: p, limit });
   },
 });
 
@@ -146,12 +147,14 @@ defineTool({
   risk: "read",
   permissions: ["read_categories"],
   label: "Listing categories",
-  description: "Product categories (shared by every company). Optional `q` filters by name.",
+  description: "Product categories (shared by every company): the main ones first (main: true, in their order), each with `under` = the main category it sits under. Optional `q` filters by name.",
   args: z.object({ q: z.string().max(80).optional(), ...pageArgs }),
   companyArg: false,
   run: async (a) => {
     const { page: p, limit } = pg(a);
-    const { meta, categories } = await getAllCategories({ page: String(p), limit: String(limit), sort: "name", ...(a.q ? { search: a.q } : {}) });
-    return page(categories.map((c) => ({ id: c.id, name: c.name })), meta?.total, { page: p, limit });
+    const { meta, categories } = await getAllCategories({ page: String(p), limit: String(limit), ...(a.q ? { search: a.q } : {}) });
+    const parentIds = [...new Set(categories.map((c) => c.parentId).filter(Boolean))];
+    const parents = parentIds.length ? Object.fromEntries((await prisma.category.findMany({ where: { id: { in: parentIds } }, select: { id: true, name: true } })).map((c) => [c.id, c.name])) : {};
+    return page(categories.map((c) => ({ id: c.id, name: c.name, ...(c.sortOrder !== null && !c.parentId ? { main: true } : {}), ...(c.parentId ? { under: parents[c.parentId] } : {}) })), meta?.total, { page: p, limit });
   },
 });

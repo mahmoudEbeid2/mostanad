@@ -3,11 +3,28 @@ import AppError from "../utils/appError.js";
 import { PrismaFeatures } from "../utils/PrismaFeatures.js";
 
 /**
+ * `parentId` from a request → undefined (not sent), null (none) or the id of a
+ * main category. One level only: the parent must itself have no parent, and a
+ * category that has categories under it can't be put under another.
+ */
+async function checkParent(parentId, selfId) {
+  if (parentId === undefined) return undefined;
+  if (parentId === null || parentId === "") return null;
+  if (parentId === selfId) throw new AppError("A category can't be its own parent", 400);
+  const parent = await prisma.category.findUnique({ where: { id: parentId }, select: { parentId: true } });
+  if (!parent) throw new AppError("Parent category not found!", 404);
+  if (parent.parentId) throw new AppError("The parent must be a main category (one that has no parent itself)", 400);
+  if (selfId && (await prisma.category.count({ where: { parentId: selfId } }))) throw new AppError("This category has categories under it, so it can't be put under another one", 400);
+  return parentId;
+}
+
+/**
  * Create a new category
  */
 export const createCategory = async (data) => {
   const { name } = data;
   const trimmedName = name.trim();
+  const parentId = await checkParent(data.parentId, null);
 
   // Check unique name
   const nameExists = await prisma.category.findUnique({
@@ -16,7 +33,7 @@ export const createCategory = async (data) => {
   if (nameExists) throw new AppError("Category name is already taken!", 400);
 
   const category = await prisma.category.create({
-    data: { name: trimmedName },
+    data: { name: trimmedName, ...(parentId !== undefined ? { parentId } : {}) },
   });
 
   return category;
@@ -31,6 +48,8 @@ export const getAllCategories = async (queryString) => {
     .search(["name"])
     .sort()
     .paginate();
+  // no explicit sort: the main categories first (in their order), then the rest by name
+  if (!queryString.sort) features.queryOptions.orderBy = [{ sortOrder: { sort: "asc", nulls: "last" } }, { name: "asc" }];
 
   const result = await features.exec();
 
@@ -57,8 +76,11 @@ export const updateCategory = async (id, data) => {
   if (!existingCategory) throw new AppError("Category not found!", 404);
 
   const { name } = data;
-  const trimmedName = name.trim();
+  const trimmedName = (name || "").trim();
   const updateData = {};
+
+  const parentId = await checkParent(data.parentId, id);
+  if (parentId !== undefined) updateData.parentId = parentId;
 
   if (trimmedName && trimmedName !== existingCategory.name) {
     const nameExists = await prisma.category.findUnique({

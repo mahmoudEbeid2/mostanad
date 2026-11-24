@@ -181,7 +181,7 @@ export const createReferenceLabelManual = catchAsync(async (req, res, next) => {
 });
 
 export const getAllReferenceLabels = catchAsync(async (req, res, next) => {
-  const result = await referenceLabelService.getAll(req.query);
+  const result = await referenceLabelService.getAll(req.query, { companyId: req.company?.id || null });
   res.status(200).json({
     status: "success",
     results: result.labels.length,
@@ -193,7 +193,7 @@ export const getAllReferenceLabels = catchAsync(async (req, res, next) => {
 });
 
 export const getReferenceLabel = catchAsync(async (req, res, next) => {
-  const label = await referenceLabelService.getById(req.params.id);
+  const label = await referenceLabelService.getById(req.params.id, { companyId: req.company?.id || null });
   res.status(200).json({
     status: "success",
     data: {
@@ -203,9 +203,17 @@ export const getReferenceLabel = catchAsync(async (req, res, next) => {
 });
 
 export const deleteReferenceLabel = catchAsync(async (req, res, next) => {
-  await referenceLabelService.deleteById(req.params.id);
+  await referenceLabelService.deleteById(req.params.id, { companyId: req.company?.id || null });
   res.status(204).json({
     status: "success",
     data: null,
   });
+});
+
+// PATCH /reference-labels/:id { brandId } — the brand of a reference (one of the
+// candidates read from the label, or any brand of its company; null clears it)
+export const updateReferenceLabelBrand = catchAsync(async (req, res, next) => {
+  if (req.body?.brandId === undefined) return next(new AppError("Send brandId (or null to clear it).", 400));
+  const referenceLabel = await referenceLabelService.setBrand(req.params.id, req.body.brandId, { companyId: req.company?.id || null });
+  res.status(200).json({ status: "success", data: { referenceLabel } });
 });

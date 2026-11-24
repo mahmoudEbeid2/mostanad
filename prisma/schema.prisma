@@ -128,11 +128,17 @@ model CompanyImage {
 model Category {
   id              String           @id @default(uuid())
   name            String           @unique
+  // One level: a main category (parentId null, sortOrder set) and the ones under it.
+  parentId        String?          @map("parent_id")
+  parent          Category?        @relation("CategoryChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Category[]       @relation("CategoryChildren")
+  sortOrder       Int?             @map("sort_order") // the main categories' order in pickers; null = not a main one
   products        Product[]
   referenceLabels ReferenceLabel[]
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
+  @@index([parentId])
   @@map("categories")
 }
 

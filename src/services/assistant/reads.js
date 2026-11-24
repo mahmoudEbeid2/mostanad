@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
+import { brandScore } from "../brandMatch.js";
 
 // Read services the assistant needs where the existing ones don't take a
 // company scope (the V1 brand / reference-label / regulatory lists filter by
@@ -16,10 +17,23 @@ const inScope = (row, companyId) => !!row && (!companyId || row.companyId === co
 const sharedOr = (companyId) => (companyId ? { OR: [{ companyId }, { companyId: null }] } : {});
 
 export async function listBrands(companyId, { q, page = 1, limit = 25 } = {}) {
-  const where = { ...(companyId ? { companyId } : {}), ...(q ? { name: { contains: q, mode: "insensitive" } } : {}) };
+  const select = { id: true, name: true, isActive: true, companyId: true, company: { select: { name: true } }, _count: { select: { products: true } } };
+  if (q) {
+    // a name: every brand in scope scored with brandMatch (case, spaces, ®, a
+    // letter off don't count) — "Max Vet" finds MAXVET. Best first; `match`
+    // says whether it is the name itself or only close to it.
+    const all = await prisma.brand.findMany({ where: companyId ? { companyId } : {}, orderBy: { name: "asc" }, take: 2000, select });
+    const hits = all
+      .map((b) => ({ ...b, score: brandScore(q, b.name) || (b.name.toLowerCase().includes(String(q).toLowerCase()) ? 0.9 : 0) }))
+      .filter((b) => b.score > 0)
+      .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name))
+      .map(({ score, ...b }) => ({ ...b, match: score === 1 ? "exact" : "close" }));
+    return { total: hits.length, rows: hits.slice(skipOf(page, limit), skipOf(page, limit) + take(limit)) };
+  }
+  const where = companyId ? { companyId } : {};
   const [total, rows] = await Promise.all([
     prisma.brand.count({ where }),
-    prisma.brand.findMany({ where, orderBy: { name: "asc" }, skip: skipOf(page, limit), take: take(limit), select: { id: true, name: true, isActive: true, companyId: true, company: { select: { name: true } }, _count: { select: { products: true } } } }),
+    prisma.brand.findMany({ where, orderBy: { name: "asc" }, skip: skipOf(page, limit), take: take(limit), select }),
   ]);
   return { total, rows };
 }
