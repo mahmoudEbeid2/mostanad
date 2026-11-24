@@ -4,7 +4,7 @@ import AppError from "../utils/appError.js";
 import { Queue } from "bullmq";
 import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
-import { queueReferenceLabel } from "../services/label/labelUploads.js";
+import { queueReferenceLabel, uploadedOn } from "../services/label/labelUploads.js";
 
 const referenceLabelQueue = new Queue("referenceLabelQueue", { connection: getRedisConfig() });
 const labelGeneratorQueue = new Queue("labelGeneratorQueue", { connection: getRedisConfig() });
@@ -93,49 +93,45 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     return next(new AppError("Please provide the country where this reference is accepted.", 400));
   }
   
-  // If companyId is explicitly passed (even empty string for global), use it.
-  // Otherwise, if the logged-in user is a company, use their ID.
-  let finalCompanyId = null;
-  if (companyId !== undefined) {
-    finalCompanyId = companyId || null;
-  } else if (req.company) {
-    finalCompanyId = req.company.id;
-  }
+  // A company caller always uploads into its own company. A system user names
+  // the company, or sends an empty companyId for a global reference.
+  const finalCompanyId = req.company ? req.company.id : companyId || null;
   
   const finalBrandId = brandId || null;
   const finalCategoryId = categoryId || null;
 
+  // One result per file: queued, skipped (already a reference of this owner) or
+  // failed (could not be queued). A failure on one file never hides the others.
   const tasks = [];
-  let skippedCount = 0;
+  const skipped = [];
+  const failed = [];
 
   for (const file of req.files) {
-    const queued = await queueReferenceLabel({ buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype, country, companyId: finalCompanyId, brandId: finalBrandId, categoryId: finalCategoryId, manualCategoryName });
-    if (queued.skipped) {
-      skippedCount++;
-      continue;
+    try {
+      const queued = await queueReferenceLabel({ buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype, country, companyId: finalCompanyId, brandId: finalBrandId, categoryId: finalCategoryId, manualCategoryName });
+      if (queued.skipped) skipped.push({ fileName: file.originalname, existingId: queued.existing.id, uploadedAt: queued.existing.createdAt });
+      else tasks.push({ taskId: queued.taskId, fileName: file.originalname });
+    } catch (err) {
+      console.error(`[ReferenceLabels] Could not queue ${file.originalname}:`, err);
+      failed.push({ fileName: file.originalname, reason: err.message });
     }
-
-    tasks.push({
-      taskId: task.id,
-      fileName: file.originalname,
-    });
   }
 
+  const skippedText = skipped.map((s) => `${s.fileName} (already uploaded on ${uploadedOn(s.uploadedAt)})`).join(", ");
+  const failedText = failed.map((f) => `${f.fileName} (${f.reason})`).join(", ");
   if (tasks.length === 0) {
-    return next(new AppError(`All ${skippedCount} uploaded files already exist in the system.`, 400));
+    const parts = [skipped.length && `Skipped: ${skippedText}.`, failed.length && `Failed: ${failedText}.`].filter(Boolean);
+    return next(new AppError(`No file was queued. ${parts.join(" ")}`, failed.length ? 500 : 400));
   }
 
   let message = `${tasks.length} reference(s) queued for AI analysis.`;
-  if (skippedCount > 0) {
-    message += ` Skipped ${skippedCount} duplicate(s).`;
-  }
+  if (skipped.length) message += ` Skipped: ${skippedText}.`;
+  if (failed.length) message += ` Failed: ${failedText}.`;
 
   res.status(202).json({
     status: "success",
     message,
-    data: {
-      tasks,
-    },
+    data: { tasks, skipped, failed },
   });
 });
 

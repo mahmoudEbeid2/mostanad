@@ -15,14 +15,9 @@ export const uploadRequirement = catchAsync(async (req, res, next) => {
   
   const { country = "Egypt", companyId } = req.body;
   
-  // If companyId is explicitly passed (even empty string for global), use it.
-  // Otherwise, if the logged-in user is a company, use their ID.
-  let finalCompanyId = null;
-  if (companyId) {
-    finalCompanyId = companyId;
-  } else if (req.user && req.user.type === "company") {
-    finalCompanyId = req.user.id;
-  }
+  // A company caller always uploads into its own company. A system user names
+  // the company, or leaves it empty for a global requirement.
+  const finalCompanyId = req.company ? req.company.id : companyId || null;
 
   // 1. Create a BackgroundTask record
   const task = await prisma.backgroundTask.create({

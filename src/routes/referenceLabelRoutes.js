@@ -11,6 +11,8 @@ const upload = multer({
   },
 });
 
+export const MAX_REFERENCE_FILES = 20;
+
 const router = express.Router();
 
 router.use(protect);
@@ -19,7 +21,7 @@ router
   .route("/")
   .get(referenceLabelController.getAllReferenceLabels)
   .post(
-    upload.array("files", 1), // Restrict to 1 file per upload
+    upload.array("files", MAX_REFERENCE_FILES), // several labels in one upload, each its own task
     referenceLabelController.uploadReferenceLabels
   );
 

@@ -13,7 +13,7 @@ import { getNeeds } from "../../../certificates/dataNeeds/dataNeedsService.js";
 import { listTypes } from "../../../certificates/types/certificateTypeService.js";
 import { uploadCoas } from "../../../certificates/labResults/coaService.js";
 import { uploadCatalogue } from "../../../catalogues/catalogueService.js";
-import { startLabelVerification, queueReferenceLabel } from "../../../label/labelUploads.js";
+import { startLabelVerification, queueReferenceLabel, uploadedOn } from "../../../label/labelUploads.js";
 import { updateProduct, createProduct } from "../../../productService.js";
 import { createProductSchema } from "../../../../validators/productValidator.js";
 import { id } from "./common.js";
@@ -434,7 +434,7 @@ defineTool({
     const att = await attachment(a, ctx);
     const f = await attachmentFile(att);
     const out = await queueReferenceLabel({ buffer: f.buffer, originalName: f.originalname, mimeType: f.mimetype, country: a.country, companyId: ctx.companyId, brandId: a.brandId || null });
-    if (out.skipped) throw new ToolError(`A reference label named ${f.originalname} already exists`, "exists");
+    if (out.skipped) throw new ToolError(`A reference label named ${f.originalname} was already uploaded on ${uploadedOn(out.existing.createdAt)}`, "exists");
     return { taskId: out.taskId };
   },
 });

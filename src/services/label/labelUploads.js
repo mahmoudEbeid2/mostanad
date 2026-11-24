@@ -23,30 +23,38 @@ export async function startLabelVerification({ buffer, originalName, mimeType, c
 
 /**
  * POST /reference-labels: one approved label file read into a reference label,
- * in the background. A file whose name is already a reference is skipped.
- * → { taskId } | { skipped: true }
+ * in the background. A file whose name is already a reference of the same
+ * owner (this company, or the global set when companyId is null) is skipped —
+ * another company's file with the same name is not a duplicate.
+ * → { taskId } | { skipped: true, existing: { id, createdAt } }
  */
 export async function queueReferenceLabel({ buffer, originalName, mimeType, country, companyId = null, brandId = null, categoryId = null, manualCategoryName = null }) {
-  const existing = await prisma.referenceLabel.findFirst({ where: { name: originalName } });
-  if (existing) {
-    console.log(`[ReferenceLabels] Skipping ${originalName}, already exists.`);
-    return { skipped: true };
-  }
+  const existing = await prisma.referenceLabel.findFirst({ where: { name: originalName, companyId: companyId ?? null }, select: { id: true, createdAt: true }, orderBy: { createdAt: "asc" } });
+  if (existing) return { skipped: true, existing };
   const task = await prisma.backgroundTask.create({ data: { type: "reference_label_extraction", status: "pending", companyId, brandId } });
-  await referenceQueue().add(
-    "processReferenceLabel",
-    {
-      fileName: originalName,
-      mimeType,
-      fileBufferBase64: buffer.toString("base64"),
-      taskId: task.id,
-      companyId,
-      brandId,
-      country: country.trim(),
-      categoryId,
-      manualCategoryName: manualCategoryName?.trim() || null,
-    },
-    { jobId: task.id, removeOnComplete: true, removeOnFail: 100, attempts: 4, backoff: { type: "exponential", delay: 15000 } }
-  );
+  try {
+    await referenceQueue().add(
+      "processReferenceLabel",
+      {
+        fileName: originalName,
+        mimeType,
+        fileBufferBase64: buffer.toString("base64"),
+        taskId: task.id,
+        companyId,
+        brandId,
+        country: country.trim(),
+        categoryId,
+        manualCategoryName: manualCategoryName?.trim() || null,
+      },
+      { jobId: task.id, removeOnComplete: true, removeOnFail: 100, attempts: 4, backoff: { type: "exponential", delay: 15000 } }
+    );
+  } catch (err) {
+    // A task row no job will ever pick up would sit "pending" forever.
+    await prisma.backgroundTask.update({ where: { id: task.id }, data: { status: "failed", error: `Could not queue the file: ${err.message}` } });
+    throw err;
+  }
   return { taskId: task.id };
 }
+
+/** "2026-11-24" — the day a skipped file was first uploaded, for messages. */
+export const uploadedOn = (date) => new Date(date).toISOString().slice(0, 10);
