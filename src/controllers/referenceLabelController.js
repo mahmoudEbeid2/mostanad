@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import * as referenceLabelService from "../services/referenceLabelService.js";
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../utils/appError.js";
@@ -106,7 +107,14 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
   const skipped = [];
   const failed = [];
 
+  const seen = new Map(); // the same file twice in one upload: queued once
   for (const file of req.files) {
+    const sha = crypto.createHash("sha256").update(file.buffer).digest("hex");
+    if (seen.has(sha)) {
+      skipped.push({ fileName: file.originalname, reason: `same file as ${seen.get(sha)}`, sameAs: seen.get(sha) });
+      continue;
+    }
+    seen.set(sha, file.originalname);
     try {
       const queued = await queueReferenceLabel({ buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype, country, companyId: finalCompanyId, brandId: finalBrandId, categoryId: finalCategoryId, manualCategoryName });
       if (queued.skipped) skipped.push({ fileName: file.originalname, existingId: queued.existing.id, uploadedAt: queued.existing.createdAt });
@@ -117,7 +125,7 @@ export const uploadReferenceLabels = catchAsync(async (req, res, next) => {
     }
   }
 
-  const skippedText = skipped.map((s) => `${s.fileName} (already uploaded on ${uploadedOn(s.uploadedAt)})`).join(", ");
+  const skippedText = skipped.map((s) => `${s.fileName} (${s.sameAs ? `same file as ${s.sameAs}` : `the same file was already uploaded on ${uploadedOn(s.uploadedAt)}`})`).join(", ");
   const failedText = failed.map((f) => `${f.fileName} (${f.reason})`).join(", ");
   if (tasks.length === 0) {
     const parts = [skipped.length && `Skipped: ${skippedText}.`, failed.length && `Failed: ${failedText}.`].filter(Boolean);

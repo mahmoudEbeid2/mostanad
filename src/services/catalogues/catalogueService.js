@@ -46,7 +46,7 @@ function assertFile(file) {
 const baseName = (name) => path.basename(String(name || "catalogue.pdf")).replace(/\.pdf$/i, "").trim().slice(0, 120) || "Catalogue";
 
 /** Stores an opened file as a new version of the catalogue, with its page rows. Nothing is queued. */
-async function addVersion({ catalogue, label, file, info, userId }) {
+export async function addVersion({ catalogue, label, file, info, userId }) {
   const stored = await fileStore.putFile({ companyId: catalogue.companyId, kind: "catalogue_source", buffer: file.buffer, mimeType: "application/pdf", originalName: file.originalname || null });
   // the admin confirms the number convention once per catalogue: a new version inherits the last confirmed one
   const prior = await prisma.catalogueVersion.findFirst({ where: { catalogueId: catalogue.id, numberConvention: { path: ["source"], equals: "admin" } }, orderBy: { createdAt: "desc" }, select: { id: true, numberConvention: true } });

@@ -10,7 +10,7 @@ import { blockEvidence, majorityConvention } from "./numbers.js";
 import { publicAiError } from "../../ai/aiErrorMessage.js";
 import * as fileStore from "../../certificates/storage/fileStore.js";
 import { readPdfLayout } from "../pdfLayout.js";
-import { segment, bodySize, SEGMENTER_VERSION } from "../segmenter.js";
+import { segment, bodySize, SEGMENTER_VERSION, blocksPerFile } from "../segmenter.js";
 import { splitPdf } from "../pages/pdfSplit.js";
 import { selectionForExtraction } from "../pages/pageService.js";
 
@@ -83,7 +83,8 @@ export async function readChosenPages(version) {
   const { pages, pageCount, selection } = await selectionForExtraction(version);
   const kept = new Set(pages);
   const stored = await prisma.catalogueBlock.findMany({ where: { versionId: version.id }, orderBy: { seq: "asc" } });
-  const dropped = stored.filter((b) => !kept.has(b.page) && b.status === "pending" && !b.productId);
+  // page 0: a product imported from a spreadsheet / pasted list (no page) — never dropped here
+  const dropped = stored.filter((b) => b.page > 0 && !kept.has(b.page) && b.status === "pending" && !b.productId);
   const gone = new Set(dropped.map((b) => b.id));
   const surviving = stored.filter((b) => !gone.has(b.id));
   const earlier = new Set([...(version.extraction?.readPages || []).filter((n) => kept.has(n)), ...surviving.map((b) => b.page)]);
@@ -99,7 +100,9 @@ export async function readChosenPages(version) {
     const layout = await readPdfLayout(cutOut.buffer);
     if (layout.pages.length !== newPages.length) throw new CertError("SPLIT_MISMATCH", `The split file has ${layout.pages.length} pages but ${newPages.length} were chosen`, 500);
     body = body || bodySize(layout.pages);
-    const seg = segment(layout, { bodySize: body });
+    // products from files: one product per file, not split by titles
+    const groups = version.extraction?.fileGroups;
+    const seg = groups ? blocksPerFile(layout, cutOut.pageMap, groups, { bodySize: body }) : segment(layout, { bodySize: body });
     fresh = seg.blocks.map((b) => ({ ...b, page: cutOut.pageMap[b.page - 1] }));
     for (const w of seg.warnings) warnings.push({ ...w, ...(w.page ? { page: cutOut.pageMap[w.page - 1] } : {}) });
     split = { pages: cutOut.pageMap.length, bytes: cutOut.buffer.length };
@@ -112,13 +115,16 @@ export async function readChosenPages(version) {
     prisma.catalogueBlock.deleteMany({ where: { id: { in: [...gone] }, versionId: version.id, status: "pending", productId: null } }),
     ...order.map((o, seq) =>
       o.fresh
-        ? prisma.catalogueBlock.create({ data: { versionId: version.id, companyId: version.companyId, seq, kind: o.fresh.kind, page: o.fresh.page, bbox: o.fresh.bbox, title: o.fresh.title, text: o.fresh.text, lines: o.fresh.lines } })
+        ? prisma.catalogueBlock.create({ data: { versionId: version.id, companyId: version.companyId, seq, kind: o.fresh.kind, page: o.fresh.page, bbox: o.fresh.bbox, title: o.fresh.title, text: o.fresh.text, lines: o.fresh.lines, ...(o.fresh.noText ? { extracted: MANUAL_ONLY(o.fresh.title) } : {}) } })
         : prisma.catalogueBlock.update({ where: { id: o.id }, data: { seq } })
     ),
     prisma.catalogueVersion.update({ where: { id: version.id }, data: { extraction, warnings } }),
   ]);
   return { pages, pageCount, selection, kept, split, newPages, droppedPages: [...new Set(dropped.map((b) => b.page))] };
 }
+
+/** A file with no text: nothing for the AI to read — every value is typed (never guessed). */
+const MANUAL_ONLY = (file) => ({ isProduct: true, record: {}, quotes: {}, estimated: {}, flags: [{ code: "manual_entry", message: `${file}: no text in the file — type this product's values` }], category: null, manualOnly: true, extractedAt: new Date().toISOString() });
 
 /** The "." + three digits convention a block is read with. */
 function conventionFor(block, evidence, majority, admin) {

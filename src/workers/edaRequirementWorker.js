@@ -33,8 +33,23 @@ const worker = new Worker(
   "edaRequirementQueue",
   // AI cost ledger: every Gemini call this job makes is billed to its company/user
   (job) => withAiJobContext(job, async () => {
-    const { country, fileBufferBase64, fileName, mimeType, companyId, title, authority, productScope, sourceUrl, documentVersion } = job.data;
+    const { country, fileBufferBase64, fileName, mimeType, companyId, title, authority, productScope, sourceUrl, documentVersion, review, resumeDocumentId } = job.data;
     const taskId = job.opts.jobId;
+
+    // a document whose chain stopped: compile + audit, then it awaits a person's approval
+    if (resumeDocumentId) {
+      await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "processing" } });
+      try {
+        const doc = await regulatoryDocumentService.resumeDocument(resumeDocumentId);
+        await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: { documentId: doc.id, coveragePercent: doc.coveragePercent } } });
+        socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, message: "Rules read — waiting for approval." });
+        return doc;
+      } catch (error) {
+        await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "failed", error: error.message } });
+        socket.emit("job_status_update", { jobId: taskId, companyId, status: "failed", error: error.message });
+        throw error;
+      }
+    }
 
     console.log(`[EDA Requirement Worker] Starting job ${job.id} (Task ${taskId})`);
 
@@ -69,7 +84,8 @@ const worker = new Worker(
 
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "processing", progress: 60, message: "Compiling rules, auditing coverage, and activating..." });
 
-      const activated = await regulatoryDocumentService.ingestAutomatically(document.id);
+      // review: compile + audit only — the person approves from the label review
+      const activated = review ? await regulatoryDocumentService.ingestForReview(document.id) : await regulatoryDocumentService.ingestAutomatically(document.id);
 
       await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", result: activated } });
       socket.emit("job_status_update", { jobId: taskId, companyId, status: "completed", progress: 100, message: `Document ingested and activated (${activated.activationMode} severity).`, result: activated });

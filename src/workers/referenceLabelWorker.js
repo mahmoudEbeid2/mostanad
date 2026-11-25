@@ -135,6 +135,7 @@ const referenceLabelWorker = new Worker(
           manualCategoryName: manualCategoryName || extractedData.category_hint || null,
           country: country || extractedData.accepted_country || null,
           sourceType: "upload",
+          sourceSha256: job.data.sourceSha256 || null,
           fullText,
           extractedData: extractedData
         }

@@ -25,6 +25,16 @@ export const COUNTRIES = [
   ["TR", "تركيا", "Turkey", ["türkiye"]],
   ["IN", "الهند", "India"],
   ["CN", "الصين", "China"],
+  ["MY", "ماليزيا", "Malaysia"],
+  ["ID", "إندونيسيا", "Indonesia", ["اندونيسيا"]],
+  ["PK", "باكستان", "Pakistan"],
+  ["IR", "إيران", "Iran", ["ايران"]],
+  ["NG", "نيجيريا", "Nigeria"],
+  ["KE", "كينيا", "Kenya"],
+  ["ET", "إثيوبيا", "Ethiopia", ["اثيوبيا"]],
+  ["CA", "كندا", "Canada"],
+  ["US", "الولايات المتحدة", "United States", ["usa", "امريكا"]],
+  ["GB", "المملكة المتحدة", "United Kingdom", ["uk", "بريطانيا"]],
 ];
 
 const fold = (s) => String(s ?? "").toLowerCase().replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْـ]/g, "").replace(/\s+/g, " ").trim();
@@ -42,6 +52,18 @@ export function countryIn(text) {
   const t = ` ${fold(text)} `;
   for (const [n, code] of NAMES) if (n.length > 2 && (t.includes(` ${n} `) || t.includes(` ال${n} `))) return code;
   return null;
+}
+
+/**
+ * Every way a stored country may be written for the same country: "EG" → ["EG", "Egypt", "مصر", …].
+ * Rules, labels and references were saved with codes and with names; a lookup by one form
+ * must find the others ("Saudi Arabia" rules for an "SA" label). Unknown text → [text].
+ */
+export function countryVariants(text) {
+  const code = countryCode(text);
+  if (!code) return text ? [String(text).trim()] : [];
+  const [, ar, en, more = []] = COUNTRIES.find((c) => c[0] === code);
+  return [...new Set([code, en, ar, ...more.filter((m) => /[^a-z]/.test(m) || m.length > 3), String(text).trim()])];
 }
 
 export const countryLabel = (code) => {

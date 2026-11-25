@@ -434,7 +434,7 @@ defineTool({
     const att = await attachment(a, ctx);
     const f = await attachmentFile(att);
     const out = await queueReferenceLabel({ buffer: f.buffer, originalName: f.originalname, mimeType: f.mimetype, country: a.country, companyId: ctx.companyId, brandId: a.brandId || null });
-    if (out.skipped) throw new ToolError(`A reference label named ${f.originalname} was already uploaded on ${uploadedOn(out.existing.createdAt)}`, "exists");
+    if (out.skipped) throw new ToolError(`${f.originalname}: the same file was already uploaded as a reference on ${uploadedOn(out.existing.createdAt)} (${out.existing.name})`, "exists");
     return { taskId: out.taskId };
   },
 });

@@ -165,3 +165,31 @@ export function segment(layout, opts = {}) {
 }
 
 const round = (v) => Math.round(v * 10) / 10;
+
+/**
+ * Products from files (productImportService): the pages are the client's own files — label
+ * artwork, product sheets — one product per FILE, not split by titles (a label's panels are
+ * one product). layout: the cut-out PDF's pages; pageMap[i] = the original page of cut-out
+ * page i+1; fileGroups: [{ file, pages: [original page numbers] }]. A file with no text on its
+ * chosen pages gets an empty block (typed by hand) and a warning. → { blocks, warnings }
+ * with `page` in cut-out numbering, like segment().
+ */
+export function blocksPerFile(layout, pageMap, fileGroups, opts = {}) {
+  const pages = layout.pages || [];
+  const titleSize = (opts.bodySize || bodySize(pages)) * TITLE_RATIO;
+  const blocks = [];
+  const warnings = [];
+  for (const g of fileGroups) {
+    const mine = pages.filter((p) => g.pages.includes(pageMap[p.n - 1]));
+    if (!mine.length) continue; // none of its pages is being read now
+    const lines = mine.flatMap((p) => toLines(p.items));
+    if (!lines.length) {
+      warnings.push({ code: "no_text_layer", page: mine[0].n, file: g.file, message: `${g.file} has no text (a scan or a picture) — type its values in the table` });
+      blocks.push({ kind: "product", page: mine[0].n, bbox: { x: 0, y: 0, w: 0, h: 0 }, title: g.file, text: "", lines: [], noText: true });
+      continue;
+    }
+    const b = makeBlock(mine[0], lines, "product", titleSize);
+    blocks.push({ ...b, title: b.title || g.file });
+  }
+  return { blocks, warnings };
+}

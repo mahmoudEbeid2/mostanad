@@ -1,3 +1,4 @@
+import { countryVariants, countryCode } from "../../assistant/countries.js";
 import { assignAiContext } from "../../ai/aiContext.js";
 import crypto from "crypto";
 import { prisma } from "../../../lib/prisma.js";
@@ -28,7 +29,8 @@ export const sha256 = (text) => crypto.createHash("sha256").update(text || "", "
 export async function getApprovedRulesForCountry(country, { companyId } = {}) {
   const documents = await prisma.regulatoryDocument.findMany({
     where: {
-      country,
+      // "SA", "Saudi Arabia" and "السعودية" are one country: documents and labels were saved with either
+      country: { in: countryVariants(country) },
       status: "approved",
       ...(companyId !== undefined && { OR: [{ companyId }, { companyId: null }] }),
     },
@@ -107,7 +109,7 @@ function isOfficialUrl(url, country) {
 
 export const getDocuments = async ({ country, authority, status, page = 1, limit = 20 } = {}) => {
   const where = {};
-  if (country) where.country = country;
+  if (country) where.country = { in: countryVariants(country) };
   if (authority) where.authority = authority;
   if (status) where.status = status;
 
@@ -248,6 +250,120 @@ export const ingestAutomatically = async (documentId) => {
   await auditCoverageFor(documentId);
   return approveDocument(documentId, null);
 };
+
+/**
+ * The "Add rules for <country>" path (label review): compile -> audit, then STOP —
+ * the person looks at the rules found and approves (approveDocument with their id),
+ * and the label is checked again. Uploads from the regulatory page keep the
+ * automatic chain above.
+ */
+export const ingestForReview = async (documentId) => {
+  await compileRulesFor(documentId);
+  return auditCoverageFor(documentId);
+};
+
+/**
+ * GET /regulatory-documents/coverage?country= — where a country's rules stand, for the
+ * label review's "no rules for <country>" warning: the rules in force, each document
+ * (with a stuck one — extracted, never compiled — resumable), and the countries
+ * whose approved rules could be copied as a starting point.
+ */
+export async function rulesForCountry(country, { companyId } = {}) {
+  const variants = countryVariants(country);
+  const scope = companyId !== undefined ? { OR: [{ companyId }, { companyId: null }] } : {};
+  const docs = await prisma.regulatoryDocument.findMany({
+    where: { country: { in: variants }, status: { not: "rejected" }, ...scope },
+    select: { id: true, title: true, authority: true, status: true, coveragePercent: true, coverageAuditedAt: true, createdAt: true, sourceType: true, _count: { select: { rules: { where: { status: { not: "rejected" } } } } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const approved = await prisma.regulatoryDocument.findMany({ where: { status: "approved", ...scope }, select: { country: true, _count: { select: { rules: { where: { status: { not: "rejected" } } } } } } });
+  const byCountry = new Map();
+  for (const d of approved) {
+    const code = countryCode(d.country) || d.country;
+    if (variants.includes(code) || variants.includes(d.country)) continue;
+    byCountry.set(code, (byCountry.get(code) || 0) + d._count.rules);
+  }
+  return {
+    country: countryCode(country) || country,
+    rulesInForce: (await getApprovedRulesForCountry(country, { companyId })).length,
+    documents: docs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      authority: d.authority,
+      status: d.status,
+      rules: d._count.rules,
+      coveragePercent: d.coveragePercent,
+      copied: d.sourceType === "copied",
+      // extracted with no rules or no audit: the automatic chain stopped — it can be resumed
+      stuck: d.status !== "approved" && (d._count.rules === 0 || !d.coverageAuditedAt),
+      awaitingApproval: d.status !== "approved" && d._count.rules > 0 && !!d.coverageAuditedAt,
+      createdAt: d.createdAt,
+    })),
+    copyFrom: [...byCountry.entries()].filter(([, n]) => n > 0).map(([code, rules]) => ({ country: code, rules })),
+  };
+}
+
+/** compile (if it has no rules) + audit a document whose automatic chain stopped; it then awaits approval. */
+export async function resumeDocument(documentId) {
+  const doc = await prisma.regulatoryDocument.findUnique({ where: { id: documentId }, select: { id: true, status: true, _count: { select: { rules: true } } } });
+  if (!doc) throw new AppError("No regulatory document found with that ID", 404);
+  if (doc.status === "approved") throw new AppError("This document is already in force.", 409);
+  if (!doc._count.rules) await compileRulesFor(documentId);
+  return auditCoverageFor(documentId);
+}
+
+/**
+ * POST /regulatory-documents/copy { fromCountry, toCountry } — another country's
+ * approved rules as a STARTING POINT: each approved document is copied for the new
+ * country (same text, so every citation still verifies verbatim against it), with
+ * its rules, marked copied and NOT in force until a person approves it. Nothing
+ * of the source country changes.
+ */
+export async function copyRulesToCountry({ fromCountry, toCountry, companyId = null }) {
+  const to = countryCode(toCountry);
+  if (!to) throw new AppError(`Unknown country: ${toCountry}`, 400);
+  if (countryVariants(fromCountry).includes(to)) throw new AppError("Choose another country to copy from", 400);
+  const sources = await prisma.regulatoryDocument.findMany({
+    where: { country: { in: countryVariants(fromCountry) }, status: "approved", OR: [{ companyId }, { companyId: null }] },
+    include: { rules: { where: { status: { not: "rejected" } } } },
+  });
+  if (!sources.length) throw new AppError(`${fromCountry} has no approved rules to copy`, 404);
+  const created = [];
+  for (const src of sources) {
+    const doc = await prisma.$transaction(async (tx) => {
+      const d = await tx.regulatoryDocument.create({
+        data: {
+          title: `${src.title || src.authority || "Rules"} (copied from ${countryCode(src.country) || src.country})`,
+          authority: src.authority,
+          country: to,
+          productScope: src.productScope,
+          sourceType: "copied",
+          sourceUrl: src.sourceUrl,
+          sourceIsOfficial: false, // another country's text is not an official source for this one
+          documentVersion: src.documentVersion,
+          retrievedAt: new Date(),
+          documentHash: sha256(`${src.documentHash || src.id}|copied-to|${to}|${companyId || ""}`),
+          status: "extracted",
+          companyId,
+          extractedText: src.extractedText,
+          extractedData: src.extractedData ?? undefined,
+          labelFieldSchema: src.labelFieldSchema ?? undefined,
+          clauseTotal: src.clauseTotal,
+          clauseCovered: src.clauseCovered,
+          coveragePercent: src.coveragePercent,
+          uncoveredClauses: src.uncoveredClauses ?? undefined,
+          coverageAuditedAt: src.coverageAuditedAt,
+        },
+      });
+      for (const r of src.rules) {
+        await tx.regulatoryRule.create({ data: { documentId: d.id, ruleKey: r.ruleKey, ruleType: r.ruleType, severity: r.severity, targetPath: r.targetPath, appliesWhen: r.appliesWhen ?? undefined, constraint: r.constraint, description: r.description, citation: r.citation, confidence: r.confidence, status: "active", autoFixable: r.autoFixable } });
+      }
+      return d;
+    });
+    created.push({ id: doc.id, title: doc.title, rules: src.rules.length });
+  }
+  return { country: to, documents: created };
+}
 
 /**
  * A human reviewer clearing one previously-uncovered clause as "not actually a

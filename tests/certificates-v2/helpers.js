@@ -53,10 +53,10 @@ export async function api(method, url, headers = {}, body) {
   return { status: res.status, data, buffer, headers: res.headers };
 }
 
-export function form(fields = {}, file) {
+export function form(fields = {}, ...files) {
   const fd = new FormData();
   for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) fd.append(k, String(v));
-  if (file) fd.append(file.field || "file", new Blob([file.buffer], { type: file.type || "application/octet-stream" }), file.name);
+  for (const file of files) if (file) fd.append(file.field || "file", new Blob([file.buffer], { type: file.type || "application/octet-stream" }), file.name);
   return fd;
 }
 

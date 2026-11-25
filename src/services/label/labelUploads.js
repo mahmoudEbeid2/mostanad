@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Queue } from "bullmq";
 import { getRedisConfig } from "../../lib/redis.js";
 import { prisma } from "../../lib/prisma.js";
@@ -29,8 +30,11 @@ export async function startLabelVerification({ buffer, originalName, mimeType, c
  * → { taskId } | { skipped: true, existing: { id, createdAt } }
  */
 export async function queueReferenceLabel({ buffer, originalName, mimeType, country, companyId = null, brandId = null, categoryId = null, manualCategoryName = null }) {
-  const existing = await prisma.referenceLabel.findFirst({ where: { name: originalName, companyId: companyId ?? null }, select: { id: true, createdAt: true }, orderBy: { createdAt: "asc" } });
-  if (existing) return { skipped: true, existing };
+  // a duplicate is the SAME FILE for the same owner — a corrected label under the same name is new,
+  // and the same file for another company is that company's own reference
+  const sourceSha256 = crypto.createHash("sha256").update(buffer).digest("hex");
+  const existing = await prisma.referenceLabel.findFirst({ where: { sourceSha256, companyId: companyId ?? null }, select: { id: true, createdAt: true, name: true }, orderBy: { createdAt: "asc" } });
+  if (existing) return { skipped: true, existing, sourceSha256 };
   const task = await prisma.backgroundTask.create({ data: { type: "reference_label_extraction", status: "pending", companyId, brandId } });
   try {
     await referenceQueue().add(
@@ -45,6 +49,7 @@ export async function queueReferenceLabel({ buffer, originalName, mimeType, coun
         country: country.trim(),
         categoryId,
         manualCategoryName: manualCategoryName?.trim() || null,
+        sourceSha256,
       },
       { jobId: task.id, removeOnComplete: true, removeOnFail: 100, attempts: 4, backoff: { type: "exponential", delay: 15000 } }
     );
@@ -53,7 +58,7 @@ export async function queueReferenceLabel({ buffer, originalName, mimeType, coun
     await prisma.backgroundTask.update({ where: { id: task.id }, data: { status: "failed", error: `Could not queue the file: ${err.message}` } });
     throw err;
   }
-  return { taskId: task.id };
+  return { taskId: task.id, sourceSha256 };
 }
 
 /** "2026-11-24" — the day a skipped file was first uploaded, for messages. */

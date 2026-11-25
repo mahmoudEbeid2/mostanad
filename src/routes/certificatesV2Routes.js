@@ -1,4 +1,5 @@
 import express from "express";
+import * as direct from "../controllers/directCertificatesController.js";
 import multer from "multer";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
@@ -128,6 +129,8 @@ router.post("/invoices/:id/manual", guard("update_invoices"), validate(invoiceSc
 // ── generation + generated certificates (§10–§12) ───────────────────────────
 router.get("/invoices/:id/generation-plan", guard("read_invoices"), validate(invoiceSchemas.byId), certificates.generationPlan); // plan §20 I19
 router.post("/invoices/:id/generate", guard("create_certificates"), validate(invoiceSchemas.generate), certificates.generate);
+// certificates for several products, no invoice (one direct request; a per-invoice template covers them all)
+router.post("/certificates/for-products", guard("create_certificates"), direct.postForProducts);
 // certificate data check (plan.md §6, A2)
 router.get("/invoices/:id/data-needs", guard("read_invoices"), validate(invoiceSchemas.byId), certificateAi.getDataNeeds);
 router.post("/invoices/:id/data-needs", guard("update_invoices"), validate(dataNeedSchemas.compute), certificateAi.computeDataNeeds);

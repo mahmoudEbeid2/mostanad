@@ -1,9 +1,10 @@
 // POST /reference-labels with several files (client report 24 Nov: "task is
 // not defined" after the upload moved into queueReferenceLabel). Every file
 // gets its own result: queued with a taskId, skipped because the same company
-// already has a reference with that name (with the date), or failed. Another
-// company's file of the same name is not a duplicate. A company caller always
+// already has that same FILE as a reference (its content, not its name — with the
+// date), or failed. Another company's copy of the file is not a duplicate. A company caller always
 // uploads into its own company (here and on POST /eda-requirements). Needs `npm run dev:test`.
+import crypto from "crypto";
 import { prisma } from "../src/lib/prisma.js";
 import { BYPASS } from "./testBypass.js";
 
@@ -46,9 +47,12 @@ const companies = [];
 // A tiny valid PNG — the worker never reads it here (Gemini is off in tests).
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
+// each named file has its own bytes (the PNG + its name after IEND): a duplicate is the same content
+const bytesOf = (name) => Buffer.concat([PNG, Buffer.from(name)]);
+const sha = (name) => crypto.createHash("sha256").update(bytesOf(name)).digest("hex");
 function form(names, fields = {}) {
   const f = new FormData();
-  for (const n of names) f.append("files", new Blob([PNG], { type: "image/png" }), n);
+  for (const n of names) f.append("files", new Blob([bytesOf(n)], { type: "image/png" }), n);
   f.append("country", "Egypt");
   for (const [k, v] of Object.entries(fields)) f.append(k, v);
   return f;
@@ -71,20 +75,20 @@ async function run() {
   const rows = await prisma.backgroundTask.findMany({ where: { id: { in: tasks.map((t) => t.taskId) } } });
   assert("both tasks exist for the chosen company", rows.length === 2 && rows.every((t) => t.companyId === coA.id && t.type === "reference_label_extraction"), rows.map((t) => t.companyId));
 
-  // a name company A already has is skipped, with the date; the other file is queued
-  const existing = await prisma.referenceLabel.create({ data: { name: one, companyId: coA.id, country: "Egypt", createdAt: new Date("2026-11-20T10:00:00Z") } });
+  // a file company A already has is skipped, with the date; the other file is queued
+  const existing = await prisma.referenceLabel.create({ data: { name: one, companyId: coA.id, country: "Egypt", sourceSha256: sha(one), createdAt: new Date("2026-11-20T10:00:00Z") } });
   r = await call("POST", "/reference-labels", asAdmin, form([one, two], { companyId: coA.id }));
   const skipped = r.data?.data?.skipped || [];
   assert("duplicate in the same company → skipped with its date, the other queued", r.status === 202 && r.data.data.tasks.length === 1 && r.data.data.tasks[0].fileName === two && skipped.length === 1 && skipped[0].fileName === one && skipped[0].existingId === existing.id, r.data);
-  assert("the message names the skipped file and when it was uploaded", /one-\d+\.png \(already uploaded on 2026-11-20\)/.test(r.data?.message || ""), r.data?.message);
+  assert("the message names the skipped file and when it was uploaded", /one-\d+\.png \(the same file was already uploaded on 2026-11-20\)/.test(r.data?.message || ""), r.data?.message);
 
-  // the same name in another company is not a duplicate
+  // the same file in another company is not a duplicate
   r = await call("POST", "/reference-labels", asAdmin, form([one], { companyId: coB.id }));
-  assert("same name, another company → queued", r.status === 202 && r.data.data.tasks.length === 1 && (r.data.data.skipped || []).length === 0, r.data);
+  assert("same file, another company → queued", r.status === 202 && r.data.data.tasks.length === 1 && (r.data.data.skipped || []).length === 0, r.data);
 
   // every file a duplicate → 400 that says which and when
   r = await call("POST", "/reference-labels", asAdmin, form([one], { companyId: coA.id }));
-  assert("all duplicates → 400 naming the file and date", r.status === 400 && /one-\d+\.png \(already uploaded on 2026-11-20\)/.test(r.data?.message || ""), r.data);
+  assert("all duplicates → 400 naming the file and date", r.status === 400 && /one-\d+\.png \(the same file was already uploaded on 2026-11-20\)/.test(r.data?.message || ""), r.data);
   assert("…with the per-file lists for the upload screen", r.data?.data?.tasks?.length === 0 && r.data.data.skipped?.[0]?.fileName === one && r.data.data.skipped[0].uploadedAt, r.data);
 
   // a company caller cannot upload into another company

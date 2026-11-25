@@ -23,6 +23,20 @@ const PRODUCT_FIELDS = ["name", "productCode", "physicalForm", "description", "i
 const LIST_FIELDS = ["targetSpecies", "userSafety"];
 const EDITABLE = new Set([...PRODUCT_FIELDS, ...LIST_FIELDS]);
 const BLOCKING_FLAGS = new Set(["ambiguous_number", "no_name"]);
+const COMPOSITION_FIELDS = new Set(["compositionBasis", "activeIngredients"]);
+
+/** "Vitamin A: 10.000.000 I.U." lines (or [{ name, amountRaw }]) → [{ name, amountRaw }] — the amount as typed. */
+export function ingredientsOf(value) {
+  const list = Array.isArray(value) ? value : String(value).split(/\r?\n/);
+  return list
+    .map((x) => {
+      if (x && typeof x === "object") return { name: String(x.name || "").trim(), amountRaw: x.amountRaw ? String(x.amountRaw).trim() : null };
+      const m = String(x).match(/^\s*(.+?)\s*(?::|\t|\s{2,}|=)\s*(.+?)\s*$/);
+      return m ? { name: m[1], amountRaw: m[2] } : { name: String(x).trim(), amountRaw: null };
+    })
+    .filter((x) => x.name)
+    .slice(0, 80);
+}
 
 async function loadBlock(id, companyScope) {
   const block = await prisma.catalogueBlock.findUnique({ where: { id }, include: { version: { include: { catalogue: true } } } });
@@ -85,8 +99,13 @@ export function productFromBlock(block, { categoryId = null, brandId = null } = 
     }
   }
   if (rec.subtitle && !data.description) put("description", rec.subtitle, C("subtitle", ex.quotes?.subtitle));
-  if (rec.activeIngredients?.length) {
-    data.activeIngredients = rec.activeIngredients.map(({ name, amountRaw, amount, unit, basis }) => ({ name, concentration: amountRaw ?? null, amountRaw: amountRaw ?? null, amount: amount ?? null, unit: unit ?? null, basis: basis ?? null }));
+  const basis = manual.compositionBasis?.value ?? rec.compositionBasis ?? null;
+  if (manual.activeIngredients?.value?.length) {
+    // typed by a person (products from files): kept exactly as typed, the person's provenance
+    data.activeIngredients = manual.activeIngredients.value.map(({ name, amountRaw }) => ({ name, concentration: amountRaw ?? null, amountRaw: amountRaw ?? null, amount: null, unit: null, basis }));
+    prov.activeIngredients = { tier: "manual", by: manual.activeIngredients.by || null, at: manual.activeIngredients.at || at };
+  } else if (rec.activeIngredients?.length) {
+    data.activeIngredients = rec.activeIngredients.map(({ name, amountRaw, amount, unit, basis: b }) => ({ name, concentration: amountRaw ?? null, amountRaw: amountRaw ?? null, amount: amount ?? null, unit: unit ?? null, basis: b ?? basis }));
     prov.activeIngredients = { ...C("activeIngredients", quoteOf(ex.quotes?.activeIngredients)), quotes: (ex.quotes?.activeIngredients || []).map((q) => q?.quote) };
   }
   if (rec.specifications?.length) {
@@ -107,13 +126,13 @@ export function productFromBlock(block, { categoryId = null, brandId = null } = 
  */
 export const onReadPages = (version) => {
   const pages = Array.isArray(version.extraction?.pages) ? new Set(version.extraction.pages) : null;
-  return (b) => !pages || pages.has(b.page) || b.status !== "pending" || !!b.productId;
+  return (b) => !pages || b.page === 0 || pages.has(b.page) || b.status !== "pending" || !!b.productId; // page 0: a spreadsheet / pasted row
 };
 
 /** The same rule as a Prisma filter. */
 export async function readPagesWhere(versionId) {
   const v = await prisma.catalogueVersion.findUnique({ where: { id: versionId }, select: { extraction: true } });
-  return Array.isArray(v?.extraction?.pages) ? { OR: [{ page: { in: v.extraction.pages } }, { status: { not: "pending" } }, { productId: { not: null } }] } : {};
+  return Array.isArray(v?.extraction?.pages) ? { OR: [{ page: { in: [0, ...v.extraction.pages] } }, { status: { not: "pending" } }, { productId: { not: null } }] } : {};
 }
 
 export async function reviewVersion(versionId, companyScope) {
@@ -162,7 +181,14 @@ export async function editBlock(blockId, companyScope, { values = {}, categoryId
   };
   const ex = { ...base, manual: { ...(base.manual || {}) } };
   const at = new Date().toISOString();
+  // products from the client's own files: the composition may be typed too (recorded as the person's)
+  const imported = block.version.extraction?.source === "product_files";
   for (const [field, value] of Object.entries(values)) {
+    if (imported && COMPOSITION_FIELDS.has(field)) {
+      if (value === null || value === "" || (Array.isArray(value) && !value.length)) delete ex.manual[field];
+      else ex.manual[field] = { value: field === "activeIngredients" ? ingredientsOf(value) : String(value).trim().slice(0, 300), by: userId, at };
+      continue;
+    }
     if (!EDITABLE.has(field)) throw new CertError("NOT_EDITABLE", `"${field}" can't be typed here (amounts and specifications come from the catalogue only)`, 400);
     if (value === null || value === "" || (Array.isArray(value) && !value.length)) delete ex.manual[field];
     else ex.manual[field] = { value: LIST_FIELDS.includes(field) ? (Array.isArray(value) ? value : String(value).split(/\n|,\s*/)).map((s) => String(s).trim()).filter(Boolean) : String(value).trim().slice(0, 4000), by: userId, at };
@@ -180,7 +206,7 @@ export async function editBlock(blockId, companyScope, { values = {}, categoryId
 /** The category a product gets: the admin's pick, else an EXISTING category whose name is the proposal. Never a new one. */
 const categoryFor = (ex) => (ex?.category && "chosenCategoryId" in ex.category ? ex.category.chosenCategoryId : ex?.category?.existingCategoryId) || null;
 
-async function applyOne(block, userId, mctx = null) {
+export async function applyOne(block, userId, mctx = null) {
   if (block.kind !== "product") throw new CertError("NOT_A_PRODUCT_BLOCK", "Only a product block can be accepted", 409);
   if (block.status !== "pending") throw new CertError("BLOCK_DECIDED", `This block is already ${block.status}`, 409);
   const ex = block.extracted;
