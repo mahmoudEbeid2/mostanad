@@ -5,14 +5,17 @@ import { prisma } from "../../../../lib/prisma.js";
 import { id } from "./common.js";
 import { loadAttachment, attachmentFile } from "../../attachments.js";
 import { listSizes, getLabelLayout, layOut, saveLabelLayout } from "../../../label/layout/layoutService.js";
-import { uploadLabelFile, getUpload, confirmRebuild, REVIEW_FIELDS } from "../../../label/layout/labelUploadService.js";
+import { uploadLabelFile, getUpload, confirmRebuild, REVIEW_FIELDS, labelFileType } from "../../../label/layout/labelUploadService.js";
+import { designsOfLabel, previewResize, saveResize, previewFile, fitLinesAr } from "../../../label/layout/designResizeService.js";
 import { SIZE_PRESETS, sizeLabel, resolveLayout } from "../../../label/layout/layoutSpec.js";
 
 // Label size from the chat ("same label, other dimensions"): read the sizes and
-// a label's layout; resize a stored label; upload a label file and resize it
-// (rebuild — read into a label, the person confirms the fields, then laid out —
-// or scale). Every write is behind a confirmation card. The finished card links
-// to the label's Layout & size tab and carries the layout (PDF + preview).
+// a label's layout; resize a stored label; upload a label file and resize it.
+// The default always keeps the original design (smart: the file's own artwork,
+// fonts and words at the new size). "A new label from the text (without the
+// design)" — rebuild for a file, text for a stored label — only when the user
+// asks for it. Every write is behind a confirmation card. The finished card
+// carries the layout (preview + PDF) and links to the label's Layout & size tab.
 
 const userIdOf = (ctx) => (ctx.actor.kind === "user" ? ctx.actor.id : null);
 const PRESET_KEYS = SIZE_PRESETS.map((p) => p.key);
@@ -28,6 +31,10 @@ function needSize(a) {
 }
 const layoutResult = (l, labelId) => ({ id: l.id, version: l.version, size: l.size, widthMm: l.widthMm, heightMm: l.heightMm, fits: l.fit?.fits !== false, hasPdf: l.hasPdf, previewUrl: l.previewUrl, pdfUrl: l.pdfUrl, fit: fitSummary(l.fit), labelId });
 function fitSummary(fit = {}) {
+  if (fit.mode === "smart") {
+    const lines = fitLinesAr(fit);
+    return { mode: "smart", fits: fit.fits, scalePct: fit.scalePct, smallestTextPt: fit.smallestTextPt, minFontPt: fit.minFontPt, overflow: [], warnings: lines.filter((l) => l.startsWith("⚠") || l.startsWith("اقتراح")), summary: lines };
+  }
   if (fit.mode === "scale") return { scalePct: fit.scalePct, smallestTextPt: fit.smallestTextPt, textMeasurable: fit.textMeasurable, warnings: fit.warnings };
   return { fits: fit.fits, fontPt: fit.fontPt, columns: fit.columns, smallestTextPt: fit.smallestTextPt ?? null, overflow: (fit.sections || []).filter((s) => s.status === "overflow").map((s) => s.message), warnings: fit.warnings || [] };
 }
@@ -70,13 +77,34 @@ defineTool({
   permissions: ["update_labels"],
   label: "Changing the label's size",
   description:
-    "Proposes laying a stored label out at a new size (the same content, re-laid out): preset (e.g. 100x120 for 10×12 cm) or widthMm + heightMm. The card shows old size → new size, whether it fits, the font used and the smallest text. " +
-    "Text is never cut or set below the minimum: if it doesn't fit, the card says which section needs how many mm more and no PDF is made. Saved as a new layout version with its PDF.",
-  args: z.object({ labelId: id("label"), ...sizeArgs }),
+    "Proposes a stored label at a new size: preset (e.g. 100x120 for 10×12 cm) or widthMm + heightMm. " +
+    "mode smart (the default when the label has its design file): the label's ORIGINAL design at the new size — same artwork, fonts and words; the card shows whether it fits, the scale and the smallest text. " +
+    "mode text: a NEW label laid out from the label's text WITHOUT the original design — only when the user asks for a new label from the text, or the label has no design file. " +
+    "Text is never cut or set below the minimum: if it doesn't fit, the card says what needs more room and no PDF is made. Saved as a new version with its PDF.",
+  args: z.object({ labelId: id("label"), mode: z.enum(["smart", "text"]).optional().describe("smart = keep the design (default when there is a design file); text = new label from the text, without the design"), ...sizeArgs }),
   guard: (a) => needSize(a),
   preview: async (a, ctx) => {
     needSize(a);
     await labelOf(a.labelId, ctx);
+    const [design] = await designsOfLabel(a.labelId, ctx.companyId);
+    const mode = a.mode || (design ? "smart" : "text");
+    if (mode === "smart") {
+      if (!design) throw new ToolError("This label has no design file yet. Ask the user to attach the label's PDF or .ai design (upload_label_and_resize with labelId), or — only if they want it — a new label from the text (mode text).", "no_design");
+      const target = resolveLayout(sizeOf(a));
+      const [r] = (await previewResize(design.uploadId, { sizes: [{ widthMm: target.widthMm, heightMm: target.heightMm }], minFontPt: a.minFontPt }, { companyId: ctx.companyId })).results;
+      return {
+        title: `${design.originalName || "الليبل"} → ${r.size}`,
+        summary: r.fit.fits ? `نفس التصميم الأصلي على مقاس ${r.size}، ويُحفظ كنسخة جديدة مع ملف PDF.` : `لا يتّسع على ${r.size} — لن يُعمل PDF. ${fitLinesAr(r.fit).filter((l) => l.startsWith("اقتراح")).join(" ")}`,
+        runLabel: "احفظ المقاس",
+        details: [
+          { label: "الطريقة", value: "تغيير المقاس مع الحفاظ على التصميم" },
+          { label: "المقاس", value: `${design.layouts[0]?.size || "الأصلي"} → ${r.size}` },
+          ...fitLinesAr(r.fit).map((l, i) => ({ label: i ? "" : "النتيجة", value: l })),
+        ],
+        aiCalls: null,
+        missing: [],
+      };
+    }
     const current = await getLabelLayout(a.labelId, { companyId: ctx.companyId });
     const label = await prisma.generatedLabel.findUnique({ where: { id: a.labelId }, select: { id: true, companyId: true, country: true, language: true, labelData: true, currentVersion: true } });
     const base = current.current ? { ...current.current.settings, widthMm: current.current.widthMm, heightMm: current.current.heightMm } : undefined;
@@ -100,6 +128,13 @@ defineTool({
   },
   run: async (a, ctx) => {
     await labelOf(a.labelId, ctx);
+    const [design] = await designsOfLabel(a.labelId, ctx.companyId);
+    if ((a.mode || (design ? "smart" : "text")) === "smart") {
+      if (!design) throw new ToolError("This label has no design file yet.", "no_design");
+      const target = resolveLayout(sizeOf(a));
+      const { layouts } = await saveResize(design.uploadId, { sizes: [{ widthMm: target.widthMm, heightMm: target.heightMm }], minFontPt: a.minFontPt }, { companyId: ctx.companyId, userId: userIdOf(ctx) });
+      return { labelLayout: layoutResult(layouts[0], a.labelId), link: `/labels/detail/${a.labelId}?tab=layout`, ref: { type: "label", id: a.labelId, name: `label ${layouts[0].size}` } };
+    }
     const l = await saveLabelLayout(a.labelId, sizeOf(a), { companyId: ctx.companyId, userId: userIdOf(ctx) });
     return { labelLayout: layoutResult(l, a.labelId), link: `/labels/detail/${a.labelId}?tab=layout`, ref: { type: "label", id: a.labelId, name: `label ${l.size}` } };
   },
@@ -112,13 +147,15 @@ defineTool({
   permissions: ["update_labels"],
   label: "Uploading the label",
   description:
-    "Proposes resizing a label FILE the user attached (PDF, PNG or JPEG) — only when the user asks to change its size; a label they only want to keep or use as a reference goes to upload_label. " +
-    "mode: scale (default — the original design placed on the new page, proportions kept; reports the scale and the smallest text size; stretch only if the user insists, it distorts the text) " +
-    "or rebuild (only on the user's explicit choice — the text is read by AI and re-typed in a plain layout WITHOUT the original design; the user checks the fields, then it is laid out at the new size). " +
-    "Default scale. After a rebuild upload finishes, call get_label_upload, show the user the fields read and the empty ones, and ask them to confirm before confirm_label_upload.",
+    "Proposes resizing a label FILE the user attached (PDF, Illustrator .ai, PNG or JPEG) — only when the user asks to change its size; a label they only want to keep or use as a reference goes to upload_label. " +
+    "mode: smart (DEFAULT — the original design at the new size: same artwork, fonts and words; bands stretch, logos keep their proportions, text re-wraps only when needed and never goes under the minimum; the card shows the result before anything is saved) " +
+    "· scale (the whole file placed on the new page, proportions kept, white around it; stretch only if the user insists, it distorts the text) " +
+    "· rebuild (ONLY when the user explicitly asks for a new label from the text — the text is read by AI and re-typed in a plain layout WITHOUT the original design; the user checks the fields, then it is laid out). " +
+    "A PNG/JPEG can only be scaled whole. labelId: the label this design belongs to, when the user is on a label. After a rebuild upload finishes, call get_label_upload, show the user the fields read and the empty ones, and ask them to confirm before confirm_label_upload.",
   args: z.object({
     attachmentId: z.string().uuid().describe("The id of the label file attached in this conversation"),
-    mode: z.enum(["rebuild", "scale"]).optional(),
+    mode: z.enum(["smart", "scale", "rebuild"]).optional(),
+    labelId: z.string().uuid().optional().describe("Optional: the stored label this design file belongs to"),
     ...sizeArgs,
     stretch: z.boolean().optional().describe("scale only: fill the page, distorting the text (only on the user's explicit request)"),
     productId: z.string().uuid().optional().describe("Optional: the product the label is for (search_products)"),
@@ -128,12 +165,39 @@ defineTool({
   preview: async (a, ctx) => {
     needSize(a);
     const att = await loadAttachment(a.attachmentId, { conversationId: ctx.conversationId, companyId: ctx.companyId });
-    if (!["application/pdf", "image/png", "image/jpeg"].includes(att.mimeType)) throw new ToolError(`${att.name} is ${att.mimeType}; a label to resize must be a PDF, PNG or JPEG`, "bad_type");
+    const isAi = /\.ai$/i.test(att.name || "");
+    if (!["application/pdf", "image/png", "image/jpeg"].includes(att.mimeType) && !isAi) throw new ToolError(`${att.name} is ${att.mimeType}; a label to resize must be a PDF, .ai, PNG or JPEG`, "bad_type");
     const target = resolveLayout(sizeOf(a));
     const company = await prisma.company.findUnique({ where: { id: ctx.companyId }, select: { name: true } });
     const product = a.productId ? await prisma.product.findFirst({ where: { id: a.productId, companyId: ctx.companyId }, select: { name: true } }) : null;
     if (a.productId && !product) throw new ToolError("Product not found!", "not_found");
-    const mode = a.mode || "scale";
+    const mode = a.mode || "smart";
+    if (a.labelId) await labelOf(a.labelId, ctx);
+    if (mode === "smart") {
+      const file = await attachmentFile(att);
+      let type;
+      try {
+        type = labelFileType(att.mimeType, att.name, file.buffer);
+      } catch (err) {
+        throw new ToolError(err.message, "bad_type");
+      }
+      const r = type === "application/pdf" ? (await previewFile(file.buffer, { sizes: [{ widthMm: target.widthMm, heightMm: target.heightMm }], minFontPt: a.minFontPt }, { companyId: ctx.companyId, country: a.country || null })).results[0] : null;
+      return {
+        title: `${att.name} → ${sizeLabel(target)}`,
+        summary: !r ? `صورة: تُكبَّر/تُصغَّر كما هي (بنفس النسب) على مقاس ${sizeLabel(target)}.` : r.fit.fits ? `نفس التصميم الأصلي على مقاس ${sizeLabel(target)}، بنفس الكلمات والأرقام، ويُحفظ مع ملف PDF.` : `لا يتّسع على ${sizeLabel(target)} — لن يُعمل PDF. ${fitLinesAr(r.fit).filter((l) => l.startsWith("اقتراح")).join(" ")}`,
+        runLabel: "غيّر المقاس",
+        details: [
+          { label: "File", value: att.name },
+          { label: "Mode", value: "تغيير المقاس مع الحفاظ على التصميم" },
+          { label: "Size", value: sizeLabel(target) },
+          { label: "Company", value: company?.name || ctx.companyId },
+          ...(product ? [{ label: "Product", value: product.name }] : []),
+          ...(r ? fitLinesAr(r.fit).map((l, i) => ({ label: i ? "" : "النتيجة", value: l })) : []),
+        ],
+        aiCalls: null,
+        missing: [],
+      };
+    }
     return {
       title: `Resize ${att.name} to ${sizeLabel(target)}`,
       summary:
@@ -143,7 +207,7 @@ defineTool({
       runLabel: mode === "rebuild" ? "Read the label" : "Scale",
       details: [
         { label: "File", value: att.name },
-        { label: "Mode", value: mode === "rebuild" ? "Rebuild — re-typed without the original design" : a.stretch ? "Scale — stretch to fill (distorts text)" : "Keep the original design, just scale" },
+        { label: "Mode", value: mode === "rebuild" ? "ليبل جديد من النص (بدون التصميم)" : a.stretch ? "Scale — stretch to fill (distorts text)" : "Keep the original design, just scale" },
         { label: "Size", value: sizeLabel(target) },
         { label: "Company", value: company?.name || ctx.companyId },
         ...(product ? [{ label: "Product", value: product.name }] : []),
@@ -155,8 +219,14 @@ defineTool({
   run: async (a, ctx) => {
     const att = await loadAttachment(a.attachmentId, { conversationId: ctx.conversationId, companyId: ctx.companyId });
     const file = await attachmentFile(att);
-    const out = await uploadLabelFile({ buffer: file.buffer, originalName: att.name, mimeType: att.mimeType, companyId: ctx.companyId, productId: a.productId || null, mode: a.mode || "scale", layout: sizeOf(a), stretch: !!a.stretch, country: a.country || null, userId: userIdOf(ctx) });
-    if (out.layout) return { uploadId: out.upload.id, labelLayout: layoutResult(out.layout, null), note: "Scaled. Tell the user the scale %, the smallest text size (or that it can't be measured) and any warning." };
+    const out = await uploadLabelFile({ buffer: file.buffer, originalName: att.name, mimeType: att.mimeType, companyId: ctx.companyId, productId: a.productId || null, labelId: a.labelId || null, mode: a.mode || "smart", layout: sizeOf(a), stretch: !!a.stretch, country: a.country || null, userId: userIdOf(ctx) });
+    if (out.layout)
+      return {
+        uploadId: out.upload.id,
+        labelLayout: layoutResult(out.layout, a.labelId || null),
+        ...(a.labelId ? { link: `/labels/detail/${a.labelId}?tab=layout` } : {}),
+        note: out.layout.mode === "smart" ? "Done. Tell the user in their language: whether it fits, the smallest text size, any warning or suggestion (labelLayout.fit.summary); the preview and PDF are on the card." : "Scaled. Tell the user the scale %, the smallest text size (or that it can't be measured) and any warning.",
+      };
     return { uploadId: out.upload.id, taskId: out.taskId, note: "Reading the label. When it finishes, call get_label_upload and show the user the fields read and the empty ones; ask them to confirm (or correct) before confirm_label_upload." };
   },
 });

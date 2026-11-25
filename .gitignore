@@ -50,3 +50,5 @@ uploads/certificates/
 uploads/catalogue-pages/
 uploads/intake_tmp/
 .test-bypass-secret
+/reports/
+__pycache__/

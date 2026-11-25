@@ -7,9 +7,13 @@ import { resolveLayout, sizeLabel, DEFAULT_MIN_FONT_PT } from "./layoutSpec.js";
 import { scaleToPage, pageSizeMm } from "./labelPdf.js";
 import { layoutView, saveLabelLayout, minFontRule } from "./layoutService.js";
 import { textOf, normLine } from "./labelHtml.js";
+import { saveResize } from "./designResizeService.js";
 
 // "Upload a label and change its size" — labels the client already has as files.
-//   scale (the default): the file itself is put on the new page (proportions
+//   smart (the default): the file's own design at the new size, re-arranged when
+//     the proportions change (designResizeService) — a PNG/JPEG can only be
+//     scaled as a whole, so an image is scaled.
+//   scale: the file itself is put on the new page (proportions
 //     kept, centred) — the artwork is kept — with its scale, the smallest text
 //     size after scaling (PDF text layer only) and a warning below the minimum;
 //     "stretch" only with an explicit warning.
@@ -21,7 +25,22 @@ import { textOf, normLine } from "./labelHtml.js";
 // Files are StoredFiles of the upload's company; every read is tenant-scoped.
 
 export const UPLOAD_TYPES = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg" };
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // uploadLabel (multer) refuses larger first
+export const MAX_UPLOAD_BYTES = 40 * 1024 * 1024; // print-ready designs are large; uploadLabel (multer) has the same limit
+export const UPLOAD_MODES = ["smart", "scale", "rebuild"];
+const AI_TYPES = ["application/postscript", "application/illustrator", "application/vnd.adobe.illustrator", "application/octet-stream"];
+
+/**
+ * An Illustrator file is accepted when it was saved PDF-compatible (Illustrator's
+ * default): it is then a PDF, and is stored and read as one. → the mime type to use
+ */
+export function labelFileType(mimeType, originalName, buffer) {
+  const isAi = /\.ai$/i.test(originalName || "") && (AI_TYPES.includes(mimeType) || mimeType === "application/pdf");
+  if (isAi || (mimeType === "application/pdf" && buffer?.length)) {
+    if (buffer?.subarray(0, 1024).includes("%PDF")) return "application/pdf";
+    throw new AppError(isAi ? 'This Illustrator file has no PDF inside it. In Illustrator, save it with "Create PDF Compatible File" on, or export a PDF.' : "This file is not a readable PDF", 400);
+  }
+  return mimeType;
+}
 const STRETCH_WARNING = "Stretched to fill: the text is distorted (wider or taller than designed). Check it is still legible before printing.";
 
 /** The labelData fields an extraction reads (labelExtractor's extractionMeta keys → labelData paths). */
@@ -44,24 +63,49 @@ async function loadUpload(id, companyId) {
  * scale: done now (a LabelLayout row with the PDF). rebuild: a background
  * extraction (BackgroundTask + labelQueue); the label then waits for review.
  */
-export async function uploadLabelFile({ buffer, originalName, mimeType, companyId, productId = null, mode = "scale", layout: layoutInput = {}, stretch = false, country = null, userId = null }) {
+export async function uploadLabelFile({ buffer, originalName, mimeType, companyId, productId = null, labelId = null, mode = "smart", layout: layoutInput = {}, sizes = null, resize = {}, stretch = false, country = null, userId = null }) {
   if (!companyId) throw new AppError("Choose the company the label belongs to", 400);
-  if (!UPLOAD_TYPES[mimeType]) throw new AppError("Upload a PDF, PNG or JPEG label", 400);
   if (!buffer?.length) throw new AppError("The file is empty", 400);
-  if (buffer.length > MAX_UPLOAD_BYTES) throw new AppError("The label file is larger than 15 MB", 400);
-  if (!["rebuild", "scale"].includes(mode)) throw new AppError('mode must be "rebuild" or "scale"', 400);
+  mimeType = labelFileType(mimeType, originalName, buffer);
+  if (!UPLOAD_TYPES[mimeType]) throw new AppError("Upload a PDF, Illustrator (.ai), PNG or JPEG label", 400);
+  if (buffer.length > MAX_UPLOAD_BYTES) throw new AppError("The label file is larger than 40 MB", 400);
+  if (!UPLOAD_MODES.includes(mode)) throw new AppError('mode must be "smart", "scale" or "rebuild"', 400);
   if (productId) {
     const p = await prisma.product.findFirst({ where: { id: productId, companyId }, select: { id: true } });
     if (!p) throw new AppError("Product not found!", 404);
   }
-  const target = resolveLayout(layoutInput);
+  if (labelId) {
+    if (mode === "rebuild") throw new AppError("A new label from the text is made from the file, not added to an existing label", 400);
+    const l = await prisma.generatedLabel.findFirst({ where: { id: labelId, companyId }, select: { id: true } });
+    if (!l) throw new AppError("Label not found!", 404);
+  }
+  // several sizes at once (one PDF each), or the one size of `layout`
+  const targets = (Array.isArray(sizes) && sizes.length ? sizes : [layoutInput]).map((s) => resolveLayout(s));
+  if (targets.length > 8) throw new AppError("At most 8 sizes at once", 400);
+  const target = targets[0];
   const file = await putFile({ companyId, kind: "label_upload", buffer, mimeType, originalName: originalName || null });
   const upload = await prisma.labelUpload.create({
-    data: { companyId, productId, fileId: file.id, originalName: originalName || null, mimeType, mode, status: "uploaded", country: country ? String(country).toUpperCase().slice(0, 2) : null, createdByUserId: userId },
+    data: { companyId, productId, labelId, fileId: file.id, originalName: originalName || null, mimeType, mode, status: "uploaded", country: country ? String(country).toUpperCase().slice(0, 2) : null, createdByUserId: userId },
   });
-  if (mode === "scale") {
-    const layout = await scaleUpload(upload, { layout: target, stretch, userId });
-    return { upload: view(await loadUpload(upload.id)), layout };
+  // an image has one design to keep: it is scaled whole
+  if (mode === "scale" || (mode === "smart" && mimeType !== "application/pdf")) {
+    const layouts = [];
+    for (const t of targets) layouts.push(await scaleUpload(upload, { layout: t, stretch: mode === "scale" && stretch, userId }));
+    return { upload: view(await loadUpload(upload.id)), layout: layouts[0], layouts };
+  }
+  // the design only (sizes: []): kept for the editor — preview, adjust, then save the sizes
+  if (mode === "smart" && Array.isArray(sizes) && !sizes.length) {
+    await prisma.labelUpload.update({ where: { id: upload.id }, data: { status: "ready" } });
+    return { upload: view(await loadUpload(upload.id)), layout: null, layouts: [] };
+  }
+  if (mode === "smart") {
+    try {
+      const { layouts } = await saveResize(upload.id, { ...resize, sizes: targets.map((t) => ({ widthMm: t.widthMm, heightMm: t.heightMm })), minFontPt: resize.minFontPt ?? layoutInput.minFontPt }, { companyId, userId });
+      return { upload: view(await loadUpload(upload.id)), layout: layouts[0], layouts };
+    } catch (err) {
+      await prisma.labelUpload.update({ where: { id: upload.id }, data: { status: "failed", error: String(err.message).slice(0, 1000) } });
+      throw err;
+    }
   }
   const task = await prisma.backgroundTask.create({ data: { type: "label_rebuild_extraction", status: "pending", companyId } });
   await prisma.labelUpload.update({ where: { id: upload.id }, data: { status: "extracting", taskId: task.id } });
@@ -238,14 +282,14 @@ export async function getUpload(id, { companyId } = {}) {
   const u = await loadUpload(id, companyId);
   const [label, layouts, task] = await Promise.all([
     u.labelId ? prisma.generatedLabel.findUnique({ where: { id: u.labelId }, select: { id: true, labelData: true, extractionMeta: true } }) : null,
-    prisma.labelLayout.findMany({ where: u.labelId ? { OR: [{ uploadId: u.id }, { labelId: u.labelId }] } : { uploadId: u.id }, orderBy: { createdAt: "desc" }, take: 20 }),
+    prisma.labelLayout.findMany({ where: u.labelId && u.mode === "rebuild" ? { OR: [{ uploadId: u.id }, { labelId: u.labelId }] } : { uploadId: u.id }, orderBy: { createdAt: "desc" }, take: 20 }),
     u.taskId ? prisma.backgroundTask.findUnique({ where: { id: u.taskId }, select: { id: true, status: true, progress: true, message: true, error: true } }) : null,
   ]);
   const rebuild = label?.extractionMeta?.rebuild;
   return {
     upload: view(u),
     file: { pageSize: u.mimeType === "application/pdf" ? await pageSizeMm((await readFile(u.fileId, { companyId: u.companyId })).buffer).catch(() => null) : null },
-    label: label ? { id: label.id, fields: REVIEW_FIELDS.map((f) => ({ field: f, value: label.labelData?.[f] ?? null, read: (rebuild?.read || []).includes(f) })), missing: rebuild?.missing || [], confirmedAt: rebuild?.confirmedAt || null } : null,
+    label: label && u.mode === "rebuild" ? { id: label.id, fields: REVIEW_FIELDS.map((f) => ({ field: f, value: label.labelData?.[f] ?? null, read: (rebuild?.read || []).includes(f) })), missing: rebuild?.missing || [], confirmedAt: rebuild?.confirmedAt || null } : null,
     layouts: layouts.map(layoutView),
     task,
   };

@@ -12,6 +12,7 @@ services:
       - BACKEND_WS_URL=http://localhost:3000
       - CERT_RENDERER_URL=http://cert-renderer:5070
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
+      - LABEL_RESIZER_URL=http://label-resizer:5080
     restart: always
     depends_on:
       cert-renderer:
@@ -225,6 +226,14 @@ services:
     restart: always
     expose:
       - "5000"
+
+  # Label resize that keeps the original design (Python + PyMuPDF; docker/label-resizer).
+  label-resizer:
+    container_name: label-resizer
+    build: ./docker/label-resizer
+    restart: always
+    expose:
+      - "5080"
 
   postgres:
     image: postgres:18

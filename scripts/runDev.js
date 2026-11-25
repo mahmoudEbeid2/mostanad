@@ -12,6 +12,9 @@ const targets = [
   // Certificates V2: the only process that runs Chromium (plan §5.3); the API
   // and the certificate workers reach it on CERT_RENDERER_URL (default :5070)
   { name: "cert-renderer", script: "src/services/certificates/renderService/server.js" },
+  // label resize that keeps the original design (PyMuPDF): a Python process, port 5080
+  // (LABEL_RESIZER_URL). Skipped when Python or PyMuPDF isn't installed here (`pip install pymupdf`).
+  { name: "label-resizer", script: "docker/label-resizer/server.py", cmd: process.env.PYTHON || "python" },
   { name: "api", script: "src/server.js" },
   { name: "catalog-worker", script: "src/workers/catalogWorker.js" },
   { name: "label-worker", script: "src/workers/labelWorker.js" },
@@ -44,7 +47,7 @@ const targets = [
 // `--light` (npm run dev:test:light): for a machine short on memory — the same
 // workers, all in one process (scripts/lightWorkers.js), so 3 processes, not 12.
 const LIGHT = process.argv.includes("--light");
-const run = LIGHT ? [...targets.slice(0, 2), { name: "workers", script: "scripts/lightWorkers.js", args: targets.slice(2).map((t) => t.script) }] : targets;
+const run = LIGHT ? [...targets.slice(0, 3), { name: "workers", script: "scripts/lightWorkers.js", args: targets.slice(3).map((t) => t.script) }] : targets;
 
 export const BYPASS_SECRET_FILE = ".test-bypass-secret";
 if (process.argv.includes("--no-gemini")) {
@@ -69,12 +72,13 @@ function prefixStream(stream, label, color) {
   });
 }
 
-const children = run.map(({ name, script, args = [] }, i) => {
+const children = run.map(({ name, script, args = [], cmd }, i) => {
   const color = COLORS[i % COLORS.length];
-  const child = spawn(process.execPath, [script, ...args], {
+  const child = spawn(cmd || process.execPath, [script, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,
   });
+  child.on("error", (err) => console.log(`${color}[${name}]${RESET} not started: ${err.message}`));
   prefixStream(child.stdout, name, color);
   prefixStream(child.stderr, name, color);
   child.on("exit", (code, signal) => {

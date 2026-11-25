@@ -476,12 +476,12 @@ export const SPECS = {
   resize_label: {
     title: "Change a label's size",
     key: ["labelId"],
-    fields: { labelId: [page("label"), labelRef], ...SIZE_FIELDS, minFontPt: [user()] },
+    fields: { labelId: [page("label"), labelRef], mode: [choice((v) => (v === "text" ? "ليبل جديد من النص (بدون التصميم)" : "تغيير المقاس مع الحفاظ على التصميم"))], ...SIZE_FIELDS, minFontPt: [user()] },
     errors: [[/size|preset|width|height/i, "preset"], [/label/i, "labelId"]],
   },
   upload_label_and_resize: {
     title: "Resize an uploaded label",
-    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "rebuild" ? "Rebuild — re-typed without the original design" : "Keep the original design, just scale"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], productId: [product], country: [country] },
+    fields: { attachmentId: [attachment()], mode: [choice((v) => (v === "rebuild" ? "ليبل جديد من النص (بدون التصميم)" : v === "scale" ? "Keep the original design, just scale" : "تغيير المقاس مع الحفاظ على التصميم"))], ...SIZE_FIELDS, minFontPt: [user()], stretch: [stretchAsked], labelId: [page("label")], productId: [product], country: [country] },
     errors: [[/size|preset|width|height/i, "preset"], [/file|pdf|png|jpeg/i, "attachmentId"], [/product/i, "productId"]],
   },
   confirm_label_upload: {

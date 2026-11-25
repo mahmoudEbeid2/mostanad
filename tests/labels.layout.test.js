@@ -92,9 +92,9 @@ async function main() {
     r = await api("POST", "/label-uploads", A, form({ mode: "scale", layout: JSON.stringify({ preset: "100x120" }) }, { buffer: pdf15, name: "label-10x15.pdf", type: "application/pdf" }));
     const sc = r.data?.data?.layout;
     assert("10×15 PDF → 10×12: 201, mode scale, fit-not-stretch, 80 %", r.status === 201 && sc?.mode === "scale" && sc.fit.stretch === false && sc.fit.scalePct === 80, r.data);
-    // client report 24 Nov: every upload was rebuilt (design lost) — no mode now means scale
+    // client report 24 Nov: every upload was rebuilt (design lost) — no mode now means the design kept (smart resize)
     r = await api("POST", "/label-uploads", A, form({ layout: JSON.stringify({ preset: "100x120" }) }, { buffer: pdf15, name: "no-mode.pdf", type: "application/pdf" }));
-    assert("upload without a mode → scale (the design kept), not a rebuild", r.status === 201 && r.data?.data?.layout?.mode === "scale" && r.data.data.upload.mode === "scale", r.data);
+    assert("upload without a mode → smart (the design kept), not a rebuild", r.status === 201 && r.data?.data?.layout?.mode === "smart" && r.data.data.upload.mode === "smart", r.data);
     const scPdf = await api("GET", `/label-layouts/${sc.id}/pdf`, A);
     const scBox = await pdfBox(scPdf.buffer);
     assert(`scaled PDF exactly 100 × 120 mm (${scBox.wMm.toFixed(3)} × ${scBox.hMm.toFixed(3)})`, near(scBox.wMm, 100) && near(scBox.hMm, 120));
@@ -187,7 +187,7 @@ async function main() {
     const d2 = Object.fromEntries((card?.preview?.details || []).map((d) => [d.label, d.value]));
     t = await registry.runTool("upload_label_and_resize", { attachmentId: att.id, preset: "100x120" }, ctx(["make it 10x12"]));
     const noMode = t.data?.actionId ? await prisma.assistantAction.findUnique({ where: { id: t.data.actionId } }) : null;
-    assert("assistant card without a mode → keep the design, scale", /Keep the original design/.test(noMode?.preview?.details?.find((d) => d.label === "Mode")?.value || ""), noMode?.preview?.details);
+    assert("assistant card without a mode → keep the design (smart resize)", /الحفاظ على التصميم/.test(noMode?.preview?.details?.find((d) => d.label === "Mode")?.value || ""), noMode?.preview?.details);
     const uploadsBefore = await prisma.labelUpload.count({ where: { companyId: coA.id } });
     assert("upload_label_and_resize → a card (file, mode, size, company), nothing uploaded yet", card?.status === "pending" && d2.File === "label-10x15.pdf" && /scale/i.test(d2.Mode) && d2.Size === "10 × 12 cm" && d2.Company, d2);
     const up2 = await actions.approveAction(actorA, card.id);
@@ -203,7 +203,7 @@ async function main() {
     const [att2] = await storeAttachments({ conversationId: conv.id, companyId: coA.id, actor: actorA, files: [{ buffer: pdf15, originalname: "client-label.pdf", mimetype: "application/pdf" }] });
     const turn = await assistant.sendMessage(actorA, conv.id, { text: "خلّي الليبل ده 10×12", attachmentIds: [att2.id] }, { generate: script([[{ functionCall: { name: "upload_label_and_resize", args: { attachmentId: att2.id, mode: "rebuild", preset: "100x120" } } }], [{ text: "جهزت لك كارت: هقرأ الليبل وبعدها تراجع الحقول." }]]) });
     const chatCard = turn.message?.actions?.[0];
-    assert("chat example: the model's call becomes a rebuild card at 10 × 12 cm; nothing uploaded until Run", chatCard?.status === "pending" && chatCard.tool === "upload_label_and_resize" && chatCard.preview.details.some((d) => d.value === "10 × 12 cm") && chatCard.preview.details.some((d) => /Rebuild/.test(d.value)), chatCard || turn);
+    assert("chat example: the model's call becomes a rebuild card at 10 × 12 cm; nothing uploaded until Run", chatCard?.status === "pending" && chatCard.tool === "upload_label_and_resize" && chatCard.preview.details.some((d) => d.value === "10 × 12 cm") && chatCard.preview.details.some((d) => /ليبل جديد من النص/.test(d.value)), chatCard || turn);
     assert("…the labels tools were offered for that message (file + size words)", JSON.stringify(steps[0]?.tools || steps[0] || "").includes("upload_label_and_resize"));
   } finally {
     await cleanupCompany(coA.id).catch((e) => console.error(e.message));

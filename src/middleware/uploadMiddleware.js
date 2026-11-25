@@ -85,3 +85,18 @@ export const uploadDesign = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit for big design files
   },
 });
+
+// "Upload label to resize": the design files too — an Illustrator design (.ai) arrives
+// as postscript / octet-stream; the service keeps it only when it is PDF-compatible
+// (labelUploadService.labelFileType). Print-ready designs are large: 40 MB.
+const labelDesignFilter = (req, file, cb) => {
+  const allowed = ["application/pdf", "image/png", "image/jpeg", "image/jpg"];
+  if (allowed.includes(file.mimetype) || /\.ai$/i.test(file.originalname || "")) cb(null, true);
+  else cb(new AppError("Upload a PDF, Illustrator (.ai), PNG or JPEG label", 400), false);
+};
+
+export const uploadLabelDesign = multer({
+  storage,
+  fileFilter: labelDesignFilter,
+  limits: { fileSize: 40 * 1024 * 1024 },
+});

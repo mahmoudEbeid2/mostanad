@@ -72,6 +72,12 @@ services:
     ports:
       - "5050:5000"
 
+  # `npm run dev:all` starts its own label-resizer (python, port 5080); this one is
+  # for the full Docker stack and is on 5081 so both can run.
+  label-resizer:
+    ports:
+      - "5081:5080"
+
   # Exposed on the host so `npm run dev:all` (outside Docker) can reach it:
   # set CERT_RENDERER_URL=http://localhost:5070 in .env for that mode.
   # Development: the shared token is optional here (required in production).

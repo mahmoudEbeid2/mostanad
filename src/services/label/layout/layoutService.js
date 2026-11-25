@@ -6,6 +6,7 @@ import { getApprovedRulesForCountry } from "../regulatory/regulatoryDocumentServ
 import { SIZE_PRESETS, SECTION_KEYS, DEFAULT_LAYOUT, DEFAULT_MIN_FONT_PT, resolveLayout, sizeLabel } from "./layoutSpec.js";
 import { sectionsFromLabelData, buildLabelHtml } from "./labelHtml.js";
 import { exactPageSize, textSizes, pageSizeMm } from "./labelPdf.js";
+import { designsOfLabel } from "./designResizeService.js";
 
 // Printable label layouts ("Layout & size"): the same label content at another
 // page size. Every preview and save re-lays the label's CURRENT labelData out;
@@ -54,11 +55,15 @@ const view = (row) =>
   };
 export { view as layoutView };
 
-/** GET /labels/:id/layout → { label, current, versions } */
+/**
+ * GET /labels/:id/layout → { label, current, versions, designs }
+ * current/versions: the label laid out from its text ("new label from the text").
+ * designs: the label's original design files and their saved sizes ("keep the design").
+ */
 export async function getLabelLayout(labelId, { companyId } = {}) {
   const label = await loadLabel(labelId, companyId);
-  const rows = await prisma.labelLayout.findMany({ where: { labelId: label.id }, orderBy: { version: "desc" }, take: 50 });
-  return { label: { id: label.id, name: sectionsFromLabelData(label.labelData, { lang: label.language }).sections[0].lines[0] || label.product?.name || "Label", country: label.country, language: label.language, version: label.currentVersion }, current: view(rows[0]) || null, versions: rows.map(view) };
+  const [rows, designs] = await Promise.all([prisma.labelLayout.findMany({ where: { labelId: label.id }, orderBy: { version: "desc" }, take: 50 }), designsOfLabel(label.id, label.companyId)]);
+  return { designs, label: { id: label.id, name: sectionsFromLabelData(label.labelData, { lang: label.language }).sections[0].lines[0] || label.product?.name || "Label", country: label.country, language: label.language, version: label.currentVersion }, current: view(rows[0]) || null, versions: rows.map(view) };
 }
 
 /**

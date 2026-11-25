@@ -41,6 +41,7 @@ services:
   #    The browser now closes after CERT_BROWSER_IDLE_MS (default 5 min).
   #  - plain node workers: 25–52 MiB → 384m is 7× headroom.
   #  - pdf2htmlex: 40 MiB idle, ~115 MiB converting the goldens (png or svg) → 768m leaves room for bigger designs.
+  #  - label-resizer: ~50 MiB idle, peak ~190 MiB resizing the 16 MB designs (+ the base64 request) → 768m.
   # A container over its limit is OOM-killed and restarted (unless-stopped)
   # instead of starving the other services on the host.
   mostanad-app:
@@ -56,6 +57,8 @@ services:
       - CERT_RENDERER_URL=http://cert-renderer:5070
       - CERT_RENDERER_TOKEN=${CERT_RENDERER_TOKEN:?set CERT_RENDERER_TOKEN in .env}
       - PDF2HTMLEX_URL=http://pdf2htmlex:5000
+      - LABEL_RESIZER_URL=http://label-resizer:5080
+      - RESIZER_TOKEN=${RESIZER_TOKEN:-}
     restart: unless-stopped
     mem_limit: 512m
     depends_on:
@@ -344,6 +347,20 @@ services:
     mem_limit: 768m
     expose:
       - "5000"
+    networks:
+      - internal
+
+  # Label resize that keeps the original design (Python + PyMuPDF; docker/label-resizer).
+  # Internal network only — never routed through Traefik.
+  label-resizer:
+    container_name: label-resizer
+    build: ./docker/label-resizer
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      - RESIZER_TOKEN=${RESIZER_TOKEN:-}
+    expose:
+      - "5080"
     networks:
       - internal
 
