@@ -56,7 +56,11 @@ async function main() {
     // ── the registry's rules ────────────────────────────────────────────────
     console.log("What the chat can never do");
     const names = registry.allTools().map((t) => t.name);
-    assert("no chat tool finalizes, deletes, activates, applies, or touches users / roles / companies", !names.some((n) => registry.FORBIDDEN_ACTIONS.test(n) && registry.getTool(n).risk !== "read"), names.filter((n) => /finali|delete|activ|apply|user|role/.test(n)));
+    // the one exception (client 25 Nov): create_company — a NEW company, system users only, behind a card
+    const forbidden = names.filter((n) => registry.FORBIDDEN_ACTIONS.test(n) && registry.getTool(n).risk !== "read");
+    assert("no chat tool finalizes, deletes, activates, applies, or touches users / roles / companies — except adding a company", forbidden.join() === "create_company", forbidden);
+    const cc = registry.getTool("create_company");
+    assert("…create_company is for system users only, makes a new company, and is a card", cc?.systemOnly === true && cc.createsCompany === true && cc.risk === "write" && cc.permissions.includes("create_companies"), cc && { systemOnly: cc.systemOnly, createsCompany: cc.createsCompany });
     for (const bad of ["finalize_certificates", "delete_invoice", "activate_template", "apply_catalogue_changes", "update_users", "create_roles", "update_company"]) {
       let err = null;
       try {

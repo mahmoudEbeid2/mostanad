@@ -22,6 +22,7 @@ const KEYWORDS = {
   ai_costs: ["cost", "costs", "spend", "tokens", " ai ", "gemini", "تكلفه", "تكاليف", "ذكاء"],
   tasks: ["task", "tasks", "status", "job", "progress", "running", "مهمه", "مهام", "حاله", "شغال", "تقدم"],
   companies: ["company", "companies", "شركه", "شركات"],
+  categories: ["category", "categories", "فئه", "فئات", "تصنيف", "تصنيفات"],
 };
 const FOLDED = Object.fromEntries(Object.entries(KEYWORDS).map(([m, words]) => [m, words.map((w) => (w.startsWith(" ") || w.endsWith(" ") ? ` ${fold(w)} ` : fold(w)))]));
 const PAGE_MODULE = { product: "products", invoice: "invoices", certificate: "certificates", template: "certificates", label: "labels", catalogue: "catalogues", catalogue_version: "catalogues", regulatory: "regulatory" };

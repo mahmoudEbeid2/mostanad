@@ -42,10 +42,12 @@ async function loadItem(actor, id) {
 }
 
 /** POST /intake/batches { companyId? } — a new drop. A company session always uses its own company. */
-export async function createBatch(actor, { companyId = null, conversationId = null } = {}) {
+export async function createBatch(actor, { companyId = null, conversationId = null, express = null } = {}) {
   let scope = actor.kind === "company" ? actor.companyId : companyId || null;
   if (scope && actor.kind === "user" && !(await prisma.company.findUnique({ where: { id: scope }, select: { id: true } }))) throw new AppError("Company not found!", 404);
-  return prisma.intakeBatch.create({ data: { ...owner(actor), companyId: scope, conversationId } });
+  // express: an urgent order — after filing, certificate drafts are made at once (expressService)
+  const ex = express ? { mode: "express", express: { requestedTypes: (express.certificateTypes || []).map((c) => String(c).toUpperCase().slice(0, 8)).slice(0, 10), stage: null } } : {};
+  return prisma.intakeBatch.create({ data: { ...owner(actor), companyId: scope, conversationId, ...ex } });
 }
 
 /** POST /intake/batches/:id/files { name, size, relPath? } — announces one file; its bytes come in chunks. */
@@ -169,7 +171,8 @@ export async function getBatchView(actor, id) {
   const rows = items.map(rowOf);
   const effective = items.map(effectiveOf).filter(Boolean);
   const task = batch.executeTaskId ? await prisma.backgroundTask.findUnique({ where: { id: batch.executeTaskId }, select: { status: true, progress: true, message: true, error: true } }) : batch.classifyTaskId ? await prisma.backgroundTask.findUnique({ where: { id: batch.classifyTaskId }, select: { status: true, progress: true, message: true, error: true } }) : null;
-  return { batch: { id: batch.id, status: batch.status, companyId: batch.companyId, aiCalls: batch.aiCalls, executedAt: batch.executedAt, createdAt: batch.createdAt }, task, items: rows, newEntities: newEntities(effective), summary: batch.summary };
+  const express = batch.mode === "express" ? await expressView(batch) : null;
+  return { batch: { id: batch.id, status: batch.status, mode: batch.mode, companyId: batch.companyId, aiCalls: batch.aiCalls, executedAt: batch.executedAt, createdAt: batch.createdAt }, task, items: rows, newEntities: newEntities(effective), summary: batch.summary, express };
 }
 
 /** GET /intake/batches — the caller's recent drops. */
@@ -233,7 +236,7 @@ export async function decideItem(actor, id, body = {}) {
 }
 
 // ── execute ─────────────────────────────────────────────────────────────────
-const uniqueUsername = async (name) => {
+export const uniqueUsername = async (name) => {
   const root = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20) || "company";
   for (let n = 0; ; n++) {
     const u = n ? `${root}${n}` : root;
@@ -344,5 +347,59 @@ export async function startExecute(actor, batchId, { revisions = {} } = {}) {
 export async function listCreated(actor, { companyId = null } = {}) {
   const scope = actor.kind === "company" ? actor.companyId : companyId;
   return prisma.intakeCreated.findMany({ where: scope ? { companyId: scope } : {}, orderBy: { createdAt: "desc" }, take: 500 });
+}
+
+/** An Express batch's progress for its card: the stage, each template, the drafts (with their blanks), the files, the AI cost. */
+async function expressView(batch) {
+  const ex = batch.express || {};
+  const g = ex.generation || null;
+  // every AI call of the order: recognising the files, suggesting each template's fields, the certificates' run
+  const itemIds = (await prisma.intakeItem.findMany({ where: { batchId: batch.id }, select: { id: true } })).map((i) => i.id);
+  const calls = await prisma.aiCall
+    .findMany({ where: { OR: [{ entityType: "intake_item", entityId: { in: itemIds } }, { entityType: "template_version", entityId: { in: Object.keys(ex.templates || {}) } }, ...(g?.certificateBatchId ? [{ entityType: "certificate_batch", entityId: g.certificateBatchId }] : [])] }, select: { costUsd: true } })
+    .catch(() => []);
+  return {
+    requestedTypes: ex.requestedTypes || [],
+    stage: batch.status !== "done" ? "filing" : ex.stage || "templates",
+    templates: Object.entries(ex.templates || {}).map(([versionId, t]) => ({ versionId, ...t })),
+    generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null },
+    certificates: ex.certificates || [],
+    files: ex.files || null,
+    startedAt: ex.startedAt || null,
+    finishedAt: ex.finishedAt || null,
+    seconds: batch.createdAt && ex.finishedAt ? Math.round((new Date(ex.finishedAt) - new Date(batch.createdAt)) / 1000) : null,
+    ai: { calls: calls.length, costUsd: calls.some((c) => c.costUsd === null) ? null : Number(calls.reduce((n, c) => n + Number(c.costUsd || 0), 0).toFixed(4)) },
+  };
+}
+
+/**
+ * GET /intake/express — what urgent orders made that nobody has checked yet ("Express —
+ * needs review"), newest first, grouped by order: companies, brands, products, templates,
+ * certificates, each with the page to check it on.
+ */
+export async function listExpressToReview(actor, { companyId = null } = {}) {
+  const scope = actor.kind === "company" ? actor.companyId : companyId || null;
+  const rows = await prisma.intakeCreated.findMany({
+    where: { reviewedAt: null, batch: { mode: "express", ...(actor.kind === "company" ? {} : { ownerType: actor.kind, ownerId: actor.id }) }, ...(scope ? { companyId: scope } : {}) },
+    include: { batch: { select: { id: true, createdAt: true, conversationId: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  const link = (r) => ({ company: `/companies`, brand: `/brands`, product: `/products`, certificate_type: `/certificates/types`, certificate_template: `/certificates/templates/${r.entityId}`, certificate: `/certificates/${r.entityId}` })[r.entityType] || null;
+  const orders = new Map();
+  for (const r of rows) {
+    if (!orders.has(r.batchId)) orders.set(r.batchId, { batchId: r.batchId, createdAt: r.batch.createdAt, conversationId: r.batch.conversationId, items: [] });
+    orders.get(r.batchId).items.push({ id: r.id, entityType: r.entityType, entityId: r.entityId, name: r.name, companyId: r.companyId, link: link(r) });
+  }
+  return { count: rows.length, orders: [...orders.values()] };
+}
+
+/** POST /intake/express/reviewed { ids } — a person checked these Express items. */
+export async function markExpressReviewed(actor, ids = []) {
+  if (!Array.isArray(ids) || !ids.length) throw new AppError("Choose what was checked", 400);
+  const userId = actor.kind === "user" ? actor.id : null;
+  const where = { id: { in: ids.slice(0, 500) }, reviewedAt: null, batch: { mode: "express" }, ...(actor.kind === "company" ? { companyId: actor.companyId } : { batch: { mode: "express", ownerType: actor.kind, ownerId: actor.id } }) };
+  const { count } = await prisma.intakeCreated.updateMany({ where, data: { reviewedAt: new Date(), reviewedByUserId: userId } });
+  return { reviewed: count };
 }
 

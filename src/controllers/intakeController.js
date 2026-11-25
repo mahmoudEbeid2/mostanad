@@ -60,3 +60,12 @@ export const execute = catchAsync(async (req, res) => {
 export const listCreated = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { created: await intake.listCreated(actorOf(req), { companyId: req.query.companyId || null }) } });
 });
+
+// Express (urgent orders from the chat): what they made that nobody has checked yet, and "checked"
+export const listExpress = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await intake.listExpressToReview(actorOf(req), { companyId: req.query.companyId || null }) });
+});
+
+export const markExpressReviewed = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await intake.markExpressReviewed(actorOf(req), req.body?.ids || []) });
+});

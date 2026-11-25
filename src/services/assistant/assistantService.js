@@ -215,10 +215,11 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   // files sent with this message: this conversation's, in this message's company
   const files = attachmentIds.length ? await prisma.assistantAttachment.findMany({ where: { id: { in: attachmentIds.filter((x) => UUID.test(String(x))) }, conversationId } }) : [];
   if (files.length !== new Set(attachmentIds).size) throw new AppError("Attachment not found!", 404);
-  // files attached in "All companies" join the message's company; with no company
-  // picked yet the person is asked which one (code pick_company)
-  if (files.some((a) => !a.companyId)) {
-    if (!scope) throw Object.assign(new AppError("Which company are these files for? Pick one, then send again.", 409), { code: "pick_company", attachmentIds: files.filter((a) => !a.companyId).map((a) => a.id) });
+  // files attached in "All companies" join the message's company. With no company picked,
+  // a system user's files stay UNBOUND and are sent (client 25 Nov: "send the chatbot the
+  // certificates and products … without registering everything first"): start_intake works
+  // out whose they are; a tool that needs a company still asks which one for an unbound file.
+  if (files.some((a) => !a.companyId) && scope) {
     const bound = await bindAttachments(conversationId, files.map((a) => a.id), scope);
     files.splice(0, files.length, ...bound.map((b) => ({ ...files.find((f) => f.id === b.id), companyId: b.companyId })));
   }

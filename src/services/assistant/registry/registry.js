@@ -37,7 +37,8 @@ const tools = new Map();
 /**
  * def: { name, module, description, risk, args (zod object), permissions: [slug…],
  *        systemOnly?, companyArg? (default true: system users may pass companyId),
- *        needsCompany? (refuses "all companies"), core?, label (progress text), run }
+ *        needsCompany? (refuses "all companies"), core?, label (progress text), run,
+ *        createsCompany? (a write that makes a NEW company: system users only, runs in no company) }
  */
 export function defineTool(def) {
   if (!/^[a-z][a-z0-9_]{2,63}$/.test(def.name || "")) throw new Error(`Bad tool name "${def.name}"`);
@@ -49,11 +50,14 @@ export function defineTool(def) {
   if ("companyId" in def.args.shape) throw new Error(`Tool "${def.name}": companyId is added by the registry, don't declare it`);
   if (typeof def.run !== "function") throw new Error(`Tool "${def.name}" has no run()`);
   if (def.risk !== "read") {
-    if (FORBIDDEN_ACTIONS.test(def.name)) throw new Error(`Tool "${def.name}": the chat may not ${def.name.replace(/_/g, " ")} — no such action is offered, even with confirmation`);
+    // the one company write the chat may do: create_company, system users only (client 25 Nov: "add the company through the chatbot")
+    const allowedCompanyWrite = def.name === "create_company" && def.createsCompany && def.systemOnly;
+    if (FORBIDDEN_ACTIONS.test(def.name) && !allowedCompanyWrite) throw new Error(`Tool "${def.name}": the chat may not ${def.name.replace(/_/g, " ")} — no such action is offered, even with confirmation`);
     if (typeof def.preview !== "function") throw new Error(`Write tool "${def.name}" needs a preview() for its confirmation card`);
   }
   // every write runs in one explicit company: "All companies" is read-only
-  const tool = { permissions: [], systemOnly: false, companyArg: true, needsCompany: false, core: false, ...def, ...(def.risk !== "read" ? { needsCompany: true } : {}) };
+  if (def.createsCompany && !def.systemOnly) throw new Error(`Tool "${def.name}": creating a company is for system users only (systemOnly)`);
+  const tool = { permissions: [], systemOnly: false, companyArg: true, needsCompany: false, core: false, ...def, ...(def.risk !== "read" && !def.createsCompany ? { needsCompany: true } : {}) };
   tools.set(def.name, Object.freeze(tool));
   return tool;
 }
@@ -230,7 +234,7 @@ export async function executeApproved(name, args, ctx) {
   if (!tool || tool.risk === "read") throw new ToolError(`${name} is not an action`, "not_an_action");
   const refusal = refusalFor(tool, ctx.actor);
   if (refusal) throw new ToolError(REFUSALS[refusal](name), refusal);
-  if (!ctx.companyId) throw new ToolError("An action runs in one company", "company_required");
+  if (!ctx.companyId && !(tool.createsCompany && ctx.actor.kind === "user")) throw new ToolError("An action runs in one company", "company_required");
   if (ctx.actor.kind === "company" && ctx.companyId !== ctx.actor.companyId) throw new ToolError("Company not found!", "company_not_found");
   const parsed = parseArgs(tool, args);
   const tctx = toolCtx(ctx, ctx.companyId);

@@ -17,5 +17,7 @@ router.post("/batches/:id/classify", c.startClassify);
 router.patch("/items/:itemId", c.decideItem);
 router.post("/batches/:id/execute", c.execute);
 router.get("/created", c.listCreated);
+router.get("/express", c.listExpress);
+router.post("/express/reviewed", c.markExpressReviewed);
 
 export default router;

@@ -1,3 +1,4 @@
+import { PDFDocument } from "pdf-lib";
 import crypto from "crypto";
 import JSZip from "jszip";
 import { prisma } from "../../../lib/prisma.js";
@@ -403,9 +404,12 @@ export async function runExportZip({ batchId }, ctx = {}) {
   if (!certs.length) throw new CertError("NOTHING_TO_EXPORT", "This batch has no rendered certificates", 409);
   const zip = new JSZip();
   const used = new Set();
+  const combined = await PDFDocument.create(); // the same certificates as one PDF (to print or send at once)
   for (const [i, c] of certs.entries()) {
     const fileId = c.status === "final" && c.finalPdfFileId ? c.finalPdfFileId : await ensureVersionPdf(c);
     const { buffer } = await fileStore.readFile(fileId);
+    const one = await PDFDocument.load(buffer);
+    for (const page of await combined.copyPages(one, one.getPageIndices())) combined.addPage(page);
     let name = await pdfName(c.id);
     for (let n = 2; used.has(name.toLowerCase()); n++) name = name.replace(/(-\d+)?\.pdf$/, `-${n}.pdf`);
     used.add(name.toLowerCase());
@@ -414,8 +418,18 @@ export async function runExportZip({ batchId }, ctx = {}) {
   }
   const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
   const row = await fileStore.putFile({ companyId: batch.companyId, kind: "batch_zip", buffer, mimeType: "application/zip" });
-  await prisma.certificateBatch.update({ where: { id: batchId }, data: { zipFileId: row.id } });
-  return { batchId, zipFileId: row.id, files: certs.length };
+  const merged = await fileStore.putFile({ companyId: batch.companyId, kind: "batch_pdf", buffer: Buffer.from(await combined.save()), mimeType: "application/pdf" });
+  await prisma.certificateBatch.update({ where: { id: batchId }, data: { zipFileId: row.id, combinedPdfFileId: merged.id } });
+  return { batchId, zipFileId: row.id, combinedPdfFileId: merged.id, files: certs.length };
+}
+
+/** GET /certificate-batches/:id/combined.pdf — every certificate of the batch in one PDF (made by the export) */
+export async function getCombinedPdf(batchId, companyId) {
+  const batch = await loadBatch(batchId, companyId);
+  if (!batch.combinedPdfFileId) throw new CertError("PDF_NOT_EXPORTED", "Export the batch first", 404);
+  const { row, buffer } = await fileStore.readFile(batch.combinedPdfFileId, { companyId: batch.companyId });
+  const inv = await prisma.invoice.findUnique({ where: { id: batch.invoiceId }, select: { header: true } });
+  return { row, buffer, fileName: `certificates-${safe(inv?.header?.invoiceNumber) || batchId.slice(0, 8)}.pdf` };
 }
 
 /** GET /certificate-batches/:id/zip */

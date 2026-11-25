@@ -1,11 +1,8 @@
 import catchAsync from "../utils/catchAsync.js";
 import AppError from "../utils/appError.js";
-import { Queue } from "bullmq";
-import { getRedisConfig } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import * as regulatoryDocumentService from "../services/label/regulatory/regulatoryDocumentService.js";
-
-const edaRequirementQueue = new Queue("edaRequirementQueue", { connection: getRedisConfig() });
+import { queueRegulatoryDocument, queueResume } from "../services/label/regulatory/regulatoryUploads.js";
 
 // Step 1 of §7.4's journey. Reuses edaRequirementQueue/edaRequirementWorker.js —
 // same extraction worker /eda-requirements has always used, just with the fuller
@@ -16,30 +13,21 @@ export const uploadDocument = catchAsync(async (req, res, next) => {
   const { country = "Egypt", title, authority, productScope, sourceUrl, documentVersion, companyId: bodyCompanyId, review } = req.body;
   const companyId = req.company ? req.company.id : (bodyCompanyId || null);
 
-  const task = await prisma.backgroundTask.create({
-    data: { type: "regulatory_document_extraction", status: "pending", companyId },
+  const { taskId } = await queueRegulatoryDocument({
+    buffer: req.file.buffer,
+    fileName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    country,
+    companyId,
+    title: title || null,
+    authority: authority || null,
+    productScope: productScope ? (Array.isArray(productScope) ? productScope : String(productScope).split(",").map((s) => s.trim())) : [],
+    sourceUrl: sourceUrl || null,
+    documentVersion: documentVersion || null,
+    // from the label review's "Add rules for <country>": stop before activation, a person approves
+    review: review === true || review === "true",
   });
-
-  await edaRequirementQueue.add(
-    "processEdaRequirement",
-    {
-      country,
-      title: title || null,
-      authority: authority || null,
-      productScope: productScope ? (Array.isArray(productScope) ? productScope : String(productScope).split(",").map((s) => s.trim())) : [],
-      sourceUrl: sourceUrl || null,
-      documentVersion: documentVersion || null,
-      fileBufferBase64: req.file.buffer.toString("base64"),
-      fileName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      companyId,
-      // from the label review's "Add rules for <country>": stop before activation, a person approves
-      review: review === true || review === "true",
-    },
-    { jobId: task.id }
-  );
-
-  res.status(202).json({ status: "success", message: "Document uploaded and queued for extraction", data: { taskId: task.id, documentId: null } });
+  res.status(202).json({ status: "success", message: "Document uploaded and queued for extraction", data: { taskId, documentId: null } });
 });
 
 export const getDocuments = catchAsync(async (req, res) => {
@@ -96,7 +84,6 @@ export const resumeDocument = catchAsync(async (req, res, next) => {
   const doc = await prisma.regulatoryDocument.findUnique({ where: { id: req.params.id }, select: { id: true, status: true, companyId: true } });
   if (!doc || (req.company && doc.companyId && doc.companyId !== req.company.id)) return next(new AppError("No regulatory document found with that ID", 404));
   if (doc.status === "approved") return next(new AppError("This document is already in force.", 409));
-  const task = await prisma.backgroundTask.create({ data: { type: "regulatory_document_extraction", status: "pending", companyId: doc.companyId } });
-  await edaRequirementQueue.add("resumeEdaRequirement", { resumeDocumentId: doc.id, companyId: doc.companyId }, { jobId: task.id });
-  res.status(202).json({ status: "success", data: { taskId: task.id, documentId: doc.id } });
+  const { taskId } = await queueResume(doc.id, doc.companyId);
+  res.status(202).json({ status: "success", data: { taskId, documentId: doc.id } });
 });

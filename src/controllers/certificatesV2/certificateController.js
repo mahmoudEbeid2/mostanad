@@ -102,6 +102,10 @@ export const getZip = catchAsync(async (req, res) => {
   sendFile(res, await editService.getZip(req.params.id, scopeOf(req)));
 });
 
+export const getCombinedPdf = catchAsync(async (req, res) => {
+  sendFile(res, await editService.getCombinedPdf(req.params.id, scopeOf(req)));
+});
+
 // ── Phase 6: metrics (§15) ───────────────────────────────────────────────────
 export const metrics = catchAsync(async (req, res) => {
   const data = await getMetrics(companyFor(req), req.validatedQuery || {});

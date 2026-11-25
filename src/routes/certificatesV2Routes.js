@@ -160,6 +160,7 @@ router.post("/certificates/:id/finalize", guard("update_certificates"), validate
 router.post("/certificates/:id/duplicate", guard("update_certificates"), validate(certificateSchemas.byId), certificates.duplicate);
 router.post("/certificate-batches/:id/export", guard("export_certificates"), validate(certificateSchemas.byId), certificates.exportZip);
 router.get("/certificate-batches/:id/zip", guard("export_certificates"), validate(certificateSchemas.byId), certificates.getZip); // plan §20 I21
+router.get("/certificate-batches/:id/combined.pdf", guard("export_certificates"), validate(certificateSchemas.byId), certificates.getCombinedPdf); // made with the ZIP
 router.get("/certificate-metrics", guard("read_certificates"), validate(certificateSchemas.metrics), certificates.metrics); // plan §15, §20 I23
 
 // Coded errors (plan §20 I3): { status, code, message, ...extra }. Everything

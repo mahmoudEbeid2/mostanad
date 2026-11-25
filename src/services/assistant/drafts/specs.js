@@ -157,6 +157,33 @@ const certificateTypes = {
   },
 };
 
+/** Several products of the company (ids from search_products), checked to be the company's. */
+const productsMany = {
+  kind: "lookup",
+  tool: "search_products",
+  multiple: true,
+  resolve: async () => null,
+  verify: async (value, d) => {
+    const ids = Array.isArray(value) ? value : [value];
+    const rows = await prisma.product.findMany({ where: { id: { in: ids }, companyId: d.companyId }, select: { name: true } });
+    if (rows.length !== new Set(ids).size) throw new Error("A product isn't a product of this company");
+    return { display: rows.map((r) => r.name).join(", ") };
+  },
+};
+
+/** Batch facts per product: the products checked here; each fact itself must be in the person's words (checked on the card). */
+const batchesOf = {
+  kind: "context",
+  resolve: async () => null,
+  verify: async (value, d) => {
+    const list = Array.isArray(value) ? value : [];
+    const ids = [...new Set(list.map((b) => b.productId))];
+    const rows = await prisma.product.findMany({ where: { id: { in: ids }, companyId: d.companyId }, select: { id: true, name: true } });
+    if (rows.length !== ids.length) throw new Error("A batch is for a product that isn't this company's");
+    return { display: list.map((b) => `${rows.find((r) => r.id === b.productId)?.name}: ${["batchNo", "productionDate", "expiryDate"].filter((k) => b[k]).map((k) => b[k]).join(" · ")}`).join("; ") };
+  },
+};
+
 /** A file attached in this conversation: this message's file, or the conversation's only one. */
 const attachment = ({ pdfOnly = false, many = false } = {}) => ({
   kind: "context",
@@ -458,6 +485,18 @@ export const SPECS = {
     errors: [[/type/i, "certificateTypeIds"], [/invoice|template/i, "invoiceId"]],
   },
   create_brand: { title: "Add a brand", fields: { name: [user()] }, errors: [[/brand|exists/i, "name"]] },
+  // registering from the chat (client 25 Nov): each a card
+  create_company: { title: "Add a company", fields: { name: [user()], email: [user()] }, errors: [[/email/i, "email"], [/compan|exists/i, "name"]] },
+  create_category: { title: "Add a category", fields: { name: [user()] }, errors: [[/categor|exists/i, "name"]] },
+  create_products: { title: "Add products", fields: { products: [user()], brandId: [brand] }, errors: [[/brand/i, "brandId"], [/product|exist/i, "products"]] },
+  add_reference_labels: { title: "Add reference labels", fields: { attachmentIds: [attachment({ many: true })], country: [country], brandId: [brand] }, errors: [[/brand/i, "brandId"], [/pdf|png|jpeg|file/i, "attachmentIds"], [/country/i, "country"]] },
+  create_certificate_type: { title: "Add a certificate type", fields: { code: [user()], name: [user()] }, errors: [[/called|name/i, "name"], [/code|exists/i, "code"]] },
+  add_regulatory_rules: { title: "Read a regulation's rules", fields: { attachmentId: [attachment({ pdfOnly: true })], country: [country], title: [user()] }, errors: [[/pdf|file/i, "attachmentId"], [/country/i, "country"]] },
+  generate_certificates_for_products: {
+    title: "Make certificates for several products (no invoice)",
+    fields: { productIds: [productsMany], certificateTypeIds: [certificateTypes], batches: [batchesOf], country: [country] },
+    errors: [[/template/i, "certificateTypeIds"], [/batch|lab|isn't in your messages/i, "batches"], [/product/i, "productIds"], [/type/i, "certificateTypeIds"]],
+  },
   create_certificate_templates: {
     title: "Make certificate templates from files",
     fields: { attachmentIds: [attachment({ many: true })], codes: [user()], brandId: [brand], country: [country] },

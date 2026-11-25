@@ -173,7 +173,7 @@ defineTool({
   label: "Adding the brand",
   description:
     "Proposes adding a brand to the current company (a confirmation card). Use it when the user names a brand the company doesn't have and wants it — after list_brands found no exact match. " +
-    "Companies are never created here: for a missing company, say it is added on the Companies page.",
+    "A missing COMPANY is create_company (system users only) — or start_intake creates it from its files.",
   args: z.object({ name: z.string().trim().min(2).max(80) }),
   preview: async (a, ctx) => {
     const { rows } = await listBrands(ctx.companyId, { q: a.name, limit: 25 });

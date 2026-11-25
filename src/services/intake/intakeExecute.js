@@ -179,7 +179,9 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
     n++;
   }
   const summary = await summarize(batchId);
-  await prisma.intakeBatch.update({ where: { id: batchId }, data: { status: "done", summary } });
+  const batch = await prisma.intakeBatch.update({ where: { id: batchId }, data: { status: "done", summary } });
+  // Express: the certificate drafts next — templates used, one run for the products (retried until ready, ~30 min at most)
+  if (batch.mode === "express") await enqueueRaw(QUEUES.template, "intakeExpress", { batchId }, { attempts: 600, backoff: { type: "fixed", delay: 3000 } });
   return summary;
 }
 

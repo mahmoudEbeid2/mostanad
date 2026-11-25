@@ -86,14 +86,20 @@ export async function runPrepareJob(versionId, ctx = {}) {
   }
 }
 
-/** POST /template-versions/:id/activate (§8.4, D10). */
-export async function activateVersion(versionId, companyId, userId = null) {
+/**
+ * POST /template-versions/:id/activate (§8.4, D10).
+ * express (only the Express pipeline, never a route): an urgent order's template is used
+ * with its AI-suggested fields still UNCONFIRMED — they keep their "to check" state on the
+ * template screen, the mappings are NOT remembered as the company's answer, and everything
+ * it makes is a draft listed under "Express — needs review".
+ */
+export async function activateVersion(versionId, companyId, userId = null, { express = false } = {}) {
   const version = await loadVersion(versionId, companyId);
   if (version.status !== "ready") throw new CertError("VERSION_NOT_READY", `Only a ready version can be activated (this one is ${version.status})`, 409);
   if (version.template.archivedAt) throw new CertError("TEMPLATE_ARCHIVED", "This template is archived", 409);
   // D10 + AI plan §5.1 step 5: a suggested field, or an AI mapping nobody confirmed yet, blocks activation
   const unconfirmed = await prisma.templateField.findMany({ where: { versionId, OR: [{ confirmed: false }, { mappingConfirmed: false }] }, select: { key: true, confirmed: true, mappingConfirmed: true } });
-  if (unconfirmed.length) {
+  if (unconfirmed.length && !express) {
     throw new CertError("FIELDS_UNCONFIRMED", `Confirm every field before activating: ${unconfirmed.map((f) => f.key).join(", ")}`, 409, {
       fields: unconfirmed.map((f) => f.key),
       mappings: unconfirmed.filter((f) => !f.mappingConfirmed).map((f) => f.key),
@@ -122,6 +128,7 @@ export async function activateVersion(versionId, companyId, userId = null) {
   // AI plan §5.1 step 7: an activated design is the company's settled answer
   // for every label on it — remembered for the next template (no AI then).
   // The activation is committed; a memory failure is reported, never undone.
+  if (express) return { ...activated, express: true, unconfirmed: unconfirmed.map((f) => f.key), remembered: 0 }; // unconfirmed: nothing remembered
   try {
     activated.remembered = await rememberMappings(t.companyId, t.certificateTypeId, await listFields(versionId), userId);
   } catch (err) {

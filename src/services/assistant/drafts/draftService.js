@@ -268,7 +268,9 @@ async function step(draft, spec, { values = {}, hints = {}, clear = [], by = "mo
 
   // what's missing, and what blocks
   const vals = Object.fromEntries(Object.entries(fields).filter(([, f]) => f.value !== undefined).map(([k, f]) => [k, f.value]));
-  const missing = [...(companyId ? [] : ["companyId"]), ...spec.fields.filter((f) => (f.required && vals[f.name] === undefined) || fields[f.name]?.error).map((f) => f.name)];
+  // a "create the company" operation (createsCompany) runs in no company: none is asked
+  const noCompany = !!spec.tool.createsCompany;
+  const missing = [...(companyId || noCompany ? [] : ["companyId"]), ...spec.fields.filter((f) => (f.required && vals[f.name] === undefined) || fields[f.name]?.error).map((f) => f.name)];
   const blockedBy = [];
   if (companyId) {
     for (const p of spec.prerequisites) {
@@ -282,7 +284,7 @@ async function step(draft, spec, { values = {}, hints = {}, clear = [], by = "mo
   if (blockedBy.some((b) => b.key === "lines_matched" || b.key === "some_matched")) {
     for (let i = blockedBy.length - 1; i >= 0; i--) if (["invoice_ready", "data_complete"].includes(blockedBy[i].key)) blockedBy.splice(i, 1);
   }
-  if (!companyId && !fields.companyId?.options && env.actor.kind === "user") {
+  if (!companyId && !noCompany && !fields.companyId?.options && env.actor.kind === "user") {
     const data = await run("list_companies", { limit: 12 });
     const options = (data?.items || []).map((c) => ({ value: c.id, label: c.name }));
     if (options.length) fields.companyId = { options, at: now.toISOString() };
@@ -315,7 +317,7 @@ async function step(draft, spec, { values = {}, hints = {}, clear = [], by = "mo
           const preview = await spec.tool.preview(parsed.data, tctx);
           if (card?.status === "pending") await cancelPending(env.actor, card.id, "the draft changed");
           const fieldsShown = [
-            { name: "companyId", label: "Company", value: await companyName(companyId), source: env.actor.kind === "company" || companyId === env.scope?.companyId ? "context" : "user", evidence: env.actor.kind === "company" ? "your company" : "the company picked" },
+            ...(noCompany ? [] : [{ name: "companyId", label: "Company", value: await companyName(companyId), source: env.actor.kind === "company" || companyId === env.scope?.companyId ? "context" : "user", evidence: env.actor.kind === "company" ? "your company" : "the company picked" }]),
             ...spec.fields.filter((f) => vals[f.name] !== undefined).map((f) => ({ name: f.name, label: f.label, value: fields[f.name].display ?? displayOf(vals[f.name]), source: fields[f.name].source, evidence: fields[f.name].evidence || null })),
           ];
           const propose = env.propose || ((p) => proposeAction({ conversationId: draft.conversationId, messageId: env.messageId || null, actor: env.actor, ...p }));

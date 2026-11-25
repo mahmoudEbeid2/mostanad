@@ -1024,6 +1024,7 @@ model CertificateBatch {
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
   invoiceId       String    @map("invoice_id")
   invoice         Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  combinedPdfFileId String?  @map("combined_pdf_file_id") // every certificate of the batch in one PDF (made with the ZIP)
   status          String    @default("queued") // queued|running|done|partially_failed|failed
   plan            Json // templateSelector output, frozen
   counts          Json? // { planned, rendered, failed, flagged }
@@ -1657,7 +1658,7 @@ model AssistantAction {
   draftId        String?               @map("draft_id") // the ready draft it was made from (every card since drafts)
   ownerType      String                @map("owner_type") // who asked
   ownerId        String                @map("owner_id")
-  companyId      String                @map("company_id") // one explicit company, always
+  companyId      String?               @map("company_id") // one explicit company — null only on a "create the company" card (createsCompany tool)
   tool           String
   args           Json // exactly what Run executes
   argsHash       String                @map("args_hash") // sha256 of tool + company + canonical args
@@ -1744,6 +1745,8 @@ model IntakeBatch {
   companyId       String?   @map("company_id") // a company session: always its own; a system user: the optional hint
   conversationId  String?   @map("conversation_id") // dropped in the assistant chat
   status          String    @default("uploading") // uploading | classifying | review | executing | done | failed
+  mode            String    @default("normal") // normal | express (urgent: filed AND certificate drafts made at once)
+  express         Json? // express progress: { requestedTypes, stage, templates, generation, certificates, needs }
   classifyTaskId  String?   @map("classify_task_id")
   executeTaskId   String?   @map("execute_task_id")
   summary         Json? // the plain result after execute: created / done / needs a person
@@ -1799,13 +1802,16 @@ model IntakeCreated {
   batchId    String      @map("batch_id")
   batch      IntakeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   itemId     String?     @map("item_id")
-  entityType String      @map("entity_type") // company | brand | product | certificate_type
+  entityType String      @map("entity_type") // company | brand | product | certificate_type | certificate_template | certificate
   entityId   String      @map("entity_id")
   name       String
   companyId  String?     @map("company_id")
+  reviewedAt       DateTime? @map("reviewed_at") // express items: a person checked it ("Express — needs review" until then)
+  reviewedByUserId String?   @map("reviewed_by_user_id")
   createdAt  DateTime    @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([companyId])
+  @@index([companyId, reviewedAt])
   @@map("intake_created")
 }

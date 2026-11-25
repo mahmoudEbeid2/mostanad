@@ -2,8 +2,9 @@
 // companies" failed ("Pick a company before attaching a file…"), the message
 // went out without it, and the model then called inspect_attachment with an id
 // that was never in the conversation ("Attachment not found!").
-// Now: files attach in "All companies" (unbound), the company is asked when the
-// message is sent (pick_company) or bound with …/attachments/bind, a tool on a
+// Now: files attach in "All companies" (unbound) and are SENT unbound when no company is
+// picked (25 Nov: an urgent order starts from an empty chat — start_intake works out whose
+// they are), or bound by the company picked on send / …/attachments/bind; a tool on a
 // bound file takes the file's company, and a missing file says what the
 // conversation does hold. Needs `npm run dev:test`.
 import crypto from "crypto";
@@ -40,10 +41,9 @@ async function main() {
     console.log("Attaching with no company picked");
     const [f1] = await assistant.uploadAttachments(admin, conv.id, [pdf("MAXVET COA.pdf")], { companyId: "all" });
     assert("the file is kept in the conversation, not refused", !!f1?.id && f1.companyId === null, f1);
-    let err = await assistant.sendMessage(admin, conv.id, { text: "دي الشهادة", companyId: "all", attachmentIds: [f1.id] }, { generate: script([[{ text: "x" }]]).generate }).catch((e) => e);
-    assert("sending it in \"All companies\" → 409 pick_company naming the file (nothing sent)", err.statusCode === 409 && err.code === "pick_company" && err.attachmentIds?.[0] === f1.id, { code: err.code, status: err.statusCode, msg: err.message });
-    assert("…no message was stored", (await prisma.assistantMessage.count({ where: { conversationId: conv.id } })) === 0);
-    err = await loadAttachment(f1.id, { conversationId: conv.id, companyId: null }).catch((e) => e);
+    const unbound = await assistant.sendMessage(admin, conv.id, { text: "دي الشهادة", companyId: "all", attachmentIds: [f1.id] }, { generate: script([[{ text: "x" }]]).generate }).catch((e) => e);
+    assert("sending it in \"All companies\" → sent, the file still unbound (its company is worked out from it)", unbound?.message?.role === "assistant" && (await prisma.assistantAttachment.findUnique({ where: { id: f1.id } })).companyId === null, unbound?.message || unbound);
+    let err = await loadAttachment(f1.id, { conversationId: conv.id, companyId: null }).catch((e) => e);
     assert("a tool can't read a file with no company yet (it asks which company)", err.statusCode === 409 && /isn't linked to a company/.test(err.message), err.message);
 
     console.log("\nThe company picked on send");
@@ -52,7 +52,7 @@ async function main() {
     const att = await prisma.assistantAttachment.findUnique({ where: { id: f1.id } });
     const file = await prisma.storedFile.findUnique({ where: { id: att.fileId } });
     assert("sent with a company → the file is bound to it (attachment and stored file)", att.companyId === coA.id && file.companyId === coA.id, { att: att.companyId, file: file.companyId });
-    const userMsg = await prisma.assistantMessage.findFirst({ where: { conversationId: conv.id, role: "user" } });
+    const userMsg = await prisma.assistantMessage.findFirst({ where: { conversationId: conv.id, role: "user" }, orderBy: { createdAt: "desc" } });
     assert("…and the message carries it", userMsg.attachments?.[0]?.id === f1.id && userMsg.companyId === coA.id && turn.message?.role === "assistant", userMsg.attachments);
     assert("…the model was told the file is attached", JSON.stringify(m.seen[0].contents).includes(`[attached: ${f1.id}`));
 

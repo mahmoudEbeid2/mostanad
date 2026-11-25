@@ -10,6 +10,7 @@ import "./tools/invoiceLines.js";
 import "./tools/labelLayout.js";
 import "./tools/certificateFiles.js";
 import "./tools/intake.js";
+import "./tools/registration.js";
 import "./tools/drafts.js"; // after the write tools: start_draft lists them
 
 export * from "./registry.js";
