@@ -1,0 +1,14 @@
+# Line endings: LF in the repository, binary files never touched
+* text=auto eol=lf
+*.pdf binary
+*.ai binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.xlsx binary
+*.dump binary
