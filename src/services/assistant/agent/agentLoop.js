@@ -28,17 +28,17 @@ export const LIMITS = {
   maxFactsChars: 100_000,
 };
 
-export const UNGROUNDED_ANSWER = { en: "I couldn't get that from the system.", ar: "لم أستطع الحصول على ذلك من النظام." };
+export const UNGROUNDED_ANSWER = { en: "I couldn't get that from the system.", ar: "مقدرتش أجيب ده من السيستم." };
 const groundingRetry = (unknown, lang) =>
   `[system check] Your answer named or stated ${unknown.map((u) => `"${u}"`).join(", ")}, which no tool returned in this conversation. ` +
   "Do not answer from memory and never continue a list yourself. Call the tool that returns this data (for more rows of a list, the same tool with page = nextPage; for how-to questions, help_topics) and answer only from its results — or say it isn't in the system. " +
-  `Answer in ${lang === "ar" ? "Arabic" : "English"}, the language of the person's message.`;
+  `Answer in ${lang === "ar" ? "simple Egyptian Arabic (never formal MSA)" : "English"}, the language of the person's message.`;
 
 /** The last resort when an answer still names things no tool returned: say WHAT couldn't be verified. */
 export const unverifiedAnswer = (unknown, lang) => {
   const list = unknown.filter((u) => !u.startsWith("(")).slice(0, 6);
   const typed = unknown.some((u) => u.startsWith("("));
-  if (lang === "ar") return list.length ? `لم أعرض الإجابة لأنني لم أستطع التحقق من هذه القيم في بيانات النظام: ${list.join("، ")}. اطلب مني البحث عنها بالاسم.` : typed ? "لم أعرض القائمة لأنها لم تأتِ من النظام. اطلب مني عرضها وسأجلبها من النظام." : UNGROUNDED_ANSWER.ar;
+  if (lang === "ar") return list.length ? `مكتبتش الرد عشان مقدرتش أتأكد من القيم دي في بيانات السيستم: ${list.join("، ")}. قولّي أدوّر عليها بالاسم.` : typed ? "مكتبتش القايمة عشان مجتش من السيستم. قولّي أعرضها وهجيبها منه." : UNGROUNDED_ANSWER.ar;
   return list.length ? `I didn't show the answer because I couldn't verify these in the system's data: ${list.join(", ")}. Ask me to look them up by name.` : typed ? "I didn't show the list because it didn't come from the system. Ask me to show it and I'll fetch it." : UNGROUNDED_ANSWER.en;
 };
 

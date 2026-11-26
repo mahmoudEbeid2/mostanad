@@ -374,3 +374,34 @@ export async function fromDocuments({ companyId, certificateIds }) {
   }
   return Object.assign(results, { notes: [...new Set(notes)] });
 }
+
+// ── a field's label in Arabic (27 Nov QA: the chat card listed "comp 13 name") ─────────────────────────────
+const LABEL_AR = [
+  [/^Ingredient (\d+) amount$/i, (m) => `كمية المكوّن ${m[1]}`],
+  [/^Ingredient (\d+) unit$/i, (m) => `وحدة المكوّن ${m[1]}`],
+  [/^Ingredient (\d+)$/i, (m) => `المكوّن ${m[1]}`],
+  [/^Composition basis$/i, () => "أساس التركيبة"],
+  [/^Batch (?:number|no\.?)$/i, () => "رقم التشغيلة"],
+  [/^Batch size$/i, () => "حجم التشغيلة"],
+  [/^(?:Manufacturing|Production) date$/i, () => "تاريخ الإنتاج"],
+  [/^Expiry date$/i, () => "تاريخ الانتهاء"],
+  [/^Document number$/i, () => "رقم الشهادة"],
+  [/^Issue date$/i, () => "تاريخ الإصدار"],
+  [/^Product name$/i, () => "اسم المنتج"],
+  [/^Consignee name$/i, () => "اسم المستلم"],
+  [/^Consignee address(?: \(line \d+\))?$/i, () => "عنوان المستلم"],
+  [/^Consignee (?:country)$/i, () => "دولة المستلم"],
+  [/^Consignee (?:phone)$/i, () => "تليفون المستلم"],
+  [/^Exporter name$/i, () => "اسم المصدّر"],
+  [/^(.+) result$/i, (m) => `نتيجة ${m[1]}`],
+  [/^(.+) specification$/i, (m) => `مواصفة ${m[1]}`],
+];
+/** A template field's label → Arabic (a known label), else the label itself (never its key) */
+export function fieldLabelAr(f) {
+  const label = String(f?.label || "").trim();
+  for (const [re, ar] of LABEL_AR) {
+    const m = label.match(re);
+    if (m) return ar(m);
+  }
+  return label || String(f?.key || "").replace(/_/g, " ");
+}

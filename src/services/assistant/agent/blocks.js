@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { FIELD_LABELS } from "../i18n.js";
 
 // Table blocks: a list a tool returned goes to the UI as rows, not through the
 // model's text. The model only writes a sentence around it; "Load more" calls
@@ -47,13 +48,22 @@ const COLUMN_AR = {
   Description: "الوصف", Catalogue: "الكتالوج", Name: "الاسم", Username: "اسم المستخدم", Email: "الإيميل", Role: "الدور", Group: "المجموعة", Count: "العدد",
   Field: "الحقل", Key: "المفتاح", Required: "مطلوب", Source: "المصدر", "Lab result": "نتيجة تحليل", "Batch fact": "بيان تشغيلة", Item: "البند", Calls: "الطلبات", "Cost (USD)": "التكلفة (دولار)",
 };
+// 27 Nov QA: headings of lists with no fixed columns (count groups, plain records) stayed English
+Object.assign(COLUMN_AR, {
+  Label: "البند", Value: "القيمة", Total: "الإجمالي", "Is Active": "شغّال", "Created At": "اتعمل", "Updated At": "اتعدّل", Packaging: "العبوة", Pack: "العبوة",
+  "Product Name": "المنتج", "Company Name": "الشركة", "Brand Name": "البراند", Number: "الرقم", "Certificate Type": "نوع الشهادة", Progress: "التقدّم", Stage: "المرحلة", Message: "الرسالة", Error: "الخطأ",
+});
+
 function columnsFor(tool, rows) {
   if (COLUMNS[tool]) return COLUMNS[tool].filter(([key]) => rows.some((r) => r[key] !== undefined && r[key] !== null)).map(([key, label]) => ({ key, label, labelAr: COLUMN_AR[label] || null }));
   const first = rows[0] || {};
   return Object.keys(first)
     .filter((k) => k !== "ref" && k !== "id" && !/Id$/.test(k) && ["string", "number", "boolean"].includes(typeof first[k]))
     .slice(0, 6)
-    .map((key) => ({ key, label: key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()) }));
+    .map((key) => {
+      const label = key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+      return { key, label, labelAr: COLUMN_AR[label] || FIELD_LABELS[key]?.[0] || null };
+    });
 }
 
 /** The rows of a list result (page() shape or count groups), or null when it isn't a list. */

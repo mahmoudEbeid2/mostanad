@@ -64,7 +64,8 @@ export function startWorker({ queueName, label, concurrency = 1, handlers }) {
         const ms = Date.now() - startedAt;
         if (taskId) {
           await saves;
-          await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", progress: 100, result: result ?? {} } });
+          // a finished task's last progress line ("بقرا الملفات… 0/5") is no longer true (27 Nov QA)
+          await prisma.backgroundTask.update({ where: { id: taskId }, data: { status: "completed", progress: 100, message: null, result: result ?? {} } });
           emit({ ...base, status: "completed", result });
         }
         console.log(`[${label}] ${JSON.stringify({ job: job.name, entity: job.data.entity, id: job.data.entityId, companyId, ms, outcome: "completed" })}`);

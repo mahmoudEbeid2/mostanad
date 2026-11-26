@@ -17,6 +17,7 @@ WORKERS=$($C config --services 2>/dev/null | grep -E -- '-worker$|^cert-renderer
 say() { echo "[deploy $(date -u +%H:%M:%S)] $*"; }
 fail() {
   say "FAILED — $*"
+  $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1 # the twin runs the new code: never left serving
   say "rolling back to the previous images"
   for s in $SERVICES; do
     if docker image inspect "mostanad-$s:rollback" >/dev/null 2>&1; then
@@ -44,7 +45,17 @@ say "now $(git log --oneline -1 | cut -c1-80)"
 say "build $SERVICES"
 $C build $SERVICES > "/root/backups/build_$STAMP.log" 2>&1 || { say "build failed (log /root/backups/build_$STAMP.log) — nothing changed"; exit 1; }
 
-say "start the API"
+# zero downtime (27 Nov QA: each deploy took the API down 20–40 s): a twin on the new image takes the
+# traffic first (same Traefik service, routed once healthy), the API restarts behind it, the twin goes
+say "start the API (a twin on the new image answers meanwhile)"
+twin=0
+if $C --profile deploy up -d --no-deps --no-build mostanad-app-next >/dev/null 2>&1; then
+  for i in $(seq 1 60); do
+    [ "$(docker inspect -f '{{.State.Health.Status}}' mostanad-app-next 2>/dev/null)" = "healthy" ] && { twin=1; break; }
+    sleep 3
+  done
+fi
+if [ $twin = 1 ]; then say "the twin answers — the API restarts behind it"; else say "the twin didn't come up — a plain restart"; $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; fi
 $C up -d --no-deps mostanad-app >/dev/null 2>&1
 # (the log is captured first: with pipefail, "logs | grep -q" fails when grep stops at the first match)
 started=0
@@ -61,6 +72,9 @@ say "check /health"
 ok=0
 for i in $(seq 1 30); do inapp "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" && { ok=1; break; }; sleep 2; done
 [ $ok = 1 ] || fail "/health doesn't answer"
+# the API is back and healthy (Traefik routes to it again): the twin goes
+for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' mostanad-app 2>/dev/null)" = "healthy" ] && break; sleep 3; done
+if [ $twin = 1 ]; then $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; say "the twin stopped"; fi
 
 say "check /health/workers"
 ok=0

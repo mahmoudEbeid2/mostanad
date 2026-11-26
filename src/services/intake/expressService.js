@@ -9,9 +9,9 @@ import { fieldsForAreas, testRowFields } from "../certificates/templates/autoMap
 import { applyPageDiff } from "../certificates/templates/pageDiff.js";
 import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
 import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
-import { startGeneration } from "../certificates/generation/batchService.js";
+import { startGeneration, isBlocking } from "../certificates/generation/batchService.js";
 import { inferProductGaps } from "../harvest/harvestInfer.js";
-import { fromDocuments, missingFor, missingMessageAr, setRequestConsignee } from "../certificates/generation/batchAnswer.js";
+import { fromDocuments, missingFor, missingMessageAr, setRequestConsignee, fieldLabelAr } from "../certificates/generation/batchAnswer.js";
 import { numberingQuestionAr } from "../certificates/generation/docNumbers.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
@@ -498,7 +498,10 @@ async function collect(batch, ex) {
   const list = [];
   for (const c of certs) {
     const v = c.currentVersion ? await prisma.certificateVersion.findFirst({ where: { certificateId: c.id, versionNumber: c.currentVersion }, select: { values: true } }) : null;
-    const blanks = Object.entries(v?.values || {}).filter(([, x]) => (x?.flags || []).length).map(([k]) => k);
+    // what really blocks (a missing / sample value, a layout issue) by its Arabic label — never an optional row
+    // the product doesn't use, an estimate or a fallback glyph (27 Nov QA: "comp 2 name … comp 18 unit")
+    const labels = new Map((await prisma.templateField.findMany({ where: { versionId: c.templateVersionId }, select: { key: true, label: true } })).map((f) => [f.key, f]));
+    const blanks = [...new Set(Object.entries(v?.values || {}).filter(([, x]) => (x?.flags || []).some(isBlocking)).map(([k]) => fieldLabelAr(labels.get(k) || { key: k })))];
     const products = c.product ? [c.product.name] : c.items.map((i) => i.invoiceItem?.product?.name).filter(Boolean);
     list.push({ id: c.id, type: c.certificateType.code, products, status: c.status, error: c.error, blanks });
     await record(batch.id, "certificate", { id: c.id, name: `${c.certificateType.code} — ${products.join(", ")}` }, c.companyId);

@@ -140,7 +140,7 @@ defineTool({
     const rows = await prisma.backgroundTask.findMany({ where: { ...(ctx.companyId ? { companyId: ctx.companyId } : {}), type: { notIn: ["certificate_dictionary", "dictionary_rebuild"] } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, type: true, status: true, progress: true, message: true, stage: true, error: true, createdAt: true, updatedAt: true } });
     if (!rows.length) return { tasks: [], note: "No background task for this company yet." };
     const running = rows.filter((t) => ["queued", "pending", "active", "running", "processing"].includes(t.status));
-    const view = (t) => ({ taskId: t.id, type: t.type, status: t.status, progress: t.progress ?? null, stage: t.stage || null, message: t.message || null, error: t.error || null, started: t.createdAt, updated: t.updatedAt });
+    const view = (t) => ({ taskId: t.id, type: t.type, status: t.status, progress: t.progress ?? null, stage: t.stage || null, message: ["queued", "pending", "processing", "running"].includes(t.status) ? t.message || null : null, error: t.error || null, started: t.createdAt, updated: t.updatedAt });
     if (running.length === 1) return { latest: view(running[0]), others: rows.filter((t) => t !== running[0]).slice(0, 3).map(view) };
     return { running: running.map(view), recent: rows.filter((t) => !running.includes(t)).slice(0, 5).map(view), note: running.length > 1 ? "Several tasks are running: name them and ask which one (or report all)." : "Nothing is running now: report the latest one." };
   },

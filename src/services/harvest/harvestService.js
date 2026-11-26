@@ -348,8 +348,34 @@ async function inferRest(companyId, ctx = {}) {
   }
 }
 
-/** The review card's line: "قريت 14 ملف — ملّيت 212 قيمة — 3 تعارضات — 6 خانات باتش ناقصة" */
-export const summaryAr = ({ files, filled, conflicts, batchMissing }) => `قريت ${files} ملف — ملّيت ${filled} قيمة — ${conflicts} تعارضات — ${batchMissing} خانات باتش ناقصة`;
+/**
+ * The review card's line: "قريت 5 ملف (535 قيمة) — ملّيت 12 خانة جديدة — 3 تعارضات (تحت) — 6 خانات باتش ناقصة".
+ * 27 Nov QA: "ملّيت 0 قيمة" read as nothing found when every value was already on file — it says so now.
+ */
+export const summaryAr = ({ files, values = null, filled, conflicts, batchMissing }) =>
+  [
+    `قريت ${files} ملف${values ? ` (${values} قيمة)` : ""}`,
+    filled ? `ملّيت ${filled} خانة جديدة` : "كل البيانات كانت متسجلة قبل كده — مفيش خانة جديدة",
+    conflicts ? `${conflicts} تعارض — تحت` : "مفيش تعارضات",
+    `${batchMissing} خانات باتش ناقصة`,
+  ].join(" — ");
+
+/**
+ * The open conflicts of these companies' products, to list under the line (27 Nov QA: "12 تعارضات" shown
+ * nowhere) → [{ product, field, fieldAr, values: [{ value, file, page }] }]
+ */
+export async function openConflicts(companyIds, limit = 30) {
+  const { FIELD_LABELS } = await import("../assistant/i18n.js");
+  const rows = await prisma.product.findMany({ where: { companyId: { in: companyIds } }, select: { name: true, harvestConflicts: true } });
+  const out = [];
+  for (const p of rows)
+    for (const c of p.harvestConflicts || []) {
+      if (c.decision) continue;
+      const field = String(c.key || "");
+      out.push({ product: p.name, field, fieldAr: FIELD_LABELS[field]?.[0] || (field.startsWith("spec:") ? `مواصفة ${field.slice(5)}` : field === "category" ? "الفئة" : field), values: (c.values || []).map((v) => ({ value: v.value, file: v.file || null, page: v.page || null })) });
+    }
+  return out.slice(0, limit);
+}
 
 /**
  * Read one uploaded file in the background (a template, a chat file, a product import) and fill what

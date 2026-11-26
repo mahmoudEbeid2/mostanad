@@ -26,7 +26,7 @@ import { withAiContext, currentAiContext } from "../ai/aiContext.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { readXlsx, readCsv } from "../intake/productSheet.js";
 import { norm, normPack, numberPattern, dateFormatOf } from "./harvestRules.js";
-import { mergeAll, summaryAr } from "./harvestService.js";
+import { mergeAll, summaryAr, openConflicts } from "./harvestService.js";
 
 const PDF_MAX_BYTES = 45 * 1024 * 1024; // Google: a PDF up to 50 MB
 const PAGES_PER_CALL = 400; // well inside a 1M-token window at high resolution
@@ -756,7 +756,9 @@ export async function applyDropHarvest(batchId) {
     conflicts += m.conflicts;
   }
   const read = (h.files || []).filter((f) => f.status === "read").length;
-  const summary = { files: read, values: (h.values || []).length, facts, filled, conflicts, review: h.review || 0, failed: (h.files || []).filter((f) => f.status === "failed").map((f) => ({ name: f.name, error: f.error })), batchMissing: 0 };
+  // the open conflicts themselves, listed under the line (not only their count)
+  const conflictList = companies.size ? await openConflicts([...companies]) : [];
+  const summary = { files: read, values: (h.values || []).length, facts, filled, conflicts: conflictList.length || conflicts, conflictList, review: h.review || 0, failed: (h.files || []).filter((f) => f.status === "failed").map((f) => ({ name: f.name, error: f.error })), batchMissing: 0 };
   summary.ar = summaryAr(summary);
   await setHarvest(batchId, { summary });
   return summary;

@@ -21,6 +21,14 @@ const TITLES = {
   upload_label: "ضيف ليبل مرجعي",
   verify_label: "افحص ليبل",
   resize_label: "غيّر مقاس الليبل",
+  // 27 Nov QA: these cards were English on an Arabic chat ("Fill 1 certificate")
+  fill_missing_batch_values: "املا بيانات التشغيلة والتحليل في الشهادات",
+  set_shipment_consignee: "سجّل المستلم (Consignee) للشحنة",
+};
+// the card's one-line explanation (27 Nov QA: "The values you wrote go into the drafts…")
+const SUMMARIES = {
+  fill_missing_batch_values: "القيم اللي كتبتها هتتحط في المسودات (نسخة جديدة من كل شهادة). مفيش حاجة تانية هتتغير.",
+  set_shipment_consignee: "المستلم اللي كتبته هيتسجل للطلب ده ويتطبع على مسوداته (نسخة جديدة من كل شهادة). مفيش حاجة تانية هتتغير.",
 };
 const RUN = {
   generate_certificate_for_product: "اعمل الشهادة",
@@ -28,6 +36,8 @@ const RUN = {
   generate_certificates: "اعمل الشهادات",
   create_certificate_templates: "اعمل القوالب",
   use_files_as_templates: "اعمل القوالب والشهادات",
+  fill_missing_batch_values: "املا",
+  set_shipment_consignee: "سجّل",
 };
 export const LABELS_AR = {
   companyId: "الشركة",
@@ -95,6 +105,7 @@ export function withArabic(tool, preview) {
     ...preview,
     titleAr: TITLES[tool] || null,
     runLabelAr: RUN[tool] || null,
+    summaryAr: SUMMARIES[tool] || null,
     ...(Array.isArray(preview.fields) ? { fields: preview.fields.map((f) => ({ ...f, labelAr: lab(f.name) || lab(f.label) })) } : {}),
     ...(Array.isArray(preview.details) ? { details: preview.details.map((d) => ({ ...d, labelAr: lab(d.label) })) } : {}),
     ...(Array.isArray(preview.missing) ? { missingAr: preview.missing.map((x) => missingAr(x) || x) } : {}),

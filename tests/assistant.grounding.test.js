@@ -68,7 +68,7 @@ async function main() {
     m = script([[{ text: invented }]]);
     const r4 = await assistant.sendMessage(admin, conv.id, { text: "اعرض الباقي تاني" }, { generate: m.generate });
     // f11087d: the last resort names the values it couldn't verify (it used to say only "I couldn't get that from the system")
-    assert("invented twice → says which values couldn't be verified (in Arabic), logged", /لم أستطع التحقق من هذه القيم/.test(r4.message.text) && r4.message.text.includes("DOXYVET") && r4.message.grounding?.blocked === true && r4.message.grounding.unknown.includes("DOXYVET"), r4.message.text);
+    assert("invented twice → says which values couldn't be verified (in Arabic), logged", /مقدرتش أتأكد من القيم دي/.test(r4.message.text) && r4.message.text.includes("DOXYVET") && r4.message.grounding?.blocked === true && r4.message.grounding.unknown.includes("DOXYVET"), r4.message.text);
     assert("…after exactly one retry", m.seen.length === 2);
 
     m = script([[{ text: "You have **61** products and **COLIVET** is the best seller." }]]);

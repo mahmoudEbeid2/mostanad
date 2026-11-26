@@ -127,7 +127,7 @@ export async function startClassify(actor, batchId) {
 function harvestLineOf(batch, ex) {
   const s = batch.harvest?.summary || batch.summary?.harvest || null;
   if (!s) return null;
-  return summaryAr({ files: s.files ?? 0, filled: s.filled ?? 0, conflicts: s.conflicts ?? 0, batchMissing: ex?.missing?.items ?? s.batchMissing ?? 0 });
+  return summaryAr({ files: s.files ?? 0, values: s.values ?? null, filled: s.filled ?? 0, conflicts: s.conflicts ?? 0, batchMissing: ex?.missing?.items ?? s.batchMissing ?? 0 });
 }
 
 /** The drop's AI read as the card shows it (never the values themselves: a catalogue gives thousands) */

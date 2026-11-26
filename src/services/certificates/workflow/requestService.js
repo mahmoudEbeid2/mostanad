@@ -74,7 +74,7 @@ export async function addPackVariant(id, companyId, lineId, { fromProductId }) {
   const existing = await prisma.product.findMany({ where: { companyId: inv.companyId, name: src.name }, select: { id: true, packaging: true } });
   let variant = existing.find((p) => samePack(p.packaging, pack));
   if (!variant) {
-    const COPY = ["name", "productCode", "description", "indications", "targetSpecies", "physicalForm", "appearance", "activeIngredients", "validity", "compositionBasis", "dosage", "mixingInstructions", "withdrawalPeriod", "contraindications", "userSafety", "storage", "registrationNumber", "origin", "producer", "specifications", "routeOfAdmin", "dosageForm", "strength", "productType", "prescriptionStatus", "categoryId", "brandId"];
+    const COPY = ["name", "productCode", "description", "indications", "targetSpecies", "physicalForm", "appearance", "activeIngredients", "validity", "compositionBasis", "dosage", "mixingInstructions", "withdrawalPeriod", "contraindications", "userSafety", "storage", "registrationNumber", "origin", "producer", "specifications", "routeOfAdmin", "dosageForm", "strength", "productType", "prescriptionStatus", "categoryId", "brandId", "productForm"]; // productForm: the COC's «Product Form» (27 Nov QA: a variant made then lacked it)
     const data = Object.fromEntries(COPY.filter((k) => src[k] !== null && src[k] !== undefined).map((k) => [k, src[k]]));
     variant = await prisma.product.create({ data: { ...data, companyId: inv.companyId, packaging: pack, sourceProductId: src.id, fieldProvenance: { ...(src.fieldProvenance || {}), packaging: { tier: "manual", source: "request", note: `pack variant of ${src.packaging || src.name}`, at: new Date().toISOString() } } } });
   }
@@ -199,8 +199,12 @@ const MISSING_AR = {
   lab_report: "تقرير المعمل ناقص",
   composition: "التركيبة ناقصة في المنتج",
   value: "ناقص",
+  layout: "كلام أطول من مكانه في التصميم",
   new_pack: "العبوة دي مش موجودة — أضفها كعبوة جديدة لنفس المنتج",
 };
+
+// a value really missing (vs. one that is there but doesn't fit its place)
+const DATA_FLAGS = new Set(["missing", "sample_value", "unconfirmed"]);
 
 // what a cell with nothing missing still needs before it can be delivered
 const STEP_NEED = { draft: "محتاجة تتبعت للمراجعة وتتعتمد", in_review: "في المراجعة", awaiting_authorization: "مستنية الاعتماد" };
@@ -219,9 +223,16 @@ async function missingOf(cert) {
   const out = [];
   const lab = [];
   const values = new Map(); // label → keys (a design's 30 "Analysis result" blanks are one line, with a count)
+  const layout = [];
   for (const [k, x] of Object.entries(v?.values || {})) {
     if (!(x.flags || []).some(isBlocking)) continue;
     const f = byKey.get(k);
+    // a value that is there but doesn't fit its place (overflow, a missing glyph) is a layout issue, never
+    // "missing data" (27 Nov QA: COCs with their whole composition showed «التركيبة ناقصة في المنتج»)
+    if (!(x.flags || []).some((fl) => DATA_FLAGS.has(fl))) {
+      layout.push(f?.label || k);
+      continue;
+    }
     if (f && String(f.role || "").startsWith("composition_")) composition.push(k);
     else if (f && isLabResult(f) && !isComposition) lab.push(f.label || k);
     else values.set(f?.label || k, [...(values.get(f?.label || k) || []), k]);
@@ -230,6 +241,7 @@ async function missingOf(cert) {
   for (const [label, keys] of values) out.push({ code: "value", field: keys[0], fields: keys, label, ar: `${MISSING_AR.value}: ${label}${keys.length > 1 ? ` ×${keys.length}` : ""}` });
   if (lab.length) out.unshift({ code: "lab_report", fields: lab, ar: `${MISSING_AR.lab_report} (${counted(lab).join("، ")})` });
   if (composition.length) out.unshift({ code: "composition", fields: composition, ar: MISSING_AR.composition });
+  if (layout.length) out.push({ code: "layout", fields: layout, ar: `${MISSING_AR.layout}: ${counted(layout).join("، ")}` });
   return out;
 }
 

@@ -194,9 +194,11 @@ export async function bindConversationAttachments(actor, conversationId, { compa
  * are hidden (supersededAt) and this message takes their place. Its files and page are kept
  * unless the body gives others. Hidden messages still count against the limits.
  */
-export async function sendMessage(actor, conversationId, { text, page, companyId, attachmentIds, editOf = null }, { onEvent = () => {}, signal = null, generate = null, eventFor = null } = {}) {
+export async function sendMessage(actor, conversationId, { text, page, companyId, attachmentIds, editOf = null }, { onEvent = () => {}, signal = null, generate = null, eventFor = null, eventFacts = [] } = {}) {
   const conv = await loadOwn(actor, conversationId);
-  const body = String(text || "").trim();
+  // files with no text are a message too (27 Nov QA, the client's test 0: "drop files with no text") — a
+  // neutral line, no intent the person didn't write
+  const body = String(text || "").trim() || (Array.isArray(attachmentIds) && attachmentIds.length ? "📎 الملفات دي" : "");
   if (!body) throw new AppError("Type a message", 400);
   if (body.length > MAX_TEXT) throw new AppError(`A message can be at most ${MAX_TEXT} characters`, 400);
   const edited = editOf && UUID.test(String(editOf)) ? await prisma.assistantMessage.findFirst({ where: { id: editOf, conversationId, role: "user", supersededAt: null } }) : null;
@@ -246,7 +248,7 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
     page: pg,
     companyExists: async (id) => UUID.test(String(id)) && !!(await prisma.company.findUnique({ where: { id }, select: { id: true } })),
     knownRefs: history.flatMap((m) => (Array.isArray(m.links) ? m.links : [])),
-    facts: earlierFacts,
+    facts: [...earlierFacts, ...eventFacts],
     conversationId,
     userTexts,
     attachments: files.map(attachmentView),
@@ -355,7 +357,10 @@ export async function continueAfterAction(actor, conversationId, actionId, opts 
   if (row.conversationId !== conversationId) throw new AppError("Action not found!", 404);
   // what the person must see next is read here, in code, so the answer can show it (QA: "سأقوم الآن بالتحقق" and nothing)
   const followUp = await followUpRead(actor, action);
-  return sendMessage(actor, conversationId, { text: actionEventText(action, followUp), page: null }, { ...opts, eventFor: actionId });
+  // the action's whole result is evidence for the answer, not only what fits the prompt (27 Nov QA: the
+  // reply after a fill was blocked — "لم أستطع التحقق من هذه القيم: 7078" — a value of the action's own result)
+  const eventFacts = factsOf([action.result ?? null, followUp?.data ?? null]);
+  return sendMessage(actor, conversationId, { text: actionEventText(action, followUp), page: null }, { ...opts, eventFor: actionId, eventFacts });
 }
 
 /**

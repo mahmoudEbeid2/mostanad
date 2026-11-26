@@ -190,7 +190,7 @@ async function main() {
     out = await runAgent({ text: "اعرض بيانات الشركة", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {}, companyExists: async () => true }, generate: m.generate });
     const rb = out.blocks.find((b) => b.type === "record");
     assert("a single record gets a code-built record card (stored values, Arabic/English labels)", rb?.tool === "get_company" && rb.fields.some((f) => f.key === "name" && f.value === co.name && f.label.ar === "الاسم" && f.label.en === "Name"), rb);
-    assert("…the answer isn't replaced by 'couldn't get that from the system'", !/لم أستطع الحصول/.test(out.text) && out.text.startsWith("بيانات شركة"), out.text);
+    assert("…the answer isn't replaced by 'couldn't get that from the system'", !/لم أستطع الحصول|مقدرتش أجيب ده/.test(out.text) && out.text.startsWith("بيانات شركة"), out.text);
     m = script([[call("help_topics", { topic: "certificates" })], [{ text: "الخطوات:\n1. **ارفع الفاتورة**\n2. **طابق السطور**\n3. **أكد الفاتورة**\n4. **جهز الشهادات**\n5. **أصدر الشهادات**" }]]);
     out = await runAgent({ text: "ازاي اطلع شهادة COA من السيستم؟ اشرحلي الخطوات", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {} }, generate: m.generate });
     assert("how-to: grounded on help_topics, steps shown (not 'couldn't get that')", out.toolCalls[0]?.ok && /ارفع الفاتورة/.test(out.text) && !out.grounding?.blocked, out.text);
@@ -198,7 +198,7 @@ async function main() {
     assert("'ماهي الأدوات التي تدعمها': capabilities come from the registry", t.ok && t.data.capabilities.some((c) => c.module === "invoices" && c.changes.length > 0), t.error);
     m = script([[{ text: "المنتج المقصود **ZORBAX-77**." }], [{ text: "المنتج المقصود **ZORBAX-77**." }]]);
     out = await runAgent({ text: "فين منتج zorbax", ctx: { actor: admin, scope: { companyId: co.id }, audit: async () => {} }, generate: m.generate });
-    assert("a blocked answer is retried in the person's language, then says WHAT couldn't be verified", /Answer in Arabic/.test(JSON.stringify(m.seen[1].contents.at(-1))) && /ZORBAX-77/.test(out.text) && /لم أستطع التحقق/.test(out.text), out.text);
+    assert("a blocked answer is retried in the person's language, then says WHAT couldn't be verified", /Answer in simple Egyptian Arabic/.test(JSON.stringify(m.seen[1].contents.at(-1))) && /ZORBAX-77/.test(out.text) && /مقدرتش أتأكد/.test(out.text), out.text);
 
     assert("'يمكنك متابعة حالتها هنا' gets a real link", withHereLink("يمكنك متابعة حالتها هنا.", refsT, new Map()).includes("](entity:label/0b0b0b0b-0000-4000-8000-000000000001)") && withHereLink("No pointer.", refsT, new Map()) === "No pointer.");
   } finally {
