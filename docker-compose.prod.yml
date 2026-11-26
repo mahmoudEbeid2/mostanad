@@ -71,10 +71,11 @@ services:
     command: sh ./scripts/start.sh
     # Traefik routes only to a healthy API container (27 Nov QA: requests failed while a deploy restarted it)
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 5s
-      timeout: 4s
-      retries: 3
+      # /tmp/drain (deploy.sh): unhealthy on purpose, so Traefik stops sending it requests before it is stopped
+      test: ["CMD-SHELL", "test ! -f /tmp/drain && node -e \"fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 3s
+      timeout: 3s
+      retries: 2
       start_period: 90s
     networks:
       - traefik_webgateway

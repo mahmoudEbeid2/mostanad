@@ -32,6 +32,13 @@ fail() {
   exit 1
 }
 inapp() { docker exec mostanad-app node -e "$1"; }
+# out of Traefik's rotation before it stops (27 Nov: the probe saw a 502 the second a container was stopped):
+# its healthcheck fails on /tmp/drain; Traefik drops an unhealthy container; then it can go
+drain() {
+  docker exec "$1" touch /tmp/drain 2>/dev/null || return 0
+  for i in $(seq 1 15); do [ "$(docker inspect -f '{{.State.Health.Status}}' "$1" 2>/dev/null)" = "unhealthy" ] && break; sleep 1; done
+  sleep 2
+}
 
 # uptime probe (27 Nov QA): the public /health (through Traefik, as people reach it) every second while the
 # API is restarted; every answer is logged, the count of non-200s printed — the proof there was no gap
@@ -78,7 +85,7 @@ if $C --profile deploy up -d --no-deps --no-build mostanad-app-next >/dev/null 2
     sleep 3
   done
 fi
-if [ $twin = 1 ]; then say "the twin answers — the API restarts behind it"; else say "the twin didn't come up — a plain restart"; $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; fi
+if [ $twin = 1 ]; then say "the twin answers — the API restarts behind it"; drain mostanad-app; else say "the twin didn't come up — a plain restart"; $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; fi
 $C up -d --no-deps mostanad-app >/dev/null 2>&1
 # (the log is captured first: with pipefail, "logs | grep -q" fails when grep stops at the first match)
 started=0
@@ -97,7 +104,7 @@ for i in $(seq 1 30); do inapp "fetch('http://localhost:3000/api/v1/health').the
 [ $ok = 1 ] || fail "/health doesn't answer"
 # the API is back and healthy (Traefik routes to it again): the twin goes
 for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' mostanad-app 2>/dev/null)" = "healthy" ] && break; sleep 3; done
-if [ $twin = 1 ]; then $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; say "the twin stopped"; fi
+if [ $twin = 1 ]; then drain mostanad-app-next; $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1; say "the twin stopped"; fi
 
 say "check /health/workers"
 ok=0
