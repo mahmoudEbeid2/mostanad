@@ -465,3 +465,38 @@ export async function proposeLabels(versionId, companyId, input) {
     };
   });
 }
+
+/**
+ * POST /template-versions/:id/fields/confirm-all { minConfidence? } — «أكّد كل الاقتراحات» (Phase 2, 28 Nov):
+ * the ADDVET COA had 37 correct suggestions, each waiting for its own click, so readiness failed and
+ * Express made 0 COA. Every unconfirmed field is confirmed at once (or only those whose suggestion is at
+ * least minConfidence — «الاقتراحات عالية الثقة بس»), keeping its ROLE, never its sample value:
+ *   a batch fact / lab result whose source is the sample's own text → typed (manual), the sample kept as an example
+ *   a document number / issue date printed as the sample's → the company's numbering / today
+ * Then readiness runs again. → { confirmed, skipped, fields, readiness }
+ */
+export async function confirmAllFields(versionId, companyId, userId = null, { minConfidence = null } = {}) {
+  const version = await loadVersion(versionId, companyId);
+  if (!["draft", "ready"].includes(version.status)) throw new CertError("VERSION_NOT_EDITABLE", `This version is ${version.status}`, 409);
+  const rows = await prisma.templateField.findMany({ where: { versionId, OR: [{ confirmed: false }, { mappingConfirmed: false }] } });
+  let keep = rows;
+  if (minConfidence !== null) {
+    const ids = rows.map((f) => f.mappingSuggestionId).filter(Boolean);
+    const conf = new Map((await prisma.aiSuggestion.findMany({ where: { id: { in: ids } }, select: { id: true, confidence: true } })).map((s) => [s.id, s.confidence]));
+    keep = rows.filter((f) => !f.mappingSuggestionId || (conf.get(f.mappingSuggestionId) ?? 0) >= minConfidence);
+  }
+  const DOC_NO = /\b(document|certificate|cert\.?|doc\.?)\s*(no|number|#)|\bref(erence)?\s*(no|number|#)?\b/i;
+  const ISSUE = /\b(issue|issuing|date\s+of\s+issue)\b/i;
+  const sameAsSample = (f) => f.source?.kind === "static" && String(f.source.text || "").trim() === String(f.sampleValue || "").trim();
+  const fixes = [];
+  for (const f of keep) {
+    if ((f.isLabResult || f.isBatchFact) && sameAsSample(f)) fixes.push(prisma.templateField.update({ where: { id: f.id }, data: { source: { kind: "manual" } } }));
+    else if (DOC_NO.test(f.label || "") && sameAsSample(f)) fixes.push(prisma.templateField.update({ where: { id: f.id }, data: { source: { kind: "docnumber" } } }));
+    else if (ISSUE.test(f.label || "") && sameAsSample(f)) fixes.push(prisma.templateField.update({ where: { id: f.id }, data: { source: { kind: "today" } } }));
+  }
+  if (fixes.length) await prisma.$transaction(fixes);
+  const fields = keep.length ? await confirmFields(versionId, companyId, keep.map((f) => f.key), userId) : await listFields(versionId);
+  const { getReadiness } = await import("./readinessService.js");
+  const readiness = await getReadiness(versionId, companyId);
+  return { confirmed: keep.length, skipped: rows.length - keep.length, rolesKept: fixes.length, fields, readiness };
+}

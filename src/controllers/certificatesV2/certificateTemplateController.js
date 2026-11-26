@@ -11,6 +11,8 @@ import { searchProducts } from "../../services/certificates/matching/productSear
 import { companyFor, scopeOf, actorId, sendCertHtml } from "./requestScope.js";
 import * as companyFonts from "../../services/certificates/fonts/companyFontService.js";
 import AppError from "../../utils/appError.js";
+import { prisma } from "../../lib/prisma.js";
+import { applyPageDiff } from "../../services/certificates/templates/pageDiff.js";
 
 // a company's own fonts for its templates (the "Design fonts" selects)
 export const listCompanyFonts = catchAsync(async (req, res) => {
@@ -103,6 +105,27 @@ export const enableGroups = catchAsync(async (req, res) => {
 export const confirmFields = catchAsync(async (req, res) => {
   const fields = await fieldService.confirmFields(req.params.id, scopeOf(req), req.body.keys, actorId(req));
   res.status(200).json({ status: "success", data: { fields } });
+});
+
+/**
+ * POST /template-versions/:id/page-diff { page? } — the uploaded file's pages compared (Phase 2): places the
+ * same on every page are marked static, lines that change are returned to mark as fields.
+ */
+export const pageDiff = catchAsync(async (req, res, next) => {
+  const companyId = scopeOf(req);
+  const v = await prisma.templateVersion.findUnique({ where: { id: req.params.id }, select: { id: true, sourceFileId: true, template: { select: { companyId: true } } } });
+  if (!v || (companyId && v.template.companyId !== companyId)) return next(new AppError("Template version not found", 404));
+  const page = Number.isInteger(req.body?.page) && req.body.page > 0 ? req.body.page : 1;
+  const out = await applyPageDiff(v.id, { fileId: v.sourceFileId, page });
+  const readiness = await readinessService.getReadiness(v.id, companyId);
+  res.status(200).json({ status: "success", data: { ...out, readiness } });
+});
+
+/** «أكّد كل الاقتراحات» (Phase 2): every suggestion confirmed at once, then readiness again */
+export const confirmAllFields = catchAsync(async (req, res) => {
+  const min = req.body?.minConfidence;
+  const out = await fieldService.confirmAllFields(req.params.id, scopeOf(req), actorId(req), { minConfidence: typeof min === "number" && min >= 0 && min <= 1 ? min : null });
+  res.status(200).json({ status: "success", data: out });
 });
 
 export const getReadiness = catchAsync(async (req, res) => {

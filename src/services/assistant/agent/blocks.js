@@ -32,13 +32,22 @@ const cell = (v) => {
   if (v === null || v === undefined) return null;
   if (Array.isArray(v)) return v.map(cell).join(", ");
   if (typeof v === "object") return null;
-  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "boolean") return v ? "أيوه" : "لأ";
   const s = String(v);
   return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL)}…` : s;
 };
 
+// the column headings in Arabic (the UI's language); the stored values in the cells are never translated
+const COLUMN_AR = {
+  Product: "المنتج", Code: "الكود", Brand: "البراند", Company: "الشركة", Missing: "الناقص", Products: "المنتجات", Active: "شغّال", Category: "الفئة",
+  Invoice: "الفاتورة", Customer: "العميل", Date: "التاريخ", Status: "الحالة", Lines: "السطور", Type: "النوع", Batch: "التشغيلة", Flags: "ملاحظات",
+  Template: "القالب", Country: "البلد", Fields: "الحقول", Language: "اللغة", Version: "النسخة", Risk: "الخطورة", Tier: "المستوى",
+  "Reference label": "الليبل المرجعي", Shared: "مشترك", Document: "المستند", Authority: "الجهة", Rules: "القواعد", Rule: "القاعدة", Severity: "الأهمية",
+  Description: "الوصف", Catalogue: "الكتالوج", Name: "الاسم", Username: "اسم المستخدم", Email: "الإيميل", Role: "الدور", Group: "المجموعة", Count: "العدد",
+  Field: "الحقل", Key: "المفتاح", Required: "مطلوب", Source: "المصدر", "Lab result": "نتيجة تحليل", "Batch fact": "بيان تشغيلة", Item: "البند", Calls: "الطلبات", "Cost (USD)": "التكلفة (دولار)",
+};
 function columnsFor(tool, rows) {
-  if (COLUMNS[tool]) return COLUMNS[tool].filter(([key]) => rows.some((r) => r[key] !== undefined && r[key] !== null)).map(([key, label]) => ({ key, label }));
+  if (COLUMNS[tool]) return COLUMNS[tool].filter(([key]) => rows.some((r) => r[key] !== undefined && r[key] !== null)).map(([key, label]) => ({ key, label, labelAr: COLUMN_AR[label] || null }));
   const first = rows[0] || {};
   return Object.keys(first)
     .filter((k) => k !== "ref" && k !== "id" && !/Id$/.test(k) && ["string", "number", "boolean"].includes(typeof first[k]))
@@ -76,7 +85,8 @@ export function tableBlock(tool, args, companyId, data, label = null) {
     companyId: companyId ?? null,
     columns,
     rows: rows.map((r) => toRow(r, columns)),
-    total: data.total ?? rows.length,
+    // a count's rows are its groups: "shown / total" counts rows, never the sum of the counts ("2 of 90")
+    total: tool === "count_records" ? rows.length : data.total ?? rows.length,
     more: data.more ?? 0,
     nextPage: data.nextPage ?? null,
     ...(tool === "count_records" ? { totalCount: data.total, from: data.from ?? null, to: data.to ?? null, timezone: data.timezone ?? null } : {}),

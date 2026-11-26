@@ -6,6 +6,7 @@ import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
 import { templateFromItem, adoptDuplicates } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas } from "../certificates/templates/autoMap.js";
+import { applyPageDiff } from "../certificates/templates/pageDiff.js";
 import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
 import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
 import { startGeneration } from "../certificates/generation/batchService.js";
@@ -22,9 +23,10 @@ import { productTableFrom } from "../certificates/templates/productTable.js";
  * covers (the issued certificate's batch, dates, results…) become BLANK fields — empty and
  * flagged on every draft, never printed as they are. → how many were added
  */
-export async function blankOpenAreas(versionId, companyId) {
+export async function blankOpenAreas(versionId, companyId, { extraAreas = [] } = {}) {
   const r = await getReadiness(versionId, companyId);
-  const open = r.areas.filter((a) => !a.staticConfirmed);
+  // + the lines the page diff saw change between the file's pages that no rule found (Phase 2)
+  const open = [...r.areas.filter((a) => !a.staticConfirmed), ...extraAreas.filter((x) => !r.areas.some((a) => a.lineId === x.lineId))];
   if (!open.length) return 0;
   const [version, company, existing, last] = await Promise.all([
     prisma.templateVersion.findUnique({ where: { id: versionId }, select: { lines: true } }),
@@ -196,7 +198,17 @@ async function settleTemplates(batch, items, ex) {
         });
         continue;
       }
-      await blankOpenAreas(vid, companyId);
+      // Phase 2: the file's pages of the same design compared — what's the same everywhere is the design
+      // (marked static), what changes is a field
+      let extraAreas = [];
+      try {
+        const diff = await applyPageDiff(vid, { fileId: item.fileId, page: item.result?.templatePage || item.pageFrom || 1 });
+        extraAreas = diff.extra;
+        if (diff.pagesCompared > 1) cur.pageDiff = { pages: diff.pagesCompared, static: diff.static, extra: diff.extra.length };
+      } catch (err) {
+        console.error(`[express] page diff of ${item.name}: ${err.message}`);
+      }
+      await blankOpenAreas(vid, companyId, { extraAreas });
       const count = await prisma.templateField.count({ where: { versionId: vid } });
       if (!count) {
         setT({ ...cur, status: "no_fields", why: t.fields?.why || "no field could be found on it — mark its fields on the template screen" });
@@ -216,9 +228,10 @@ async function settleTemplates(batch, items, ex) {
       }
     }
     // active (just now or before): its fields, for the card — what each draft will still need
-    const fields = await prisma.templateField.findMany({ where: { versionId: vid }, select: { key: true, label: true, source: true } });
+    const fields = await prisma.templateField.findMany({ where: { versionId: vid }, select: { key: true, label: true, source: true, confirmed: true } });
     const toFill = fields.filter((f) => ["manual", "item"].includes(f.source?.kind)).map((f) => f.label || f.key);
-    setT({ ...cur, status: "active", fields: fields.length, toFill });
+    // «اتفعّل بالاقتراحات (37 حقل)»: activated with its suggestions as they are — a person confirms them later
+    setT({ ...cur, status: "active", fields: fields.length, suggested: fields.filter((f) => !f.confirmed).length, toFill });
     await record(batch.id, "certificate_template", { id: t.templateId, name: version.template.name }, companyId, item.id);
   }
   ex.templates = templates;

@@ -66,6 +66,8 @@ router.put("/template-versions/:id/fields", guard("update_certificate_templates"
 router.get("/template-versions/:id/readiness", guard("read_certificate_templates"), validate(versionSchemas.byId), templates.getReadiness);
 router.post("/template-versions/:id/static-areas", guard("update_certificate_templates"), validate(versionSchemas.staticAreas), templates.setStaticAreas);
 router.post("/template-versions/:id/fields/confirm", guard("update_certificate_templates"), validate(versionSchemas.confirm), templates.confirmFields);
+router.post("/template-versions/:id/fields/confirm-all", guard("update_certificate_templates"), templates.confirmAllFields);
+router.post("/template-versions/:id/page-diff", guard("update_certificate_templates"), templates.pageDiff);
 // AI plan §5 (A1): label proposals (code), field mapping (memory → dictionary → one AI call), the "Why?" of a suggestion
 router.post("/template-versions/:id/label-proposals", guard("update_certificate_templates"), validate(mappingSchemas.labelProposals), certificateAi.labelProposals);
 router.post("/template-versions/:id/map-fields", guard("update_certificate_templates"), validate(mappingSchemas.mapFields), certificateAi.mapFields);
