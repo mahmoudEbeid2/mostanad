@@ -197,5 +197,6 @@ export async function getRequest(id, companyId) {
       cells,
     });
   }
-  return { request: { id: inv.id, companyId: inv.companyId, status: inv.status, country: inv.country, createdAt: inv.createdAt }, codes, rows, outstanding };
+  const batch = await prisma.certificateBatch.findFirst({ where: { invoiceId: id }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, zipFileId: true, combinedPdfFileId: true } });
+  return { request: { id: inv.id, companyId: inv.companyId, status: inv.status, country: inv.country, createdAt: inv.createdAt }, codes, rows, outstanding, batch: batch ? { id: batch.id, status: batch.status, zip: !!batch.zipFileId, combinedPdf: !!batch.combinedPdfFileId } : null };
 }

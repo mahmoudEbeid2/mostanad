@@ -48,6 +48,12 @@ export function toCard(c) {
     hasThumbnail: !!current?.thumbnailFileId,
     hasPdf: !!(c.finalPdfFileId || current?.pdfFileId),
     finalizedAt: c.finalizedAt,
+    // the client's workflow: review step, export, revision of an approved certificate
+    reviewStatus: c.reviewStatus ?? null,
+    reviewComments: c.reviewComments || [],
+    exportedAt: c.exportedAt ?? null,
+    revisionNumber: c.revisionNumber ?? 1,
+    revisionOfId: c.revisionOfId ?? null,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };

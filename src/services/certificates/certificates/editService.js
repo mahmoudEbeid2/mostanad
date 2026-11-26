@@ -439,7 +439,7 @@ export async function runExportZip({ batchId }, ctx = {}) {
     let name = `${folder}/${await pdfName(c.id)}`;
     for (let n = 2; used.has(name.toLowerCase()); n++) name = name.replace(/(-\d+)?\.pdf$/, `-${n}.pdf`);
     used.add(name.toLowerCase());
-    zip.file(name, buffer, { date: fixed });
+    zip.file(name, buffer, { date: fixed, createFolders: false }); // no folder entries: they would carry the time of the export
     const lines = c.items.map((x) => x.invoiceItem).filter(Boolean).sort((a, b) => a.lineNo - b.lineNo);
     const covers = (lines.length ? lines : [{ lineNo: null, data: {}, product: c.product }]).map((l) => ({ line: l.lineNo, product: l.product?.name || l.data?.name || c.product?.name || null, packing: l.data?.packing || null, lot: l.data?.batchNo || null }));
     manifest.push({ file: name, type: folder, status: c.status === "final" ? "approved" : "draft", revision: c.revisionNumber, certificateId: c.id, covers });
