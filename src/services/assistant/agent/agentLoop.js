@@ -285,7 +285,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         }
       }
       const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
-      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}) };
+      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}), ...(result.ok && result.data?.intakeBatchId ? { card: "intake" } : {}) };
       if (!result.ok && !result.repeat) failed.set(key, result.error);
       // a call refused for its arguments (or repeated) costs nothing from the budget
       if (name !== LOAD_TOOLS && !result.repeat && !(!result.ok && /^Invalid arguments/.test(result.error || ""))) {

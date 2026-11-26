@@ -68,8 +68,10 @@ export const honestNoAction = (userText) =>
     : "I didn't prepare any operation or confirmation card in this message, so nothing has changed. Tell me exactly what you want done and I'll start it.";
 
 /** Did this turn actually prepare or run a change? (a draft step, a card, or a write's result) */
+// 26 Nov (prod): a file drop's start_intake puts the files' review card under the answer — "جهّزت
+// لك البطاقة" is then true, and the guard replaced it with "لم أُجهّز أي عملية…" right above that card
 export const preparedSomething = (toolCalls, proposedCount = 0) =>
-  proposedCount > 0 || (toolCalls || []).some((c) => c.ok && (c.draftId || c.status === "needs_confirmation" || c.status === "draft"));
+  proposedCount > 0 || (toolCalls || []).some((c) => c.ok && (c.draftId || c.card || c.status === "needs_confirmation" || c.status === "draft"));
 
 // "إليك المنتجات لشركة Vetline:", "Here are the products:" — an answer that announces
 // rows. Client report 24 Nov: after an earlier list the model copied that turn's
