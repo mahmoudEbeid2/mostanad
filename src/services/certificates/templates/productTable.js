@@ -37,8 +37,19 @@ export function productTableFrom(lines = [], names = []) {
   const col = hits.filter((h) => h.line.page === page && Math.abs(h.line.box.x - hits[0].line.box.x) <= 6).sort((a, b) => a.line.box.y - b.line.box.y);
   if (col.length < 2) return { problem: "the product names aren't in one column" };
   const first = col[0].line;
-  const pitch = col[1].line.box.y - first.box.y;
+  // the row pitch: the smallest step between recognised names (an unknown product between two of them —
+  // SULFARIM*, not one of ADDVET's — would double it)
+  const pitch = Math.min(...col.slice(1).map((h, i) => h.line.box.y - col[i].line.box.y));
   if (pitch <= 0) return { problem: "the product rows overlap" };
+  // the sample rows: every line of the name column at that pitch, recognised or not (28 Nov: 9 of the HC's
+  // 10 rows counted → the engine fitted 9 rows to a 10-row band and every row after the gap shifted)
+  const nameCol = lines.filter((l) => l.page === first.page && l.box && Math.abs(l.box.x - first.box.x) <= 6 && l.box.y >= first.box.y - 1).sort((a, b) => a.box.y - b.box.y);
+  let sampleRows = 1;
+  for (let i = 1; i < nameCol.length; i++) {
+    const step = nameCol[i].box.y - nameCol[i - 1].box.y;
+    if (step < pitch * 0.6 || step > pitch * 1.4) break;
+    sampleRows++;
+  }
   // the first row: every line on the same baseline band as the first product's name
   const rowLines = lines.filter((l) => l.page === page && l.box && Math.abs(l.box.y - first.box.y) <= Math.max(2, first.box.h * 0.4)).sort((a, b) => a.box.x - b.box.x);
   // the header row: the nearest line above each cell, overlapping it in x
@@ -85,9 +96,9 @@ export function productTableFrom(lines = [], names = []) {
     });
   });
   return {
-    group: { key: "products", label: "Products", mode: "repeat", source: { kind: "invoice_lines" }, whenEmpty: "dash", required: true, sampleRows: col.length },
+    group: { key: "products", label: "Products", mode: "repeat", source: { kind: "invoice_lines" }, whenEmpty: "dash", required: true, sampleRows },
     fields,
-    rows: col.length,
+    rows: sampleRows,
   };
 }
 

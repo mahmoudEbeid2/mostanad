@@ -1147,7 +1147,11 @@
       }
 
       // sample rows: row 1 = the cells' samples; rows 2..k = the placeholder text split per column
-      const colStarts = cells.map((c) => c.box.x);
+      // a column starts halfway through the gap after the previous one, not at row 1's text: a centred
+      // column's wider text starts left of row 1's (28 Nov: HC "SUPPLEMENT" under "INJECTABLE" gave its
+      // "S" to the brand column)
+      const byX = [...cells].sort((a, b) => a.box.x - b.box.x);
+      const colStarts = byX.map((c, i) => (i ? (byX[i - 1].box.x + byX[i - 1].box.w + c.box.x) / 2 : c.box.x));
       const sampleRows = [Object.fromEntries(g.cells.map((c) => [c.key, c.sampleValue]))];
       for (const r of placeholderRows) {
         const row = Object.fromEntries(cells.map((c) => [c.key, ""]));
@@ -1162,7 +1166,7 @@
               const x = rect.left - pageR.left;
               let col = 0;
               for (let ci = 0; ci < colStarts.length; ci++) if (x >= colStarts[ci] - 1.5) col = ci;
-              row[cells[col].key] += n.data[i];
+              row[byX[col].key] += n.data[i];
             }
           }
         }

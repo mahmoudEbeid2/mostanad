@@ -39,6 +39,9 @@ assert("a short address leaves the second line empty", wrapPiece("Muscat", { ind
 
 console.log("\n2 · the attached list");
 const table = productTableFrom([...HC_PAGE1, ...HC_PAGE2], HC_PRODUCT_NAMES);
+// SULFARIM isn't one of the company's products: its row is still one of the 10 sample rows
+const known = productTableFrom([...HC_PAGE1, ...HC_PAGE2], HC_PRODUCT_NAMES.filter((n) => n !== "SULFARIM"));
+assert("an unrecognised product's row still counts as a sample row (10, not 9)", known.rows === 10 && known.group?.sampleRows === 10, known.rows);
 const cells = by(table.fields || []);
 assert("10 sample rows → one repeating row over the invoice lines", table.rows === 10 && table.group?.source?.kind === "invoice_lines", table.problem || table.rows);
 assert("each column from its own header phrase", cells.row_product_name?.source.path === "product.name" && cells.row_cell_2?.source.path === "product.brand.name" && cells.row_cell_4?.source.path === "product.packaging" && cells.row_cell_5?.source.path === "product.physicalForm", Object.values(cells).map((c) => `${c.key}:${c.source.path}`));
