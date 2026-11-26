@@ -10,5 +10,16 @@ export function isPhysicalForm(value) {
   return !!t && t.split(/\s+/).length <= 5 && FORM_WORDS.test(t);
 }
 
+// a result word a specification never holds (27 Nov QA: an unlabelled Identification row merged OLIGOVET's
+// Appearance spec, its result and the next spec: "Light brown liquid Conforms Positive to HPLC test")
+const RESULT_WORD = /[\s,;]*\b(?:Conforms?|Complies|Comply|Passes|Passed)\b/i;
+
+/** a specification as a document printed it → the specification only (cut before a result word); "" when it is only a result */
+export function cleanSpec(value) {
+  const t = String(value ?? "").trim();
+  const m = RESULT_WORD.exec(t);
+  return m ? t.slice(0, m.index).trim() : t;
+}
+
 /** a harvested "physicalForm" fact → the product column it belongs to: physicalForm, or productForm (a document's label) */
 export const formColumnOf = (value) => (isPhysicalForm(value) ? "physicalForm" : "productForm");

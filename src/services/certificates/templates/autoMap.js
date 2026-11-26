@@ -12,8 +12,9 @@
 
 // a result is its own word at the end ("4.0-6.5 5.2"), never the end of a range ("3.0-5.0" is a specification)
 const RESULT_TAIL = /(?:^|\s+)((?:Conforms?|Complies|Positive|Negative|Pass(?:es)?|Absent|Present|Not\s+detected)|\d+(?:[.,]\d+)?\s*%?)\s*$/i;
-const AMOUNT = /^(?:(?:ad|q\.?\s?s\.?(?:\s*to)?|up\s+to)\s+)?[\d.,]+\s*(?:mg|g|mcg|µg|μg|ug|IU|iu|mL|ml|L|%|ppm|kg)$/i;
-const AMOUNT_TAIL = /\s+((?:(?:ad|q\.?\s?s\.?(?:\s*to)?|up\s+to)\s+)?[\d.,]+\s*(?:mg|g|mcg|µg|μg|ug|IU|iu|mL|ml|L|%|ppm|kg))\s*$/i;
+// (27 Nov QA: "10,000,000 I.U." — the unit with dots — was mapped as an ingredient NAME and printed "Sorbitol")
+const AMOUNT = /^(?:(?:ad|q\.?\s?s\.?(?:\s*to)?|up\s+to)\s+)?[\d.,]+\s*(?:mg|g|mcg|µg|μg|ug|I\.?U\.?|iu|mL|ml|L|%|ppm|kg)$/i;
+const AMOUNT_TAIL = /\s+((?:(?:ad|q\.?\s?s\.?(?:\s*to)?|up\s+to)\s+)?[\d.,]+\s*(?:mg|g|mcg|µg|μg|ug|I\.?U\.?|iu|mL|ml|L|%|ppm|kg))\s*$/i;
 const COMP_HEADER = /Composition\s*:|^\s*Constituents?\b|\bEach\s+[\d.,]*\s*\w+\s+contains|Contains\s+per/i; // "constituents" inside a sentence is no heading
 const COMP_END = /^\s*(?:Package|Packing|Pack)\s+Size|^\s*Validity|^\s*Product\s+Form|^\s*Category|^\s*Country|^\s*Produced|^\s*Sterility|^\s*Pyrogen|^\s*Assay|^\s*Producer|^\s*\*/i;
 
@@ -77,6 +78,28 @@ export function rowLabel(a, lines) {
   return ROW_LABELS.find(([re]) => re.test(text))?.[1] || null;
 }
 
+/**
+ * The amounts column's alignment: "right" when the amounts' right edges line up, else "left" (each amount
+ * ends its line, so its right edge is the line's; a left edge is exact when the amount starts its line)
+ */
+function columnAlign(areas, lines, rowsOf) {
+  const lefts = [];
+  const rights = [];
+  for (const a of areas) {
+    if (!rowsOf.has(a.lineId)) continue;
+    const l = lines.find((x) => x.id === a.lineId);
+    if (!l?.box) continue;
+    const t = a.text || "";
+    const tail = AMOUNT.test(t.trim()) ? { index: 0 } : t.match(AMOUNT_TAIL);
+    if (!tail) continue;
+    const start = a.charStart + tail.index + (t.slice(tail.index).length - t.slice(tail.index).trimStart().length);
+    if (a.charEnd >= l.text.trimEnd().length) rights.push(l.box.x + l.box.w);
+    if (start <= l.text.length - l.text.trimStart().length) lefts.push(l.box.x);
+  }
+  const spread = (v) => (v.length >= 2 ? Math.max(...v) - Math.min(...v) : Infinity);
+  return spread(rights) <= 1.5 && !(spread(lefts) <= 1.5) ? "right" : "left";
+}
+
 /** The lines of the composition block, in rows (same y), from its header to the next section */
 const HEAD_PREFIX = /^\s*(?:Composition\s*:?|Constituents?(?:\s*\([^)]*\))?|(?:Each|Every)\s+[\d.,]*\s*\w+\s+contains\s*:?|Contains\s+per\s+\S+\s*:?)\s*/i;
 
@@ -125,20 +148,10 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
     const trail = text.length - text.trimEnd().length;
     fields.push({ key: key(base), label, lineId: a.lineId, page: a.page, charStart: s + lead, charEnd: e - trail, sampleValue: t, required: true, ...how });
   };
-  // an amount is printed as two words ("1,000" … "mg") with their own gap: one field each, so both stay
-  // where they're printed (one field over both drifts the round-trip past the prepare check — 28 Nov, ADDVET COA)
-  const amount = (a, s, e, slot) => {
-    const text = (lines.find((l) => l.id === a.lineId)?.text || "").slice(s, e);
-    const m = text.match(/^(\s*)(.*?[\d.,]+)(\s+)([A-Za-zµμ%]+(?:\/[A-Za-z]+)?)\s*$/);
-    const how = (part) => ({ source: { kind: "product", path: `activeIngredients[${slot}].${part}` }, required: slot === 0, role: "composition_amount" });
-    if (!m) return add(a, s, e, `Ingredient ${slot + 1} amount`, how("concentration"), `comp_${slot}_amount`);
-    const figEnd = s + m[1].length + m[2].length;
-    // right-aligned: a longer amount ("25,000" where the sample printed "300") grows left into the gap
-    // before it, never right over its unit (28 Nov prod: 5 overflow flags on ADDHEPA's COC)
-    add(a, s, figEnd, `Ingredient ${slot + 1} amount`, { ...how("amountFigure"), align: "right" }, `comp_${slot}_amount`);
-    // the unit is never required on its own: "Quantity not stated" has none (the figure carries the requirement)
-    add(a, figEnd + m[3].length, e, `Ingredient ${slot + 1} unit`, { ...how("amountUnit"), required: false }, `comp_${slot}_unit`);
-  };
+  // an amount with its unit is ONE cell (27 Nov QA): a figure field limited by its own unit next to it collided
+  // or shrank ("10,000mg", 5 blocking flags on every COC). The cell takes the amounts column's alignment.
+  const amountAlign = columnAlign(areas, lines, rowsOf);
+  const amount = (a, s, e, slot) => add(a, s, e, `Ingredient ${slot + 1} amount`, { source: { kind: "product", path: `activeIngredients[${slot}].amountText` }, required: slot === 0, role: "composition_amount", align: amountAlign }, `comp_${slot}_amount`);
   const testRows = new Set(); // lines handled as one COA row
   for (const raw of areas) {
     // the label printed left of the place ("CERTIFICATE NO:") beats the readiness rules' guess (HC p.2: "Batch number")
@@ -174,7 +187,10 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
       continue;
     }
     if (a.kind === "basis") {
-      add(a, a.charStart, a.charEnd, "Composition basis", { source: { kind: "product", path: "compositionBasis" }, role: "composition_basis" }, "composition_basis");
+      // a colon the design prints after it ("Each 1 L contains:") stays the design's (27 Nov QA: it was lost)
+      const bt = (lines.find((l) => l.id === a.lineId)?.text || "").slice(a.charStart, a.charEnd);
+      const be = /:\s*$/.test(bt) ? a.charStart + bt.replace(/\s+$/, "").length - 1 : a.charEnd;
+      add(a, a.charStart, be, "Composition basis", { source: { kind: "product", path: "compositionBasis" }, role: "composition_basis" }, "composition_basis");
       continue;
     }
     // a COA row: the test's specification (the product's), then its result (a blank: a lab result)
@@ -201,4 +217,17 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
     add(a, a.charStart, a.charEnd, a.label || "Value", { source: { kind: "manual" }, isBatchFact: a.kind === "batch" || a.kind === "date", isLabResult: a.kind === "result" }, `blank_${a.kind}`);
   }
   return fields;
+}
+
+/**
+ * COA rows no readiness rule marked ("Sterility Sterile Conforms", "Pyrogen Non-pyrogenic Conforms"): their
+ * result printed from the sample on every certificate (27 Nov QA). Each line shaped "<test> <spec> <result>"
+ * not yet mapped → its specification and its result (a lab result: asked, never copied).
+ * skip: line ids already mapped or marked → field rows as fieldsForAreas returns them
+ */
+export function testRowFields(lines = [], skip = new Set()) {
+  const areas = lines
+    .filter((l) => l.box && !skip.has(l.id) && TEST_ROW.test(l.text) && RESULT_TAIL.test(l.text))
+    .map((l) => ({ lineId: l.id, page: l.page, kind: "result", label: "Value", text: l.text, charStart: 0, charEnd: l.text.length }));
+  return areas.length ? fieldsForAreas(areas, lines) : [];
 }

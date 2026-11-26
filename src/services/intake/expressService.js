@@ -5,7 +5,7 @@ import { startExportZip } from "../certificates/certificates/editService.js";
 import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
 import { templateFromItem, adoptDuplicates } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
-import { fieldsForAreas } from "../certificates/templates/autoMap.js";
+import { fieldsForAreas, testRowFields } from "../certificates/templates/autoMap.js";
 import { applyPageDiff } from "../certificates/templates/pageDiff.js";
 import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
 import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
@@ -17,7 +17,7 @@ import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
 import { listFields, replaceFields } from "../certificates/templates/fieldService.js";
-import { productTableFrom } from "../certificates/templates/productTable.js";
+import { productTableFrom, numberedTable } from "../certificates/templates/productTable.js";
 import { partyFields, splitPartyBlock } from "../certificates/templates/partyBlocks.js";
 
 /**
@@ -43,7 +43,10 @@ export async function blankOpenAreas(versionId, companyId, { extraAreas = [] } =
   // 28 Nov: each place filled from what it is (product data, composition row, specification, document
   // number, issue date, batch fact); only what nothing can fill stays a flagged blank
   const type = await prisma.templateVersion.findUnique({ where: { id: versionId }, select: { template: { select: { certificateType: { select: { code: true } } } } } });
-  const mapped = [...parties, ...fieldsForAreas(open.filter((a) => !partyLines.has(a.lineId)), version.lines || [], { dateFormat: company?.profile?.dateFormat || null, certCode: type?.template?.certificateType?.code || null })];
+  const byRules = fieldsForAreas(open.filter((a) => !partyLines.has(a.lineId)), version.lines || [], { dateFormat: company?.profile?.dateFormat || null, certCode: type?.template?.certificateType?.code || null });
+  // a COA row no rule marked ("Sterility Sterile Conforms"): its result was printed from the sample (27 Nov QA)
+  const covered = new Set([...marked, ...partyLines, ...open.map((a) => a.lineId), ...byRules.map((f) => f.lineId)]);
+  const mapped = [...parties, ...byRules, ...testRowFields(version.lines || [], covered)];
   if (!mapped.length) return 0;
   const taken = new Set(existing.map((f) => f.key));
   const rows = mapped.map((f, i) => {
@@ -57,6 +60,10 @@ export async function blankOpenAreas(versionId, companyId, { extraAreas = [] } =
       isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: f.isBatchFact || f.isLabResult || f.source?.kind !== "product" ? "never" : "product_facts",
     };
   });
+  // a lab result knows its specification (result_ph ↔ spec_ph): finalize compares them (27 Nov QA: pH 7.5
+  // against "3.0 – 6.0" was never compared — no result was linked to its spec)
+  const keys = new Set([...taken]);
+  for (const r of rows) if (r.isLabResult && /^result_/.test(r.key) && keys.has(r.key.replace(/^result_/, "spec_"))) r.specFieldKey = r.key.replace(/^result_/, "spec_");
   await prisma.templateField.createMany({ data: rows });
   return rows.length;
 }
@@ -183,7 +190,11 @@ async function settleTemplates(batch, items, ex) {
     let cur = cur0;
     const draft = !cur.tableReady && listable(item) && (await prisma.templateVersion.findUnique({ where: { id: t.versionId }, select: { status: true, template: { select: { companyId: true } } } }));
     const names = draft && ["draft", "uploaded", "converting"].includes(draft.status) ? cur.listNames || (await listedNames(item, t.versionId, draft.template.companyId)) : [];
-    if (names.length >= 2) {
+    // or a numbered table under a column header, whatever products it lists (27 Nov QA: the FSC sample's 17
+    // rows, one of them the company's — they printed on every FSC)
+    const headerTable = names.length < 2 && draft?.status === "draft" && (cur.headerTable ?? !numberedTable((await prisma.templateVersion.findUnique({ where: { id: t.versionId }, select: { lines: true } }))?.lines || []).problem);
+    if (names.length >= 2 || headerTable) {
+      if (headerTable) cur = { ...cur, headerTable: true };
       cur = { ...cur, listNames: names };
       const step = await productTableStep(batch, item, t, cur, names);
       templates[key] = step.cur;

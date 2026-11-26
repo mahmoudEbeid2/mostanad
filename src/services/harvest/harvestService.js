@@ -7,7 +7,7 @@ import { recordConflicts } from "../catalogues/compositionReview.js";
 import { parseBasis } from "../catalogues/compositionCompare.js";
 import { countryCode } from "../assistant/countries.js";
 import { packKey, samePack } from "../certificates/matching/packNormalizer.js";
-import { isPhysicalForm, formColumnOf } from "./productForm.js";
+import { isPhysicalForm, formColumnOf, cleanSpec } from "./productForm.js";
 
 // values filled automatically (never a person's): a wrong one may be replaced by what the files say
 const AUTOMATIC = new Set(["harvest", "intake"]);
@@ -179,8 +179,9 @@ export async function mergeProduct(productId) {
     if (key.startsWith("spec:")) {
       const test = key.slice(5);
       const values = { ...(p.specifications?.values || {}), ...(data.specifications?.values || {}) };
-      if (!values[test]) {
-        data.specifications = { type: p.specifications?.type || "string", values: { ...values, [test]: show(best.value) } };
+      const spec = cleanSpec(show(best.value)); // never a result word inside a specification
+      if (!values[test] && spec) {
+        data.specifications = { type: p.specifications?.type || "string", values: { ...values, [test]: spec } };
         prov[`specifications.values.${test}`] = provenanceOf(best);
         filled.push(key);
       }

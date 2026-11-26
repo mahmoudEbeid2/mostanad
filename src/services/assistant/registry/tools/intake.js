@@ -216,6 +216,8 @@ defineTool({
       summary: "The values you wrote go into the drafts (a new version of each). Nothing else changes.",
       runLabel: "Fill",
       details: doing.map((p) => ({ label: p.product || "Certificate", value: Object.values(p.changes || {}).join(" · ") + (p.computed?.length ? " (expiry from the validity)" : "") })),
+      // a result outside its specification: shown in red before anything is written (finalize then needs a comment)
+      warnings: doing.flatMap((p) => (p.warnings || []).map((w) => `${p.product ? `${p.product}: ` : ""}${w.label} = ${w.value} — برّا المواصفة (${w.spec}). الشهادة مش هتتعتمد غير بتعليق يشرح السبب.`)),
       aiCalls: "No AI call",
       missing: [],
     };

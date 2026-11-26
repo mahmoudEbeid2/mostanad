@@ -218,7 +218,8 @@ export async function certificateContext(cert, base, caches, design) {
     const line = ci.invoiceItem;
     if (!line) continue;
     const product = line.productId ? await loadProductCtx(caches.products, cert.companyId, line.productId) : null;
-    ctx.lines.push({ ...(line.data || {}), product: product || {} });
+    // lineNo: the row's place on THIS certificate (a table's "No" column: 1, 2, 3 — not the invoice's line number)
+    ctx.lines.push({ ...(line.data || {}), lineNo: ctx.lines.length + 1, product: product || {} });
   }
   if (cert.scope === "per_product") {
     const line = cert.items[0]?.invoiceItem;

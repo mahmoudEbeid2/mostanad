@@ -9,6 +9,8 @@
 //   a column whose header says PACK / FORM / BRAND / DESCRIPTION / CATEGORY / REG → that product field
 //   any other column → a blank (manual) cell: never the sample's text
 
+import { isPhysicalForm } from "../../harvest/productForm.js";
+
 const norm = (s) => String(s || "").toUpperCase().replace(/[*•]/g, "").replace(/\s+/g, " ").trim();
 const COLUMN_SOURCES = [
   // Phase 5: a quantity comes only from the invoice line (or a person) — never the sample's
@@ -25,14 +27,23 @@ const COLUMN_SOURCES = [
 /** lines: version.lines; names: the products the file lists → { group, fields } | { problem } */
 export function productTableFrom(lines = [], names = []) {
   const wanted = [...new Set(names.map(norm).filter((n) => n.length >= 3))];
-  if (wanted.length < 2) return { problem: "fewer than 2 product names to find in the design" };
+  if (wanted.length < 2) {
+    const byHeader = numberedTable(lines);
+    return byHeader.problem ? { problem: "fewer than 2 product names to find in the design, and no numbered table under a column header" } : byHeader;
+  }
   // each listed product's own line (a cell that starts with its name)
   const hits = [];
   for (const n of wanted) {
     const l = lines.find((x) => x.box && norm(x.text).startsWith(n) && norm(x.text).length <= n.length + 3);
     if (l) hits.push({ name: n, line: l });
   }
-  if (hits.length < 2) return rowLinesTable(lines, wanted);
+  if (hits.length < 2) {
+    // rows found by the table's own header first (numbered rows, any products), then by product names in one line
+    const byHeader = numberedTable(lines);
+    if (!byHeader.problem) return byHeader;
+    const byNames = rowLinesTable(lines, wanted);
+    return byNames.problem && !/no numbered table/.test(byHeader.problem) ? byHeader : byNames;
+  }
   const page = hits[0].line.page;
   const col = hits.filter((h) => h.line.page === page && Math.abs(h.line.box.x - hits[0].line.box.x) <= 6).sort((a, b) => a.line.box.y - b.line.box.y);
   if (col.length < 2) return { problem: "the product names aren't in one column" };
@@ -198,4 +209,120 @@ function rowLinesTable(lines, wanted) {
     fields,
     rows: col.length,
   };
+}
+
+// ── a table found by its header, whatever its products are (27 Nov QA: ADDVET's FSC sample lists 17 products
+// of which one is the company's, each row ONE line "1 MUCOTHOL 1L LIQUID SUPPLEMENT" under
+// "No Item Packing FORM CATEGORY" — no product name led a row, so its rows printed on every FSC) ──
+const HEADER_COLS = [
+  [/^(?:No\.?|S\.?\s?No\.?|Sr\.?|#)$/i, "no"],
+  [/^(?:Items?|Products?(?:\s+Names?)?|Names?|Trade\s+Names?|Description\s+of\s+Goods)$/i, "name"],
+  [/^(?:Packing(?:\s+Size)?|Pack(?:\s+Size)?|Package|Packaging|Presentation)$/i, "pack"],
+  [/^(?:Form|Dosage\s+Form|Physical\s+Form)$/i, "form"],
+  [/^(?:Category|Type|Description)$/i, "category"],
+];
+const PACK_TOKEN = /^\d+(?:[.,]\d+)?\s?(?:ML|L|LT|LTR|LITRE|LITER|KG|KGS|GM|GMS|G|GR|MG|CC)$/i;
+const UNIT_TOKEN = /^(?:ML|L|LT|LTR|LITRE|LITER|KG|KGS|GM|GMS|G|GR|MG|CC)$/i;
+
+/** "No Item Packing FORM CATEGORY" → ["no", "name", "pack", "form", "category"], or null when a word isn't a column name */
+export function headerColumns(text) {
+  const words = String(text || "").trim().split(/\s+/);
+  const cols = [];
+  for (let i = 0; i < words.length; ) {
+    let hit = null;
+    for (let n = Math.min(3, words.length - i); n >= 1 && !hit; n--) {
+      const phrase = words.slice(i, i + n).join(" ");
+      const c = HEADER_COLS.find(([re]) => re.test(phrase));
+      if (c) hit = { kind: c[1], n };
+    }
+    if (!hit || cols.includes(hit.kind)) return null;
+    cols.push(hit.kind);
+    i += hit.n;
+  }
+  return cols.length >= 3 && cols.includes("name") ? cols : null;
+}
+
+/** one row line → { no?, name, pack, form, category } as [start, end] character ranges, or null when it doesn't fit the columns */
+export function splitRow(text, cols) {
+  const toks = [...String(text).matchAll(/\S+/g)].map((m) => ({ s: m.index, e: m.index + m[0].length, t: m[0] }));
+  let i = 0;
+  const out = {};
+  const span = (a, b) => [toks[a].s, toks[b].e];
+  if (cols.includes("no")) {
+    if (!/^\d+\.?$/.test(toks[0]?.t || "")) return null;
+    out.no = span(0, 0);
+    i = 1;
+  }
+  // the pack: one token ("1L") or a number and its unit ("100 ML"), after at least one name word
+  let p = -1;
+  for (let k = i + 1; k < toks.length; k++) {
+    if (PACK_TOKEN.test(toks[k].t)) {
+      p = k;
+      break;
+    }
+    if (/^\d+(?:[.,]\d+)?$/.test(toks[k].t) && UNIT_TOKEN.test(toks[k + 1]?.t || "")) {
+      p = k;
+      break;
+    }
+  }
+  if (p < 0) return null;
+  const pEnd = PACK_TOKEN.test(toks[p].t) ? p : p + 1;
+  out.name = span(i, p - 1);
+  out.pack = span(p, pEnd);
+  let k = pEnd + 1;
+  if (cols.includes("form")) {
+    if (!toks[k] || !isPhysicalForm(toks[k].t)) return null;
+    out.form = span(k, k);
+    k++;
+  }
+  if (cols.includes("category")) {
+    if (k >= toks.length) return null;
+    out.category = span(k, toks.length - 1);
+  } else if (k < toks.length) return null;
+  return out;
+}
+
+const SOURCES_BY_COL = {
+  no: { key: "row_no", label: "No", source: { kind: "row", path: "lineNo" } },
+  name: { key: "row_product_name", label: "Product name", source: { kind: "row", path: "product.name" }, required: true },
+  pack: { key: "row_cell_pack", label: "Packing", source: { kind: "row", path: "packing", orPath: "product.packaging" } },
+  form: { key: "row_cell_form", label: "Form", source: { kind: "row", path: "product.physicalForm" } },
+  category: { key: "row_cell_category", label: "Category", source: { kind: "row", path: "product.category.name", orPath: "product.productType" } },
+};
+
+/** lines → { group, fields, rows, rowLineIds } for a numbered table under a column header, or { problem } */
+export function numberedTable(lines = []) {
+  const usable = lines.filter((l) => l.box && l.text?.trim());
+  for (const header of usable) {
+    const cols = headerColumns(header.text);
+    if (!cols || !cols.includes("pack")) continue;
+    const below = usable.filter((l) => l.page === header.page && l.box.y > header.box.y + header.box.h * 0.5 && Math.abs(l.box.x - header.box.x) <= 8).sort((a, b) => a.box.y - b.box.y);
+    const rows = [];
+    let pitch = null;
+    for (const l of below) {
+      const prev = rows.at(-1) || header;
+      const step = l.box.y - prev.box.y;
+      if (rows.length && pitch && (step < pitch * 0.6 || step > pitch * 1.4)) break;
+      if (!rows.length && step > header.box.h * 4) break;
+      if (cols.includes("no") && !new RegExp(String.raw`^\s*${rows.length + 1}\.?\s`).test(l.text)) break;
+      if (!splitRow(l.text, cols)) return { problem: `row ${rows.length + 1} of the table under "${header.text.trim()}" doesn't split into its columns ("${l.text.trim()}")` };
+      if (rows.length) pitch = pitch ? (pitch * rows.length + step) / (rows.length + 1) : step;
+      rows.push(l);
+    }
+    if (rows.length < 2) continue;
+    const first = rows[0];
+    const cells = splitRow(first.text, cols);
+    const fields = cols.map((c, i) => {
+      const [s, e] = cells[c];
+      const def = SOURCES_BY_COL[c];
+      return { key: def.key, label: def.label, lineId: first.id, charStart: s, charEnd: e, sampleValue: first.text.slice(s, e), source: def.source, required: !!def.required, groupKey: "products", sortOrder: i, origin: "detected" };
+    });
+    return {
+      group: { key: "products", label: "Products", mode: "repeat", source: { kind: "invoice_lines" }, whenEmpty: "dash", required: true, sampleRows: rows.length },
+      fields,
+      rows: rows.length,
+      rowLineIds: rows.map((r) => r.id),
+    };
+  }
+  return { problem: "no numbered table under a column header" };
 }

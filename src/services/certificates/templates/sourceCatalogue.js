@@ -51,6 +51,7 @@ function productPaths() {
     paths.push({ path: `activeIngredients[${i}].concentration`, label: `Active ingredient ${i + 1} — concentration`, type: "string" });
     // the amount's figure and unit apart, for a design printing them as two words (valueResolver amountParts)
     paths.push({ path: `activeIngredients[${i}].amountFigure`, label: `Active ingredient ${i + 1} — amount`, type: "string" });
+    paths.push({ path: `activeIngredients[${i}].amountText`, label: `Active ingredient ${i + 1} — amount with unit`, type: "string" });
     paths.push({ path: `activeIngredients[${i}].amountUnit`, label: `Active ingredient ${i + 1} — unit`, type: "string" });
   }
   return paths;

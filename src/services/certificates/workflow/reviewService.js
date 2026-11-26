@@ -46,9 +46,11 @@ export async function reviewChecks(id, companyId) {
   const byKey = new Map(fields.map((f) => [f.key, f]));
   const missing = Object.entries(values).filter(([, x]) => (x.flags || []).some(isBlocking)).map(([k]) => ({ field: k, label: byKey.get(k)?.label || k }));
   const outOfSpec = [];
-  for (const f of fields.filter((x) => x.specFieldKey)) {
+  // the result's specification: its link, else the spec field of the same test (result_ph → spec_ph)
+  const specKeyOf = (f) => f.specFieldKey || (/^result_/.test(f.key) && byKey.has(f.key.replace(/^result_/, "spec_")) ? f.key.replace(/^result_/, "spec_") : null);
+  for (const f of fields.filter((x) => specKeyOf(x))) {
     const value = values[f.key]?.value;
-    const spec = values[f.specFieldKey]?.value;
+    const spec = values[specKeyOf(f)]?.value;
     const range = specRange(spec);
     const n = numberIn(value);
     if (!range || n === null) continue;

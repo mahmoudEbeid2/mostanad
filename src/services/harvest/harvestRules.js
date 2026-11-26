@@ -83,6 +83,29 @@ function take(how, raw) {
 
 /** "COAAVVI0926001" → "COAAVVI{MM}{YY}{SEQ3}"-ish pattern and its prefix (document numbering) */
 export function numberPattern(no, issueDate = null) {
+  // digit groups with separators ("FSCAVIV22-066", 27 Nov QA): the last group is the sequence, a group
+  // equal to the issue date's year / month / both is that date part, any other group stays as printed
+  const sep = String(no || "").match(/^([A-Z]+)(\d+(?:[-/.]\d+)+)$/);
+  if (sep) {
+    const d = issueDate ? String(issueDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/) : null;
+    const mm = d ? d[2].padStart(2, "0") : null;
+    const yyyy = d ? (d[3].length === 2 ? `20${d[3]}` : d[3]) : null;
+    const yy = yyyy ? yyyy.slice(-2) : null;
+    const parts = sep[2].split(/([-/.])/);
+    const last = parts.length - 1;
+    const pattern = parts
+      .map((g, i) => {
+        if (i % 2) return g; // a separator
+        if (i === last) return `{SEQ${g.length}}`;
+        if (yyyy && g === yyyy) return "{YYYY}";
+        if (yy && mm && g === mm + yy) return "{MM}{YY}";
+        if (yy && mm && g === yy + mm) return "{YY}{MM}";
+        if (yy && g === yy) return "{YY}";
+        return g;
+      })
+      .join("");
+    return { prefix: sep[1], pattern: `${sep[1]}${pattern}`, seq: Number(parts[last]) };
+  }
   const m = String(no || "").match(/^([A-Z]+)(\d+)$/);
   if (!m) return null;
   const digits = m[2];

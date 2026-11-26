@@ -13,6 +13,7 @@ import { editValues } from "../certificates/editService.js";
 import { listFields } from "../templates/fieldService.js";
 import { applyFormat, resolveField } from "./valueResolver.js";
 import { isCountryLine } from "../templates/partyBlocks.js";
+import { inSpec } from "../labResults/specCheck.js";
 
 const ROLE_AR = { batchNo: "رقم التشغيلة", productionDate: "تاريخ الإنتاج", expiryDate: "تاريخ الانتهاء", batchSize: "حجم التشغيلة" };
 const BLOCKING = new Set(["missing", "sample_value"]);
@@ -185,8 +186,10 @@ const RE = {
   expiryDate: new RegExp(String.raw`(?:الانتهاء|انتهاء|صلاحية|الصلاحية|expiry(?:\s*date)?|exp\.?)\s*[:]?\s*` + DATE, "i"),
   batchSize: /(?:حجم(?:\s*التشغيلة)?|batch\s*size|lot\s*size)\s*[:]?\s*([\d.,]+\s*(?:kg|KG|Kg|g|L|l|lt|liters?|litres?|لتر|كجم|كيلو|ton|طن|units?|vials?|bottles?)?)/i,
 };
-const RESULT_VALUE = String.raw`(-?\d+(?:[.,]\d+)?\s*(?:%|ppm|mg\/?\w*|IU\/?\w*|cfu\/?\w*)?|conforms?|complies|positive|negative|pass(?:es)?|sterile|non[- ]?pyrogenic|absent|مطابق(?:ة)?|سلبي|إيجابي)`;
+const RESULT_VALUE = String.raw`(-?\d+(?:[.,]\d+)?\s*(?:%|ppm|mg\/?\w*|IU\/?\w*|cfu\/?\w*)?|conforms?|complies|positive|negative|pass(?:es)?|sterile|non[- ]?pyrogenic|absent|مطابق(?:ة)?|سلبي|إيجابي|N\/A|n\.a\.|not\s+applicable|لا\s+ينطبق)`;
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const MONTHS_EN = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /** "01/10/2026" (day first) / "10/2026" / "2026-10-01" → ISO date, or null */
 export function isoOf(s) {
@@ -203,6 +206,10 @@ export function isoOf(s) {
   }
   m = t.match(/^(\d{1,2})[\/.\-](\d{4})$/);
   if (m && Number(m[1]) >= 1 && Number(m[1]) <= 12) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}-01`;
+  // a month by name: "Oct-26", "Oct 2026", "October-2026" (27 Nov QA: the MO prints PRODUCTION DATE Oct-26)
+  m = t.match(/^([A-Za-z]{3,9})\.?[\s\-\/,]+(\d{2}|\d{4})$/);
+  const mon = m ? MONTHS_EN.findIndex((x) => m[1].toLowerCase().startsWith(x)) : -1;
+  if (mon >= 0) return `${m[2].length === 2 ? `20${m[2]}` : m[2]}-${String(mon + 1).padStart(2, "0")}-01`;
   return null;
 }
 
@@ -259,6 +266,7 @@ async function changesFor(cert, answer, values) {
   const changes = {};
   const filled = [];
   const computedKeys = {}; // key → the formula (shown «محسوب» with it)
+  const warnings = []; // a result outside its specification (27 Nov QA: pH 7.5 against "3.0 – 6.0" passed silently)
   for (const f of fields) {
     const cur = values?.[f.key];
     if (!cur || cur.kind === "group" || cur.origin === "manual") continue; // never over what a person typed
@@ -273,9 +281,14 @@ async function changesFor(cert, answer, values) {
     const printed = role === "productionDate" || role === "expiryDate" ? applyFormat(raw, f.format || { date: "DD/MM/YYYY" }).value : raw;
     changes[f.key] = printed;
     filled.push(f.label);
+    if (role === "result") {
+      const specKey = f.specFieldKey || f.key.replace(/^result_/, "spec_");
+      const spec = values?.[specKey]?.value;
+      if (spec && inSpec(printed, spec) === false) warnings.push({ key: f.key, label: test || f.label, value: printed, spec });
+    }
     if (role === "expiryDate" && computed.includes("expiryDate")) computedKeys[f.key] = `${prodIso} + ${validityMonths(product.validity)} شهر (${product.validity})`;
   }
-  return { changes, filled, computed, computedKeys };
+  return { changes, filled, computed, computedKeys, warnings };
 }
 
 /**
@@ -298,21 +311,23 @@ export async function applyAnswer({ companyId, userId = null, certificateIds, an
       continue;
     }
     const v = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true } });
-    const { changes, filled, computed, computedKeys } = await changesFor(c, mine, v?.values);
+    const { changes, filled, computed, computedKeys, warnings } = await changesFor(c, mine, v?.values);
     // dryRun: what the card shows before the person presses it
     if (!dryRun && Object.keys(changes).length) {
       const out = await editValues(c.id, companyId, userId, { expectedVersion: c.currentVersion, changes });
-      // a computed expiry says so, with its formula as the evidence (Phase 3: «محسوب»)
-      if (Object.keys(computedKeys).length) {
+      // a computed expiry says so, with its formula as the evidence (Phase 3: «محسوب»); a result outside its
+      // specification carries `out_of_spec` (shown on the certificate; finalize needs a comment — reviewService)
+      if (Object.keys(computedKeys).length || warnings.length) {
         const row = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: out.version } }, select: { id: true, values: true } });
         if (row) {
           const values = { ...row.values };
           for (const [k, formula] of Object.entries(computedKeys)) if (values[k]) values[k] = { ...values[k], provenance: { ...(values[k].provenance || {}), kind: "computed", formula } };
+          for (const w of warnings) if (values[w.key]) values[w.key] = { ...values[w.key], flags: [...new Set([...(values[w.key].flags || []), "out_of_spec"])], spec: w.spec };
           await prisma.certificateVersion.update({ where: { id: row.id }, data: { values } });
         }
       }
     }
-    results.push({ certificateId: c.id, product: c.product?.name || null, filled, computed, changes: dryRun ? changes : undefined });
+    results.push({ certificateId: c.id, product: c.product?.name || null, filled, computed, warnings, changes: dryRun ? changes : undefined });
   }
   return results;
 }
@@ -329,9 +344,21 @@ export async function fromDocuments({ companyId, certificateIds }) {
     const facts = await prisma.harvestedFact.findMany({ where: { companyId, productId: pid, perBatch: true, reviewStatus: "confirmed", sourceType: { in: ["mo", "lab"] } } });
     const batches = new Set(facts.map((f) => f.batchNo).filter(Boolean));
     if (batches.size !== 1) continue;
-    const pick = (k) => facts.find((f) => f.key === k)?.value ?? null;
+    // a batch size only where a document prints "Batch Size" — an MO's QUANTITY column is a count of units
+    // (27 Nov QA: OLIGOVET's 2400 became its batch size; its own COA says 240 KG)
+    const pick = (k) => facts.find((f) => f.key === k && (k !== "batchSize" || /batch\s*size/i.test(f.snippet || "")))?.value ?? null;
+    // a date the document gives once for all its lines (the MO's header "PRODUCTION DATE Oct-26") holds for
+    // every batch line of that document, with the same evidence
+    const docDate = async (k) => {
+      if (pick(k)) return pick(k);
+      const files = [...new Set(facts.map((f) => f.fileId).filter(Boolean))];
+      if (files.length !== 1) return null;
+      const all = await prisma.harvestedFact.findMany({ where: { companyId, fileId: files[0], key: k, reviewStatus: "confirmed" }, select: { value: true } });
+      const distinct = new Set(all.map((f) => String(f.value).trim()));
+      return distinct.size === 1 ? [...distinct][0] : null;
+    };
     const results = Object.fromEntries(facts.filter((f) => f.key.startsWith("result:")).map((f) => [normTest(f.key.slice(7)), String(f.value)]));
-    answers.push({ product: certs.find((c) => c.productId === pid)?.product?.name || null, batchNo: [...batches][0], productionDate: pick("productionDate"), expiryDate: pick("expiryDate"), batchSize: pick("batchSize"), results });
+    answers.push({ product: certs.find((c) => c.productId === pid)?.product?.name || null, batchNo: [...batches][0], productionDate: await docDate("productionDate"), expiryDate: await docDate("expiryDate"), batchSize: pick("batchSize"), results });
   }
   if (!answers.length) return Object.assign([], { notes: [] });
   const results = await applyAnswer({ companyId, certificateIds, answers: answers.filter((a) => a.product) });

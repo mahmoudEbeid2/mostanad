@@ -84,7 +84,7 @@ const todayIso = (ctx) =>
 // An ingredient's amount printed as two words ("15,000" … "IU") with a gap wider than a space:
 // a design keeps them as two fields so each stays at its printed place (28 Nov) — read from the
 // ingredient's own amount text, never computed.
-const AMOUNT_PART = /^activeIngredients\[(\d+)\]\.(amountFigure|amountUnit)$/;
+const AMOUNT_PART = /^activeIngredients\[(\d+)\]\.(amountFigure|amountUnit|amountText)$/;
 export function amountParts(text) {
   const m = String(text || "").trim().match(/^(.*?[\d.,]+)\s*([A-Za-zµμ%]+(?:\/[A-Za-z]+)?)$/);
   return m ? { amountFigure: m[1].trim(), amountUnit: m[2] } : { amountFigure: String(text || "").trim(), amountUnit: "" };
@@ -97,7 +97,10 @@ function readText(kind, path, ctx) {
     const ing = ctx.product?.activeIngredients?.[Number(part[1])];
     const whole = asText(ing?.concentration) || asText(ing?.amountRaw);
     // the source prints "Quantity not stated" (ADDVET COC p.7, p.9): printed as the document says, no unit
-    if (whole && /not\s+stated/i.test(whole)) return { text: part[2] === "amountFigure" ? "Quantity not stated" : "" };
+    if (whole && /not\s+stated/i.test(whole)) return { text: part[2] === "amountUnit" ? "" : "Quantity not stated" };
+    // amountText: the amount as printed, figure and unit in ONE cell (27 Nov QA: a figure limited by its own
+    // unit collided / shrank — "10,000mg")
+    if (part[2] === "amountText") return { text: whole };
     return { text: whole ? amountParts(whole)[part[2]] : "" };
   }
   const text = asText(readPath(contextFor(kind, ctx), path));
