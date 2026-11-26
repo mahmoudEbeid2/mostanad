@@ -166,6 +166,82 @@ export async function fillFromComposition(item, plan) {
   return { productId: p.id, filled: Object.keys(data), conflicts: conflicts.length };
 }
 
+// ── duplicates: what the same file became the first time ─────────────────────
+const CERT_DOCS = ["certificate_filled", "certificate_template"];
+
+/** A template of the company (not archived) → its version to use: the active one, else the one given */
+async function templateRef(templateId, companyId, versionId = null, code = null) {
+  const tpl = await prisma.certificateTemplate.findFirst({ where: { id: templateId, companyId, archivedAt: null }, select: { id: true, activeVersionId: true, certificateType: { select: { code: true } } } });
+  const vid = tpl?.activeVersionId || (tpl ? versionId : null);
+  if (!vid) return null;
+  return { code: code || tpl.certificateType.code, templateId: tpl.id, versionId: vid, fields: "reused", reused: true, link: `/certificates/templates/${tpl.id}/versions/${vid}` };
+}
+
+/**
+ * 26 Nov (prod: ADDVET's COC, COA and HC were filed before, so the Express drop was all duplicates and
+ * made 0 certificates): a duplicate is not filed again, but it takes what the same file became the
+ * first time — its company, products, invoice and template (the template's ACTIVE version now) — so
+ * Express uses them. Without an earlier filing of it: the template made from those same bytes, else
+ * the company's active template of its type; an Express certificate with none at all becomes its
+ * type's template from this file. The status stays "duplicate" (nothing was filed twice); what the
+ * earlier read stored (harvested_facts of that file) is already the company's.
+ * → [{ itemId, from, template? }]
+ */
+export async function adoptDuplicates(batchId, { userId = null, record = null } = {}) {
+  const batch = await prisma.intakeBatch.findUnique({ where: { id: batchId }, select: { companyId: true, mode: true } });
+  const dupes = await prisma.intakeItem.findMany({ where: { batchId, status: "duplicate", parentId: null } });
+  const out = [];
+  for (const item of dupes) {
+    if (item.result?.reused) continue; // idempotent: adopted on an earlier run
+    const c = item.classification || {};
+    const p = c.proposal || {};
+    const companyId = p.company?.id || batch.companyId;
+    if (!companyId) continue;
+    // the earlier filing: the same drop's first copy, else the latest drop of this company with these bytes
+    const prior = p.duplicateOf?.itemId
+      ? await prisma.intakeItem.findFirst({ where: { id: p.duplicateOf.itemId, status: "done" } })
+      : item.sha256
+        ? await prisma.intakeItem.findFirst({ where: { sha256: item.sha256, status: "done", parentId: null, batchId: { not: batchId }, companyId }, orderBy: { createdAt: "desc" } })
+        : null;
+    const children = prior ? await prisma.intakeItem.findMany({ where: { parentId: prior.id, status: "done" }, select: { result: true } }) : [];
+    const productIds = [...new Set([...(prior?.result?.plan?.productIds || []), ...children.flatMap((x) => x.result?.plan?.productIds || [])])];
+    const plan = { ...(prior?.result?.plan || {}), action: prior?.result?.plan?.action || "duplicate", companyId, brandId: prior?.result?.plan?.brandId ?? p.brand?.id ?? null, certCode: c.certCode || prior?.result?.plan?.certCode || null, productIds };
+    let template = null;
+    let from = prior ? "earlier_filing" : null;
+    const code = plan.certCode;
+    if (prior?.result?.template?.templateId) template = await templateRef(prior.result.template.templateId, companyId, prior.result.template.versionId, prior.result.template.code);
+    if (!template && CERT_DOCS.includes(c.docType) && code) {
+      // a template uploaded from these same bytes (the template screen, not an intake)
+      const sources = item.sha256 ? await prisma.storedFile.findMany({ where: { sha256: item.sha256, companyId }, select: { id: true } }) : [];
+      const v = sources.length ? await prisma.templateVersion.findFirst({ where: { sourceFileId: { in: sources.map((s) => s.id) }, template: { companyId, archivedAt: null } }, orderBy: { createdAt: "desc" }, select: { id: true, templateId: true } }) : null;
+      if (v) [template, from] = [await templateRef(v.templateId, companyId, v.id, code), from || "same_file"];
+      if (!template) {
+        const type = await findType(companyId, code);
+        const t = type ? await prisma.certificateTemplate.findFirst({ where: { companyId, certificateTypeId: type.id, archivedAt: null, activeVersionId: { not: null } }, orderBy: { updatedAt: "desc" }, select: { id: true } }) : null;
+        if (t) [template, from] = [await templateRef(t.id, companyId, null, code), from || "company_template"];
+      }
+    }
+    let extra = {};
+    if (!template && CERT_DOCS.includes(c.docType) && code && batch.mode === "express") {
+      // no template of this type anywhere: this file is the design (as "use my certificates as templates")
+      try {
+        extra = await asTemplate(item, plan, userId, record);
+        template = extra.template;
+        from = from || "made_from_file";
+      } catch (err) {
+        console.error(`[intake] duplicate ${item.name}: no template could be made from it: ${err.message}`);
+        extra = { templateProblem: String(err.message).slice(0, 300) };
+      }
+    }
+    if (!prior && !template) continue; // nothing to reuse: stays a plain duplicate
+    const reused = { from, fromItemId: prior?.id || null, fromBatchId: prior?.batchId || null };
+    const result = { ...(item.result || {}), ...extra, plan, reused, ...(template ? { template, link: template.link || extra.link } : {}), ...(prior?.result?.invoiceId ? { invoiceId: prior.result.invoiceId } : {}) };
+    await prisma.intakeItem.update({ where: { id: item.id }, data: { companyId, result } });
+    out.push({ itemId: item.id, from, template: template ? { code: template.code, versionId: template.versionId } : null });
+  }
+  return out;
+}
+
 // ── the job ────────────────────────────────────────────────────────────────
 export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
   const progress = ctx.progress || (() => {});
@@ -232,6 +308,13 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
       await prisma.intakeItem.update({ where: { id: item.id }, data: { status: "failed", error: String(err.message).slice(0, 500) } });
     }
     n++;
+  }
+  // the files filed before: what they became then (template, products, invoice) is used again
+  try {
+    const adopted = await adoptDuplicates(batchId, { userId, record });
+    if (adopted.length) console.log(`[intake] ${batchId}: ${adopted.length} duplicate(s) reuse their earlier filing (${adopted.map((a) => a.from).join(", ")})`);
+  } catch (err) {
+    console.error(`[intake] duplicates of ${batchId}: ${err.message}`);
   }
   // Harvest (28 Nov): read every filed file / page, then fill the products and the company from them —
   // before Express makes the templates and drafts, so those are filled too. A failure never stops the drop.
