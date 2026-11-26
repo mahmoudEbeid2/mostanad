@@ -114,7 +114,9 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
     const how = (part) => ({ source: { kind: "product", path: `activeIngredients[${slot}].${part}` }, required: slot === 0, role: "composition_amount" });
     if (!m) return add(a, s, e, `Ingredient ${slot + 1} amount`, how("concentration"), `comp_${slot}_amount`);
     const figEnd = s + m[1].length + m[2].length;
-    add(a, s, figEnd, `Ingredient ${slot + 1} amount`, how("amountFigure"), `comp_${slot}_amount`);
+    // right-aligned: a longer amount ("25,000" where the sample printed "300") grows left into the gap
+    // before it, never right over its unit (28 Nov prod: 5 overflow flags on ADDHEPA's COC)
+    add(a, s, figEnd, `Ingredient ${slot + 1} amount`, { ...how("amountFigure"), align: "right" }, `comp_${slot}_amount`);
     add(a, figEnd + m[3].length, e, `Ingredient ${slot + 1} unit`, how("amountUnit"), `comp_${slot}_unit`);
   };
   for (const raw of areas) {

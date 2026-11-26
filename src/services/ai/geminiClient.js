@@ -138,7 +138,7 @@ class GeminiClient {
   }
 
   /** One request with a client-side timeout: aborts the SDK call and rejects as a retryable timeout. */
-  async _send(request, timeoutMs) {
+  async _send(request, timeoutMs, { stream = false } = {}) {
     const controller = new AbortController();
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -148,10 +148,28 @@ class GeminiClient {
       }, timeoutMs);
     });
     try {
-      return await Promise.race([this.ai.models.generateContent({ ...request, config: { ...request.config, abortSignal: controller.signal } }), timeout]);
+      const req = { ...request, config: { ...request.config, abortSignal: controller.signal } };
+      return await Promise.race([stream ? this._streamed(req) : this.ai.models.generateContent(req), timeout]);
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * 28 Nov (prod): a long call (a Pro model reading a drop of PDFs) was cut at exactly 300 s — Node's fetch
+   * waits 300 s at most for a response to START. Streamed, the response starts at once and arrives in pieces;
+   * collected here into the same shape generateContent returns (text, candidates' finish reason, usage).
+   */
+  async _streamed(request) {
+    let text = "";
+    let last = null;
+    for await (const chunk of await this.ai.models.generateContentStream(request)) {
+      last = chunk;
+      const t = (chunk.candidates?.[0]?.content?.parts || []).filter((p) => p.text && !p.thought).map((p) => p.text).join("");
+      text += t;
+    }
+    const finishReason = last?.candidates?.[0]?.finishReason;
+    return { text, candidates: [{ finishReason, content: { role: "model", parts: [{ text }] } }], usageMetadata: last?.usageMetadata, modelVersion: last?.modelVersion };
   }
 
   /**
@@ -187,7 +205,7 @@ class GeminiClient {
     const feature = currentAiContext(ledger).feature;
     // per call (28 Nov, the harvest): its own timeout, and no fallback — a task that must stay on
     // its model (a Pro read of a whole drop) fails and retries rather than run on a smaller one
-    const { allowFallback = true, timeoutMs: callTimeoutMs = null, ...rest } = config;
+    const { allowFallback = true, timeoutMs: callTimeoutMs = null, stream = false, ...rest } = config;
     config = rest;
     const timeoutMs = policy.timeoutMs ?? callTimeoutMs ?? timeoutForFeature(feature);
     const serviceTier = config.serviceTier ?? serviceTierForFeature(feature);
@@ -219,7 +237,7 @@ class GeminiClient {
       const startedAt = Date.now();
       firstAt ??= startedAt;
       try {
-        const response = await this._send({ model: current, contents, config: callConfig }, timeoutMs);
+        const response = await this._send({ model: current, contents, config: callConfig }, timeoutMs, { stream });
         this.limiter.release();
         const latencyMs = Date.now() - startedAt;
         this.breaker.success(current);

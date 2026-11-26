@@ -46,7 +46,7 @@ export async function blankOpenAreas(versionId, companyId, { extraAreas = [] } =
     taken.add(key);
     return {
       versionId, key, label: f.label, page: f.page, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue,
-      source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1, role: f.role || null,
+      source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1, role: f.role || null, align: f.align || "left",
       // a lab result, a batch fact, a document's own number / date never; a product's descriptive value may be estimated
       isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: f.isBatchFact || f.isLabResult || f.source?.kind !== "product" ? "never" : "product_facts",
     };

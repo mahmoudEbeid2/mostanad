@@ -277,6 +277,7 @@ async function callJson({ model, contents, schema, feature, ledgerCtx, run = nul
       responseSchema: schema,
       mediaResolution: "MEDIA_RESOLUTION_HIGH", // labels and scans at full resolution
       allowFallback: false,
+      stream: true, // a long read never hits fetch's 300-second wait for the first byte
       timeoutMs,
     },
   };
