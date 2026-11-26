@@ -53,16 +53,26 @@ const ROW_LABELS = [
   [/^(?:Issue|Issuing)\s*Date$/i, "Issue date"],
   [/^(?:Certificate|Document|Cert\.?|Doc\.?)\s*(?:No\.?|Number|#)$/i, "Document number"],
   [/^Date\s+of\s+(?:Certificate|Issue)$/i, "Issue date"],
+  [/^Product\s*Form$/i, "Product form"],
 ];
 
-/** The label printed left of a place on its row ("Production Date:" … "10/2026") → a known label, or null */
-function rowLabel(a, lines) {
+/**
+ * The label printed for a place → a known label, or null: left of it on its row ("Production Date:" …
+ * "10/2026"), or stacked right above it at the same x and ending in ":" (ADDVET COC: "Product Form:" over
+ * "Supplement" — its place had been read as a plain "Form", the physical form)
+ */
+export function rowLabel(a, lines) {
   const line = lines.find((l) => l.id === a.lineId);
   if (!line?.box) return null;
   const left = lines
     .filter((l) => l.page === line.page && l.box && l.id !== line.id && Math.abs(l.box.y - line.box.y) <= Math.max(3, line.box.h * 0.4) && l.box.x < line.box.x)
     .sort((x, y) => y.box.x - x.box.x)[0];
-  const text = left?.text.trim().replace(/:\s*$/, "").trim();
+  const above = left
+    ? null
+    : lines
+        .filter((l) => l.page === line.page && l.box && l.id !== line.id && l.box.y < line.box.y - line.box.h * 0.5 && line.box.y - l.box.y <= line.box.h * 2.2 && Math.abs(l.box.x - line.box.x) <= 4 && /:\s*$/.test(l.text))
+        .sort((x, y) => y.box.y - x.box.y)[0];
+  const text = (left || above)?.text.trim().replace(/:\s*$/, "").trim();
   if (!text) return null;
   return ROW_LABELS.find(([re]) => re.test(text))?.[1] || null;
 }

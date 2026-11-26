@@ -79,6 +79,18 @@ const forms = by(
 );
 assert("a «Product Form» place prints the certificate's label (productForm); a «Form» place the physical form", forms.product_form?.source?.path === "productForm" && forms.form?.source?.path === "physicalForm", Object.values(forms).map((f) => `${f.key}:${f.source?.path}`));
 
+// ADDVET's COC (prod lines): "Product Form:" stacked over "Supplement", the place read as a plain "Form"
+const cocLines = [
+  { id: "p1-l36", page: 1, text: "36 months from the production date.", box: { x: 68, y: 740, w: 205, h: 12.667 } },
+  { id: "p1-l37", page: 1, text: "Product Form:", box: { x: 68, y: 776, w: 82, h: 12.667 } },
+  { id: "p1-l38", page: 1, text: "Supplement", box: { x: 68, y: 792, w: 67, h: 12.667 } },
+  { id: "p1-l39", page: 1, text: "Category:", box: { x: 68, y: 828, w: 55, h: 12.667 } },
+];
+const stacked = fieldsForAreas([{ lineId: "p1-l38", page: 1, kind: "value", label: "Form", text: "Supplement", charStart: 0, charEnd: 10 }], cocLines);
+assert("a «Product Form:» label stacked above the place → the certificate's label (productForm), not the physical form", stacked[0]?.source?.path === "productForm", stacked.map((f) => `${f.label}:${f.source?.path}`));
+const notStacked = fieldsForAreas([{ lineId: "p1-l36", page: 1, kind: "value", label: "Validity", text: "36 months from the production date.", charStart: 0, charEnd: 35 }], cocLines);
+assert("a line above that isn't a label (no ending «:») is never taken for one", notStacked[0]?.source?.path === "validity", notStacked.map((f) => `${f.label}:${f.source?.path}`));
+
 console.log("\n3 · a COA row on one line");
 const t = "Assay 90-110% of the labeled amount of constituents 101.7%";
 const coa = by(
