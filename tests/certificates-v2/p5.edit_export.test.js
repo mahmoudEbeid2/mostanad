@@ -205,8 +205,9 @@ try {
   assert("export batch → 202, job completed", r.status === 202 && zt?.status === "completed", zt?.error);
   r = await api("GET", `/certificate-batches/${add.batchId}/zip`, A);
   const zip = await JSZip.loadAsync(r.buffer);
-  const names = Object.keys(zip.files);
-  assert("ZIP: one PDF per certificate, unique names", r.headers.get("content-type") === "application/zip" && names.length === 2 && new Set(names).size === 2 && names.every((n) => /^COA-ADD-E120-AVVS1124011(-2)?\.pdf$/.test(n)), names);
+  const names = Object.keys(zip.files).filter((n) => n.endsWith(".pdf"));
+  // delivery (client workflow §5): a folder per certificate type, and a manifest of what covers what
+  assert("ZIP: one PDF per certificate in its type's folder, unique names, with the manifest", r.headers.get("content-type") === "application/zip" && names.length === 2 && new Set(names).size === 2 && names.every((n) => /^COA\/COA-ADD-E120-AVVS1124011(-2)?\.pdf$/.test(n)) && !!zip.file("manifest.csv") && !!zip.file("manifest.json"), Object.keys(zip.files));
   const firstPdf = await zip.file(names.find((n) => !n.includes("-2.pdf"))).async("nodebuffer");
   assert("ZIP: the final certificate's entry is its frozen PDF", firstPdf.equals(finalPdf.buffer));
 

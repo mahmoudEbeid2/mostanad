@@ -153,6 +153,9 @@ model Product {
   physicalForm       String?  @map("physical_form")
   appearance         String?
   activeIngredients  Json?    @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
+  compositionBasis   String?  @map("composition_basis") // "Each 1 mL contains", "per 100 mL" — apart from the pack size
+  compositionReview  Json?    @map("composition_review") // { conflicts: [{ ingredient, values[], comparison, decision? }] }
+  designEstimates    Json?    @map("design_estimates") // { appearance?, ph?, assumptions, by, at } — design only, never a COA result
   dosage             String?  @db.Text
   mixingInstructions String?  @map("mixing_instructions") @db.Text
   withdrawalPeriod   String?  @map("withdrawal_period")
@@ -1066,6 +1069,12 @@ model Certificate {
   finalizedAt       DateTime?        @map("finalized_at")
   finalizedByUserId String?          @map("finalized_by_user_id")
   finalPdfFileId    String?          @map("final_pdf_file_id")
+  // the client's workflow: review steps between draft and final, export, revisions
+  reviewStatus      String?          @map("review_status") // null | in_review | awaiting_authorization | returned
+  reviewComments    Json?            @map("review_comments") // [{ field, comment, byUserId, at, resolvedAt }]
+  exportedAt        DateTime?        @map("exported_at")
+  revisionOfId      String?          @map("revision_of_id") // the approved certificate this revises
+  revisionNumber    Int              @default(1) @map("revision_number")
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 

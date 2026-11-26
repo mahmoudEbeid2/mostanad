@@ -1,5 +1,6 @@
 import express from "express";
 import * as direct from "../controllers/directCertificatesController.js";
+import * as workflow from "../controllers/certificatesV2/workflowController.js";
 import multer from "multer";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { validateRequest as validate } from "../middleware/certificatesValidate.js";
@@ -168,6 +169,21 @@ router.get("/certificate-metrics", guard("read_certificates"), validate(certific
 
 // Coded errors (plan §20 I3): { status, code, message, ...extra }. Everything
 // else falls through to the global handler unchanged.
+// ── the client's workflow (Dossira_Certificate_Workflow_EN): request → matrix → review → delivery ──
+router.post("/certificate-requests", guard("create_certificates"), workflow.createRequest);
+router.get("/certificate-requests/:id", guard("read_certificates"), workflow.getRequest);
+router.patch("/certificate-requests/:id/lines/:lineId", guard("create_certificates"), workflow.resolveLine);
+router.post("/certificate-requests/:id/generate", guard("create_certificates"), workflow.generateRequest);
+router.post("/certificates/:id/review", guard("update_certificates"), workflow.reviewAction);
+router.get("/certificates/:id/review-checks", guard("read_certificates"), workflow.reviewChecks);
+router.post("/certificates/:id/revise", guard("update_certificates"), workflow.revise);
+router.get("/certificates/:id/changes", guard("read_certificates"), workflow.changes);
+router.get("/products/:id/designer", guard("read_products"), workflow.designerData);
+router.put("/products/:id/design-estimates", guard("update_products"), workflow.saveDesignEstimates);
+router.get("/products/:id/composition-review", guard("read_products"), workflow.compositionReview);
+router.post("/products/:id/composition-review/:index/decide", guard("update_products"), workflow.decideComposition);
+router.get("/evidence-files/:id", guard("read_products"), workflow.evidenceFile);
+
 router.use((err, req, res, next) => {
   if (err instanceof CertError) {
     return res.status(err.statusCode).json({ status: err.status, code: err.code, message: err.message, ...err.extra });

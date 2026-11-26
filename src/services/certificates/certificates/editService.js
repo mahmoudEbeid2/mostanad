@@ -400,31 +400,68 @@ export async function startExportZip(batchId, companyId) {
   return { batchId, taskId: task.id };
 }
 
-/** The `exportZip` job: one PDF per rendered certificate (final → its frozen PDF), unique names. */
+/**
+ * The `exportZip` job (client workflow §5, delivery): one PDF per rendered certificate (final → its
+ * frozen PDF) in a folder per certificate type, the combined PDF in the CUSTOMER'S order (the
+ * request's line order, then COA, COC, HC, FSC…), and a manifest: which document covers which
+ * product and lot, and what is still outstanding (partial delivery). Exporting the same revisions
+ * again gives the same files (fixed dates, nothing time-stamped). Approved certificates are marked exported.
+ */
+const TYPE_ORDER = ["COA", "COC", "HC", "FSC", "COO"];
+const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 export async function runExportZip({ batchId }, ctx = {}) {
   const batch = await prisma.certificateBatch.findUnique({ where: { id: batchId } });
   if (!batch) throw notFound("Certificate batch");
-  const certs = await prisma.certificate.findMany({ where: { batchId, status: { in: ["draft", "final"] } }, orderBy: [{ createdAt: "asc" }, { planKey: "asc" }] });
-  if (!certs.length) throw new CertError("NOTHING_TO_EXPORT", "This batch has no rendered certificates", 409);
+  const raw = await prisma.certificate.findMany({
+    where: { batchId, status: { in: ["draft", "final"] } },
+    include: { certificateType: { select: { code: true } }, product: { select: { name: true } }, items: { include: { invoiceItem: { select: { lineNo: true, data: true, product: { select: { name: true } } } } } } },
+    orderBy: [{ createdAt: "asc" }, { planKey: "asc" }],
+  });
+  if (!raw.length) throw new CertError("NOTHING_TO_EXPORT", "This batch has no rendered certificates", 409);
+  const firstLine = (c) => Math.min(1e6, ...c.items.map((i) => i.invoiceItem?.lineNo ?? 1e6));
+  const typeRank = (c) => TYPE_ORDER.indexOf(c.certificateType.code) + 1 || 99;
+  const certs = [...raw].sort((a, b) => firstLine(a) - firstLine(b) || typeRank(a) - typeRank(b));
+  const fixed = new Date(batch.createdAt); // the same revisions → the same ZIP and combined PDF
   const zip = new JSZip();
   const used = new Set();
   const combined = await PDFDocument.create(); // the same certificates as one PDF (to print or send at once)
+  combined.setCreationDate(fixed);
+  combined.setModificationDate(fixed);
+  combined.setProducer("Dossira");
+  combined.setCreator("Dossira");
+  const manifest = [];
   for (const [i, c] of certs.entries()) {
     const fileId = c.status === "final" && c.finalPdfFileId ? c.finalPdfFileId : await ensureVersionPdf(c);
     const { buffer } = await fileStore.readFile(fileId);
     const one = await PDFDocument.load(buffer);
     for (const page of await combined.copyPages(one, one.getPageIndices())) combined.addPage(page);
-    let name = await pdfName(c.id);
+    const folder = c.certificateType.code || "OTHER";
+    let name = `${folder}/${await pdfName(c.id)}`;
     for (let n = 2; used.has(name.toLowerCase()); n++) name = name.replace(/(-\d+)?\.pdf$/, `-${n}.pdf`);
     used.add(name.toLowerCase());
-    zip.file(name, buffer);
+    zip.file(name, buffer, { date: fixed });
+    const lines = c.items.map((x) => x.invoiceItem).filter(Boolean).sort((a, b) => a.lineNo - b.lineNo);
+    const covers = (lines.length ? lines : [{ lineNo: null, data: {}, product: c.product }]).map((l) => ({ line: l.lineNo, product: l.product?.name || l.data?.name || c.product?.name || null, packing: l.data?.packing || null, lot: l.data?.batchNo || null }));
+    manifest.push({ file: name, type: folder, status: c.status === "final" ? "approved" : "draft", revision: c.revisionNumber, certificateId: c.id, covers });
     ctx.progress?.(Math.round((90 * (i + 1)) / certs.length), `${i + 1} of ${certs.length}`);
   }
+  // what is still outstanding: the request's matrix, when the batch is one (a no-invoice request)
+  let outstanding = [];
+  const inv = await prisma.invoice.findUnique({ where: { id: batch.invoiceId }, select: { origin: true, header: true } });
+  if (inv?.origin === "direct" && inv.header?.request) {
+    const { getRequest } = await import("../workflow/requestService.js");
+    outstanding = (await getRequest(batch.invoiceId, batch.companyId)).outstanding;
+  }
+  const rows = [["file", "type", "status", "revision", "line", "product", "packing", "lot"], ...manifest.flatMap((m) => m.covers.map((x) => [m.file, m.type, m.status, m.revision, x.line, x.product, x.packing, x.lot]))];
+  zip.file("manifest.csv", rows.map((r) => r.map(csvCell).join(",")).join("\n"), { date: fixed });
+  zip.file("manifest.json", JSON.stringify({ documents: manifest, outstanding }, null, 1), { date: fixed });
+  if (outstanding.length) zip.file("outstanding.txt", outstanding.map((o) => `${o.lineNo}. ${o.product} — ${o.code}: ${o.status}${o.needs.length ? ` (${o.needs.join("; ")})` : ""}`).join("\n"), { date: fixed });
   const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
   const row = await fileStore.putFile({ companyId: batch.companyId, kind: "batch_zip", buffer, mimeType: "application/zip" });
   const merged = await fileStore.putFile({ companyId: batch.companyId, kind: "batch_pdf", buffer: Buffer.from(await combined.save()), mimeType: "application/pdf" });
   await prisma.certificateBatch.update({ where: { id: batchId }, data: { zipFileId: row.id, combinedPdfFileId: merged.id } });
-  return { batchId, zipFileId: row.id, combinedPdfFileId: merged.id, files: certs.length };
+  await prisma.certificate.updateMany({ where: { id: { in: certs.filter((c) => c.status === "final").map((c) => c.id) }, exportedAt: null }, data: { exportedAt: new Date() } });
+  return { batchId, zipFileId: row.id, combinedPdfFileId: merged.id, files: certs.length, outstanding: outstanding.length };
 }
 
 /** GET /certificate-batches/:id/combined.pdf — every certificate of the batch in one PDF (made by the export) */

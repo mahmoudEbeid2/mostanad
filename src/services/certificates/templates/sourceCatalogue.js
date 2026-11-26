@@ -8,7 +8,9 @@ import { parseRelative } from "../paths/sourcePath.js";
 
 // catalogueRef / fieldProvenance are bookkeeping about WHERE values came from, not product data:
 // a certificate never prints them, and the dictionary must not offer (or pair up) their keys
-const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance"]);
+// designEstimates: a designer's estimate (appearance, pH) is never printed on a certificate — a COA result
+// comes only from a batch record (client workflow, 26 Nov); compositionReview is the reviewer's worksheet
+const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance", "designEstimates", "compositionReview"]);
 const PRODUCT_LABELS = {
   productCode: "Product code",
   activeIngredients: "Active ingredients (all)",
@@ -29,6 +31,7 @@ const PRODUCT_SYNONYMS = {
   "brand.name": ["brand"],
   physicalForm: ["form", "physical form", "dosage form"],
   appearance: ["appearance", "description"],
+  compositionBasis: ["composition basis", "each ml contains", "each 1 ml contains", "per ml", "per 100 ml", "contains per"],
 };
 
 const humanize = (s) => s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
