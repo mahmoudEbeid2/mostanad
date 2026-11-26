@@ -50,11 +50,17 @@ const scripted = () => {
   return async () => (n++ === 0 ? { content: { role: "model", parts: [{ functionCall: { name: "start_intake", args: { express: true, certificateTypes: ["COA", "COC", "HC"] } } }] }, usage: {} } : { content: { role: "model", parts: [{ text: "رتّبت الملفات في الكارت تحت — راجعه ودوس «طلّع الشهادات»." }] }, usage: {} });
 };
 
+let MINE = null;
 async function main() {
+  // the test helpers switch the model off when they load; the live run is the one that uses it (read at call time)
+  if (LIVE) delete process.env.GEMINI_DISABLED;
   for (const f of FILES) if (!fs.existsSync(path.join(DIR, f))) throw new Error(`missing ${f} in ${DIR}`);
-  // a fresh start: an ADDVET made by an earlier run of this script (by intake) is removed first
+  // a fresh start: an ADDVET made by an earlier run of this script is removed first (its id is kept
+  // in reports/addvet-e2e/company-ids.txt, or intake's own record says so); any other ADDVET is left alone
+  MINE = path.join(process.cwd(), "reports", "addvet-e2e", "company-ids.txt");
+  const mine = new Set(fs.existsSync(MINE) ? fs.readFileSync(MINE, "utf8").split(/\s+/).filter(Boolean) : []);
   for (const c of await prisma.company.findMany({ where: { name: { equals: "ADDVET", mode: "insensitive" } }, select: { id: true } })) {
-    if (await prisma.intakeCreated.findFirst({ where: { entityType: "company", entityId: c.id } })) await cleanupCompany(c.id);
+    if (mine.has(c.id) || (await prisma.intakeCreated.findFirst({ where: { entityType: "company", entityId: c.id } }))) await cleanupCompany(c.id);
     else throw new Error("A company named ADDVET exists that this script didn't make — not touching it");
   }
   const me = (await api("GET", "/auth/me", asAdmin)).data?.data?.user;
@@ -110,6 +116,8 @@ async function main() {
 
   const co = await prisma.company.findFirst({ where: { name: { equals: "ADDVET", mode: "insensitive" } } });
   assert("the company ADDVET exists now", !!co);
+  if (co) fs.appendFileSync(MINE, `${co.id}
+`);
   if (!co) return;
   const types = await prisma.certificateType.findMany({ where: { companyId: co.id }, select: { code: true, name: true } });
   assert("types COA, COC (Certificate of Composition), HC for ADDVET", ["COA", "COC", "HC"].every((c) => types.some((t) => t.code === c)) && types.find((t) => t.code === "COC")?.name === "Certificate of Composition", types);
@@ -155,7 +163,7 @@ async function main() {
   assert("ZIP + combined PDF + manifest", !!cb?.zipFileId && !!cb?.combinedPdfFileId && manifest?.documents?.length === certs.filter((c) => c.status !== "failed").length, { zip: cb?.zipFileId, manifest: manifest?.documents?.length });
   assert("the steps say what happened (no green check on a step that made nothing)", (e.steps || []).every((s) => (s.status === "ok") === s.ok) && !(e.steps || []).some((s) => s.key === "certificates" && s.status === "ok" && !certs.length), e.steps);
 
-  const ai = await prisma.aiCall.findMany({ where: { createdAt: { gte: startedAt } }, select: { feature: true, costUsd: true, model: true } }).catch(() => []);
+  const ai = await prisma.aiCall.findMany({ where: { createdAt: { gte: startedAt } }, select: { feature: true, costUsd: true, modelId: true } });
   const byFeature = {};
   for (const c of ai) {
     const k = c.feature || "?";

@@ -139,13 +139,16 @@ async function missingOf(cert) {
   const byKey = new Map(fields.map((f) => [f.key, f]));
   const out = [];
   const lab = [];
+  const values = new Map(); // label → keys (a design's 30 "Analysis result" blanks are one line, with a count)
   for (const [k, x] of Object.entries(v?.values || {})) {
     if (!(x.flags || []).some(isBlocking)) continue;
     const f = byKey.get(k);
     if (f && isLabResult(f)) lab.push(f.label || k);
-    else out.push({ code: "value", field: k, label: f?.label || k, ar: `${MISSING_AR.value}: ${f?.label || k}` });
+    else values.set(f?.label || k, [...(values.get(f?.label || k) || []), k]);
   }
-  if (lab.length) out.unshift({ code: "lab_report", fields: lab, ar: `${MISSING_AR.lab_report} (${lab.join("، ")})` });
+  const counted = (labels) => [...labels.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map())].map(([l, n]) => (n > 1 ? `${l} ×${n}` : l));
+  for (const [label, keys] of values) out.push({ code: "value", field: keys[0], fields: keys, label, ar: `${MISSING_AR.value}: ${label}${keys.length > 1 ? ` ×${keys.length}` : ""}` });
+  if (lab.length) out.unshift({ code: "lab_report", fields: lab, ar: `${MISSING_AR.lab_report} (${counted(lab).join("، ")})` });
   return out;
 }
 

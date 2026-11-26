@@ -50,8 +50,12 @@ const LIGHT = process.argv.includes("--light");
 const run = LIGHT ? [...targets.slice(0, 3), { name: "workers", script: "scripts/lightWorkers.js", args: targets.slice(3).map((t) => t.script) }] : targets;
 
 export const BYPASS_SECRET_FILE = ".test-bypass-secret";
-if (process.argv.includes("--no-gemini")) {
-  process.env.GEMINI_DISABLED = "true";
+// `--live-test` (local only): the test bypass WITH the real model — for the one live acceptance run
+// (tests/e2e/addvetExpress.e2e.mjs --live), which needs the model and the scripted login. `npm test`
+// still refuses this stack (its preflight requires GEMINI_DISABLED).
+const LIVE_TEST = process.argv.includes("--live-test");
+if (process.argv.includes("--no-gemini") || LIVE_TEST) {
+  if (!LIVE_TEST) process.env.GEMINI_DISABLED = "true";
   process.env.ALLOW_TEST_BYPASS = "true";
   process.env.TEST_BYPASS_SECRET = crypto.randomBytes(24).toString("base64url");
   fs.writeFileSync(BYPASS_SECRET_FILE, process.env.TEST_BYPASS_SECRET, { mode: 0o600 });
