@@ -39,9 +39,14 @@ for (const p of wrong) {
 }
 
 // 2 · template fields
-const fields = (await prisma.templateField.findMany({ where: { source: { path: ["path"], equals: "physicalForm" }, ...(companyId ? { version: { template: { companyId } } } : {}) }, select: { id: true, label: true, source: true, versionId: true } })).filter(
-  (f) => f.source?.kind === "product" && /Product\s*form/i.test(f.label || ""),
-);
+// a place is the certificate's «Product Form» when its label says so, or when the page prints "Product Form"
+// before it on its line (ADDVET's active COC: a field labelled just "Form" on "Product Form: Supplement")
+const candidates = (await prisma.templateField.findMany({ where: { source: { path: ["path"], equals: "physicalForm" }, ...(companyId ? { version: { template: { companyId } } } : {}) }, select: { id: true, label: true, source: true, versionId: true, lineId: true, charStart: true, version: { select: { lines: true } } } })).filter((f) => f.source?.kind === "product");
+const fields = candidates.filter((f) => {
+  if (/Product\s*form/i.test(f.label || "")) return true;
+  const line = (f.version?.lines || []).find((l) => l.id === f.lineId);
+  return !!line && /Product\s*Form\s*:?\s*$/i.test(String(line.text).slice(0, f.charStart));
+});
 console.log(`${fields.length} template field(s) labelled "Product Form" reading the physical form`);
 for (const f of fields) {
   if (APPLY) await prisma.templateField.update({ where: { id: f.id }, data: { source: { ...f.source, path: "productForm" } } });
