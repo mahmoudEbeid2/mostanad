@@ -46,6 +46,17 @@ export const MODEL_PRICES = [
     outputPerMillion: null, // TODO(owner) — includes thinking tokens
     longContext: { aboveInputTokens: 200_000, inputPerMillion: null, cachedInputPerMillion: null, outputPerMillion: null }, // TODO(owner): prompts > 200k
   },
+  // 28 Nov: the harvest's Pro model (GEMINI_HARVEST_MODEL). Prices not verified against the page's
+  // own text — TODO(owner): fill from the pricing page (≤ 200k and > 200k prompts). Until then a
+  // harvest call is logged with its tokens and an unpriced cost.
+  {
+    modelId: MODEL_IDS.GEMINI_3_1_PRO_PREVIEW,
+    effectiveFrom: "2026-01-01",
+    inputPerMillion: null, // TODO(owner)
+    cachedInputPerMillion: null, // TODO(owner)
+    outputPerMillion: null, // TODO(owner) — includes thinking tokens
+    longContext: { aboveInputTokens: 200_000, inputPerMillion: null, cachedInputPerMillion: null, outputPerMillion: null }, // TODO(owner)
+  },
 ];
 
 const isPrice = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;

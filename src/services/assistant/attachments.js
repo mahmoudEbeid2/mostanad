@@ -52,7 +52,7 @@ export async function storeAttachments({ conversationId, companyId = null, actor
     const name = String(file.originalname || `file.${kind.ext}`).slice(0, 200);
     const stored = await fileStore.putFile({ companyId, kind: "assistant_attachment", buffer: file.buffer, mimeType: kind.mimeType, originalName: name, ext: kind.ext });
     // Harvest (28 Nov): a file sent in a company's chat is read for what it says (in the background)
-    if (companyId && kind.ext === "pdf") import("../harvest/harvestService.js").then(({ harvestSoon, kindOf }) => harvestSoon({ companyId, fileId: stored.id, fileName: name, kind: kindOf({ name, certCode: /\b(COA|COC|HC|FSC|COO)\b/i.exec(name)?.[1]?.toUpperCase() || null }), certCode: /\b(COA|COC|HC|FSC|COO)\b/i.exec(name)?.[1]?.toUpperCase() || null })).catch(() => {});
+    if (companyId && kind.ext === "pdf") import("../harvest/harvestService.js").then(({ harvestSoon, kindOf }) => harvestSoon({ companyId, fileId: stored.id, fileName: name, ai: false, kind: kindOf({ name, certCode: /\b(COA|COC|HC|FSC|COO)\b/i.exec(name)?.[1]?.toUpperCase() || null }), certCode: /\b(COA|COC|HC|FSC|COO)\b/i.exec(name)?.[1]?.toUpperCase() || null })).catch(() => {});
     out.push(
       await prisma.assistantAttachment.create({
         data: { conversationId, companyId, ownerType: actor.kind, ownerId: actor.id, fileId: stored.id, name, mimeType: kind.mimeType, sizeBytes: file.buffer.length, pages: kind.ext === "pdf" ? await pageCount(file.buffer) : null },

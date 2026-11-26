@@ -30,6 +30,11 @@ const PRODUCT_FIELDS = {
   compositionBasis: "compositionBasis",
   origin: "origin",
   category: "productType", // a category name; linked to a shared category only when one exists by that name
+  // 28 Nov (AI read): the rest of a product's printed identity
+  targetSpecies: "targetSpecies", // a list column
+  routeOfAdmin: "routeOfAdmin",
+  registrationNumber: "registrationNumber", // only as printed (an exact-copy value: verified character for character)
+  productCode: "productCode",
 };
 // the same thing said differently is the same value: "JORDAN" = { code: "JO" }; "Each 1 mL contains" = "Contains per ml"
 const comparable = (key, v) => {
@@ -129,7 +134,8 @@ const rankOf = (prov) => (prov ? (prov.tier === "manual" || prov.by || prov.conf
 export async function mergeProduct(productId) {
   const p = await prisma.product.findUnique({ where: { id: productId } });
   if (!p) return { filled: [], conflicts: [] };
-  const facts = (await prisma.harvestedFact.findMany({ where: { productId, entity: "product", perBatch: false } })).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0) || a.createdAt - b.createdAt);
+  // only what was confirmed: a value the verification doubted waits for a person ("needs review")
+  const facts = (await prisma.harvestedFact.findMany({ where: { productId, entity: "product", perBatch: false, reviewStatus: "confirmed" } })).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0) || a.createdAt - b.createdAt);
   const prov = { ...(p.fieldProvenance || {}) };
   const data = {};
   const filled = [];
@@ -172,8 +178,9 @@ export async function mergeProduct(productId) {
     }
     const col = PRODUCT_FIELDS[key];
     if (!col) continue;
-    const current = p[col];
-    const value = key === "packaging" ? normPack(best.value) : show(best.value);
+    const raw = p[col];
+    const current = Array.isArray(raw) ? (raw.length ? raw : null) : raw; // an empty list is empty
+    const value = key === "packaging" ? normPack(best.value) : col === "targetSpecies" ? (Array.isArray(best.value) ? best.value.map(String) : [show(best.value)]) : show(best.value);
     const currentRank = current ? rankOf(prov[col]) ?? PRIORITY.user : -1;
     if (!current || (currentRank < (PRIORITY[best.sourceType] || 0) && prov[col]?.source === "harvest")) {
       data[col] = value;
@@ -196,7 +203,7 @@ export async function mergeProduct(productId) {
       prov.categoryId = provenanceOf(cat);
     }
   }
-  const producer = await prisma.harvestedFact.findFirst({ where: { companyId: p.companyId, entity: "company", key: "producerName" }, orderBy: { createdAt: "asc" } });
+  const producer = await prisma.harvestedFact.findFirst({ where: { companyId: p.companyId, entity: "company", key: "producerName", reviewStatus: "confirmed" }, orderBy: { createdAt: "asc" } });
   if (!p.producer && producer) {
     data.producer = show(producer.value);
     prov.producer = provenanceOf(producer);
@@ -212,7 +219,7 @@ export async function mergeProduct(productId) {
 export async function mergeCompany(companyId) {
   const c = await prisma.company.findUnique({ where: { id: companyId } });
   if (!c) return null;
-  const facts = await prisma.harvestedFact.findMany({ where: { companyId, entity: { in: ["company", "document"] } }, orderBy: { createdAt: "asc" } });
+  const facts = await prisma.harvestedFact.findMany({ where: { companyId, entity: { in: ["company", "document"] }, reviewStatus: "confirmed" }, orderBy: { createdAt: "asc" } });
   const first = (key) => facts.filter((f) => f.key === key).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0))[0];
   const profile = { ...(c.profile || {}) };
   const sources = { ...(profile.sources || {}) };
@@ -262,7 +269,15 @@ const READABLE = ["intake_file", "assistant_attachment", "template_source", "lab
  * The re-harvest job: every file already stored for a company, read again (facts are idempotent), then
  * merged — existing products get filled without anyone uploading again. ctx.progress reports it.
  */
-export async function reharvestCompany(companyId, ctx = {}) {
+export async function reharvestCompany(companyId, ctx = {}, { force = false } = {}) {
+  // the AI reader when it's on (every stored PDF, image or sheet, natively); the rules reader otherwise
+  const { aiHarvestAvailable, harvestStoredAi, aiReadable } = await import("./harvestAi.js");
+  if (aiHarvestAvailable().on) {
+    const stored = await prisma.storedFile.findMany({ where: { companyId, kind: { in: READABLE.filter((k) => k !== "direct_request") } }, select: { id: true, originalName: true, mimeType: true, sha256: true }, orderBy: { createdAt: "asc" } });
+    const seen = new Set(); // the same content stored twice is read once
+    const files = stored.filter((f) => aiReadable(f.mimeType) && !seen.has(f.sha256) && seen.add(f.sha256)).map((f) => ({ id: f.id, name: f.originalName || f.id }));
+    return { reader: "ai", ...(await harvestStoredAi(companyId, files, { force, progress: ctx.progress })) };
+  }
   const files = await prisma.storedFile.findMany({ where: { companyId, kind: { in: READABLE.filter((k) => k !== "direct_request") }, mimeType: "application/pdf" }, select: { id: true, kind: true, originalName: true }, orderBy: { createdAt: "asc" } });
   // what a drop said about each file: its kind, and the product of the file (a label) or of each page (a bundle)
   const items = await prisma.intakeItem.findMany({ where: { companyId, fileId: { in: files.map((f) => f.id) } }, select: { fileId: true, name: true, parentId: true, pageFrom: true, pageTo: true, classification: true, result: true } });
@@ -303,10 +318,18 @@ export const summaryAr = ({ files, filled, conflicts, batchMissing }) => `قري
  * Read one uploaded file in the background (a template, a chat file, a product import) and fill what
  * it says; never delays or fails the upload. certCode: the certificate type, when known.
  */
-export function harvestSoon({ companyId, fileId, fileName = null, kind = "other", certCode = null }) {
+export function harvestSoon({ companyId, fileId, fileName = null, kind = "other", certCode = null, ai = true }) {
   if (!companyId || !fileId) return;
   setImmediate(async () => {
     try {
+      // ai: false — a chat attachment: the drop's own read covers it (a file is never paid for twice)
+      if (ai) {
+        const { aiHarvestAvailable, harvestStoredAi } = await import("./harvestAi.js");
+        if (aiHarvestAvailable().on) {
+          await harvestStoredAi(companyId, [{ id: fileId, name: fileName || fileId }]);
+          return;
+        }
+      }
       if (await harvestFile({ companyId, fileId, fileName, kind, certCode })) await mergeAll(companyId);
     } catch (err) {
       console.error(`[harvest] ${fileName || fileId}: ${err.message}`);

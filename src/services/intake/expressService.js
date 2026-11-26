@@ -6,6 +6,7 @@ import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
 import { templateFromItem } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas } from "../certificates/templates/autoMap.js";
+import { harvestGate } from "../harvest/harvestAi.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
@@ -339,6 +340,11 @@ export async function runExpress({ batchId }) {
   if (!batch || batch.mode !== "express") return { skipped: true };
   const ex = { ...(batch.express || {}) };
   if (ex.stage === "done") return ex;
+  // the drafts are made from what the files say: the drop's AI read first (retried while it runs, 20 min at most)
+  if (!ex.stage && (await harvestGate(batchId)) === "wait") {
+    if (ex.waitingHarvest !== true) await save(batchId, { ...ex, waitingHarvest: true });
+    throw notReady();
+  }
   const items = await prisma.intakeItem.findMany({ where: { batchId } });
   ex.startedAt ||= new Date().toISOString();
   if (!ex.stage || ex.stage === "templates") {

@@ -11,6 +11,7 @@ router.use(protect, restrictToPermission("read_products"));
 router.get("/batches", c.listBatches);
 router.post("/batches", c.createBatch);
 router.get("/batches/:id", c.getBatch);
+router.get("/batches/:id/harvest", c.getHarvest);
 router.post("/batches/:id/files", c.addFile);
 router.put("/items/:itemId/chunk", express.raw({ type: "application/octet-stream", limit: CHUNK_BYTES + 1024 }), c.putChunk);
 router.post("/batches/:id/classify", c.startClassify);

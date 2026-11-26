@@ -185,10 +185,14 @@ class GeminiClient {
     const policy = this.policy;
     const maxAttempts = Math.max(1, Math.min(retries, policy.maxAttempts));
     const feature = currentAiContext(ledger).feature;
-    const timeoutMs = policy.timeoutMs ?? timeoutForFeature(feature);
+    // per call (28 Nov, the harvest): its own timeout, and no fallback — a task that must stay on
+    // its model (a Pro read of a whole drop) fails and retries rather than run on a smaller one
+    const { allowFallback = true, timeoutMs: callTimeoutMs = null, ...rest } = config;
+    config = rest;
+    const timeoutMs = policy.timeoutMs ?? callTimeoutMs ?? timeoutForFeature(feature);
     const serviceTier = config.serviceTier ?? serviceTierForFeature(feature);
     const fallback = fallbackModel();
-    const canFallBack = Boolean(fallback) && fallback !== model;
+    const canFallBack = allowFallback && Boolean(fallback) && fallback !== model;
     let firstAt = null; // the first request's send time: queueing behind the limiter doesn't count
     let current = model;
     let routing = null;

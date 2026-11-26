@@ -110,3 +110,48 @@ defineTool({
     return { intakeBatchId: batch.id, templates: out.made, restarted: out.restarted, link: out.made[0] ? `/certificates/templates/${out.made[0].templateId}/versions/${out.made[0].versionId}` : null };
   },
 });
+
+// 28 Nov: the model never saw what the files say — only "a COC of ADDVET". This is what every file
+// of the conversation's drops prints (the AI read: value, file, page, the printed words; a value the
+// verification doubted says so), or — with no AI read — the company's harvested facts. Read-only.
+defineTool({
+  name: "read_dropped_files",
+  module: "files",
+  core: true,
+  risk: "read",
+  permissions: ["read_products"],
+  label: "Reading the files",
+  description:
+    "What the files dropped in THIS conversation say, value by value, each with its file, page and the printed words: company details, product data (composition, packs, validity, storage, " +
+    "dosage, specifications…), batch facts (only from manufacturing orders / lab reports / certificates), document numbering, invoice lines. Use it to answer any question about the files' content " +
+    "(\"إيه تركيبة AMINOVITA في الشهادة؟\", \"الفاتورة فيها كام منتج؟\") — never answer from memory. product / field narrow it (field: e.g. ingredient, validity, batchNo, specification). " +
+    "A value marked needsReview was doubted by the check: say so. reading: true = the files are still being read; say it and how far it got.",
+  args: z.object({
+    product: z.string().trim().min(1).max(120).optional(),
+    field: z.string().trim().min(1).max(60).optional(),
+    batchId: z.string().uuid().optional(),
+  }),
+  run: async (a, ctx) => {
+    if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
+    const drops = await prisma.intakeBatch.findMany({ where: { conversationId: ctx.conversationId, ...(a.batchId ? { id: a.batchId } : {}), ownerType: ctx.actor.kind === "company" ? "company" : "user", ownerId: ctx.actor.id }, orderBy: { createdAt: "desc" }, take: 5 });
+    if (!drops.length) throw new ToolError("No files were dropped in this conversation yet.", "no_files");
+    const want = (v) => (!a.product || String(v.product || "").toLowerCase().includes(a.product.toLowerCase())) && (!a.field || [v.field, v.test].some((x) => String(x || "").toLowerCase() === a.field.toLowerCase()));
+    const out = [];
+    for (const d of drops) {
+      const h = d.harvest || {};
+      const label = new Map((h.files || []).map((f) => [f.label, f.name]));
+      if (h.status === "done" || (h.values || []).length) {
+        const values = (h.values || []).filter(want).slice(0, 300).map((v) => ({ entity: v.entity, field: v.field, test: v.test || undefined, product: v.product || undefined, pack: v.pack || undefined, batchNo: v.batchNo || undefined, value: v.value, amount: v.amount || undefined, file: label.get(v.file) || v.file, page: v.page, quote: v.snippet, needsReview: v.reviewStatus !== "confirmed" ? v.verifyNote || true : undefined }));
+        out.push({ dropId: d.id, reader: "ai", files: (h.files || []).map((f) => ({ name: f.name, status: f.status, error: f.error || undefined })), values, more: (h.values || []).filter(want).length > values.length || undefined });
+        continue;
+      }
+      if (["queued", "running"].includes(h.status)) out.push({ dropId: d.id, reading: true, done: h.done ?? 0, total: h.total ?? null });
+      // no AI read: what the rules reader stored for the drop's files
+      const fileIds = (await prisma.intakeItem.findMany({ where: { batchId: d.id, fileId: { not: null } }, select: { fileId: true } })).map((i) => i.fileId);
+      const facts = fileIds.length ? await prisma.harvestedFact.findMany({ where: { fileId: { in: fileIds } }, take: 600, orderBy: { createdAt: "asc" } }) : [];
+      const values = facts.map((f) => ({ entity: f.entity, field: f.key, product: f.productName || undefined, value: typeof f.value === "string" ? f.value : JSON.stringify(f.value), file: f.fileName, page: f.page, quote: f.snippet, needsReview: f.reviewStatus !== "confirmed" || undefined })).filter((v) => want({ ...v, field: v.field })).slice(0, 300);
+      out.push({ dropId: d.id, reader: h.status === "off" ? "rules" : "rules (AI read not finished)", values });
+    }
+    return { drops: out };
+  },
+});

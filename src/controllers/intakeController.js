@@ -40,6 +40,36 @@ export const startClassify = catchAsync(async (req, res) => {
   res.status(202).json({ status: "success", data: await intake.startClassify(actorOf(req), req.params.id) });
 });
 
+/**
+ * GET /intake/batches/:id/harvest — the drop's AI read. Accept: text/event-stream → Server-Sent
+ * Events: `progress` each time it moves ("بقرا الملفات… 8/14"), then `done` (or `end` when it
+ * stopped / is off); otherwise one JSON answer.
+ */
+export const getHarvest = catchAsync(async (req, res) => {
+  const actor = actorOf(req);
+  const first = await intake.getHarvest(actor, req.params.id);
+  if (!String(req.headers.accept || "").includes("text/event-stream")) return res.status(200).json({ status: "success", data: first });
+  res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  res.flushHeaders();
+  let closed = false;
+  res.on("close", () => (closed = true));
+  const send = (event, data) => !closed && res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const finished = (h) => !h || !["queued", "running"].includes(h.status);
+  let last = "";
+  const until = Date.now() + 30 * 60 * 1000;
+  let h = first;
+  for (;;) {
+    const key = JSON.stringify(h);
+    if (key !== last) send("progress", h);
+    last = key;
+    if (finished(h) || closed || Date.now() > until) break;
+    await new Promise((r) => setTimeout(r, 1500));
+    h = await intake.getHarvest(actor, req.params.id).catch(() => null);
+  }
+  send(h?.status === "done" ? "done" : "end", h);
+  res.end();
+});
+
 export const getBatch = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await intake.getBatchView(actorOf(req), req.params.id) });
 });

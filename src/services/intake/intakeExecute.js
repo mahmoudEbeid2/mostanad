@@ -16,6 +16,7 @@ import { createProduct, updateProduct } from "../productService.js";
 import { itemAiCost } from "./intakeAi.js";
 import { recordConflicts } from "../catalogues/compositionReview.js";
 import { harvestFile, mergeAll, kindOf, summaryAr } from "../harvest/harvestService.js";
+import { applyDropHarvest } from "../harvest/harvestAi.js";
 
 // The `intakeExecute` job: every item of a drop the person accepted goes through
 // the pipeline that already exists for its kind — reference label, certificate
@@ -239,6 +240,13 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
     harvest = await harvestDrop(batchId, ctx);
   } catch (err) {
     console.error(`[intake] harvest of ${batchId}: ${err.message}`);
+  }
+  // the AI read finished before the filing: its facts now (they replace the rules reader's for its files)
+  try {
+    const ai = await applyDropHarvest(batchId);
+    if (ai) harvest = { ...ai, reader: "ai" };
+  } catch (err) {
+    console.error(`[intake] AI harvest apply of ${batchId}: ${err.message}`);
   }
   const summary = { ...(await summarize(batchId)), ...(harvest ? { harvest } : {}) };
   const batch = await prisma.intakeBatch.update({ where: { id: batchId }, data: { status: "done", summary } });

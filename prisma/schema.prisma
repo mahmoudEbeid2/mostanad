@@ -1765,6 +1765,7 @@ model IntakeBatch {
   classifyTaskId  String?   @map("classify_task_id")
   executeTaskId   String?   @map("execute_task_id")
   summary         Json? // the plain result after execute: created / done / needs a person
+  harvest         Json? // the AI read of every file: { status, done, total, files[], values[], tokens, costUsd }
   aiCalls         Int       @default(0) @map("ai_calls")
   executedAt      DateTime? @map("executed_at")
   executedByUserId String?  @map("executed_by_user_id")
@@ -1851,6 +1852,11 @@ model HarvestedFact {
   bbox        Json?
   perBatch    Boolean  @default(false) @map("per_batch")
   batchNo     String?  @map("batch_no")
+  extractor    String  @default("rules") // rules | ai
+  reviewStatus String  @default("confirmed") @map("review_status") // confirmed | needs_review (the verification pass disagreed)
+  verifyNote   String? @map("verify_note")
+  modelId      String? @map("model_id")
+  unit         String?
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([companyId, productId])
@@ -1858,3 +1864,18 @@ model HarvestedFact {
   @@map("harvested_facts")
 }
 
+
+// A file sent to the Gemini File API, by content hash: reused while Google keeps it, re-uploaded after.
+model GeminiFile {
+  id        String   @id @default(uuid())
+  sha256    String
+  name      String
+  uri       String
+  mimeType  String   @map("mime_type")
+  sizeBytes Int      @default(0) @map("size_bytes")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sha256, expiresAt])
+  @@map("gemini_files")
+}

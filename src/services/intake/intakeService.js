@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma.js";
 import AppError from "../../utils/appError.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
+import { aiHarvestAvailable } from "../harvest/harvestAi.js";
 import { createProduct } from "../productService.js";
 import { newEntities, ACTIONS } from "./intakeResolve.js";
 import { expressSteps, certificateFilesWithoutTemplate, makeTemplatesFromFiles } from "./expressService.js";
@@ -117,7 +118,50 @@ export async function startClassify(actor, batchId) {
   if (missing.length) throw new AppError(`${missing.length} file(s) haven't finished uploading: ${missing.map((i) => i.name).slice(0, 5).join(", ")}`, 409);
   const task = await enqueueTask({ queueName: QUEUES.template, jobName: "intakeClassify", type: "intake_classify", companyId: batch.companyId, data: { entity: "intake_batch", entityId: batch.id, batchId: batch.id } });
   await prisma.intakeBatch.update({ where: { id: batch.id }, data: { status: "classifying", classifyTaskId: task.id } });
+  await startDropHarvest(batch);
   return { taskId: task.id };
+}
+
+/** The drop's AI read as the card shows it (never the values themselves: a catalogue gives thousands) */
+export function harvestProgress(h) {
+  if (!h) return null;
+  const files = (h.files || []).map((f) => ({ name: f.name, status: f.status, error: f.error || null, values: f.values ?? null }));
+  const done = h.done ?? files.filter((f) => f.status !== "waiting").length;
+  const total = h.total ?? files.length;
+  const running = ["queued", "running"].includes(h.status);
+  return {
+    status: h.status,
+    reason: h.reason || null,
+    model: h.model || null,
+    done,
+    total,
+    files,
+    review: h.review ?? null,
+    summary: h.summary || null,
+    cost: h.cost || null,
+    ar: running ? `بقرا الملفات… ${done}/${total}` : h.status === "done" ? h.summary?.ar || `قريت ${files.filter((f) => f.status === "read").length} ملف` : h.status === "off" ? null : "قراية الملفات وقفت",
+  };
+}
+
+/** GET /intake/batches/:id/harvest — the read's progress (the stream sends it as it moves) */
+export async function getHarvest(actor, id) {
+  const batch = await loadBatch(actor, id);
+  return harvestProgress(batch.harvest);
+}
+
+/**
+ * The drop's AI read (28 Nov), alongside the classification — the card never waits for it; the
+ * drafts do (Express's harvestGate). Once per drop. Without a harvest model it says why ("off").
+ */
+async function startDropHarvest(batch) {
+  if (batch.harvest && batch.harvest.status !== "failed") return;
+  const avail = aiHarvestAvailable();
+  if (!avail.on) {
+    await prisma.intakeBatch.update({ where: { id: batch.id }, data: { harvest: { status: "off", reason: avail.reason } } });
+    return;
+  }
+  await prisma.intakeBatch.update({ where: { id: batch.id }, data: { harvest: { status: "queued", model: avail.model, startedAt: new Date().toISOString() } } });
+  await enqueueTask({ queueName: QUEUES.template, jobName: "harvestDrop", type: "intake_harvest", companyId: batch.companyId, data: { entity: "intake_batch", entityId: batch.id, batchId: batch.id } });
 }
 
 // ── the review card ─────────────────────────────────────────────────────────
@@ -179,7 +223,7 @@ export async function getBatchView(actor, id) {
   const effective = items.map(effectiveOf).filter(Boolean);
   const task = batch.executeTaskId ? await prisma.backgroundTask.findUnique({ where: { id: batch.executeTaskId }, select: { status: true, progress: true, message: true, error: true } }) : batch.classifyTaskId ? await prisma.backgroundTask.findUnique({ where: { id: batch.classifyTaskId }, select: { status: true, progress: true, message: true, error: true } }) : null;
   const express = batch.mode === "express" ? await expressView(batch) : null;
-  return { batch: { id: batch.id, status: batch.status, mode: batch.mode, companyId: batch.companyId, aiCalls: batch.aiCalls, executedAt: batch.executedAt, createdAt: batch.createdAt }, task, items: rows, newEntities: newEntities(effective), summary: batch.summary, express };
+  return { batch: { id: batch.id, status: batch.status, mode: batch.mode, companyId: batch.companyId, aiCalls: batch.aiCalls, executedAt: batch.executedAt, createdAt: batch.createdAt }, task, items: rows, newEntities: newEntities(effective), summary: batch.summary, express, harvest: harvestProgress(batch.harvest) };
 }
 
 /** GET /intake/batches — the caller's recent drops. */

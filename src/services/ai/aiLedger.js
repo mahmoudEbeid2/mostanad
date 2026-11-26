@@ -34,6 +34,8 @@ export const FEATURES = [
   "certificates.coa",
   "assistant.chat",
   "intake.classify",
+  "intake.harvest",
+  "intake.harvest_verify",
 ];
 export const UNATTRIBUTED = "unattributed";
 

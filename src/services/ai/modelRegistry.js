@@ -30,6 +30,7 @@
 export const MODEL_IDS = {
   GEMINI_2_5_FLASH: "gemini-2.5-flash",
   GEMINI_2_5_PRO: "gemini-2.5-pro",
+  GEMINI_3_1_PRO_PREVIEW: "gemini-3.1-pro-preview",
   GEMINI_3_1_FLASH_LITE: "gemini-3.1-flash-lite",
   GEMINI_3_5_FLASH_LITE: "gemini-3.5-flash-lite",
   GEMINI_3_8_FLASH: "gemini-3.8-flash",
@@ -262,3 +263,19 @@ export const MODELS = {
   // set, i.e. the model's dynamic default), now through geminiClient.
   CATALOGUE_LEGACY: task("CATALOGUE_LEGACY", { thinkingBudget: -1, temperature: 0 }),
 };
+
+// 28 Nov (owner): reading every file of a drop — accuracy over cost. The model is env only
+// (GEMINI_HARVEST_MODEL), never a code default, and never a flash / lite model: a harvest
+// that would run on one is refused and the rules reader (harvestRules.js) runs instead.
+// Checked against ListModels on 2026-11-28: the local key can call gemini-2.5-pro and
+// gemini-3.1-pro-preview.
+/** → { id } or { id: null, reason } */
+export function harvestModel() {
+  const raw = (process.env.GEMINI_HARVEST_MODEL || "").trim();
+  if (!raw) return { id: null, reason: "GEMINI_HARVEST_MODEL is not set" };
+  if (!MODEL_ID_SHAPE.test(raw)) return { id: null, reason: `GEMINI_HARVEST_MODEL="${raw}" is not a Gemini model id` };
+  if (/flash|lite/i.test(raw)) return { id: null, reason: `GEMINI_HARVEST_MODEL="${raw}" is a flash / lite model — the harvest needs a Pro model` };
+  return { id: raw };
+}
+// extraction and its verification: full thinking, no randomness
+export const HARVEST_SETTINGS = { temperature: 0, thinkingBudget: -1 };
