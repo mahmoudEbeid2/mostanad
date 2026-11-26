@@ -130,7 +130,8 @@ export function effectiveOf(item) {
   else if (d.action) e.action = d.action;
   else if (d.docType && d.docType !== p.docType) e.action = { label: "label", certificate_template: "certificate_template", certificate_filled: "certificate_filled", invoice: "invoice", manufacturing_order: "manufacturing_order", catalogue: "catalogue", product_list: "product_list", other: "other" }[d.docType] || "other";
   e.actionText = e.action === p.action && p.actionText ? p.actionText : ACTIONS[e.action] || ACTIONS.other;
-  e.question = d.docType || d.action || d.country ? null : p.question;
+  // the page's product answered by the person → that question is settled
+  e.question = d.docType || d.action || d.country || (p.question === "product" && d.products?.length) ? null : p.question;
   return e;
 }
 
@@ -156,6 +157,8 @@ const rowOf = (i) => {
     actionText: e?.actionText ?? null,
     confidence: e?.confidence ?? null,
     question: e?.question ?? null,
+    suggested: e?.question === "product" ? i.classification?.proposal?.suggested || null : null,
+    composition: i.classification?.composition ? { basis: i.classification.composition.basis, ingredients: i.classification.composition.ingredients.length, packaging: i.classification.composition.packaging } : null,
     evidence: (e?.evidence || []).slice(0, 6),
     batches: i.classification?.batches || [],
     language: i.classification?.language || null,

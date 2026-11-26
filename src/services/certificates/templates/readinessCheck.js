@@ -143,6 +143,11 @@ export function findVariableAreas(lines = [], fields = [], { groups = [], confir
     const h = Math.max(...cellLines.map((l) => l.box.h));
     const bottom = g.footerY ?? top + h * 1.8 * Math.max(1, g.sampleRows || 1);
     for (const l of usable) if (l.page === cellLines[0].page && l.box.y >= top - 1 && l.box.y < bottom) groupLines.add(l.id);
+    // the other sample rows of a looser table: the lines under each cell, in its column, within sampleRows rows
+    if (!g.footerY && (g.sampleRows || 1) > 1) {
+      const reach = top + h * 4 * (g.sampleRows || 1);
+      for (const c of cellLines) for (const l of usable) if (l.page === c.page && l.box.y > c.box.y && l.box.y < reach && Math.abs(l.box.x - c.box.x) <= 6) groupLines.add(l.id);
+    }
   }
 
   const cand = new Map(); // lineId → [{ s, e, kind, label }]

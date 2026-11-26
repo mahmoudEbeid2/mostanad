@@ -92,3 +92,34 @@ export const honestNoList = (userText) =>
   isArabic(userText)
     ? "لم أجلب القائمة من النظام في هذه الرسالة، فلا توجد صفوف لعرضها. اطلبها مرة أخرى (مثلاً: اعرض منتجات الشركة) وسأجلبها."
     : "I didn't fetch that list from the system in this message, so there are no rows to show. Ask me again (e.g. \"show the company's products\") and I'll fetch it.";
+
+// 26 Nov: "استخدم الشهادات اللي بعتها كقوالب…" ended in honestNoAction — a dead end. When the
+// request names an operation the code can recognise, the fallback prepares that card instead;
+// otherwise it offers choices (buttons) rather than "tell me exactly what you want".
+const TEMPLATES_FROM_FILES = [
+  /(?:استخدم|استعمل|خد|اعتبر|خلّي|خلي|اعمل)[^.\n]{0,40}(?:الشهادات|الملفات|الشهاده|الشهادة)[^.\n]{0,40}(?:كقوالب|قوالب|كقالب|قالب)/,
+  /(?:كقوالب|كقالب)\b/,
+  /\b(?:use|make|turn)\b[^.\n]{0,40}\b(?:certificates|files|them)\b[^.\n]{0,30}\btemplates?\b/i,
+  /\bas\s+templates?\b/i,
+];
+export const wantsTemplatesFromFiles = (text) => TEMPLATES_FROM_FILES.some((re) => re.test(String(text || "")));
+/** The certificate codes a message names: "COA و COC و HC" → ["COA", "COC", "HC"] */
+export const codesIn = (text) => [...new Set((String(text || "").toUpperCase().match(/\b(?:COA|COC|COO|HC|FSC|GMP|ISO)\b/g) || []))];
+
+export const preparedTemplatesCard = (userText) =>
+  isArabic(userText)
+    ? "جهّزت لك كارت تحت: كل شهادة بعتها هتبقى قالب لنوعها، وبعدها هتطلع مسودات الشهادات للمنتجات. رقم التشغيلة والتواريخ والنتايج هتفضل فاضية ومتعلّم عليها. دوس الزرار في الكارت عشان أبدأ."
+    : "There's a card below: each certificate you sent becomes its type's template, then draft certificates are made for the products. Batch numbers, dates and results stay marked blanks. Press its button to start.";
+
+/** Buttons instead of a dead end: what the person can ask next (each sends its text). */
+export function nextStepChoices(userText, { hasFiles = false } = {}) {
+  const ar = isArabic(userText);
+  const list = hasFiles
+    ? ar
+      ? ["استخدم الشهادات اللي بعتها كقوالب وطلّع الشهادات", "طلّعلي الشهادات من الملفات دي بسرعة", "سجّل الملفات بس"]
+      : ["Use the certificates I sent as templates and make the certificates", "Make the certificates from these files now", "Just file these files"]
+    : ar
+      ? ["وريني المنتجات", "اعمل شهادة لمنتج من غير فاتورة", "ارفع ملفات"]
+      : ["Show me the products", "Make a certificate for a product (no invoice)", "Upload files"];
+  return list.map((say, i) => ({ id: `next-${i}`, name: say, say }));
+}

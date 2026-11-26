@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import { prisma } from "../../lib/prisma.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { readPages } from "./intakeText.js";
-import { classify } from "./intakeRules.js";
+import { classify, compositionFrom } from "./intakeRules.js";
 import { classifyWithAi } from "./intakeAi.js";
 import { readProductSheet } from "./productSheet.js";
 import { loadScope, resolveDrop } from "./intakeResolve.js";
@@ -50,7 +50,8 @@ async function classifyOne(item, buffer, { companyNames, ai, companyId }) {
   }
   const c = classify({ name: item.name, pages, pageCount, companyNames });
   c.pagesText = pages.map((p) => ({ n: p.n, text: p.text.slice(0, 600) })); // the evidence the card can show, not the whole file
-  if (c.parts) Object.defineProperty(c, "pagesFull", { value: pages, enumerable: false }); // each part's page, for splitting (not stored)
+  // each page's text, for splitting and for a COC's composition (not stored)
+  Object.defineProperty(c, "pagesFull", { value: pages, enumerable: false });
   if (c.docType === "product_list") {
     try {
       const sheet = await readProductSheet(buffer, ext);
@@ -107,6 +108,8 @@ export async function runClassify(batchId, ctx = {}, deps = {}) {
     const { buffer } = await fileStore.readFile(item.fileId);
     const { c, aiCalls } = await classifyOne(item, buffer, { companyNames, ai: deps.ai, companyId: batch.companyId });
     aiTotal += aiCalls;
+    // a Certificate of Composition prints the product's composition, pack and form: read by code (26 Nov)
+    if (c.certCode === "COC" && !c.parts?.length && c.pagesFull?.length) c.composition = compositionFrom(c.pagesFull.map((p) => p.text).join(" ")) || undefined;
     await prisma.intakeItem.update({ where: { id: item.id }, data: { classification: c, status: "classified", aiCalls } });
     // a bundle: one item per certificate, read from its own page. A product name two
     // pages both print (a copy-paste in the document) is a question, never "fixed".
@@ -128,6 +131,7 @@ export async function runClassify(batchId, ctx = {}, deps = {}) {
         parts: null,
         pagesFull: undefined,
         pageText: pages.map((p) => p.text).join(" ").slice(0, 4000),
+        ...(c.certCode === "COC" ? { composition: compositionFrom(pages.map((p) => p.text).join(" ")) || undefined } : {}),
         confidence: Math.min(c.confidence, part.product && !repeated ? 0.9 : 0.55),
         question: !part.product || repeated ? "product" : null,
         evidence: [

@@ -126,6 +126,37 @@ async function asProductList(item, plan, record) {
   return { products: { created, updated, unchanged, unknownColumns: sheet.unknownColumns }, link: "/products" };
 }
 
+/**
+ * A Certificate of Composition page → its product's composition, pack and form (26 Nov: the
+ * 10 ADDVET products had only a name). Only empty fields are filled — what a person or a
+ * catalogue already set is never overwritten — each with its file, page and the printed quote.
+ * Categories are shared: an existing one with the printed name is linked, none is created.
+ * → { productId, filled: [field] } | null
+ */
+export async function fillFromComposition(item, plan) {
+  const comp = item.classification?.composition;
+  if (!comp || (plan.productIds || []).length !== 1) return null;
+  const p = await prisma.product.findFirst({ where: { id: plan.productIds[0], companyId: plan.companyId } });
+  if (!p) return null;
+  const at = new Date().toISOString();
+  const src = { tier: "C", source: "intake", certCode: "COC", file: item.name.replace(/ — .*$/, ""), page: item.pageFrom || 1, quote: comp.quote, at };
+  const data = {};
+  const prov = {};
+  if (!(Array.isArray(p.activeIngredients) && p.activeIngredients.length) && comp.ingredients?.length) {
+    data.activeIngredients = comp.ingredients.map((x) => ({ name: x.name, concentration: x.amountRaw, amountRaw: x.amountRaw, amount: x.amount, unit: x.unit, basis: comp.basis }));
+    prov.activeIngredients = src;
+  }
+  if (!p.packaging && comp.packaging) [data.packaging, prov.packaging] = [comp.packaging, src];
+  if (!p.physicalForm && comp.form) [data.physicalForm, prov.physicalForm] = [comp.form, src];
+  if (!p.categoryId && comp.category) {
+    const cat = await prisma.category.findFirst({ where: { name: { equals: comp.category, mode: "insensitive" } }, select: { id: true } });
+    if (cat) [data.categoryId, prov.categoryId] = [cat.id, src];
+  }
+  if (!Object.keys(data).length) return { productId: p.id, filled: [] };
+  await prisma.product.update({ where: { id: p.id }, data: { ...data, fieldProvenance: { ...(p.fieldProvenance || {}), ...prov } } });
+  return { productId: p.id, filled: Object.keys(data) };
+}
+
 // ── the job ────────────────────────────────────────────────────────────────
 export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
   const progress = ctx.progress || (() => {});
@@ -173,6 +204,8 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
         default:
           result = { kept: true };
       }
+      // a COC page also says what is in its product: filled where the product has nothing yet
+      if (item.classification?.composition) result = { ...result, composition: await fillFromComposition(item, plan) };
       const cost = await itemAiCost(item.id);
       await prisma.intakeItem.update({ where: { id: item.id }, data: { status: "done", result: { ...item.result, ...result }, error: null, costUsd: cost.costUsd } });
     } catch (err) {

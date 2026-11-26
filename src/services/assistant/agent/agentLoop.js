@@ -6,7 +6,8 @@ import { tableBlock } from "./blocks.js";
 import { factsOf, corpusOf, checkGrounding, stripTypedLists, hasTypedList, setKnownLabels, stripRecordFields } from "./grounding.js";
 import { recordBlock, blockValues, COLUMNS as TABLE_COLUMNS } from "./blocks.js";
 import { FIELD_LABELS, labelIn, langOf } from "../i18n.js";
-import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList } from "./answerGuard.js";
+import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList, wantsTemplatesFromFiles, codesIn, preparedTemplatesCard, nextStepChoices } from "./answerGuard.js";
+import { prisma } from "../../../lib/prisma.js";
 import { replayText, toolRecord } from "./history.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
@@ -200,6 +201,10 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           contents.push({ role: "user", parts: [{ text: NO_ACTION_RETRY }] });
           continue;
         }
+        // never a dead end: the operation the message names gets its card; else choices to press
+        const fb = await fallbackProposal(text, ctx, toolCalls);
+        if (fb.card) return out({ text: preparedTemplatesCard(text) });
+        blocks.set("next-steps", { id: "next-steps", type: "choices", title: "", items: nextStepChoices(text, { hasFiles: fb.hasFiles }) });
         return out({ text: honestNoAction(text) });
       }
       // rows announced ("إليك المنتجات…:") when this message fetched nothing to show: once more, then the truth
@@ -294,6 +299,25 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     contents.push({ role: "user", parts: responses });
   }
   return out({ text: "I reached the step limit for one message before finishing. Ask a narrower question, or ask me to continue." });
+}
+
+/**
+ * The guard's fallback (26 Nov): "use the certificates I sent as templates" → the card of
+ * use_files_as_templates, proposed by code (the model claimed it twice without calling it).
+ * → { card: boolean, hasFiles }
+ */
+async function fallbackProposal(text, ctx, toolCalls) {
+  if (!ctx.conversationId) return { card: false, hasFiles: false };
+  const hasFiles = (await prisma.assistantAttachment.count({ where: { conversationId: ctx.conversationId } }).catch(() => 0)) > 0;
+  if (!hasFiles || !wantsTemplatesFromFiles(text)) return { card: false, hasFiles };
+  const drop = await prisma.intakeBatch.findFirst({ where: { conversationId: ctx.conversationId }, orderBy: { createdAt: "desc" }, include: { items: { select: { companyId: true } } } });
+  if (!drop) return { card: false, hasFiles };
+  const companyId = ctx.scope?.companyId || drop.companyId || drop.items.map((i) => i.companyId).find(Boolean) || null;
+  const codes = codesIn(text);
+  const args = { batchId: drop.id, ...(codes.length ? { certificateTypes: codes } : {}), ...(ctx.actor.kind === "user" && companyId ? { companyId } : {}) };
+  const result = await runTool("use_files_as_templates", args, { ...ctx, ...(companyId && !ctx.scope?.companyId ? { scope: { ...(ctx.scope || {}), companyId } } : {}) });
+  toolCalls.push({ name: "use_files_as_templates", label: getTool("use_files_as_templates")?.label || "use_files_as_templates", args, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), proposedByGuard: true });
+  return { card: result.ok && (result.status === "needs_confirmation" || !!result.data?.actionId), hasFiles };
 }
 
 /** A short line about a tool result, for the chips in the UI and the stored message. */

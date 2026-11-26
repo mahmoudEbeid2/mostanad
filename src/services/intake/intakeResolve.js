@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { countryIn } from "../assistant/countries.js";
 import { brandScore, brandKey } from "../brandMatch.js";
 
 // Whose is each file, and what will happen to it. Works on the whole drop at once:
@@ -82,7 +83,16 @@ export async function resolveDrop({ items, scope, sessionCompanyId = null, hintC
   const matched = mentioned.map((n) => matchCompany(scope, n)).filter(Boolean);
   const dropCompanyId = fixed || majority(matched.map((m) => m.id));
   const dropCompanyName = dropCompanyId ? scope.companies.find((c) => c.id === dropCompanyId)?.name : majority(mentioned.map((n) => String(n).toUpperCase()));
-  const dropCountry = majority(leaf.map((i) => i.classification.country));
+  // every row's own country (26 Nov: whole files showed "—" while their pages said عُمان): what the
+  // file says, else its name ("ADDVET OMAN COA 10-26.pdf"), else what its pages say
+  const ownCountry = new Map();
+  for (const i of items.filter((x) => x.classification)) {
+    const pages = items.filter((x) => x.parentId === i.id).map((x) => x.classification?.country || countryIn(x.classification?.pageText || "")).filter(Boolean);
+    const fromName = countryIn(String(i.name || "").replace(/\.[a-z0-9]+$/i, "").replace(/ — .*$/, "").replace(/[_-]+/g, " "));
+    const c = i.classification.country ? [i.classification.country, "file"] : fromName ? [fromName, "name"] : pages.length ? [majority(pages), "pages"] : null;
+    if (c) ownCountry.set(i.id, c);
+  }
+  const dropCountry = majority(leaf.map((i) => ownCountry.get(i.id)?.[0]).filter(Boolean));
   const company = dropCompanyId ? { id: dropCompanyId, name: dropCompanyName } : dropCompanyName ? { name: dropCompanyName, isNew: true } : null;
   // the brand: an existing brand of that company the files name, else one named like the company
   const brandName = majority(mentioned.map((n) => String(n).toUpperCase())) || dropCompanyName;
@@ -118,8 +128,9 @@ export async function resolveDrop({ items, scope, sessionCompanyId = null, hintC
     if (!c) continue;
     // a label / certificate without its own country takes the drop's; an invoice or catalogue never does (an invoice says its own destination)
     const inherits = ["label", "certificate_template", "certificate_filled"].includes(c.docType);
-    const country = c.country || (inherits ? dropCountry : null) || null;
-    const p = { docType: c.docType, certCode: c.certCode || null, role: c.role || null, confidence: c.confidence, question: c.question || null, company, brand, products: [], country, countryFrom: c.country ? "file" : country ? "drop" : null, evidence: c.evidence || [] };
+    const mine = ownCountry.get(i.id) || (i.parentId ? ownCountry.get(i.parentId) : null);
+    const country = mine?.[0] || (inherits || c.expanded || c.parts?.length ? dropCountry : null) || null;
+    const p = { docType: c.docType, certCode: c.certCode || null, role: c.role || null, confidence: c.confidence, question: c.question || null, company, brand, products: [], country, countryFrom: mine ? mine[1] : country ? "drop" : null, evidence: c.evidence || [] };
     if (!c.companies?.length && company) p.evidence = [...p.evidence, { from: "drop", says: `company ${company.name}: named by the other files in this drop` }];
     if (c.expanded) {
       out.set(i.id, { ...p, action: "skip", actionText: { ar: `اتفك (${c.expanded} ملف)`, en: `Unpacked (${c.expanded} files)` } });
@@ -142,6 +153,19 @@ export async function resolveDrop({ items, scope, sessionCompanyId = null, hintC
         p.question = null;
         p.evidence = [...p.evidence, { from: "text", page: i.pageFrom || 1, says: `${onPage[0].name} is printed on the page (its "Product Name" is empty)` }];
       }
+    }
+    // a page whose product is unclear (none printed, or the same name on two pages): what the
+    // SAME page of the drop's other bundles names — a suggestion for ONE short question, never applied
+    if (i.parentId && (!names.length || c.question === "product")) {
+      const parentPages = (id) => items.filter((x) => x.parentId === id).length;
+      const mine = parentPages(i.parentId);
+      const same = items.filter((x) => x.parentId && x.parentId !== i.parentId && x.pageFrom === i.pageFrom && parentPages(x.parentId) === mine && (x.classification?.productNames || []).length === 1 && x.classification.question !== "product");
+      const pick = majority(same.map((x) => x.classification.productNames[0]));
+      if (pick && !(names.length === 1 && names[0] === pick)) {
+        const from = items.find((x) => x.id === same.find((s) => s.classification.productNames[0] === pick).parentId);
+        p.suggested = { name: pick, says: `page ${i.pageFrom} of ${from?.name || "another file"} is ${pick}` };
+      }
+      p.question = "product";
     }
     p.products = names.map(productFor);
     let action = c.docType;

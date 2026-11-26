@@ -8,6 +8,9 @@ import { getReadiness } from "../certificates/templates/readinessService.js";
 import { areaWords } from "../certificates/templates/readinessCheck.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
+import { enableGroups } from "../certificates/templates/templateService.js";
+import { listFields, replaceFields } from "../certificates/templates/fieldService.js";
+import { productTableFrom } from "../certificates/templates/productTable.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -69,40 +72,97 @@ async function record(batchId, entityType, row, companyId, itemId = null) {
   if (!exists) await prisma.intakeCreated.create({ data: { batchId, itemId, entityType, entityId: row.id, name: row.name, companyId } });
 }
 
+/**
+ * A design listing several products (§7.8): a vector-background copy of the version (groups need
+ * it), then its product column becomes one repeating row (productTableFrom) and the template one
+ * certificate per order (per_invoice). → { cur, pending } — cur.tableReady once the copy has its row
+ */
+async function productTableStep(batch, item, t, cur) {
+  const names = item.classification?.productNames || [];
+  const needsPerson = (why) => ({ cur: { ...cur, status: "needs_table", why: `lists ${names.length} products in one table: ${why} — set up its product rows on the template screen` }, pending: false });
+  const base = await prisma.templateVersion.findUnique({ where: { id: t.versionId }, select: { status: true, backgroundFormat: true, template: { select: { companyId: true } } } });
+  if (!base) return needsPerson("the template is gone");
+  const companyId = base.template.companyId;
+  if (!cur.tableVersionId) {
+    if (["uploaded", "converting"].includes(base.status)) return { cur: { ...cur, status: "reading" }, pending: true };
+    if (base.status !== "draft") return needsPerson(`its version is ${base.status}`);
+    if (base.backgroundFormat === "svg") return { cur: { ...cur, tableVersionId: t.versionId, status: "table" }, pending: true };
+    try {
+      const copy = await enableGroups(t.versionId, companyId, batch.executedByUserId);
+      return { cur: { ...cur, tableVersionId: copy.versionId, status: "table" }, pending: true };
+    } catch (err) {
+      return needsPerson(err.message);
+    }
+  }
+  const v = await prisma.templateVersion.findUnique({ where: { id: cur.tableVersionId }, select: { id: true, status: true, lines: true } });
+  if (!v || v.status === "failed") return needsPerson("its vector copy couldn't be made");
+  if (["uploaded", "converting"].includes(v.status)) return { cur, pending: true };
+  if (v.status !== "draft") return { cur: { ...cur, tableReady: true }, pending: false };
+  const table = productTableFrom(v.lines || [], names);
+  if (table.problem) return needsPerson(table.problem);
+  // the plain fields suggested on the design stay, unless they sit on the table's row
+  const rowLines = new Set(table.fields.map((f) => f.lineId));
+  const plain = (await listFields(v.id)).filter((f) => !f.groupKey && !rowLines.has(f.lineId)).map(({ key, label, lineId, charStart, charEnd, sampleValue, source, format, required, align, origin, isLabResult, isBatchFact }) => ({ key, label, lineId, charStart, charEnd, sampleValue, source, format, required, align, origin, isLabResult, isBatchFact }));
+  // invoice-line rows need a collective (per invoice) template: the scope first, then the fields
+  const before = await prisma.certificateTemplate.findUnique({ where: { id: t.templateId }, select: { scope: true } });
+  try {
+    await prisma.certificateTemplate.update({ where: { id: t.templateId }, data: { scope: "per_invoice" } });
+    try {
+      await replaceFields(v.id, companyId, [...plain, ...table.fields], [table.group]);
+    } catch (err) {
+      // a list without table lines can't grow: its drawn rows are the most it prints (fixed rows; unused ones hidden)
+      if (!/fixed rows/i.test(err.message)) throw err;
+      await replaceFields(v.id, companyId, [...plain, ...table.fields], [{ ...table.group, mode: "fixed_rows", whenEmpty: "hide" }]);
+    }
+  } catch (err) {
+    await prisma.certificateTemplate.update({ where: { id: t.templateId }, data: { scope: before.scope } }).catch(() => {});
+    return needsPerson(err.message);
+  }
+  return { cur: { ...cur, tableReady: true, tableRows: table.rows }, pending: false };
+}
+
 /** Step 1: every certificate design of the drop → used as a template (or why not). → true when all are settled */
 async function settleTemplates(batch, items, ex) {
   const templates = { ...(ex.templates || {}) };
   let pending = false;
   for (const item of items.filter((i) => i.status === "done" && i.result?.template?.versionId)) {
     const t = item.result.template;
-    const vid = t.versionId;
-    const cur = templates[vid] || { code: t.code, file: item.name, templateId: t.templateId, link: item.result.link };
-    if (["active", "needs_table", "failed", "no_fields"].includes(cur.status)) {
-      templates[vid] = cur;
+    const key = t.versionId; // the card's row; the version worked on may be its product-table copy
+    const cur0 = templates[key] || { code: t.code, file: item.name, templateId: t.templateId, link: item.result.link };
+    if (["active", "needs_table", "failed", "no_fields"].includes(cur0.status)) {
+      templates[key] = cur0;
       continue;
     }
-    if (listsSeveralProducts(item)) {
-      templates[vid] = { ...cur, status: "needs_table", why: `lists ${(item.classification.productNames || []).length} products in one table — set up its product rows on the template screen` };
-      continue;
+    // a design listing several products in one table (an FSC, an HC's attached list): its rows
+    // become ONE repeating row filled from each product, so one certificate covers them all
+    let cur = cur0;
+    if (listsSeveralProducts(item) && !cur.tableReady) {
+      const step = await productTableStep(batch, item, t, cur);
+      templates[key] = step.cur;
+      if (step.pending) pending = true;
+      if (!step.cur.tableReady) continue;
+      cur = step.cur;
     }
+    const vid = cur.tableVersionId || t.versionId;
+    const setT = (v) => (templates[key] = { ...v, ...(cur.tableVersionId ? { link: `/certificates/templates/${t.templateId}/versions/${cur.tableVersionId}` } : {}) });
     const version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, prepareReport: true, template: { select: { companyId: true, name: true } } } });
     if (!version) {
-      templates[vid] = { ...cur, status: "failed", why: "the template is gone" };
+      setT({ ...cur, status: "failed", why: "the template is gone" });
       continue;
     }
     const companyId = version.template.companyId;
-    if (["uploaded", "converting", "preparing"].includes(version.status) || t.fields === "pending" || t.fields === undefined) {
+    if (["uploaded", "converting", "preparing"].includes(version.status) || (!cur.tableVersionId && (t.fields === "pending" || t.fields === undefined))) {
       pending = true;
-      templates[vid] = { ...cur, status: version.status === "preparing" ? "preparing" : "reading" };
+      setT({ ...cur, status: version.status === "preparing" ? "preparing" : "reading" });
       continue;
     }
     if (version.status === "failed") {
-      templates[vid] = { ...cur, status: "failed", why: version.error || "the design couldn't be converted" };
+      setT({ ...cur, status: "failed", why: version.error || "the design couldn't be converted" });
       continue;
     }
     if (version.status === "draft") {
       if (cur.status === "preparing" && version.error) {
-        templates[vid] = { ...cur, status: "failed", why: version.error };
+        setT({ ...cur, status: "failed", why: version.error });
         continue;
       }
       // prepared once and the quality check failed (back to draft, no error): never prepared again in a loop
@@ -110,38 +170,38 @@ async function settleTemplates(batch, items, ex) {
       if (failing.length) {
         const keys = [...new Set(failing.flatMap((c) => c.failing || []))];
         const blanks = await prisma.templateField.findMany({ where: { versionId: vid, key: { in: keys.filter((k) => k.startsWith("blank_")) } }, select: { sampleValue: true } });
-        templates[vid] = {
+        setT({
           ...cur,
           status: "failed",
           why: blanks.length
             ? `these places couldn't be left blank automatically: ${blanks.map((b) => `"${b.sampleValue}"`).join(", ")} — mark them on the template screen (nothing from the file was printed)`
             : `the design didn't pass the preparation check (${failing.map((c) => c.label || c.id).join(", ")}) — open it on the template screen`,
-        };
+        });
         continue;
       }
       await blankOpenAreas(vid, companyId);
       const count = await prisma.templateField.count({ where: { versionId: vid } });
       if (!count) {
-        templates[vid] = { ...cur, status: "no_fields", why: t.fields?.why || "no field could be found on it — mark its fields on the template screen" };
+        setT({ ...cur, status: "no_fields", why: t.fields?.why || "no field could be found on it — mark its fields on the template screen" });
         continue;
       }
       await startPrepare(vid, companyId);
       pending = true;
-      templates[vid] = { ...cur, status: "preparing" };
+      setT({ ...cur, status: "preparing" });
       continue;
     }
     if (version.status === "ready") {
       try {
         await activateVersion(vid, companyId, batch.executedByUserId, { express: true });
       } catch (err) {
-        templates[vid] = { ...cur, status: "failed", why: err.message };
+        setT({ ...cur, status: "failed", why: err.message });
         continue;
       }
     }
     // active (just now or before): its fields, for the card — what each draft will still need
     const fields = await prisma.templateField.findMany({ where: { versionId: vid }, select: { key: true, label: true, source: true } });
     const toFill = fields.filter((f) => ["manual", "item"].includes(f.source?.kind)).map((f) => f.label || f.key);
-    templates[vid] = { ...cur, status: "active", fields: fields.length, toFill };
+    setT({ ...cur, status: "active", fields: fields.length, toFill });
     await record(batch.id, "certificate_template", { id: t.templateId, name: version.template.name }, companyId, item.id);
   }
   ex.templates = templates;

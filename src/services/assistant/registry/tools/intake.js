@@ -44,3 +44,65 @@ defineTool({
     return { intakeBatchId: batch.id, files: atts.length, note: "The files are being sorted. The card under your answer lists each one: what it is, its company / brand / products and what will happen. Nothing is created until the user presses نفّذ الكل on it." };
   },
 });
+
+// 26 Nov: "استخدم الشهادات اللي بعتها كقوالب (COA و COC و HC) وطلّع منها شهادات للعشر منتجات" → the
+// answer claimed twice that it had done it (blocked), then "لم أُجهّز أي عملية…". This is that
+// operation: the certificate files already dropped in THIS conversation become their types'
+// templates (one per type; the type is created when missing) and certificate drafts are made
+// for the drop's products — the same Express run as the card's "طلّع الشهادات". One card.
+const latestDrop = (ctx, batchId) =>
+  prisma.intakeBatch.findFirst({ where: { conversationId: ctx.conversationId, ...(batchId ? { id: batchId } : {}), ownerType: ctx.actor.kind === "company" ? "company" : "user", ownerId: ctx.actor.id }, orderBy: { createdAt: "desc" }, include: { items: true } });
+
+async function dropPlan(a, ctx) {
+  if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
+  const batch = await latestDrop(ctx, a.batchId);
+  if (!batch) throw new ToolError("No files were dropped in this conversation yet — attach the certificates (and labels) and send them first.", "no_files");
+  if (batch.companyId && ctx.companyId && batch.companyId !== ctx.companyId) throw new ToolError("Those files belong to another company", "not_found");
+  const { certificateFilesWithoutTemplate } = await import("../../../intake/expressService.js");
+  const certs = batch.items.filter((i) => !i.parentId && ["certificate_filled", "certificate_template"].includes(i.classification?.docType) && i.classification?.certCode);
+  const toMake = batch.status === "done" ? certificateFilesWithoutTemplate(batch.items) : certs;
+  const asked = (a.certificateTypes || []).map((c) => c.toUpperCase());
+  const files = toMake.filter((i) => !asked.length || asked.includes(i.classification.certCode));
+  const products = new Set(batch.items.flatMap((i) => [...(i.result?.plan?.productIds || []), ...(i.classification?.proposal?.products || []).map((p) => p.id || p.name)]));
+  return { batch, files, asked, products: products.size };
+}
+
+defineTool({
+  name: "use_files_as_templates",
+  module: "certificates", // offered whenever a message is about certificates / templates (قوالب، شهادات)
+  risk: "write",
+  permissions: ["create_certificate_templates", "create_certificates"],
+  label: "Making templates from your certificates",
+  description:
+    "Use when the user says to use the certificates they ALREADY SENT in this conversation as templates (\"استخدم الشهادات اللي بعتها كقوالب\", \"use the files I sent as templates\", \"اعمل منها قوالب وطلّع الشهادات\"). " +
+    "One card: each certificate file of the conversation's latest drop becomes its type's template (one per type, the type created when missing), then certificate DRAFTS are made for the drop's products " +
+    "(batch numbers, dates and lab results stay marked blanks). certificateTypes: the types they named (e.g. [\"COA\",\"COC\",\"HC\"]), omit = every certificate file. No new upload, no invoice.",
+  args: z.object({ batchId: z.string().uuid().optional(), certificateTypes: z.array(z.string().trim().min(2).max(8)).max(10).optional() }),
+  preview: async (a, ctx) => {
+    const { batch, files, asked, products } = await dropPlan(a, ctx);
+    if (!files.length) throw new ToolError(`The files in this conversation have no ${asked.length ? asked.join(", ") + " " : ""}certificate that isn't a template already`, "nothing_to_do");
+    return {
+      title: `Make ${files.length} template${files.length === 1 ? "" : "s"} from your certificates, then the certificates`,
+      summary: `Each certificate you sent becomes its type's template; then draft certificates are made for ${products || "the"} product${products === 1 ? "" : "s"} of the files. Batch numbers, dates and lab results stay marked blanks for you to fill. Everything is marked Express — needs review.`,
+      runLabel: "Make templates and certificates",
+      details: [...files.map((i) => ({ label: i.name, value: `${i.classification.certCode} template` })), { label: "Products", value: String(products || "—") }, { label: "Files", value: batch.status === "done" ? "already filed" : "filed with this click" }],
+      aiCalls: null,
+      missing: [],
+    };
+  },
+  run: async (a, ctx) => {
+    const { batch, files, asked } = await dropPlan(a, ctx);
+    const intake = await import("../../../intake/intakeService.js");
+    const { makeTemplatesFromFiles } = await import("../../../intake/expressService.js");
+    const actor = ctx.actor.kind === "company" ? { kind: "company", id: ctx.actor.id, companyId: ctx.actor.companyId, can: () => true } : { kind: "user", id: ctx.actor.id, can: () => true };
+    const express = { ...(batch.express || {}), requestedTypes: asked.length ? asked : [...new Set(files.map((i) => i.classification.certCode))] };
+    await prisma.intakeBatch.update({ where: { id: batch.id }, data: { mode: "express", express, ...(batch.companyId || !ctx.companyId ? {} : { companyId: ctx.companyId }) } });
+    if (batch.status === "review") {
+      // not filed yet: the one click files it; each certificate file is also its template (certificate_both)
+      await intake.startExecute(actor, batch.id, { revisions: Object.fromEntries(batch.items.filter((i) => i.classification?.proposal).map((i) => [i.id, i.revision])) });
+      return { intakeBatchId: batch.id, filing: true, link: null };
+    }
+    const out = await makeTemplatesFromFiles(batch.id, { userId: ctx.actor.kind === "user" ? ctx.actor.id : null });
+    return { intakeBatchId: batch.id, templates: out.made, restarted: out.restarted, link: out.made[0] ? `/certificates/templates/${out.made[0].templateId}/versions/${out.made[0].versionId}` : null };
+  },
+});

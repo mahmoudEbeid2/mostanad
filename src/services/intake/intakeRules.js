@@ -268,3 +268,44 @@ export function classify({ name, pages = [], pageCount = pages.length, companyNa
   if (r.confidence < 0.6 && !r.question) r.question = "doc_type";
   return r;
 }
+
+/**
+ * A Certificate of Composition page → what it prints about the product (26 Nov: ADDVET's 10
+ * products were created with only a name). Only text read from the page, each value quoted.
+ * "Trade Name: ADDMECTIN 1% Composition: Each 1 mL contains: Ivermectin 10 mg Excipients ad 1 mL
+ *  Package Size: 100mL … Product Form: Liquid Category: Injectable"
+ * → { tradeName, basis, ingredients: [{ name, amountRaw, amount, unit }], packaging, form, category } | null
+ */
+export function compositionFrom(text) {
+  const t = String(text || "").replace(/\s+/g, " ");
+  const comp = t.match(/Composition\s*:\s*(.+?)(?=\s(?:Package|Packing|Pack)\s+Size\s*:|\sValidity\s*:|\sProduct\s+Form\s*:|\sCategory\s*:|\sCountry\s+of|\sProduced\s+by|$)/i);
+  if (!comp) return null;
+  let body = comp[1].trim();
+  const basisM = body.match(/^((?:Each|Every)\s+[\d.,]*\s*[A-Za-zµμ]+\s+contains|Contains\s+per\s+[\d.,]*\s*[A-Za-zµμ]+|per\s+[\d.,]*\s*[A-Za-zµμ]+)\s*:?\s*/i);
+  const basis = basisM ? basisM[1].trim() : null;
+  if (basisM) body = body.slice(basisM[0].length);
+  const ingredients = [];
+  // "Turmeric extract … Quantity not stated": an ingredient printed without an amount
+  body = body.replace(/\s*Quantity\s+not\s+stated\s*/gi, " 0 NOTSTATED ");
+  const re = /(.+?)\s+((?:ad|q\.?s\.?(?:\s*to)?|up\s+to)\s+)?(\d[\d,]*(?:\.\d+)?)\s*(mg|g|mcg|μg|µg|ug|IU|iu|mL|ml|L|%|ppm|kg|NOTSTATED)(?=\s|$)/g;
+  for (const m of body.matchAll(re)) {
+    if (m[4] === "NOTSTATED") {
+      ingredients.push({ name: m[1].trim().replace(/^[,;]\s*/, ""), amountRaw: "not stated", amount: null, unit: null });
+      continue;
+    }
+    const name = m[1].trim().replace(/^[,;]\s*/, "");
+    if (!name || name.length > 80) continue;
+    const amountRaw = `${m[2] ? m[2].trim() + " " : ""}${m[3]} ${m[4]}`;
+    ingredients.push({ name, amountRaw, amount: m[2] ? null : Number(m[3].replace(/,/g, "")), unit: m[4].replace(/^u?[μµ]g$|^ug$/, "mcg") });
+  }
+  const one = (re2) => t.match(re2)?.[1]?.trim() || null;
+  return {
+    tradeName: one(/Trade\s+Name\s*:\s*(.+?)\s+Composition\s*:/i),
+    basis,
+    ingredients,
+    packaging: one(/(?:Package|Packing|Pack)\s+Size\s*:\s*([\d.,]+\s*[A-Za-z]+)/i),
+    form: one(/Product\s+Form\s*:\s*([A-Za-z][A-Za-z -]{1,30}?)(?=\s+(?:Category|Country|Produced|Validity)\b|$)/i),
+    category: one(/Category\s*:\s*([A-Za-z][A-Za-z -]{1,30}?)(?=\s+(?:Country|Produced|Product|Validity|Document)\b|$)/i),
+    quote: comp[0].slice(0, 400),
+  };
+}

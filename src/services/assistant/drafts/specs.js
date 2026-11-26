@@ -497,6 +497,11 @@ export const SPECS = {
     fields: { productIds: [productsMany], certificateTypeIds: [certificateTypes], batches: [batchesOf], country: [country] },
     errors: [[/template/i, "certificateTypeIds"], [/batch|lab|isn't in your messages/i, "batches"], [/product/i, "productIds"], [/type/i, "certificateTypeIds"]],
   },
+  use_files_as_templates: {
+    title: "Make templates from the certificates you sent, then the certificates",
+    fields: { batchId: [user()], certificateTypes: [user()] },
+    errors: [[/file|certificate|template/i, "batchId"]],
+  },
   create_certificate_templates: {
     title: "Make certificate templates from files",
     fields: { attachmentIds: [attachment({ many: true })], codes: [user()], brandId: [brand], country: [country] },
