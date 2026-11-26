@@ -99,7 +99,7 @@ async function main() {
     const all = registry.allTools();
     assert(`at least 40 tools (${all.length})`, all.length >= 40);
     assert("every tool has a model-facing description, a zod schema and a module", all.every((t) => t.description.length >= 40 && t.args instanceof z.ZodObject && t.module));
-    assert("every tool reads, or is a write with a confirmation preview in one company", all.every((t) => t.risk === "read" || (typeof t.preview === "function" && t.needsCompany)));
+    assert("every tool reads, or is a write with a confirmation preview in one company", all.every((t) => t.risk === "read" || (typeof t.preview === "function" && (t.needsCompany || (t.createsCompany && t.systemOnly)))));
     const covered = new Set(all.map((t) => t.module));
     for (const m of ["products", "catalogues", "labels", "regulatory", "certificates", "invoices", "companies", "users", "dashboard", "ai_costs", "reports"]) assert(`module ${m} has tools`, covered.has(m));
     const schemas = all.map((t) => JSON.stringify(registry.argsSchemaFor(t, admin)));

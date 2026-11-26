@@ -71,7 +71,8 @@ async function main() {
       assert(`${bad} can't be defined`, !!err);
     }
     const writes = registry.allTools().filter((t) => t.risk !== "read");
-    assert(`the ${writes.length} write tools each need a preview and one company`, writes.length >= 10 && writes.every((t) => typeof t.preview === "function" && t.needsCompany));
+    // the one exception: create_company makes the company (system users only)
+    assert(`the ${writes.length} write tools each need a preview and one company (create_company: system only, makes it)`, writes.length >= 10 && writes.every((t) => typeof t.preview === "function" && (t.needsCompany || (t.createsCompany && t.systemOnly))));
 
     // a counting write tool, to prove when run happens
     let runs = 0;
