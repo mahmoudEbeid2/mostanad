@@ -6,7 +6,7 @@ import { tableBlock } from "./blocks.js";
 import { factsOf, corpusOf, checkGrounding, stripTypedLists, hasTypedList, setKnownLabels, stripRecordFields } from "./grounding.js";
 import { recordBlock, blockValues, COLUMNS as TABLE_COLUMNS } from "./blocks.js";
 import { FIELD_LABELS, labelIn, langOf } from "../i18n.js";
-import { sanitizeOutput, claimsAction, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList, wantsTemplatesFromFiles, codesIn, preparedTemplatesCard, nextStepChoices } from "./answerGuard.js";
+import { sanitizeOutput, claimsAction, isReadOnlyQuestion, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList, wantsTemplatesFromFiles, codesIn, preparedTemplatesCard, nextStepChoices } from "./answerGuard.js";
 import { prisma } from "../../../lib/prisma.js";
 import { replayText, toolRecord } from "./history.js";
 
@@ -168,7 +168,14 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   const DRAFT_TOOLS = new Set(["start_draft", "update_draft"]);
   const guardEvents = [];
   const facts = () => turnFacts.join("\n").slice(0, lim.maxFactsChars);
-  const out = (extra) => ({ toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), ...(guardEvents.length ? { guard: guardEvents } : {}), ...extra });
+  // Phase 7 (speed: 15–52 s a reply): where the time goes — every model call and every tool, logged per reply
+  const timing = { startedAt: Date.now(), modelMs: 0, toolMs: 0, models: [], tools: [] };
+  const timingOf = () => ({ totalMs: Date.now() - timing.startedAt, modelMs: timing.modelMs, toolMs: timing.toolMs, models: timing.models, tools: timing.tools });
+  const out = (extra) => {
+    const t = timingOf();
+    console.log(`[assistant] timing: ${t.totalMs} ms — model ${t.modelMs} ms (${t.models.join(", ") || "0"}), tools ${t.toolMs} ms (${t.tools.join(", ") || "none"})`);
+    return { toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), timing: t, ...(guardEvents.length ? { guard: guardEvents } : {}), ...extra };
+  };
 
   onEvent({ type: "status", text: "Thinking…" });
   while (modelCalls < lim.maxModelCalls) {
@@ -176,10 +183,15 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     const lastChance = modelCalls + 1 >= lim.maxModelCalls || (spent >= lim.maxToolCalls && draftSpent >= lim.maxDraftCalls);
     let res;
     modelCalls++;
+    const t0 = Date.now();
     try {
       res = await generate({ systemInstruction: SYSTEM_PROMPT, contents, tools: declarations(), mode: lastChance ? "NONE" : "AUTO" });
     } catch (err) {
       return out({ text: null, error: err.message || String(err) });
+    } finally {
+      const ms = Date.now() - t0;
+      timing.modelMs += ms;
+      timing.models.push(`${ms}`);
     }
     usage = sumUsage(usage, res?.usage);
     const parts = res?.content?.parts || [];
@@ -192,7 +204,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
       }
       const raw = cleaned.text;
       // an answer claiming a change or a card when this turn prepared none: once more, then the truth
-      if (!ctx.isEvent && claimsAction(raw) && !preparedSomething(toolCalls, ctx.proposedCount?.() || 0)) {
+      if (!ctx.isEvent && !isReadOnlyQuestion(text) && claimsAction(raw) && !preparedSomething(toolCalls, ctx.proposedCount?.() || 0)) {
         guardEvents.push({ type: "false_action_claim", retried: claimRetried });
         console.warn(`[assistant] answer claimed an action no tool prepared${claimRetried ? " (after retry)" : ""}: ${raw.slice(0, 160)}`);
         if (!claimRetried && !lastChance) {
@@ -250,7 +262,19 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     contents.push(res.content);
 
     const responses = [];
-    for (const call of calls) {
+    // independent reads of this step run together (a write, a draft, a module to load stay in order)
+    const offeredNow = new Set(offeredTools().map((t) => t.name));
+    const prefetch = new Map();
+    let budget = lim.maxToolCalls - spent;
+    for (const [i, call] of calls.entries()) {
+      const t = getTool(call.name);
+      const key = `${call.name}:${JSON.stringify(call.args || {})}`;
+      if (!t || t.risk !== "read" || DRAFT_TOOLS.has(call.name) || call.name === LOAD_TOOLS || failed.has(key) || !chosen.includes(t.module) || budget <= 0) continue;
+      budget--;
+      const started = Date.now();
+      prefetch.set(i, runTool(call.name, call.args || {}, { ...ctx, offered: offeredNow }).then((r) => ({ r, ms: Date.now() - started })));
+    }
+    for (const [callIndex, call] of calls.entries()) {
       if (signal?.aborted) return out({ text: null, stopped: true });
       const name = call.name;
       let result;
@@ -273,7 +297,16 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           guardEvents.push({ type: "module_autoloaded", module: t.module, tool: name });
         }
         onEvent({ type: "tool_start", tool: name, label: getTool(name)?.label || name, args: call.args || {} });
-        result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
+        const started = Date.now();
+        if (prefetch.has(callIndex)) {
+          const done = await prefetch.get(callIndex);
+          result = done.r;
+          timing.tools.push(`${name} ${done.ms}`);
+        } else {
+          result = await runTool(name, call.args || {}, { ...ctx, offered: new Set(offeredTools().map((t) => t.name)) });
+          timing.tools.push(`${name} ${Date.now() - started}`);
+        }
+        timing.toolMs += Date.now() - started;
         if (result.ok) {
           collectRefs(result.data, refs);
           collectRefs(result.data, turnRefs);

@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 // that types a list itself can invent rows — that is the bug this prevents.
 
 export const COLUMNS = {
+  search_products: [["name", "Product"], ["productCode", "Code"], ["brand", "Brand"], ["company", "Company"]],
   list_products: [["name", "Product"], ["productCode", "Code"], ["brand", "Brand"], ["company", "Company"]],
   list_products_missing_data: [["name", "Product"], ["productCode", "Code"], ["missing", "Missing"], ["company", "Company"]],
   list_brands: [["name", "Brand"], ["products", "Products"], ["isActive", "Active"], ["company", "Company"]],
@@ -61,6 +62,7 @@ export function rowsOf(tool, data) {
   if (Array.isArray(data.items) && data.items.every((r) => r && typeof r === "object")) return data.items;
   if (tool === "count_records" && Array.isArray(data.groups)) return data.groups.map((g) => ({ ...g, label: g.label ?? g.key ?? "—" }));
   if (tool === "get_template_fields" && Array.isArray(data.fields)) return data.fields;
+  if (tool === "search_products" && Array.isArray(data.results)) return data.results; // every match, a table with «عرض المزيد»
   return null;
 }
 

@@ -3,9 +3,86 @@
 // grounded on this text, not on the model's memory. Change a flow → change it here and
 // bump HELP_VERSION.
 
-export const HELP_VERSION = "2026-11-23";
+export const HELP_VERSION = "2026-11-28";
 
 export const HELP_TOPICS = [
+  // 28 Nov (Phase 7): every way to get certificates, not only the invoice path
+  {
+    key: "certificates_express",
+    title: { ar: "الطريقة الأسرع: ارمي الملفات في الشات", en: "Fastest: drop the files in the chat" },
+    steps: {
+      ar: [
+        "ارمي في المحادثة شهادات الشركة القديمة (COA / COC / HC / FSC) ومعاها أي ملفات منتجات: ليبلات، كتالوج، فاتورة، أمر تصنيع — من غير ما تكتب حاجة، أو قول «طلّعلي الشهادات».",
+        "النظام بيقرا كل الملفات، ويعرف الشركة والمنتجات، وبيعرض كارت واحد بكل حاجة هتتعمل — دوس الزرار.",
+        "الشهادات القديمة بتبقى قوالب لوحدها، وبيتعمل طلب شهادات واحد: كل منتج × كل نوع شهادة، وFSC/HC للمنتجات كلها في شهادة واحدة.",
+        "كل اللي في الملفات بيتملى، واللي مش مكتوب في أي ملف بيتستنتج وعليه علامة «مستنتج».",
+        "بيانات التشغيلة ونتايج التحليل بس هي اللي ناقصة: بتجيلك في رسالة واحدة، رد في سطر واحد زي «ADDHEPA باتش MADADD2610001 إنتاج 01/10/2026 — pH 6.4 assay 99%».",
+        "نزّل ZIP أو PDF واحد من الكارت، أو افتح صفحة الطلب. ملفات تانية في نفس المحادثة بتتضاف لنفس الطلب (قول «طلب جديد» لو عايز طلب لوحده).",
+      ],
+      en: [
+        "Drop the company's old certificates (COA / COC / HC / FSC) in the chat with any product files — labels, catalogue, invoice, manufacturing order — with no text, or say \"make the certificates\".",
+        "Every file is read, the company and products recognised, and one card shows what will happen — press its button.",
+        "The old certificates become templates and ONE certificate request is made: every product × every type, FSC/HC for all products in one certificate.",
+        "Everything the files print is filled; what no file states is estimated and marked «مستنتج».",
+        "Only batch data and lab results are missing: one message lists them — answer in one line, e.g. \"ADDHEPA batch MADADD2610001 production 01/10/2026 — pH 6.4 assay 99%\".",
+        "Download the ZIP or one PDF from the card, or open the request page. More files in the same chat add to the same request (say \"new request\" for a separate one).",
+      ],
+    },
+  },
+  {
+    key: "certificates_request",
+    title: { ar: "طلب شهادات من أسامي المنتجات (من غير فاتورة)", en: "A certificate request from product names (no invoice)" },
+    steps: {
+      ar: [
+        "من «الشهادات ← طلب جديد» الزق أسامي المنتجات (سطر لكل منتج، والعبوة لو تفرق: «OLIGOVET 1L»)، أو اختارهم من الكتالوج.",
+        "كل سطر بيتربط بمنتجه وعبوته؛ لو العبوة مش موجودة دوس «أضف عبوة جديدة لنفس المنتج».",
+        "اختار الأنواع (COA, COC, HC, FSC) ودوس «طلّع الشهادات» — بيظهر جدول المنتجات × الشهادات بحالة كل خانة.",
+        "تقدر تحدد تاريخ إصدار واحد للطلب كله.",
+      ],
+      en: [
+        "On Certificates → New request paste the product names (one a line, with the pack when it matters: \"OLIGOVET 1L\"), or pick them from the catalogue.",
+        "Each line is matched to its product and pack; a pack that doesn't exist yet: «add a new pack of the same product».",
+        "Pick the types (COA, COC, HC, FSC) and press Make the certificates — the product × certificate matrix shows each cell's status.",
+        "You can set one issue date for the whole request.",
+      ],
+    },
+  },
+  {
+    key: "certificates_structured",
+    title: { ar: "الطريق المنظّم: شركة ← منتجات ← قوالب ← طلبات", en: "The structured path: company → products → templates → requests" },
+    steps: {
+      ar: [
+        "أضف الشركة ومنتجاتها (من ملفات: كتالوج، ليبلات، شيت Excel).",
+        "ارفع شهادة قديمة لكل نوع كقالب؛ «اقترح الحقول» ثم «أكّد كل الاقتراحات» — أو «قارن صفحات الملف» لو الملف فيه أكتر من منتج.",
+        "فعّل القالب لما يبقى جاهز، وظبّط ترقيم الشهادات من صفحة أنواع الشهادات.",
+        "اعمل الطلبات من الأسامي أو من فاتورة.",
+      ],
+      en: [
+        "Add the company and its products (from files: catalogue, labels, an Excel sheet).",
+        "Upload one old certificate per type as a template; Suggest fields, then Confirm all suggestions — or Compare the file's pages when the file has several products.",
+        "Activate the template once it's ready, and set the certificate numbering on the certificate types page.",
+        "Make requests from names or from an invoice.",
+      ],
+    },
+  },
+  {
+    key: "certificates_after",
+    title: { ar: "بعد الشهادات: المصمم، المراجعة، المراجعات، التصدير", en: "After the drafts: designer panel, review, revisions, export" },
+    steps: {
+      ar: [
+        "لوحة المصمم: من خانة المنتج في الطلب — بيانات المنتج بترتيب Illustrator مع زرار نسخ لكل عمود (TSV)، و«ad 1 L» زي ما هي.",
+        "المراجعة: ابعت للمراجعة ← عدّت ← اعتمدها. نتيجة برّه المواصفة محتاجة سبب مكتوب قبل الاعتماد.",
+        "تعديل شهادة معتمدة بيعمل مراجعة جديدة (Revision 2) والقديمة بتفضل زي ما هي.",
+        "التصدير: ZIP فيه كل الشهادات حسب النوع + المانيفست، وPDF واحد بترتيب منتجات العميل.",
+      ],
+      en: [
+        "Designer panel: from a product's cell in the request — the product's data in Illustrator order with a copy button per column (TSV), \"ad 1 L\" kept.",
+        "Review: submit → pass → approve. A result outside its specification needs a written reason before approval.",
+        "Editing an approved certificate makes a new revision (revision 2); the approved one stays as it was.",
+        "Export: a ZIP with every certificate by type + the manifest, and one PDF in the customer's product order.",
+      ],
+    },
+  },
   {
     key: "certificates",
     title: { ar: "إصدار شهادة (COA وغيرها) من فاتورة", en: "Issue a certificate (COA etc.) from an invoice" },

@@ -125,3 +125,14 @@ export function nextStepChoices(userText, { hasFiles = false } = {}) {
       : ["Show me the products", "Make a certificate for a product (no invoice)", "Upload files"];
   return list.map((say, i) => ({ id: `next-${i}`, name: say, say }));
 }
+
+// Phase 7 (28 Nov, production): "كام شهادة اتعملت النهارده؟" got «لم أُجهّز أي عملية…» — the answer
+// "تم إنشاء 5 شهادات النهارده" REPORTS what happened; it claims nothing for this turn. A read-only
+// question (a question word or mark, no verb asking for a change) never triggers the claim guard.
+const QUESTION = /[؟?]|^\s*(?:كام|كم|إيه|ايه|اية|ايش|إيش|هل|فين|وين|امتى|إمتى|متى|ليه|لماذا|مين|من\s|ازاي|إزاي|كيف|عدد|حالة|اعرض|وريني|ورّيني|عايز\s+اعرف|عاوز\s+اعرف|how\s+many|how\s+much|what|which|when|where|who|why|is|are|do|does|did|show|list|count|status)\b/i;
+const ASKS_CHANGE = /(?:^|\s)(?:غيّر|غير|عدّل|عدل|اعمل|إعمل|أضف|اضف|ضيف|ارفع|احذف|امسح|طلّع|طلع|حدّث|حدث|جهّز|جهز|انشئ|أنشئ|ابعت|سجّل|سجل|اربط|انسخ|أكّد|اكد|change|update|create|make|add|upload|delete|remove|generate|set|link|copy|confirm)(?:\s|$)/i;
+/** A question that only reads (counts, status, lookups) — its answer reports, never claims an action */
+export const isReadOnlyQuestion = (message) => {
+  const m = String(message || "").trim();
+  return !!m && QUESTION.test(m) && !ASKS_CHANGE.test(m);
+};

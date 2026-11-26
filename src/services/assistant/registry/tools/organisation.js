@@ -9,6 +9,7 @@ import { getAllRoles } from "../../../roleService.js";
 import { getDashboardStatsData } from "../../../dashboardService.js";
 import { costSummary, topOperations } from "../../../ai/aiCostReports.js";
 import { getTask, countEntities, COUNT_ENTITIES, COUNT_GROUPS, COUNT_PERIODS } from "../../reads.js";
+import { prisma } from "../../../../lib/prisma.js";
 
 const COMPANY_FIELDS = ["id", "name", "username", "email", "phone", "address", "isActive", "createdAt"];
 
@@ -128,9 +129,21 @@ defineTool({
   core: true,
   risk: "read",
   label: "Reading the task",
-  description: "The status of a background task (an upload, extraction, generation): status, progress, stage, message, error.",
-  args: z.object({ taskId: id("background task") }),
-  run: (a, ctx) => getTask(a.taskId, ctx.companyId),
+  description:
+    "The status of a background task (an upload, extraction, generation, a files' read): status, progress, stage, message, error. " +
+    "taskId is optional: \"إيه حالة المهمة؟\" / \"الرفع خلص؟\" with no id → the latest tasks of this company (running first). " +
+    "One running task → answer about it; several → say which are running and list them (the person picks one).",
+  args: z.object({ taskId: id("background task").optional() }),
+  run: async (a, ctx) => {
+    if (a.taskId) return getTask(a.taskId, ctx.companyId);
+    // Phase 7: no id — the latest tasks of the company in view (a system user without one: everyone's)
+    const rows = await prisma.backgroundTask.findMany({ where: { ...(ctx.companyId ? { companyId: ctx.companyId } : {}), type: { notIn: ["certificate_dictionary", "dictionary_rebuild"] } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, type: true, status: true, progress: true, message: true, stage: true, error: true, createdAt: true, updatedAt: true } });
+    if (!rows.length) return { tasks: [], note: "No background task for this company yet." };
+    const running = rows.filter((t) => ["queued", "pending", "active", "running", "processing"].includes(t.status));
+    const view = (t) => ({ taskId: t.id, type: t.type, status: t.status, progress: t.progress ?? null, stage: t.stage || null, message: t.message || null, error: t.error || null, started: t.createdAt, updated: t.updatedAt });
+    if (running.length === 1) return { latest: view(running[0]), others: rows.filter((t) => t !== running[0]).slice(0, 3).map(view) };
+    return { running: running.map(view), recent: rows.filter((t) => !running.includes(t)).slice(0, 5).map(view), note: running.length > 1 ? "Several tasks are running: name them and ask which one (or report all)." : "Nothing is running now: report the latest one." };
+  },
 });
 
 // ── reports ─────────────────────────────────────────────────────────────────

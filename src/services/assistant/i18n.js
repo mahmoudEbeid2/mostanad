@@ -18,6 +18,8 @@ export const FIELD_LABELS = {
   contraindications: ["موانع الاستعمال", "Contraindications"],
   userSafety: ["سلامة المستخدم", "User safety"],
   storage: ["التخزين", "Storage"],
+  validity: ["الصلاحية", "Validity"],
+  compositionBasis: ["أساس التركيب", "Composition basis"],
   packaging: ["التعبئة", "Packaging"],
   registrationNumber: ["رقم التسجيل", "Registration number"],
   origin: ["المنشأ", "Origin"],
@@ -63,9 +65,21 @@ export const FIELD_LABELS = {
 
 const fold = (s) => String(s ?? "").toLowerCase().replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْـ]/g, "").replace(/\s+/g, " ").trim();
 
+// the other ways people name a field ("مدة الصلاحية", "shelf life") — folded, without "ال"
+const FIELD_ALIASES = {
+  "مده صلاحيه": "validity", "صلاحيه": "validity", "shelf life": "validity", "shelf-life": "validity", "expiry period": "validity",
+  "عبوه": "packaging", "حجم عبوه": "packaging", "pack": "packaging", "pack size": "packaging", "package": "packaging",
+  "شكل": "physicalForm", "form": "physicalForm", "فئه": "productType", "category": "productType", "تصنيف": "productType",
+  "مظهر": "appearance", "لون": "appearance", "طريقه استعمال": "dosage", "استعمال": "dosage", "طريقه اعطاء": "routeOfAdmin",
+  "منتج": "producer", "شركه مصنعه": "producer", "manufacturer": "producer", "بلد منشا": "origin", "منشا": "origin", "country of origin": "origin",
+  "اساس تركيب": "compositionBasis", "basis": "compositionBasis",
+};
+
 /** "فترة السحب" / "withdrawal period" / "withdrawalPeriod" → "withdrawalPeriod" (of `keys`), else null */
 export function fieldKeyOf(name, keys = Object.keys(FIELD_LABELS)) {
   const n = fold(name).replace(/^ال(?=\S)/, "");
+  const alias = FIELD_ALIASES[n.replace(/(^|\s)ال(?=\S)/g, "$1")] || FIELD_ALIASES[n];
+  if (alias && keys.includes(alias)) return alias;
   for (const k of keys) {
     const [ar, en] = FIELD_LABELS[k] || [];
     if (fold(k) === n || (en && fold(en) === n) || (ar && (fold(ar) === n || fold(ar).replace(/^ال/, "") === n))) return k;

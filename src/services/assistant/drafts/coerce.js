@@ -54,7 +54,10 @@ export function coerceToSchema(schema, value, userTexts = []) {
     return value;
   }
   if (t === "array") {
-    const arr = typeof value === "string" ? tryJson(value) : value;
+    let arr = typeof value === "string" ? tryJson(value) : value;
+    // { "الصلاحية": "24 شهر" } for a [{ field, value }] list (update_product_fields): one entry per key
+    const el = s._zod.def.element;
+    if (isPlainObject(arr) && el?._zod?.def?.shape?.field && el._zod.def.shape.value && !("field" in arr)) arr = Object.entries(arr).map(([field, v]) => ({ field, value: v === null || v === undefined ? "" : String(v) }));
     if (!Array.isArray(arr)) return isPlainObject(arr) ? [coerceToSchema(s._zod.def.element, arr, userTexts)] : value;
     return arr.map((x) => coerceToSchema(s._zod.def.element, x, userTexts));
   }

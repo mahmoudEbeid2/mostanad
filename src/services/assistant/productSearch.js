@@ -14,7 +14,7 @@ import { searchCatalogues } from "../catalogues/searchService.js";
 // for a system user with "All companies" only — every company, with the company
 // named on each result. The plain products list (ILIKE) is not touched.
 
-const TOP = 5;
+const TOP = 20; // Phase 7: "vita" found 5 of 12 — every match, a page at a time
 const MIN_TRGM = 0.2;
 // Arabic spelling variants folded before comparing (alef forms, taa marbuta, alef maqsura)
 const FOLD_FROM = "أإآٱةى";
@@ -34,7 +34,7 @@ const companyWhere = (companyId) => (companyId ? { companyId } : {});
 /**
  * → { verdict: "exact"|"close"|"none", several?: true, results: [{ productId, name, productCode, brand, company?, score, via[], matchedQuery, snippet? }], notes[] }
  */
-export async function searchProductsForAssistant({ companyId = null, queries = [], limit = TOP }) {
+export async function searchProductsForAssistant({ companyId = null, queries = [], limit = TOP, page = 1 }) {
   const terms = [...new Set(queries.map((q) => String(q || "").trim()).filter((q) => q.length >= 2))].slice(0, 6);
   const notes = [];
   if (!terms.length) return { verdict: "none", results: [], notes: ["Give at least one name or code of 2+ characters."] };
@@ -92,7 +92,10 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
   }
   if (!companyId) notes.push("Catalogue text was not searched: it needs one company.");
 
-  const ranked = [...hits.entries()].sort((a, b) => b[1].score - a[1].score).slice(0, Math.min(Math.max(1, limit), 10));
+  const all = [...hits.entries()].sort((a, b) => b[1].score - a[1].score);
+  const size = Math.min(Math.max(1, limit), 50);
+  const from = (Math.max(1, page) - 1) * size;
+  const ranked = all.slice(from, from + size);
   const products = await prisma.product.findMany({
     where: { id: { in: ranked.map(([id]) => id) }, ...companyWhere(companyId) },
     select: { id: true, name: true, productCode: true, brand: { select: { name: true } }, company: { select: { id: true, name: true } } },
@@ -115,7 +118,9 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
         ref: { type: "product", id, name: p.name },
       };
     });
-  return { verdict: verdictOf(results), ...(severalExact(results) ? { several: true } : {}), results, notes };
+  // every match counted; the rows also as a table (its "shown of total" and «عرض المزيد» are the chat's)
+  const more = Math.max(0, all.length - (from + ranked.length));
+  return { verdict: verdictOf(results), ...(severalExact(results) ? { several: true } : {}), results, total: all.length, more, nextPage: more ? Math.max(1, page) + 1 : null, notes };
 }
 
 const STRONG = ["code", "alias", "exact_name"];

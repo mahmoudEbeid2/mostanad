@@ -171,7 +171,7 @@ defineTool({
   },
 });
 
-const NEW_PRODUCT_FIELDS = ["name", "productCode", "description", "indications", "physicalForm", "appearance", "dosage", "mixingInstructions", "withdrawalPeriod", "contraindications", "storage", "packaging", "registrationNumber", "origin", "producer", "routeOfAdmin", "dosageForm", "strength", "productType", "prescriptionStatus"];
+const NEW_PRODUCT_FIELDS = ["name", "productCode", "description", "indications", "physicalForm", "appearance", "dosage", "mixingInstructions", "withdrawalPeriod", "contraindications", "storage", "packaging", "registrationNumber", "origin", "producer", "routeOfAdmin", "dosageForm", "strength", "productType", "prescriptionStatus", "validity", "compositionBasis"]; // 28 Nov: validity / basis — "غيّر الصلاحية لـ 24 شهر" had no field to land on
 
 defineTool({
   name: "create_product_from_line",
