@@ -189,7 +189,9 @@ export function findVariableAreas(lines = [], fields = [], { groups = [], confir
             if (lab) add(row, pat.s, pat.e, pat.kind, lab);
             continue;
           }
-          if (!col || col.kind === "static") {
+          // a header word on the value row ("ORIGIN" printed under CATEGORY) is a label, not a value
+          const isHeaderWord = STATIC_HEADERS.some((re) => re.test(w.t)) || VARIABLE_HEADERS.some(([re]) => re.test(w.t));
+          if (!col || col.kind === "static" || isHeaderWord) {
             flush();
             continue;
           }
