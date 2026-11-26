@@ -4,6 +4,7 @@ import { CertError } from "../errors.js";
 import { usableTemplates } from "../generation/planService.js";
 import { selectTemplates } from "../generation/templateSelector.js";
 import { startGeneration } from "../generation/batchService.js";
+import { readinessMap } from "../templates/readinessService.js";
 
 // Certificates for a product without an invoice (client report 24 Nov: "don't
 // use a number"). The same engine — plan, values, versions, PDF — runs on an
@@ -114,7 +115,12 @@ export async function generateForProducts({ companyId, userId = null, products =
   const planned = plan.entries.map((e) => ({ type: types.find((t) => t.id === e.certificateTypeId)?.code || null, scope: e.scope || null, products: (e.invoiceItemIds || []).map((i) => lineName.get(i)).filter(Boolean) }));
   const missing = [];
   for (const t of types) for (const l of lines) if (!plan.entries.some((e) => e.certificateTypeId === t.id && (e.invoiceItemIds || []).includes(l.id))) missing.push({ product: l.product.name, type: t.code });
-  if (dryRun) return { planned, missing };
+  if (dryRun) {
+    // a template that would be refused (unmarked batch / date / result text): said before "Make", with its link
+    const ready = await readinessMap(plan.entries.map((e) => e.templateVersionId));
+    const notReady = Object.entries(ready).filter(([, r]) => !r.ready).map(([versionId, r]) => ({ versionId, type: types.find((t) => t.id === plan.entries.find((e) => e.templateVersionId === versionId)?.certificateTypeId)?.code || null, message: r.message, link: r.link, open: r.open }));
+    return { planned, missing, notReady };
+  }
   if (!plan.entries.length) throw new CertError("NOTHING_TO_GENERATE", `No active template applies to these products for ${types.map((t) => t.code).join(", ")} — make or activate one first`, 409, { missing });
 
   const batchOf = new Map(products.map((p) => [p.productId, Object.fromEntries(BATCH_FACTS.map((k) => [k, clean(p.batch?.[k])]))]));
