@@ -29,31 +29,63 @@ log(`${apply ? "APPLY" : "DRY RUN"} — ${targets.length} composition template v
 
 let inPlace = 0;
 let remapped = 0;
+let toRemap = 0;
 for (const v of targets) {
   const name = `${v.template.name} v${v.versionNumber} (${v.status})`;
-  const r = await applyCompositionRoles(v.id, { dryRun: !apply });
-  for (const c of r.changed) log(`  ${name}: ${c.key} → ${c.to.role} ${JSON.stringify(c.to.source)} (was ${c.from.role || (c.from.isLabResult ? "lab result" : "—")} ${JSON.stringify(c.from.source)})`);
-  inPlace += r.changed.length;
-  if (!r.needsRemap.length) continue;
+  // what would change in place (never written yet: a version blanked word by word is mapped again instead —
+  // fixing single words of it in place would print a whole value over one word)
+  const r = await applyCompositionRoles(v.id, { dryRun: true });
+  if (!r.needsRemap.length) {
+    if (apply) await applyCompositionRoles(v.id, { dryRun: false });
+    for (const c of r.changed) log(`  ${name}: ${c.key} → ${c.to.role} ${JSON.stringify(c.to.source)} (was ${c.from.role || (c.from.isLabResult ? "lab result" : "—")} ${JSON.stringify(c.from.source)})`);
+    inPlace += r.changed.length;
+    continue;
+  }
   log(`  ${name}: ${r.needsRemap.length} field(s) blanked word by word (${r.needsRemap.slice(0, 6).join(", ")}…) → a new version, mapped again`);
+  toRemap++;
   if (!apply || v.status !== "active") continue;
   try {
-    const copy = await cloneVersion(v.id, v.template.companyId, null);
-    // the word-by-word blanks go; the person's own fields stay (the clone copied them)
-    await prisma.templateField.deleteMany({ where: { versionId: copy.versionId, origin: "detected" } });
-    const made = await blankOpenAreas(copy.versionId, v.template.companyId);
-    await prisma.templateVersion.update({ where: { id: copy.versionId }, data: { status: "preparing", error: null } });
-    const prep = await runPrepareJob(copy.versionId);
-    if (prep.status !== "ready") {
-      log(`  ${name}: the new version v${copy.versionNumber} didn't pass the preparation check (${(prep.failing || []).join(", ")}) — left as a draft, the active version unchanged`);
-      continue;
+    // resumable: a later version of this template this script already made (its fields carry the
+    // composition roles) is picked up where it stopped — never a second clone
+    const later = await prisma.templateVersion.findFirst({
+      where: { templateId: v.template.id, versionNumber: { gt: v.versionNumber }, status: { in: ["draft", "preparing", "ready"] }, fields: { some: { role: { not: null } } } },
+      orderBy: { versionNumber: "desc" },
+      select: { id: true, versionNumber: true, status: true },
+    });
+    let copy;
+    let made = null;
+    if (later) {
+      copy = { versionId: later.id, versionNumber: later.versionNumber };
+      log(`  ${name}: resuming v${later.versionNumber} (${later.status})`);
+      if (later.status === "preparing") await prisma.templateVersion.update({ where: { id: later.id }, data: { status: "draft" } }); // interrupted mid-prepare
+    } else {
+      copy = await cloneVersion(v.id, v.template.companyId, null);
+      // the word-by-word blanks go; the person's own fields stay (the clone copied them)
+      await prisma.templateField.deleteMany({ where: { versionId: copy.versionId, origin: "detected" } });
+      made = await blankOpenAreas(copy.versionId, v.template.companyId);
+      // the design's own number and date (suggested, left to type): the company's numbering and today
+      for (const f of await prisma.templateField.findMany({ where: { versionId: copy.versionId, source: { path: ["kind"], equals: "manual" } } })) {
+        const kind = /document\s*(no|number|#)|certificate\s*(no|number)|^document_number$/i.test(`${f.label} ${f.key}`) ? "docnumber" : /issue\s*date|^issue_date$/i.test(`${f.label} ${f.key}`) ? "today" : null;
+        if (kind) await prisma.templateField.update({ where: { id: f.id }, data: { source: { kind }, ...(kind === "today" ? { format: { date: "DD/MM/YYYY" } } : {}) } });
+      }
+      log(`  ${name}: v${copy.versionNumber} made (${made} fields mapped)`);
+    }
+    const now = await prisma.templateVersion.findUnique({ where: { id: copy.versionId }, select: { status: true } });
+    if (now.status === "draft") {
+      await prisma.templateVersion.update({ where: { id: copy.versionId }, data: { status: "preparing", error: null } });
+      const prep = await runPrepareJob(copy.versionId);
+      if (prep.status !== "ready") {
+        log(`  ${name}: v${copy.versionNumber} didn't pass the preparation check (${(prep.failing || []).join(", ")}) — left as a draft, the active version unchanged`);
+        continue;
+      }
     }
     await activateVersion(copy.versionId, v.template.companyId, null, { express: true });
-    log(`  ${name}: v${copy.versionNumber} active (${made} fields mapped), v${v.versionNumber} superseded`);
+    log(`  ${name}: v${copy.versionNumber} active, v${v.versionNumber} superseded`);
     remapped++;
   } catch (err) {
     log(`  ${name}: couldn't make the new version — ${err.message}`);
   }
 }
-log(`done: ${inPlace} field(s) re-classified in place, ${remapped} version(s) mapped again${apply ? "" : " (dry run — nothing written; add --apply)"}`);
+log(`done: ${targets.length} composition version(s) — ${inPlace} field(s) ${apply ? "re-classified" : "to re-classify"} in place, ${toRemap} version(s) to map again${apply ? ` (${remapped} done)` : " (dry run — nothing written; add --apply)"}`);
 await prisma.$disconnect();
+process.exit(0); // the queue connection Express imports would keep the process alive
