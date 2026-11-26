@@ -6,6 +6,7 @@ import { harvestPage, norm, normPack } from "./harvestRules.js";
 import { recordConflicts } from "../catalogues/compositionReview.js";
 import { parseBasis } from "../catalogues/compositionCompare.js";
 import { countryCode } from "../assistant/countries.js";
+import { packKey, samePack } from "../certificates/matching/packNormalizer.js";
 
 // Harvest (28 Nov): read every file of a company — a drop, a chat upload, a template, a product import,
 // or everything already stored (re-harvest) — keep every value with its evidence (harvested_facts),
@@ -38,7 +39,7 @@ const PRODUCT_FIELDS = {
 };
 // the same thing said differently is the same value: "JORDAN" = { code: "JO" }; "Each 1 mL contains" = "Contains per ml"
 const comparable = (key, v) => {
-  if (key === "packaging") return normPack(v);
+  if (key === "packaging") return packKey(v); // "1 L" = "1000 mL"
   if (key === "origin") return v?.code || countryCode(String(v || "")) || norm(v);
   if (key === "compositionBasis") {
     const b = parseBasis(String(v || ""));
@@ -116,7 +117,7 @@ async function linkProducts(companyId) {
       const exact = products.filter((p) => norm(p.name) === norm(f.productName));
       const close = exact.length ? exact : products.filter((p) => brandScore(f.productName, p.name) >= 0.8 || brandScore(p.name, f.productName) >= 0.8);
       // the same product in two packs: the fact's pack decides
-      const pick = close.length === 1 ? close[0] : close.find((p) => f.pack && normPack(p.packaging) === normPack(f.pack)) || null;
+      const pick = close.length === 1 ? close[0] : close.find((p) => f.pack && samePack(p.packaging, f.pack)) || null;
       byName.set(f.productName, pick?.id || null);
     }
     const id = byName.get(f.productName);

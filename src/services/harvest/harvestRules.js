@@ -1,5 +1,6 @@
 import { compositionFrom } from "../intake/intakeRules.js";
 import { countryIn } from "../assistant/countries.js";
+import { displayPack } from "../certificates/matching/packNormalizer.js";
 
 // Harvest (28 Nov): every useful value a page of a file prints, by code, each with its evidence
 // (page + the snippet it was read from). The person must never type what a file already says.
@@ -15,12 +16,8 @@ import { countryIn } from "../assistant/countries.js";
 const clean = (s) => String(s || "").replace(/\s+/g, " ").replace(/^[\s:;,.•|–—-]+|[\s;,•|–—-]+$/g, "").trim();
 export const norm = (v) => String(typeof v === "string" ? v : JSON.stringify(v) || "").toLowerCase().replace(/[^a-z0-9؀-ۿ%.]+/g, "");
 /** "100ML" / "100 mL" / "100ml" → "100 mL"; "1 L" → "1 L" */
-export const normPack = (s) => {
-  const m = String(s || "").match(/(\d+(?:[.,]\d+)?)\s*(ml|l|lt|ltr|litre|liter|g|gm|kg|mg)\b/i);
-  if (!m) return clean(s) || null;
-  const u = m[2].toLowerCase();
-  return `${m[1].replace(",", ".")} ${{ ml: "mL", l: "L", lt: "L", ltr: "L", litre: "L", liter: "L", g: "g", gm: "g", kg: "kg", mg: "mg" }[u]}`;
-};
+// Phase 4: the shared pack normalizer ("100ML" = "100 mL", "1 Ltr" = "1 L", Arabic digits and units)
+export const normPack = (s) => displayPack(s);
 
 // [regex (the label), entity, key, how the value is taken]
 const FIELDS = [

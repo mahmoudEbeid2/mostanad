@@ -53,6 +53,9 @@ export const setNumbering = catchAsync(async (req, res, next) => {
   ok(res, { schemes: await listSchemes(companyId) });
 });
 
+/** «أضف عبوة جديدة لنفس المنتج» (Phase 4) */
+export const addPackVariant = catchAsync(async (req, res) => ok(res, await requests.addPackVariant(req.params.id, scopeOf(req), req.params.lineId, parse(z.object({ fromProductId: z.string().uuid() }), req.body))));
+
 export const generateRequest = catchAsync(async (req, res) => ok(res, await requests.generateRequest(req.params.id, scopeOf(req), actorId(req)), 202));
 
 const reviewBody = z.object({ action: z.enum(["submit", "pass", "return", "authorize", "override_spec"]), field: z.string().max(80).optional(), comment: z.string().max(1000).optional(), expectedVersion: z.number().int().optional() });

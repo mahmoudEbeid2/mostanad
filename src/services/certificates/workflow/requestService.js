@@ -6,6 +6,7 @@ import { usableTemplates } from "../generation/planService.js";
 import { selectTemplates } from "../generation/templateSelector.js";
 import { readinessMap } from "../templates/readinessService.js";
 import { isLabResult } from "../inference/policy.js";
+import { displayPack, packKey, samePack, splitNamePack } from "../matching/packNormalizer.js";
 
 // The client's request → matrix (Dossira_Certificate_Workflow_EN §1, §3, §5): a request starts
 // from an invoice, or from pasted names / a list / products picked from the catalogue. Its lines
@@ -35,16 +36,49 @@ async function matchLine(companyId, line) {
     if (!p) throw new CertError("NOT_FOUND", "Product not found!", 404);
     return { productId: p.id, name: p.name, status: "matched", candidates: [] };
   }
-  const name = clean(line.name);
-  if (!name) return { productId: null, name: "", status: "unmatched", candidates: [] };
+  // Phase 4: name AND pack — "OLIGOVET 1L" is never linked to OLIGOVET 100 mL; the asked pack stays on the line
+  const split = splitNamePack(clean(line.name) || "");
+  const name = split.name;
+  if (!name) return { productId: null, name: "", status: "unmatched", candidates: [], pack: null };
+  const pack = clean(line.packing) ? displayPack(line.packing) : split.pack;
   const all = await prisma.product.findMany({ where: { companyId, OR: [{ name: { contains: name.split(/\s+/)[0], mode: "insensitive" } }, { productCode: { equals: name, mode: "insensitive" } }] }, select: { id: true, name: true, packaging: true, productCode: true }, take: 50 });
-  const exact = all.filter((p) => norm(p.name) === norm(name) || norm(p.productCode) === norm(name));
-  const pack = clean(line.packing);
-  // the same product in several packs: the pack decides, else a person does
-  const byPack = pack ? exact.filter((p) => norm(p.packaging) === norm(pack)) : exact;
-  if (byPack.length === 1) return { productId: byPack[0].id, name: byPack[0].name, status: "matched", candidates: [] };
+  // a product whose own name carries a pack ("OLIGOVET 100mL") is the same name with that pack
+  const nameOf = (p) => splitNamePack(p.name).name;
+  const packOf = (p) => p.packaging || splitNamePack(p.name).pack;
+  const exact = all.filter((p) => norm(nameOf(p)) === norm(name) || norm(p.productCode) === norm(name));
+  const view = (p) => ({ id: p.id, name: p.name, packaging: p.packaging, productCode: p.productCode });
+  if (pack) {
+    const byPack = exact.filter((p) => samePack(packOf(p), pack));
+    if (byPack.length === 1) return { productId: byPack[0].id, name: byPack[0].name, status: "matched", candidates: [], pack };
+    // the product exists, not in this pack: a new pack of it (one click), or another pack if that was meant
+    if (exact.length && !byPack.length) return { productId: null, name, status: "new_pack", candidates: exact.slice(0, 8).map(view), pack };
+    if (byPack.length > 1) return { productId: null, name, status: "ambiguous", candidates: byPack.slice(0, 8).map(view), pack };
+  } else if (exact.length === 1) return { productId: exact[0].id, name: exact[0].name, status: "matched", candidates: [], pack: packOf(exact[0]) || null };
   const close = (exact.length ? exact : all.filter((p) => norm(p.name).includes(norm(name)) || norm(name).includes(norm(p.name)))).slice(0, 8);
-  return { productId: null, name, status: close.length ? "ambiguous" : "unmatched", candidates: close.map((p) => ({ id: p.id, name: p.name, packaging: p.packaging, productCode: p.productCode })) };
+  return { productId: null, name, status: close.length ? "ambiguous" : "unmatched", candidates: close.map(view), pack };
+}
+
+/**
+ * POST /certificate-requests/:id/lines/:lineId/new-pack { fromProductId } — «أضف عبوة جديدة لنفس المنتج»:
+ * a pack variant of the product — its composition, composition basis (the basis never depends on the pack)
+ * and descriptive data copied, its package the asked one — and the line linked to it.
+ */
+export async function addPackVariant(id, companyId, lineId, { fromProductId }) {
+  const inv = await loadRequest(id, companyId);
+  const line = inv.items.find((i) => i.id === lineId);
+  if (!line) throw notFound("Request line");
+  const pack = line.data?.packing ? displayPack(line.data.packing) : null;
+  if (!pack) throw new CertError("PACK_REQUIRED", "This line names no pack size", 400);
+  const src = await prisma.product.findFirst({ where: { id: fromProductId, companyId: inv.companyId } });
+  if (!src) throw notFound("Product");
+  const existing = await prisma.product.findMany({ where: { companyId: inv.companyId, name: src.name }, select: { id: true, packaging: true } });
+  let variant = existing.find((p) => samePack(p.packaging, pack));
+  if (!variant) {
+    const COPY = ["name", "productCode", "description", "indications", "targetSpecies", "physicalForm", "appearance", "activeIngredients", "validity", "compositionBasis", "dosage", "mixingInstructions", "withdrawalPeriod", "contraindications", "userSafety", "storage", "registrationNumber", "origin", "producer", "specifications", "routeOfAdmin", "dosageForm", "strength", "productType", "prescriptionStatus", "categoryId", "brandId"];
+    const data = Object.fromEntries(COPY.filter((k) => src[k] !== null && src[k] !== undefined).map((k) => [k, src[k]]));
+    variant = await prisma.product.create({ data: { ...data, companyId: inv.companyId, packaging: pack, sourceProductId: src.id, fieldProvenance: { ...(src.fieldProvenance || {}), packaging: { tier: "manual", source: "request", note: `pack variant of ${src.packaging || src.name}`, at: new Date().toISOString() } } } });
+  }
+  return resolveLine(id, companyId, lineId, { productId: variant.id });
 }
 
 /**
@@ -81,7 +115,7 @@ export async function createRequest({ companyId, userId = null, text = null, lin
           matchStatus: m.status === "matched" ? "matched" : "unmatched",
           matchMethod: "user",
           dataExtracted: {},
-          data: { name: m.name || clean(line.name) || "", code: null, batchNo: clean(line.lotNo), productionDate: null, expiryDate: null, quantity: clean(line.quantity), unit: null, packing: clean(line.packing), extra: { lotSize: clean(line.lotSize), lotUnit: clean(line.lotUnit), asked: clean(line.name), match: m.status, candidates: m.candidates } },
+          data: { name: m.name || clean(line.name) || "", code: null, batchNo: clean(line.lotNo), productionDate: null, expiryDate: null, quantity: clean(line.quantity), unit: null, packing: m.pack || (clean(line.packing) ? displayPack(line.packing) : null), extra: { lotSize: clean(line.lotSize), lotUnit: clean(line.lotUnit), asked: clean(line.name), match: m.status, candidates: m.candidates } },
         })),
       },
     },
@@ -101,15 +135,15 @@ export async function conversationRequest({ companyId, conversationId }) {
  */
 export async function addToRequest(id, companyId, { lines = [], certificateCodes = [], intakeBatchId = null }) {
   const inv = await loadRequest(id, companyId);
-  const have = new Set(inv.items.map((i) => `${i.productId}|${norm(i.data?.packing)}`));
-  const fresh = lines.filter((l) => l.productId && !have.has(`${l.productId}|${norm(l.packing)}`));
+  const have = new Set(inv.items.map((i) => `${i.productId}|${packKey(i.data?.packing)}`));
+  const fresh = lines.filter((l) => l.productId && !have.has(`${l.productId}|${packKey(l.packing)}`));
   const codes = inv.header?.request?.codes || DEFAULT_CODES;
   const newCodes = [...new Set(certificateCodes.map((c) => String(c).toUpperCase()))].filter((c) => !codes.includes(c));
   const newItemIds = [];
   let lineNo = inv.items.reduce((n, i) => Math.max(n, i.lineNo || 0), 0);
   for (const l of fresh) {
     const m = await matchLine(companyId, l);
-    const row = await prisma.invoiceItem.create({ data: { invoiceId: id, lineNo: ++lineNo, productId: m.productId, matchStatus: m.status === "matched" ? "matched" : "unmatched", matchMethod: "user", dataExtracted: {}, data: { name: m.name || "", code: null, batchNo: clean(l.lotNo), productionDate: null, expiryDate: null, quantity: clean(l.quantity), unit: null, packing: clean(l.packing), extra: { asked: m.name, match: m.status, candidates: m.candidates } } } });
+    const row = await prisma.invoiceItem.create({ data: { invoiceId: id, lineNo: ++lineNo, productId: m.productId, matchStatus: m.status === "matched" ? "matched" : "unmatched", matchMethod: "user", dataExtracted: {}, data: { name: m.name || "", code: null, batchNo: clean(l.lotNo), productionDate: null, expiryDate: null, quantity: clean(l.quantity), unit: null, packing: m.pack || (clean(l.packing) ? displayPack(l.packing) : null), extra: { asked: m.name, match: m.status, candidates: m.candidates } } } });
     newItemIds.push(row.id);
   }
   const allCodes = [...codes, ...newCodes];
@@ -165,6 +199,7 @@ const MISSING_AR = {
   lab_report: "تقرير المعمل ناقص",
   composition: "التركيبة ناقصة في المنتج",
   value: "ناقص",
+  new_pack: "العبوة دي مش موجودة — أضفها كعبوة جديدة لنفس المنتج",
 };
 
 // what a cell with nothing missing still needs before it can be delivered
@@ -225,7 +260,7 @@ export async function getRequest(id, companyId) {
         cell = { status: missing.length ? "awaiting_inputs" : statusOf(cert), certificateId: cert.id, revision: cert.revisionNumber, shared: cert.items.length > 1, missing, comments: (cert.reviewComments || []).filter((c) => !c.resolvedAt) };
       } else {
         const entry = t && plan.entries.find((e) => e.certificateTypeId === t.id && e.invoiceItemIds.includes(line.id));
-        const why = !line.productId ? "unmatched" : !t ? "no_type" : !entry ? "no_template" : !ready[entry.templateVersionId]?.ready ? "not_ready" : "not_generated";
+        const why = !line.productId ? (line.data?.extra?.match === "new_pack" ? "new_pack" : "unmatched") : !t ? "no_type" : !entry ? "no_template" : !ready[entry.templateVersionId]?.ready ? "not_ready" : "not_generated";
         cell = { status: "awaiting_inputs", missing: [{ code: why, ar: MISSING_AR[why], ...(why === "not_ready" ? { link: ready[entry.templateVersionId].link } : {}) }] };
       }
       cells[code] = cell;

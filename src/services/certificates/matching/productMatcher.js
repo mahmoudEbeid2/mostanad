@@ -3,6 +3,7 @@ import { getAiSettings } from "../ai/aiSettings.js";
 import { aliasMap } from "./productAliases.js";
 import { aiMatch, AI_CANDIDATES } from "./aiMatcher.js";
 import { catalogueCandidates } from "../../catalogues/searchService.js";
+import { displayPack, samePack, splitNamePack } from "./packNormalizer.js";
 
 // Invoice line → catalogue product (CERTIFICATES_V2_PLAN.md §9.2, plan.md §7).
 // Always tenant-scoped (`where: { companyId }`, never a global product). Each
@@ -70,10 +71,19 @@ export function matchLine(line, products, { brandId = null, aliases = null } = {
     if (hits.length === 1) return { productId: hits[0].id, matchStatus: "matched", matchMethod: "exact_code", matchCandidates: null };
     duplicateCode = hits.length > 1;
   }
-  const name = normalizeName(line.name);
+  // Phase 4: name AND pack — "OLIGOVET 1L" never links to OLIGOVET 100 mL ("100ML" = "100 mL", "1 Ltr" = "1 L")
+  const split = splitNamePack(line.name || "");
+  const pack = line.packing ? displayPack(line.packing) : split.pack;
+  const name = normalizeName(split.pack ? split.name : line.name);
   if (name && !duplicateCode) {
-    const hits = products.filter((p) => normalizeName(p.name) === name);
-    if (hits.length === 1) return { productId: hits[0].id, matchStatus: "matched", matchMethod: "exact_name", matchCandidates: null };
+    const hits = products.filter((p) => normalizeName(p.name) === name || normalizeName(splitNamePack(p.name).name) === name);
+    const packOf = (p) => p.packaging || splitNamePack(p.name).pack;
+    const byPack = pack && hits.length > 0 ? hits.filter((p) => samePack(packOf(p), pack)) : hits;
+    if (byPack.length === 1) return { productId: byPack[0].id, matchStatus: "matched", matchMethod: "exact_name", matchCandidates: null };
+    // the product exists, not in the asked pack: a person adds the pack (or picks another) — never the other pack silently
+    if (pack && hits.length && !byPack.length) {
+      return { productId: null, matchStatus: "needs_match", matchMethod: null, newPack: pack, matchCandidates: hits.slice(0, CANDIDATES).map((p) => ({ productId: p.id, name: p.name, code: p.productCode || null, score: null, reasons: [`same name, pack ${packOf(p) || "?"} — asked ${pack}`] })), aiCandidates: [] };
+    }
   }
   const ranked = products
     .map((p) => {
