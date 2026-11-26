@@ -412,11 +412,24 @@ const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 export async function runExportZip({ batchId }, ctx = {}) {
   const batch = await prisma.certificateBatch.findUnique({ where: { id: batchId } });
   if (!batch) throw notFound("Certificate batch");
-  const raw = await prisma.certificate.findMany({
-    where: { batchId, status: { in: ["draft", "final"] } },
-    include: { certificateType: { select: { code: true } }, product: { select: { name: true } }, items: { include: { invoiceItem: { select: { lineNo: true, data: true, product: { select: { name: true } } } } } } },
+  // a certificate request (28 Nov: a second drop adds cells in a new run): the files cover the WHOLE request —
+  // its current certificate of every cell, whichever run made it
+  const req = await prisma.invoice.findUnique({ where: { id: batch.invoiceId }, select: { origin: true, header: true } });
+  const wholeRequest = req?.origin === "direct" && !!req.header?.request;
+  let raw = await prisma.certificate.findMany({
+    where: { ...(wholeRequest ? { invoiceId: batch.invoiceId } : { batchId }), status: { in: ["draft", "final"] } },
+    include: { certificateType: { select: { code: true } }, product: { select: { name: true } }, items: { include: { invoiceItem: { select: { id: true, lineNo: true, data: true, product: { select: { name: true } } } } } } },
     orderBy: [{ createdAt: "asc" }, { planKey: "asc" }],
   });
+  if (wholeRequest) {
+    const cell = (c) => `${c.certificateTypeId}|${c.items.map((i) => i.invoiceItem?.id).sort().join(",")}`;
+    const current = new Map();
+    for (const c of raw) {
+      const had = current.get(cell(c));
+      if (!had || (c.revisionNumber ?? 0) > (had.revisionNumber ?? 0) || ((c.revisionNumber ?? 0) === (had.revisionNumber ?? 0) && c.createdAt > had.createdAt)) current.set(cell(c), c);
+    }
+    raw = raw.filter((c) => current.get(cell(c)) === c);
+  }
   if (!raw.length) throw new CertError("NOTHING_TO_EXPORT", "This batch has no rendered certificates", 409);
   const firstLine = (c) => Math.min(1e6, ...c.items.map((i) => i.invoiceItem?.lineNo ?? 1e6));
   const typeRank = (c) => TYPE_ORDER.indexOf(c.certificateType.code) + 1 || 99;
