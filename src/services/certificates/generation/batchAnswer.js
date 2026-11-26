@@ -351,9 +351,11 @@ export async function fromDocuments({ companyId, certificateIds }) {
     // every batch line of that document, with the same evidence
     const docDate = async (k) => {
       if (pick(k)) return pick(k);
+      // (the same MO dropped three times is three stored files: every copy of it must agree)
       const files = [...new Set(facts.map((f) => f.fileId).filter(Boolean))];
-      if (files.length !== 1) return null;
-      const all = await prisma.harvestedFact.findMany({ where: { companyId, fileId: files[0], key: k, reviewStatus: "confirmed" }, select: { value: true } });
+      const names = [...new Set(facts.map((f) => f.fileName).filter(Boolean))];
+      if (!files.length || names.length !== 1) return null;
+      const all = await prisma.harvestedFact.findMany({ where: { companyId, fileId: { in: files }, key: k, reviewStatus: "confirmed" }, select: { value: true } });
       const distinct = new Set(all.map((f) => String(f.value).trim()));
       return distinct.size === 1 ? [...distinct][0] : null;
     };

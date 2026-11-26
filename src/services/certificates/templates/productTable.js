@@ -282,12 +282,15 @@ export function splitRow(text, cols) {
   return out;
 }
 
+// a numbered row is ONE line: its cells have no box of their own to read an alignment from. Short value
+// columns (pack, form, category) are centred under their heading in the designs seen (ADDVET FSC: left-aligned
+// cells drifted 0.41 % → 0.13 % centred); the prepare check confirms or refuses it
 const SOURCES_BY_COL = {
   no: { key: "row_no", label: "No", source: { kind: "row", path: "lineNo" } },
   name: { key: "row_product_name", label: "Product name", source: { kind: "row", path: "product.name" }, required: true },
-  pack: { key: "row_cell_pack", label: "Packing", source: { kind: "row", path: "packing", orPath: "product.packaging" } },
-  form: { key: "row_cell_form", label: "Form", source: { kind: "row", path: "product.physicalForm" } },
-  category: { key: "row_cell_category", label: "Category", source: { kind: "row", path: "product.category.name", orPath: "product.productType" } },
+  pack: { key: "row_cell_pack", label: "Packing", source: { kind: "row", path: "packing", orPath: "product.packaging" }, align: "center" },
+  form: { key: "row_cell_form", label: "Form", source: { kind: "row", path: "product.physicalForm" }, align: "center" },
+  category: { key: "row_cell_category", label: "Category", source: { kind: "row", path: "product.category.name", orPath: "product.productType" }, align: "center" },
 };
 
 /** lines → { group, fields, rows, rowLineIds } for a numbered table under a column header, or { problem } */
@@ -315,7 +318,7 @@ export function numberedTable(lines = []) {
     const fields = cols.map((c, i) => {
       const [s, e] = cells[c];
       const def = SOURCES_BY_COL[c];
-      return { key: def.key, label: def.label, lineId: first.id, charStart: s, charEnd: e, sampleValue: first.text.slice(s, e), source: def.source, required: !!def.required, groupKey: "products", sortOrder: i, origin: "detected" };
+      return { key: def.key, label: def.label, lineId: first.id, charStart: s, charEnd: e, sampleValue: first.text.slice(s, e), source: def.source, required: !!def.required, groupKey: "products", sortOrder: i, origin: "detected", align: def.align || "left" };
     });
     return {
       group: { key: "products", label: "Products", mode: "repeat", source: { kind: "invoice_lines" }, whenEmpty: "dash", required: true, sampleRows: rows.length },
