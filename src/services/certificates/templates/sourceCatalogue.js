@@ -13,6 +13,8 @@ import { parseRelative } from "../paths/sourcePath.js";
 const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance", "designEstimates", "compositionReview", "harvestConflicts"]);
 const PRODUCT_LABELS = {
   productCode: "Product code",
+  physicalForm: "Physical form (Liquid, Powder…)",
+  productForm: "Product form (as a certificate prints it)",
   activeIngredients: "Active ingredients (all)",
   targetSpecies: "Target species",
   userSafety: "User safety",
@@ -30,6 +32,7 @@ const PRODUCT_SYNONYMS = {
   "category.name": ["category", "product category", "type of product"],
   "brand.name": ["brand"],
   physicalForm: ["form", "physical form", "dosage form"],
+  productForm: ["product form"],
   appearance: ["appearance", "description"],
   compositionBasis: ["composition basis", "each ml contains", "each 1 ml contains", "per ml", "per 100 ml", "contains per"],
 };

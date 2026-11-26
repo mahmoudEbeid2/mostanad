@@ -24,7 +24,9 @@ const BY_LABEL = [
   [/^Product name$/i, () => ({ source: { kind: "product", path: "name" } })],
   [/^Category$/i, () => ({ source: { kind: "product", path: "productType" } })],
   [/Packaging|Packing|Pack size|Package/i, () => ({ source: { kind: "product", path: "packaging" } })],
-  [/^Form$|Product form|Dosage form/i, () => ({ source: { kind: "product", path: "physicalForm" } })],
+  // "Product Form" prints what the certificate printed there (ADDVET COC: Antibiotic); a "Form" column the physical form
+  [/Product\s*form/i, () => ({ source: { kind: "product", path: "productForm" } })],
+  [/^Form$|Dosage form|Physical form/i, () => ({ source: { kind: "product", path: "physicalForm" } })],
   [/^Validity$|Shelf life/i, () => ({ source: { kind: "product", path: "validity" } })],
   [/Composition basis/i, () => ({ source: { kind: "product", path: "compositionBasis" }, role: "composition_basis" })],
   [/Document number/i, () => ({ source: { kind: "docnumber" } })],

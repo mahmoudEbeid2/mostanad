@@ -156,6 +156,7 @@ model Product {
   indications        String?  @db.Text
   targetSpecies      String[] @map("target_species") // Postgres native array type
   physicalForm       String?  @map("physical_form")
+  productForm        String?  @map("product_form") // what a certificate prints as "Product Form" (ADDVET COC: Antibiotic / Supplement) — not the physical form
   appearance         String?
   activeIngredients  Json?    @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
   validity           String? // shelf life as printed ("36 months from the production date")

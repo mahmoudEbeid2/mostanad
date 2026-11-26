@@ -13,6 +13,7 @@ import { resolveField, wrapPiece } from "../../src/services/certificates/generat
 import { validateSource } from "../../src/services/certificates/templates/sourceCatalogue.js";
 import { parseConsigneeLine, missingMessageAr, fieldRole } from "../../src/services/certificates/generation/batchAnswer.js";
 import { HC_PAGE1, HC_PAGE2, HC_PRODUCT_NAMES } from "../fixtures/addvetHcLines.js";
+import { isPhysicalForm } from "../../src/services/harvest/productForm.js";
 
 const { assert, counts } = makeAssert();
 const by = (fields) => Object.fromEntries(fields.map((f) => [f.key, f]));
@@ -48,7 +49,7 @@ assert("an unrecognised product's row still counts as a sample row (10, not 9)",
 const cells = by(table.fields || []);
 assert("10 sample rows → one repeating row over the invoice lines", table.rows === 10 && table.group?.source?.kind === "invoice_lines", table.problem || table.rows);
 assert("each column from its own header phrase", cells.row_product_name?.source.path === "product.name" && cells.row_cell_2?.source.path === "product.brand.name" && cells.row_cell_4?.source.path === "product.packaging" && cells.row_cell_5?.source.path === "product.physicalForm", Object.values(cells).map((c) => `${c.key}:${c.source.path}`));
-assert("a one-word description column is the category", cells.row_cell_3?.source.path === "product.category.name", cells.row_cell_3?.source);
+assert("a one-word description column is the category", cells.row_cell_3?.source.path === "product.productType", cells.row_cell_3?.source);
 assert("centred columns stay centred (the sample cells' centres line up)", cells.row_cell_3?.align === "center" && cells.row_cell_4?.align === "center" && cells.row_product_name?.align === "left", Object.values(cells).map((c) => `${c.key}:${c.align}`));
 const p2 = by(
   fieldsForAreas(
@@ -60,6 +61,23 @@ const p2 = by(
   ),
 );
 assert("a value right of «CERTIFICATE NO:» is the document number, not a batch number", p2.document_number?.source?.kind === "docnumber" && !p2.batch_number, Object.keys(p2));
+
+console.log("\n2b · physical form vs a document's «Product Form»");
+assert("Liquid / Injectable solution / Water soluble powder are forms; Antibiotic / Supplement / Injectable aren't", ["LIQUID", "Injectable solution", "Water soluble powder", "Tablet"].every(isPhysicalForm) && !["Antibiotic", "Supplement", "Injectable", "Injection"].some(isPhysicalForm));
+const formLines = [
+  { id: "f1", page: 1, text: "Product Form:  Antibiotic", box: { x: 74, y: 300, w: 200, h: 12 } },
+  { id: "f2", page: 1, text: "Form:  Liquid", box: { x: 74, y: 320, w: 120, h: 12 } },
+];
+const forms = by(
+  fieldsForAreas(
+    [
+      { lineId: "f1", page: 1, kind: "value", label: "Product form", text: "Antibiotic", charStart: 15, charEnd: 25 },
+      { lineId: "f2", page: 1, kind: "value", label: "Form", text: "Liquid", charStart: 7, charEnd: 13 },
+    ],
+    formLines,
+  ),
+);
+assert("a «Product Form» place prints the certificate's label (productForm); a «Form» place the physical form", forms.product_form?.source?.path === "productForm" && forms.form?.source?.path === "physicalForm", Object.values(forms).map((f) => `${f.key}:${f.source?.path}`));
 
 console.log("\n3 · a COA row on one line");
 const t = "Assay 90-110% of the labeled amount of constituents 101.7%";

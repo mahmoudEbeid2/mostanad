@@ -17,6 +17,7 @@ import { itemAiCost } from "./intakeAi.js";
 import { recordConflicts } from "../catalogues/compositionReview.js";
 import { harvestFile, mergeAll, kindOf, summaryAr } from "../harvest/harvestService.js";
 import { applyDropHarvest } from "../harvest/harvestAi.js";
+import { formColumnOf } from "../harvest/productForm.js";
 
 // The `intakeExecute` job: every item of a drop the person accepted goes through
 // the pipeline that already exists for its kind — reference label, certificate
@@ -171,7 +172,11 @@ export async function fillFromComposition(item, plan) {
   }
   if (!p.compositionBasis && comp.basis) [data.compositionBasis, prov.compositionBasis] = [comp.basis, src];
   if (!p.packaging && comp.packaging) [data.packaging, prov.packaging] = [comp.packaging, src];
-  if (!p.physicalForm && comp.form) [data.physicalForm, prov.physicalForm] = [comp.form, src];
+  // "Product Form: Antibiotic" (ADDVET's COC) is the certificate's label, not the physical form (29 Nov)
+  if (comp.form) {
+    const col = formColumnOf(comp.form);
+    if (!p[col]) [data[col], prov[col]] = [comp.form, src];
+  }
   if (!p.categoryId && comp.category) {
     const cat = await prisma.category.findFirst({ where: { name: { equals: comp.category, mode: "insensitive" } }, select: { id: true } });
     if (cat) [data.categoryId, prov.categoryId] = [cat.id, src];

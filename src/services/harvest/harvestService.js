@@ -7,6 +7,10 @@ import { recordConflicts } from "../catalogues/compositionReview.js";
 import { parseBasis } from "../catalogues/compositionCompare.js";
 import { countryCode } from "../assistant/countries.js";
 import { packKey, samePack } from "../certificates/matching/packNormalizer.js";
+import { isPhysicalForm, formColumnOf } from "./productForm.js";
+
+// values filled automatically (never a person's): a wrong one may be replaced by what the files say
+const AUTOMATIC = new Set(["harvest", "intake"]);
 
 // Harvest (28 Nov): read every file of a company — a drop, a chat upload, a template, a product import,
 // or everything already stored (re-harvest) — keep every value with its evidence (harvested_facts),
@@ -19,7 +23,8 @@ import { packKey, samePack } from "../certificates/matching/packNormalizer.js";
 export const PRIORITY = { user: 9, certificate: 4, registration: 4, lab: 3, mo: 3, label: 2, catalogue: 1, invoice: 1, list: 1, other: 0 };
 // product fields filled from facts (key → column)
 const PRODUCT_FIELDS = {
-  physicalForm: "physicalForm",
+  physicalForm: "physicalForm", // only a physical form (Liquid, Powder…): productForm.js
+  productForm: "productForm", // what a certificate prints as "Product Form" (ADDVET COC: Antibiotic)
   packaging: "packaging",
   validity: "validity",
   storage: "storage",
@@ -137,10 +142,14 @@ export async function mergeProduct(productId) {
   if (!p) return { filled: [], conflicts: [] };
   // only what was confirmed: a value the verification doubted waits for a person ("needs review")
   const facts = (await prisma.harvestedFact.findMany({ where: { productId, entity: "product", perBatch: false, reviewStatus: "confirmed" } })).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0) || a.createdAt - b.createdAt);
+  // a "form" that isn't a physical form is the document's "Product Form" label (29 Nov: ADDVET's COC
+  // "Product Form: Antibiotic" had become the products' physical form)
+  for (const f of facts) if (f.key === "physicalForm") f.key = formColumnOf(show(f.value));
   const prov = { ...(p.fieldProvenance || {}) };
   const data = {};
   const filled = [];
-  const conflicts = [...(p.harvestConflicts || [])];
+  // a form-vs-label mix-up was never two sources disagreeing: its open conflict goes
+  const conflicts = (p.harvestConflicts || []).filter((c) => !(c.key === "physicalForm" && !c.decision && (c.values || []).some((v) => !isPhysicalForm(v.value))));
   const keys = [...new Set(facts.map((f) => f.key))];
   for (const key of keys) {
     const list = facts.filter((f) => f.key === key);
@@ -180,7 +189,9 @@ export async function mergeProduct(productId) {
     const col = PRODUCT_FIELDS[key];
     if (!col) continue;
     const raw = p[col];
-    const current = Array.isArray(raw) ? (raw.length ? raw : null) : raw; // an empty list is empty
+    let current = Array.isArray(raw) ? (raw.length ? raw : null) : raw; // an empty list is empty
+    // a harvested "physical form" that is a category (Antibiotic) is no form: the files' real one replaces it
+    if (col === "physicalForm" && current && !isPhysicalForm(current) && AUTOMATIC.has(prov[col]?.source)) current = null;
     const value = key === "packaging" ? normPack(best.value) : col === "targetSpecies" ? (Array.isArray(best.value) ? best.value.map(String) : [show(best.value)]) : show(best.value);
     const currentRank = current ? rankOf(prov[col]) ?? PRIORITY.user : -1;
     if (!current || (currentRank < (PRIORITY[best.sourceType] || 0) && prov[col]?.source === "harvest")) {
@@ -209,6 +220,11 @@ export async function mergeProduct(productId) {
     data.producer = show(producer.value);
     prov.producer = provenanceOf(producer);
     filled.push("producer");
+  }
+  // no file gives a real form: the category stored as one is cleared (the inference estimates it, «مستنتج»)
+  if (p.physicalForm && !isPhysicalForm(p.physicalForm) && AUTOMATIC.has(prov.physicalForm?.source) && data.physicalForm === undefined) {
+    data.physicalForm = null;
+    delete prov.physicalForm;
   }
   if (Object.keys(data).length || conflicts.length !== (p.harvestConflicts || []).length) {
     await prisma.product.update({ where: { id: p.id }, data: { ...data, fieldProvenance: prov, harvestConflicts: conflicts } });
