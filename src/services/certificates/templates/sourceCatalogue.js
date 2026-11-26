@@ -164,6 +164,8 @@ export function validateCellSource(source, groupSource) {
       return ["this group's rows are typed by hand — its cells can't read a row path (use manual or static)"];
     }
     if (!paths.some((p) => p.path === source.path)) return [`unknown row path "${source.path}"`];
+    // a second row path, read only when the first is empty (the shared category, else the harvested one)
+    if (source.orPath !== undefined && !paths.some((p) => p.path === source.orPath)) return [`unknown row path "${source.orPath}"`];
   }
   return [];
 }

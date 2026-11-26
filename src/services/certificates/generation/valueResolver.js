@@ -250,7 +250,7 @@ export function resolveGroup(group, cells, ctx = {}) {
     const raw = {};
     for (const c of cells) {
       const s = c.source || { kind: "manual" };
-      const resolved = s.kind === "row" ? asText(readPath(item, s.path)) : s.kind === "static" ? s.text ?? "" : "";
+      const resolved = s.kind === "row" ? asText(readPath(item, s.path)) || (s.orPath ? asText(readPath(item, s.orPath)) : "") : s.kind === "static" ? s.text ?? "" : "";
       const { value, flags: f } = applyFormat(resolved, c.format);
       f.forEach((x) => flags.add(x));
       row[c.key] = value;

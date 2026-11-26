@@ -79,7 +79,7 @@ export function productTableFrom(lines = [], names = []) {
     const header = isName ? null : phrases ? { text: phrases[i] } : headerOf(l);
     let known = header ? COLUMN_SOURCES.find(([re]) => re.test(header.text)) : null;
     // a description column of one or two words per row (INJECTABLE, SUPPLEMENT) is the category, not a description
-    if (known?.[1] === "product.description" && col.every((h) => sameRowWords(lines, h.line, l) <= 2)) known = [known[0], "product.productType", "Description (category)"];
+    if (known?.[1] === "product.description" && col.every((h) => sameRowWords(lines, h.line, l) <= 2)) known = [known[0], "product.category.name", "Description (category)", "product.productType"];
     fields.push({
       key: isName ? "row_product_name" : `row_cell_${i + 1}`,
       label: isName ? "Product name" : known ? known[2] : header?.text?.trim().slice(0, 40) || `Column ${i + 1}`,
@@ -87,7 +87,8 @@ export function productTableFrom(lines = [], names = []) {
       charStart: s,
       charEnd: e,
       sampleValue: text.slice(s, e),
-      source: isName ? { kind: "row", path: "product.name" } : known ? { kind: "row", path: known[1] } : { kind: "manual" },
+      // the shared category when the product has one, else the category its documents print (ADDOXY 200-LA: "Injectable")
+      source: isName ? { kind: "row", path: "product.name" } : known ? { kind: "row", path: known[1], ...(known[3] ? { orPath: known[3] } : {}) } : { kind: "manual" },
       required: isName,
       groupKey: "products",
       sortOrder: i,

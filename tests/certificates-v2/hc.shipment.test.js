@@ -49,7 +49,7 @@ assert("an unrecognised product's row still counts as a sample row (10, not 9)",
 const cells = by(table.fields || []);
 assert("10 sample rows → one repeating row over the invoice lines", table.rows === 10 && table.group?.source?.kind === "invoice_lines", table.problem || table.rows);
 assert("each column from its own header phrase", cells.row_product_name?.source.path === "product.name" && cells.row_cell_2?.source.path === "product.brand.name" && cells.row_cell_4?.source.path === "product.packaging" && cells.row_cell_5?.source.path === "product.physicalForm", Object.values(cells).map((c) => `${c.key}:${c.source.path}`));
-assert("a one-word description column is the category", cells.row_cell_3?.source.path === "product.productType", cells.row_cell_3?.source);
+assert("a one-word description column is the category", cells.row_cell_3?.source.path === "product.category.name" && cells.row_cell_3?.source.orPath === "product.productType", cells.row_cell_3?.source);
 assert("centred columns stay centred (the sample cells' centres line up)", cells.row_cell_3?.align === "center" && cells.row_cell_4?.align === "center" && cells.row_product_name?.align === "left", Object.values(cells).map((c) => `${c.key}:${c.align}`));
 const p2 = by(
   fieldsForAreas(
