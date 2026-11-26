@@ -5,7 +5,7 @@ import { startExportZip } from "../certificates/certificates/editService.js";
 import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
 import { templateFromItem } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
-import { areaWords } from "../certificates/templates/readinessCheck.js";
+import { fieldsForAreas } from "../certificates/templates/autoMap.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
@@ -19,20 +19,27 @@ import { productTableFrom } from "../certificates/templates/productTable.js";
  */
 export async function blankOpenAreas(versionId, companyId) {
   const r = await getReadiness(versionId, companyId);
-  const open = r.areas.filter((a) => !a.staticConfirmed).flatMap(areaWords); // a field never spans a column gap
+  const open = r.areas.filter((a) => !a.staticConfirmed);
   if (!open.length) return 0;
-  const taken = new Set((await prisma.templateField.findMany({ where: { versionId }, select: { key: true } })).map((f) => f.key));
-  const last = await prisma.templateField.aggregate({ where: { versionId }, _max: { sortOrder: true } });
-  let n = 0;
-  const rows = open.map((a, i) => {
-    let key;
-    do key = `blank_${a.kind}_${++n}`;
-    while (taken.has(key));
+  const [version, company, existing, last] = await Promise.all([
+    prisma.templateVersion.findUnique({ where: { id: versionId }, select: { lines: true } }),
+    prisma.company.findUnique({ where: { id: companyId }, select: { profile: true } }),
+    prisma.templateField.findMany({ where: { versionId }, select: { key: true } }),
+    prisma.templateField.aggregate({ where: { versionId }, _max: { sortOrder: true } }),
+  ]);
+  // 28 Nov: each place filled from what it is (product data, composition row, specification, document
+  // number, issue date, batch fact); only what nothing can fill stays a flagged blank
+  const type = await prisma.templateVersion.findUnique({ where: { id: versionId }, select: { template: { select: { certificateType: { select: { code: true } } } } } });
+  const mapped = fieldsForAreas(open, version.lines || [], { dateFormat: company?.profile?.dateFormat || null, certCode: type?.template?.certificateType?.code || null });
+  const taken = new Set(existing.map((f) => f.key));
+  const rows = mapped.map((f, i) => {
+    let key = f.key;
+    for (let n = 2; taken.has(key); n++) key = `${f.key}_${n}`;
     taken.add(key);
     return {
-      versionId, key, label: a.label, page: a.page, lineId: a.lineId, charStart: a.charStart, charEnd: a.charEnd, sampleValue: a.text,
-      source: { kind: "manual" }, required: true, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1,
-      isBatchFact: a.kind === "batch" || a.kind === "date", isLabResult: a.kind === "result", inferencePolicy: "never",
+      versionId, key, label: f.label, page: f.page, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue,
+      source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1,
+      isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: "never",
     };
   });
   await prisma.templateField.createMany({ data: rows });

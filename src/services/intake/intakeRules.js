@@ -287,13 +287,13 @@ export function compositionFrom(text) {
   const ingredients = [];
   // "Turmeric extract … Quantity not stated": an ingredient printed without an amount
   body = body.replace(/\s*Quantity\s+not\s+stated\s*/gi, " 0 NOTSTATED ");
-  const re = /(.+?)\s+((?:ad|q\.?s\.?(?:\s*to)?|up\s+to)\s+)?(\d[\d,]*(?:\.\d+)?)\s*(mg|g|mcg|μg|µg|ug|IU|iu|mL|ml|L|%|ppm|kg|NOTSTATED)(?=\s|$)/g;
+  const re = /(.+?)\s+((?:ad|q\.?s\.?(?:\s*to)?|up\s+to)\s+)?(\d[\d,]*(?:\.\d+)?)\s*(mg|g|mcg|μg|µg|ug|IU|iu|mL|ml|L|%|ppm|kg|NOTSTATED)(?=[\s.;,]|$)/g; // "200 mg." on a label ends with a full stop
   for (const m of body.matchAll(re)) {
     if (m[4] === "NOTSTATED") {
-      ingredients.push({ name: m[1].trim().replace(/^[,;]\s*/, ""), amountRaw: "not stated", amount: null, unit: null });
+      ingredients.push({ name: m[1].trim().replace(/^[,;.]\s*/, ""), amountRaw: "not stated", amount: null, unit: null });
       continue;
     }
-    const name = m[1].trim().replace(/^[,;]\s*/, "");
+    const name = m[1].trim().replace(/^[,;.]\s*/, "");
     if (!name || name.length > 80) continue;
     const amountRaw = `${m[2] ? m[2].trim() + " " : ""}${m[3]} ${m[4]}`;
     ingredients.push({ name, amountRaw, amount: m[2] ? null : Number(m[3].replace(/,/g, "")), unit: m[4].replace(/^u?[μµ]g$|^ug$/, "mcg") });

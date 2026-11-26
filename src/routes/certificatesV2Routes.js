@@ -183,6 +183,8 @@ router.put("/products/:id/design-estimates", guard("update_products"), workflow.
 router.get("/products/:id/composition-review", guard("read_products"), workflow.compositionReview);
 router.post("/products/:id/composition-review/:index/decide", guard("update_products"), workflow.decideComposition);
 router.get("/evidence-files/:id", guard("read_products"), workflow.evidenceFile);
+router.post("/companies/:id/harvest", guard("update_products"), workflow.reharvest);
+router.get("/products/:id/harvest", guard("read_products"), workflow.productHarvest);
 
 router.use((err, req, res, next) => {
   if (err instanceof CertError) {

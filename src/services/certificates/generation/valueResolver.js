@@ -61,8 +61,23 @@ export const CERT_TZ = process.env.CERT_TZ || "Africa/Cairo";
 const todayIso = (ctx) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: ctx.timeZone || CERT_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(ctx.today instanceof Date ? ctx.today : new Date());
 
+// An ingredient's amount printed as two words ("15,000" … "IU") with a gap wider than a space:
+// a design keeps them as two fields so each stays at its printed place (28 Nov) — read from the
+// ingredient's own amount text, never computed.
+const AMOUNT_PART = /^activeIngredients\[(\d+)\]\.(amountFigure|amountUnit)$/;
+export function amountParts(text) {
+  const m = String(text || "").trim().match(/^(.*?[\d.,]+)\s*([A-Za-zµμ%]+(?:\/[A-Za-z]+)?)$/);
+  return m ? { amountFigure: m[1].trim(), amountUnit: m[2] } : { amountFigure: String(text || "").trim(), amountUnit: "" };
+}
+
 /** One path's text, trying accepted synonyms when it is empty → { text, via? } */
 function readText(kind, path, ctx) {
+  const part = kind === "product" && path.match(AMOUNT_PART);
+  if (part) {
+    const ing = ctx.product?.activeIngredients?.[Number(part[1])];
+    const whole = asText(ing?.concentration) || asText(ing?.amountRaw);
+    return { text: whole && !/not stated/i.test(whole) ? amountParts(whole)[part[2]] : "" };
+  }
   const text = asText(readPath(contextFor(kind, ctx), path));
   if (text || !ctx.pathSynonyms) return { text };
   const full = canonicalFull(fromSource({ kind, path }));
@@ -81,6 +96,8 @@ function rawValue(source, ctx, hit = {}) {
       return source.text ?? "";
     case "manual":
       return "";
+    case "docnumber":
+      return ctx.docNumber || ""; // allocated once per certificate before rendering (docNumbers.js)
     case "today":
       return todayIso(ctx);
     case "template": {

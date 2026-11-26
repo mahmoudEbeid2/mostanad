@@ -117,6 +117,8 @@ export async function importProductFiles({ companyId, brandId = null, files = []
   });
   const label = `Products from files — ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
   const { version } = await addVersion({ catalogue, label, file: { buffer, originalname: `${label}.pdf` }, info: await openPdf(buffer), userId });
+  // Harvest (28 Nov): the imported files are read by code too (labels: composition, indications, dosage…)
+  import("../harvest/harvestService.js").then(({ harvestSoon }) => harvestSoon({ companyId, fileId: version.sourceFileId, fileName: label, kind: "label" })).catch(() => {});
   const filesList = [...groups.map((g) => ({ file: g.file, pages: g.pages })), ...[...new Set(rows.map((r) => r.source.split(" · ")[0]))].map((file) => ({ file, rows: rows.filter((r) => r.source.startsWith(file)).length }))];
   await prisma.catalogueVersion.update({
     where: { id: version.id },

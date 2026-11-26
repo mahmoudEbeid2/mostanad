@@ -10,7 +10,7 @@ import { parseRelative } from "../paths/sourcePath.js";
 // a certificate never prints them, and the dictionary must not offer (or pair up) their keys
 // designEstimates: a designer's estimate (appearance, pH) is never printed on a certificate — a COA result
 // comes only from a batch record (client workflow, 26 Nov); compositionReview is the reviewer's worksheet
-const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance", "designEstimates", "compositionReview"]);
+const PRODUCT_HIDDEN = new Set(["id", "categoryId", "brandId", "companyId", "createdAt", "updatedAt", "catalogueRef", "fieldProvenance", "designEstimates", "compositionReview", "harvestConflicts"]);
 const PRODUCT_LABELS = {
   productCode: "Product code",
   activeIngredients: "Active ingredients (all)",
@@ -18,7 +18,7 @@ const PRODUCT_LABELS = {
   userSafety: "User safety",
   routeOfAdmin: "Route of administration",
 };
-const MAX_INGREDIENT_SLOTS = 6;
+const MAX_INGREDIENT_SLOTS = 30; // a composition printed row by row (ADDVET's AMINOVITA: 19 rows)
 // other printed labels for product columns (plan.md §5.2 step 2: code before AI)
 const PRODUCT_SYNONYMS = {
   name: ["product name", "product", "trade name", "name of product", "product description"],
@@ -46,6 +46,9 @@ function productPaths() {
   for (let i = 0; i < MAX_INGREDIENT_SLOTS; i++) {
     paths.push({ path: `activeIngredients[${i}].name`, label: `Active ingredient ${i + 1} — name`, type: "string" });
     paths.push({ path: `activeIngredients[${i}].concentration`, label: `Active ingredient ${i + 1} — concentration`, type: "string" });
+    // the amount's figure and unit apart, for a design printing them as two words (valueResolver amountParts)
+    paths.push({ path: `activeIngredients[${i}].amountFigure`, label: `Active ingredient ${i + 1} — amount`, type: "string" });
+    paths.push({ path: `activeIngredients[${i}].amountUnit`, label: `Active ingredient ${i + 1} — unit`, type: "string" });
   }
   return paths;
 }
@@ -55,6 +58,11 @@ const COMPANY_PATHS = [
   { path: "address", label: "Company address", type: "string" },
   { path: "phone", label: "Company phone", type: "string" },
   { path: "email", label: "Company email", type: "string" },
+  // harvested from the company's own documents (28 Nov)
+  { path: "profile.producerName", label: "Producer (as printed)", type: "string" },
+  { path: "profile.registrationNo", label: "Company registration no. (as printed)", type: "string" },
+  { path: "profile.country", label: "Company country", type: "string" },
+  { path: "profile.website", label: "Company website", type: "string" },
 ];
 const BRAND_PATHS = [{ path: "name", label: "Brand name", type: "string" }];
 
@@ -178,6 +186,8 @@ export function getSourceCatalogue() {
       { kind: "company", label: "Company", description: "Your company", paths: COMPANY_PATHS },
       { kind: "brand", label: "Brand", description: "The product's brand", paths: BRAND_PATHS },
       { kind: "today", label: "Generation date", description: "The date the certificate is generated", type: "date" },
+      // 28 Nov: a NEW number in the company's own numbering (learnt from its documents) — never a sample's
+      { kind: "docnumber", label: "Document number", description: "The next number in the company's numbering for this certificate type" },
       { kind: "static", label: "Fixed text", description: "The same text on every certificate", needs: "text" },
       { kind: "manual", label: "Typed in the editor", description: "Left empty at generation; filled in by hand" },
       {

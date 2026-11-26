@@ -135,6 +135,17 @@ async function enqueueConvert(template, version) {
 }
 
 /** POST /certificate-templates → { templateId, versionId, taskId } */
+// Harvest (28 Nov): a certificate design is also a data source — its company, product, composition,
+// specifications (never its sample batch, dates or results onto a product)
+function harvestTemplate(template, version) {
+  import("../../harvest/harvestService.js")
+    .then(async ({ harvestSoon }) => {
+      const type = template.certificateTypeId ? await prisma.certificateType.findUnique({ where: { id: template.certificateTypeId }, select: { code: true } }) : null;
+      harvestSoon({ companyId: template.companyId, fileId: version.sourceFileId, fileName: template.name, kind: "certificate", certCode: type?.code || null });
+    })
+    .catch(() => {});
+}
+
 export async function createTemplateFromUpload({ companyId, userId, file, settings }) {
   const format = detectSourceFormat(file?.originalname, file?.buffer);
   const slot = {
@@ -156,6 +167,7 @@ export async function createTemplateFromUpload({ companyId, userId, file, settin
     })
     .catch((err) => rethrowSlotTaken(err, slot));
   const task = await enqueueConvert(template, version);
+  harvestTemplate(template, version);
   return { templateId: template.id, versionId: version.id, taskId: task.id };
 }
 
@@ -166,6 +178,7 @@ export async function uploadNewVersion({ templateId, companyId, userId, file }) 
   const format = detectSourceFormat(file?.originalname, file?.buffer);
   const version = await prisma.$transaction((tx) => createVersionWithSource(tx, { template, file, format, userId }));
   const task = await enqueueConvert(template, version);
+  harvestTemplate(template, version);
   return { templateId: template.id, versionId: version.id, taskId: task.id };
 }
 

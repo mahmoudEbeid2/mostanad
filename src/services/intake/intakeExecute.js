@@ -15,6 +15,7 @@ import { replaceFields } from "../certificates/templates/fieldService.js";
 import { createProduct, updateProduct } from "../productService.js";
 import { itemAiCost } from "./intakeAi.js";
 import { recordConflicts } from "../catalogues/compositionReview.js";
+import { harvestFile, mergeAll, kindOf, summaryAr } from "../harvest/harvestService.js";
 
 // The `intakeExecute` job: every item of a drop the person accepted goes through
 // the pipeline that already exists for its kind — reference label, certificate
@@ -194,7 +195,12 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
           result = { split: true, says: "each certificate is filed on its own row" };
           break;
         case "bundle_template":
-          result = { split: true, ...(await asTemplate({ ...item, pageFrom: 1, pageTo: 1 }, plan, userId, record)) };
+          {
+            // the template is the page printing the most composition rows (a design keeps as many
+            // ingredient rows as its page prints: ADDMECTIN's 2 rows can't hold AMINOVITA's 19)
+            const page = await richestPage(item);
+            result = { split: true, templatePage: page, ...(await asTemplate({ ...item, pageFrom: page, pageTo: page }, plan, userId, record)) };
+          }
           break;
         case "certificate_filled":
         case "issued_document":
@@ -226,7 +232,15 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
     }
     n++;
   }
-  const summary = await summarize(batchId);
+  // Harvest (28 Nov): read every filed file / page, then fill the products and the company from them —
+  // before Express makes the templates and drafts, so those are filled too. A failure never stops the drop.
+  let harvest = null;
+  try {
+    harvest = await harvestDrop(batchId, ctx);
+  } catch (err) {
+    console.error(`[intake] harvest of ${batchId}: ${err.message}`);
+  }
+  const summary = { ...(await summarize(batchId)), ...(harvest ? { harvest } : {}) };
   const batch = await prisma.intakeBatch.update({ where: { id: batchId }, data: { status: "done", summary } });
   // Express: the certificate drafts next — templates used, one run for the products (retried until ready, ~30 min at most)
   if (batch.mode === "express") await enqueueRaw(QUEUES.template, "intakeExpress", { batchId }, { attempts: 600, backoff: { type: "fixed", delay: 3000 } });
@@ -295,4 +309,57 @@ export async function runAttachEvidence({ itemId }) {
   if (!attached) throw new Error("no invoice line with this batch yet"); // retried
   await prisma.intakeItem.update({ where: { id: itemId }, data: { result: { ...item.result, attached, waiting: null } } });
   return attached;
+}
+
+/**
+ * Harvest a filed drop: every page of every file, the bundle pages each for their own product,
+ * then the merge. → { files, facts, filled, conflicts, batchMissing, ar } for the card's summary line
+ */
+export async function harvestDrop(batchId, ctx = {}) {
+  const items = await prisma.intakeItem.findMany({ where: { batchId, status: "done", fileId: { not: null } } });
+  const parents = new Set(items.filter((i) => items.some((x) => x.parentId === i.id)).map((i) => i.id));
+  const companies = new Set();
+  let facts = 0;
+  const files = new Set();
+  for (const item of items) {
+    if (parents.has(item.id)) continue; // its pages are read one by one, each for its product
+    const plan = item.result?.plan || {};
+    const companyId = plan.companyId || item.companyId;
+    if (!companyId) continue;
+    companies.add(companyId);
+    files.add(item.fileId);
+    const productId = (plan.productIds || []).length === 1 ? plan.productIds[0] : null;
+    const product = productId ? await prisma.product.findUnique({ where: { id: productId }, select: { name: true } }) : null;
+    const c = item.classification || {};
+    facts += await harvestFile({ companyId, fileId: item.fileId, fileName: item.name.replace(/ — .*$/, ""), kind: kindOf({ docType: c.docType, certCode: c.certCode, name: item.name }), certCode: c.certCode || null, pageFrom: item.pageFrom || null, pageTo: item.pageTo || null, productName: product?.name || null, productId });
+  }
+  let filled = 0;
+  let conflicts = 0;
+  for (const companyId of companies) {
+    const m = await mergeAll(companyId);
+    filled += m.filled;
+    conflicts += m.conflicts;
+  }
+  const batchMissing = 0; // counted per certificate by Express once its drafts exist
+  return { files: files.size, facts, filled, conflicts, batchMissing, ar: summaryAr({ files: files.size, filled, conflicts, batchMissing }) };
+}
+
+/** A bundle's page whose product has the most ingredients (its own composition, or the drop's COC for its product) → page number */
+async function richestPage(item) {
+  const parts = await prisma.intakeItem.findMany({ where: { parentId: item.id }, select: { pageFrom: true, classification: true } });
+  if (!parts.length) return 1;
+  const cocs = await prisma.intakeItem.findMany({ where: { batchId: item.batchId, parentId: { not: null }, classification: { path: ["certCode"], equals: "COC" } }, select: { classification: true } });
+  const countFor = (names) => {
+    for (const n of names || []) {
+      const hit = cocs.find((c) => (c.classification?.productNames || []).some((x) => String(x).toUpperCase() === String(n).toUpperCase()));
+      if (hit?.classification?.composition?.ingredients?.length) return hit.classification.composition.ingredients.length;
+    }
+    return 0;
+  };
+  let best = { page: parts[0].pageFrom || 1, n: -1 };
+  for (const p of parts) {
+    const n = p.classification?.composition?.ingredients?.length || countFor(p.classification?.productNames);
+    if (n > best.n) best = { page: p.pageFrom || 1, n };
+  }
+  return best.page;
 }

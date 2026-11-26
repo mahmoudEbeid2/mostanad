@@ -8,6 +8,7 @@ import * as review from "../../services/certificates/workflow/reviewService.js";
 import * as designer from "../../services/certificates/workflow/designerService.js";
 import * as composition from "../../services/catalogues/compositionReview.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
+import { enqueueTask, QUEUES } from "../../services/certificates/jobs/queues.js";
 
 // The client's certificate workflow (Dossira_Certificate_Workflow_EN): request → matrix → review →
 // delivery, the designer's panel, composition disagreements and the evidence behind a value.
@@ -51,4 +52,24 @@ export const evidenceFile = catchAsync(async (req, res, next) => {
   if (!row || (companyId && row.companyId !== companyId) || !row.companyId) return next(new AppError("File not found!", 404));
   const { row: f, buffer } = await fileStore.readFile(row.id, { companyId: row.companyId });
   res.set({ "Content-Type": f.mimeType || "application/octet-stream", "Content-Disposition": `inline; filename="${encodeURIComponent(f.originalName || "source")}"`, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300" }).send(buffer);
+});
+
+// ── harvest (28 Nov): read every stored file again; what was read for a product, with its evidence ──
+/** POST /companies/:id/harvest → 202 { taskId } — a company account only for itself */
+export const reharvest = catchAsync(async (req, res, next) => {
+  const companyId = req.company ? req.company.id : req.params.id;
+  if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
+  if (!(await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } }))) return next(new AppError("Company not found!", 404));
+  const task = await enqueueTask({ queueName: QUEUES.template, jobName: "reharvestCompany", type: "company_reharvest", companyId, data: { entity: "company", entityId: companyId, companyId } });
+  ok(res, { taskId: task.id }, 202);
+});
+
+/** GET /products/:id/harvest → { facts: [{ key, value, sourceType, file, page, snippet, link }], conflicts, perBatch } */
+export const productHarvest = catchAsync(async (req, res, next) => {
+  const companyId = scopeOf(req);
+  const p = await prisma.product.findFirst({ where: { id: req.params.id, ...(companyId ? { companyId } : {}) }, select: { id: true, harvestConflicts: true } });
+  if (!p) return next(new AppError("Product not found!", 404));
+  const facts = await prisma.harvestedFact.findMany({ where: { productId: p.id }, orderBy: [{ perBatch: "asc" }, { key: "asc" }] });
+  const view = (f) => ({ id: f.id, key: f.key, value: f.value, sourceType: f.sourceType, certCode: f.certCode, file: f.fileName, page: f.page, snippet: f.snippet, batchNo: f.batchNo, link: f.fileId ? `/api/v1/evidence-files/${f.fileId}${f.page ? `#page=${f.page}` : ""}` : null });
+  ok(res, { facts: facts.filter((f) => !f.perBatch).map(view), perBatch: facts.filter((f) => f.perBatch).map(view), conflicts: p.harvestConflicts || [] });
 });

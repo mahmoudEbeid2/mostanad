@@ -8,6 +8,7 @@ import { rebuildAllDictionaries } from "../services/certificates/dictionary/rebu
 import { runClassify } from "../services/intake/intakeClassify.js";
 import { runExecute, runTemplateFields, runAttachEvidence } from "../services/intake/intakeExecute.js";
 import { runExpress } from "../services/intake/expressService.js";
+import { reharvestCompany } from "../services/harvest/harvestService.js";
 
 // Certificates V2 template worker (plan §5.2): `convert` (upload → sanitize →
 // analyse) and `prepare` (clear fields + gate). Thin by design — the work is
@@ -30,6 +31,8 @@ const handlers = {
   intakeAttachEvidence: (data) => runAttachEvidence(data),
   // Express (urgent order from the chat): templates used, certificate drafts made, files — retried until done
   intakeExpress: (data) => runExpress(data),
+  // harvest (28 Nov): every file already stored for a company, read again, the products filled
+  reharvestCompany: ({ companyId }, ctx) => reharvestCompany(companyId, ctx),
 };
 
 export const certificateTemplateWorker = startWorker({

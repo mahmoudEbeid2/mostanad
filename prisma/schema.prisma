@@ -74,6 +74,8 @@ model Company {
   address    String?
   logoUrl    String?  @map("logo_url") // every migration already creates this column; schema.prisma didn't declare it, which is the drift task 1 (2026-09-13) found
   aiSettings Json?    @map("ai_settings") // certificate AI layers (plan.md §3.3): { enabled, autoAcceptThreshold, … }; null = defaults
+  profile          Json?    // harvested: { producerName, country, website, registrationNo, code, numbering: { COA: "COAAVVI{YY}{MM}{SEQ3}" }, dateFormat, signatories[] }
+  harvestConflicts Json?    @map("harvest_conflicts")
   defaultCertificateTypeIds Json? @map("default_certificate_type_ids") // used when an invoice upload sends no choice; same meaning as Invoice.certificateTypeIds
   isActive   Boolean  @default(true) @map("is_active")
   createdAt  DateTime @default(now()) @map("created_at")
@@ -153,6 +155,8 @@ model Product {
   physicalForm       String?  @map("physical_form")
   appearance         String?
   activeIngredients  Json?    @map("active_ingredients") // e.g. [{"name": "L-Lysine", "concentration": "98.5%"}]
+  validity           String? // shelf life as printed ("36 months from the production date")
+  harvestConflicts   Json?    @map("harvest_conflicts") // [{ key, values: [{ value, source }], decision? }] — files that disagree
   compositionBasis   String?  @map("composition_basis") // "Each 1 mL contains", "per 100 mL" — apart from the pack size
   compositionReview  Json?    @map("composition_review") // { conflicts: [{ ingredient, values[], comparison, decision? }] }
   designEstimates    Json?    @map("design_estimates") // { appearance?, ph?, assumptions, by, at } — design only, never a COA result
@@ -1826,3 +1830,31 @@ model IntakeCreated {
   @@index([companyId, reviewedAt])
   @@map("intake_created")
 }
+
+// Harvest (28 Nov): every value read from every file of a company, with its evidence
+model HarvestedFact {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  entity      String // company | product | batch | document | commercial
+  productId   String?  @map("product_id")
+  productName String?  @map("product_name")
+  pack        String?
+  key         String
+  value       Json
+  valueNorm   String?  @map("value_norm")
+  sourceType  String   @map("source_type") // user | certificate | registration | label | catalogue | invoice | mo | lab | list
+  certCode    String?  @map("cert_code")
+  fileId      String?  @map("file_id")
+  fileName    String?  @map("file_name")
+  page        Int?
+  snippet     String?
+  bbox        Json?
+  perBatch    Boolean  @default(false) @map("per_batch")
+  batchNo     String?  @map("batch_no")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, productId])
+  @@index([companyId, productName])
+  @@map("harvested_facts")
+}
+

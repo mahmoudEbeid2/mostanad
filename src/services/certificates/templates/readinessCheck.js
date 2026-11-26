@@ -21,6 +21,7 @@ const DATE_RES = [
 ];
 const UNIT = "mg|MG|mcg|µg|ug|g|G|gm|gr|kg|KG|Kg|ml|mL|ML|l|L|lt|ltr|LTR|iu|IU|ppm|ppb|cfu|CFU|%";
 const QTY_RE = new RegExp(`(?<![\\w.])\\d+(?:[.,]\\d+)?\\s?(?:${UNIT})(?![A-Za-z])(?:\\s?\\/\\s?\\d*\\s?(?:${UNIT}|kg|ml|l))?`, "g");
+export const BASIS_RE = /\b(?:Each|Every)\s+[\d.,]*\s*(?:mL|ml|L|l|g|gm|kg|Kg|KG|Litre|liter)\s+contains\b:?|\bContains\s+per\s+[\d.,]*\s*(?:mL|ml|L|l|g|gm|kg)\b:?|\(per\s+(?:mL|ml|L|l|g|gm|kg|Litre|liter)\)/gi;
 const PH_RE = /\bpH\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)(?!\s*[–-]\s*\d)/g;
 
 // headers whose values change per product / batch, and those that don't (they still take a column)
@@ -29,11 +30,11 @@ const VARIABLE_HEADERS = [
   [/\bEXPIR(?:Y|ATION)(?:\s+DATE)?\b|\bEXP\.?\s*DATE\b/i, "date", "Expiry date"],
   [/\b(?:MANUFACTUR(?:ING|E)|PRODUCTION|MFG\.?)(?:\s+DATE)?\b/i, "date", "Manufacturing date"],
   [/\bCATEGORY\b/i, "value", "Category"],
-  [/\bPACK(?:AGING|ING)(?:\s+SIZE)?\b|\bPACK\s+SIZE\b|\bNET\s+CONTENTS?\b/i, "value", "Packaging"],
+  [/\bPACK(?:AGING|ING|AGE)(?:\s+SIZE)?\b|\bPACK\s+SIZE\b|\bNET\s+CONTENTS?\b/i, "value", "Packaging"],
   [/\bDOSAGE\s+FORM\b|\bFORM\b/i, "value", "Form"],
-  [/\bPRODUCT(?:\s+NAME)?\b/i, "value", "Product name"],
+  [/\bPRODUCT(?:\s+NAME)?\b(?!\s+FORM)|\bTRADE\s+NAME\b/i, "value", "Product name"],
   [/\bBATCH\s+SIZE\b|\bLOT\s+SIZE\b|\bQUANTITY\b|\bQTY\b/i, "quantity", "Batch size"],
-  [/\bSHELF\s+LIFE\b/i, "value", "Shelf life"],
+  [/\bSHELF\s+LIFE\b|\bVALIDITY\b/i, "value", "Validity"],
 ];
 // "Label: value" on one line — a document's own number and dates change on every certificate
 const INLINE_VARIABLE = [
@@ -47,8 +48,8 @@ const RESULTS_HEADER = /\bRESULTS?\b|\bCOMPOSITION\b|\bINGREDIENTS?\b|\bEACH\s+\
 const TEST_NAMES = /^\s*(?:Appearance|Identi(?:fi|ﬁ)cation|Description|Colou?r|Odou?r|Clarity|Solubility|pH|Assay|Sterility|Pyrogens?|Endotoxins?|Moisture|Water(?:\s+content)?|Loss\s+on\s+drying|Density|Specific\s+gravity|Viscosity|Particle\s+size|Microbial[^:]*|Heavy\s+metals|Total\s+[A-Za-z]+(?:\s+count)?|Constituents?|Composition|Active(?:\s+ingredients?)?|Content|Purity|Residue[^:]*|Ash|Fat|Protein|Fibre|Fiber)\b\s*(?:\([^)]*\))?\s*/i;
 const STATIC_ROWS = /^\s*(?:\*|Producer|Manufacturer|Manufactured\s+by|Exporter|Address|Tel|Fax|E-?mail|www\.|Signature|Approved\s+by|Checked\s+by|QC\s+Manager|Quality)/i;
 
-const KIND_LABEL = { batch: "Batch number", date: "Date", quantity: "Quantity / pack", result: "Analysis result", value: "Product data" };
-export const KIND_AR = { batch: "رقم التشغيلة", date: "تاريخ", quantity: "كمية / عبوة", result: "نتيجة تحليل / تركيب", value: "بيانات منتج" };
+const KIND_LABEL = { basis: "Composition basis", batch: "Batch number", date: "Date", quantity: "Quantity / pack", result: "Analysis result", value: "Product data" };
+export const KIND_AR = { basis: "أساس التركيب", batch: "رقم التشغيلة", date: "تاريخ", quantity: "كمية / عبوة", result: "نتيجة تحليل / تركيب", value: "بيانات منتج" };
 
 export const areaId = (lineId, s, e) => `${lineId}:${s}-${e}`;
 const words = (text) => [...text.matchAll(/\S+/g)].map((m) => ({ s: m.index, e: m.index + m[0].length, t: m[0] }));
@@ -73,6 +74,8 @@ function patternSpans(text) {
     const s = m.index + m[0].lastIndexOf(m[1]);
     push(s, s + m[1].length, "result");
   }
+  // the composition basis differs per product ("Each 1 mL contains" / "Each 1 L contains") — 28 Nov
+  for (const m of text.matchAll(BASIS_RE)) push(m.index, m.index + m[0].length, "basis");
   return out;
 }
 
@@ -179,9 +182,21 @@ export function findVariableAreas(lines = [], fields = [], { groups = [], confir
     // a header naming product / batch data → the uncovered words of the value row under it,
     // each under its column (a column that is the same on every certificate — ORIGIN — is skipped)
     const cols = headerColumns(h);
-    if (cols.some((c) => c.kind !== "static") && !RESULTS_HEADER.test(h.text) && h.text.trim().split(/\s+/).length <= 12) {
+    // a heading looks like one: in capitals ("BATCH NUMBER ORIGIN PACKAGING") or ending in a colon ("Validity:") —
+    // a sentence that only mentions "product" (an HC's declaration) is no heading (28 Nov)
+    const headingLike = h.text.trim() === h.text.trim().toUpperCase() || /:\s*$/.test(h.text);
+    if (headingLike && cols.some((c) => c.kind !== "static") && !RESULTS_HEADER.test(h.text) && h.text.trim().split(/\s+/).length <= 12) {
       for (const row of rowsBelow(h, usable, 2)) {
-        if (VARIABLE_HEADERS.some(([re]) => re.test(row.text)) || STATIC_ROWS.test(row.text)) continue; // the next header row
+        // the next header row: a label line ("Category:", "BATCH NUMBER ORIGIN") — not a value that only mentions
+        // a header word ("36 months from the production date.")
+        const looksLikeHeader = VARIABLE_HEADERS.some(([re]) => re.test(row.text)) && (/:\s*$/.test(row.text) || row.text === row.text.toUpperCase());
+        if (/^\s*[A-Za-z][A-Za-z .#/()&-]{1,40}:\s*$/.test(row.text)) break; // the next label ("Composition:") ends this one's values
+        if (looksLikeHeader || STATIC_ROWS.test(row.text)) continue;
+        // one label above its value ("Validity:" / "36 months from the production date."): the whole row is the value
+        if (cols.length === 1 && cols[0].kind !== "static") {
+          add(row, 0, row.text.length, cols[0].kind, cols[0].label);
+          continue;
+        }
         const pats = patternSpans(row.text);
         let run = null;
         const flush = () => run && (add(row, run.s, run.e, run.kind, run.label), (run = null));
@@ -195,7 +210,8 @@ export function findVariableAreas(lines = [], fields = [], { groups = [], confir
             continue;
           }
           // a header word on the value row ("ORIGIN" printed under CATEGORY) is a label, not a value
-          const isHeaderWord = STATIC_HEADERS.some((re) => re.test(w.t)) || VARIABLE_HEADERS.some(([re]) => re.test(w.t));
+          // (a header word prints in capitals; "production" in a sentence is a value's word)
+          const isHeaderWord = w.t === w.t.toUpperCase() && /[A-Z]/.test(w.t) && (STATIC_HEADERS.some((re) => re.test(w.t)) || VARIABLE_HEADERS.some(([re]) => re.test(w.t)));
           if (!col || col.kind === "static" || isHeaderWord) {
             flush();
             continue;
@@ -212,7 +228,9 @@ export function findVariableAreas(lines = [], fields = [], { groups = [], confir
     // an analysis / composition table: each row after its test name, until the table ends
     if (RESULTS_HEADER.test(h.text) && h.text.trim().split(/\s+/).length <= 8) {
       for (const row of rowsBelow(h, usable, 40)) {
-        if (STATIC_ROWS.test(row.text) || row.text.trim().split(/\s+/).length > 12) break;
+        // the table ends at a static row, a long sentence, or a label line ("Package Size:", "Notes:") — the
+        // values under such a label are its own (header / inline rules), not table rows (28 Nov, ADDVET COC)
+        if (STATIC_ROWS.test(row.text) || row.text.trim().split(/\s+/).length > 12 || /^\s*[A-Za-z][A-Za-z .#/()&-]{1,40}:\s*(\S.{0,60})?$/.test(row.text) && !/^\s*(?:Each|Every|Contains)\b/i.test(row.text)) break;
         const lead = row.text.match(TEST_NAMES);
         add(row, lead ? lead[0].length : 0, row.text.length, "result", lead ? lead[0].trim() : "Analysis result");
       }
