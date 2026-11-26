@@ -11,8 +11,9 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 C="docker compose -f docker-compose.prod.yml"
 STAMP=$(date +%Y%m%d%H%M)
-SERVICES=$($C config --services 2>/dev/null | grep -E '^mostanad-app$|-worker$' | tr '\n' ' ')
-WORKERS=$($C config --services 2>/dev/null | grep -E -- '-worker$' | tr '\n' ' ')
+# cert-renderer runs the certificate engine (fieldEngine.browser.js is read into its image): built with the rest
+SERVICES=$($C config --services 2>/dev/null | grep -E '^mostanad-app$|-worker$|^cert-renderer$' | tr '\n' ' ')
+WORKERS=$($C config --services 2>/dev/null | grep -E -- '-worker$|^cert-renderer$' | tr '\n' ' ')
 say() { echo "[deploy $(date -u +%H:%M:%S)] $*"; }
 fail() {
   say "FAILED — $*"
