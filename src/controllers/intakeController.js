@@ -70,6 +70,10 @@ export const getHarvest = catchAsync(async (req, res) => {
   res.end();
 });
 
+export const retryHarvest = catchAsync(async (req, res) => {
+  res.status(202).json({ status: "success", data: await intake.retryHarvest(actorOf(req), req.params.id) });
+});
+
 export const getBatch = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await intake.getBatchView(actorOf(req), req.params.id) });
 });

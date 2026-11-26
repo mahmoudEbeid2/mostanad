@@ -257,6 +257,41 @@ services:
       pdf2htmlex:
         condition: service_started
     command: node src/workers/certificateTemplateWorker.js
+
+  # 28 Nov: reading every file of a drop (harvest) — its own container and queue (harvestQueue), so a
+  # read never waits behind template work and a dead worker is restarted (healthcheck: a worker must be
+  # connected to the queue). Logs "harvest worker ready, queue=harvestQueue" on start.
+  harvest-worker:
+    container_name: harvest-worker
+    build: .
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://mostanad_app:${POSTGRES_PASSWORD}@postgres:5432/mostanad_app?schema=public
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_WS_URL=http://mostanad-app:3000
+      - HARVEST_CONCURRENCY=2
+      - HARVEST_FILE_CONCURRENCY=3
+      - HARVEST_TIMEOUT_MIN=6
+      - HARVEST_CALL_TIMEOUT_S=240
+      - GEMINI_MAX_CONCURRENT=4
+    restart: always
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "node", "src/workers/workerHealthcheck.js", "harvest"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mostanad-app:
+        condition: service_started
+    command: node src/workers/harvestWorker.js
     networks:
       - internal
     volumes:

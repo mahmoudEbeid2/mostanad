@@ -1938,3 +1938,17 @@ model ExperimentAudit {
   @@index([companyId, createdAt])
   @@map("experiment_audit")
 }
+
+// 28 Nov: what the AI read in one file, by content and model — a re-dropped file is not read again
+model HarvestFileCache {
+  id        String   @id @default(uuid())
+  sha256    String
+  model     String
+  docType   String?  @map("doc_type")
+  company   String?
+  values    Json // the file's values (file label "F"), verified
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sha256, model])
+  @@map("harvest_file_cache")
+}

@@ -10,6 +10,9 @@ export const QUEUES = {
   invoice: "invoiceQueue", // extract, match
   render: "certificateRenderQueue", // generateBatch, renderVersion, exportPdf, exportZip
   catalogue: "catalogueQueue", // product catalogues (plan.md §15, A6): segment
+  // 28 Nov: reading every file of a drop (harvest) — its own queue, its own container (harvest-worker);
+  // the ONE name the producer (intake, re-harvest) and the worker both use
+  harvest: "harvestQueue",
 };
 
 const connection = getRedisConfig();
@@ -67,4 +70,22 @@ export async function liveJobRefs(queueNames = Object.values(QUEUES)) {
 
 export async function closeQueues() {
   await Promise.all(Object.values(queues).map((q) => q.close()));
+}
+
+/**
+ * Every queue's state for GET /health/workers (28 Nov): how many workers are connected to it (BullMQ's own
+ * client list — a worker that died or never connected counts 0) and its jobs waiting / active / failed / delayed.
+ */
+export async function queueHealth() {
+  const out = {};
+  for (const [key, name] of Object.entries(QUEUES)) {
+    try {
+      const q = queueFor(name);
+      const [workers, counts] = await Promise.all([q.getWorkers(), q.getJobCounts("waiting", "active", "failed", "delayed")]);
+      out[key] = { queue: name, workers: workers.length, ...counts };
+    } catch (err) {
+      out[key] = { queue: name, error: String(err.message).slice(0, 200) };
+    }
+  }
+  return out;
 }

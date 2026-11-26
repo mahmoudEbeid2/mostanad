@@ -27,6 +27,7 @@ import intakeRoutes from "./intakeRoutes.js";
 import { getReviewInbox } from "../controllers/assuranceController.js";
 import { protect, restrictToPermission } from "../middleware/authMiddleware.js";
 import { health as converterHealth } from "../services/certificates/conversion/pdf2htmlexClient.js";
+import { queueHealth } from "../services/certificates/jobs/queues.js";
 
 const router = express.Router();
 
@@ -44,6 +45,14 @@ router.get("/health", async (req, res) => {
     // no tool version (review #18): a public endpoint shouldn't fingerprint the converter build
     converter: { reachable: c.ok, ms: Date.now() - t0 },
   });
+});
+
+// 28 Nov: every queue — workers connected, jobs waiting / active / failed / delayed. Public like /health
+// (counts only); called after every deploy (scripts/deploy.sh): a queue with jobs and 0 workers is broken
+router.get("/health/workers", async (req, res) => {
+  const queues = await queueHealth();
+  const broken = Object.entries(queues).filter(([, q]) => q.error || q.workers === 0).map(([k]) => k);
+  res.status(broken.length ? 503 : 200).json({ status: broken.length ? "degraded" : "ok", broken, queues, time: new Date().toISOString() });
 });
 
 // Mount routes

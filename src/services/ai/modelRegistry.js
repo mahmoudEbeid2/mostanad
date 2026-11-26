@@ -283,4 +283,4 @@ export function harvestModel() {
   return { id: raw };
 }
 // extraction and its verification: full thinking, no randomness
-export const HARVEST_SETTINGS = { temperature: 0, thinkingBudget: -1 };
+export const HARVEST_SETTINGS = { temperature: 0, thinkingBudget: 2048 }; // copying printed values: some thinking, bounded (unbounded made one call 10+ min)

@@ -32,14 +32,14 @@ const PDF_MAX_BYTES = 45 * 1024 * 1024; // Google: a PDF up to 50 MB
 const PAGES_PER_CALL = 400; // well inside a 1M-token window at high resolution
 const PARTS_PER_CALL = 40;
 const VALUES_PER_VERIFY = 300;
-const CALL_TIMEOUT_MS = 15 * 60 * 1000;
+const CALL_TIMEOUT_MS = Math.max(30, Number(process.env.HARVEST_CALL_TIMEOUT_S) || 240) * 1000; // one Gemini call (a Pro model on a 10-page PDF: 80–210 s seen)
 const URI_MARGIN_MS = 60 * 60 * 1000; // a cached file with less than an hour left is sent again
 const UPLOAD_TIMEOUT_MS = 3 * 60 * 1000; // one File API upload (and each status check) — never waited on forever
 const PROCESSING_POLLS = 60; // × 3 s: how long Google may take to make an uploaded file ACTIVE
 // 26 Nov (prod: 5 files "waiting" 0/5 for 8+ minutes): a drop's whole read — queued, uploads, calls —
 // has HARVEST_TIMEOUT_MIN minutes. Past it the files still unread are failed with the reason and
 // Express goes on with the rules reader's facts (they were made at filing).
-export const HARVEST_TIMEOUT_MS = Math.max(1, Number(process.env.HARVEST_TIMEOUT_MIN) || 15) * 60 * 1000;
+export const HARVEST_TIMEOUT_MS = Math.max(1, Number(process.env.HARVEST_TIMEOUT_MIN) || 6) * 60 * 1000; // a whole drop
 export const HARVEST_WAIT_MS = HARVEST_TIMEOUT_MS; // Express waits this long for a drop's read, then goes on
 const GATE_GRACE_MS = 30 * 1000; // the job records its own timeout first; the gate only for a job that never answers
 
@@ -60,6 +60,9 @@ function checkRun(run, what) {
     throw harvestTimeout(what);
   }
 }
+
+/** The harvest model's id, or null (for a log line) */
+export const harvestModelOrNull = () => harvestModel().id;
 
 /** Is the AI reader on? → { on, model, reason } */
 export function aiHarvestAvailable() {
@@ -431,42 +434,92 @@ export function groupsOf(parts) {
  * Read files (each { label, fileId, name, status }) and check what was read. files' status / error /
  * docType / values are set in place; onProgress(done) after each group. → { values, docTypes }
  */
-export async function readAndVerify(files, run, onProgress = async () => {}) {
-  const parts = [];
-  for (const f of files) {
+// 28 Nov (prod: a whole drop in ONE call — ~70k output + 77k thinking tokens — ran 13+ minutes at "0/5"):
+// one call per file, a few files at once; each file shows its own stage and finishes on its own; a file
+// already read (same bytes, same model) is not read again; a failing file is retried twice, then only it fails.
+const FILE_CONCURRENCY = Math.max(1, Number(process.env.HARVEST_FILE_CONCURRENCY) || 3);
+const FILE_ATTEMPTS = 3; // the first try + 2 retries
+const BUSY = ["waiting", "uploading", "reading", "verifying"];
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const arabicReason = (err) =>
+  err?.harvestTimeout || /timed out|timeout|deadline/i.test(String(err?.message))
+    ? `القراية أخدت وقت أكتر من المسموح — الملف ده مااتقراش (${String(err?.message || "").slice(0, 80)})`
+    : `معرفناش نقرا الملف: ${String(err?.message || err).slice(0, 160)}`;
+
+/** One file: cache, else upload → read → verify (retried), its stage kept on f. → { values, docType } */
+async function readOneFile(f, run, onProgress) {
+  const { buffer, row } = await fileStore.readFile(f.fileId);
+  const hit = row.sha256 ? await prisma.harvestFileCache.findUnique({ where: { sha256_model: { sha256: row.sha256, model: run.model } } }) : null;
+  if (hit) {
+    const values = (hit.values || []).map((v) => ({ ...v, file: f.label }));
+    Object.assign(f, { status: "read", cached: true, docType: hit.docType, values: values.length, error: null });
+    await onProgress();
+    return { values, docType: hit.docType ? { docType: hit.docType, company: hit.company || null } : null };
+  }
+  const { parts, skipped } = await partsOf({ label: f.label, name: f.name, buffer, mimeType: row.mimeType });
+  if (skipped) {
+    Object.assign(f, { status: "skipped", error: skipped });
+    await onProgress();
+    return { values: [], docType: null };
+  }
+  let lastErr = null;
+  for (let attempt = 1; attempt <= FILE_ATTEMPTS; attempt++) {
     try {
-      const { buffer, row } = await fileStore.readFile(f.fileId);
-      const r = await partsOf({ label: f.label, name: f.name, buffer, mimeType: row.mimeType });
-      if (r.skipped) Object.assign(f, { status: "skipped", error: r.skipped });
-      parts.push(...r.parts);
+      checkRun(run, "reading the files");
+      Object.assign(f, { status: "uploading", error: null, attempt });
+      await onProgress();
+      for (const p of parts) await geminiRef(p, run); // cached by content: uploaded once
+      f.status = "reading";
+      await onProgress();
+      const read = await readGroup(parts, run);
+      if (read.failed.length && !read.values.length) throw new Error(read.failed[0].error);
+      f.status = "verifying";
+      await onProgress();
+      const checked = await verifyGroup(parts, read.values, run);
+      const d = read.files.find((x) => DOC_TYPES.includes(x.docType));
+      if (row.sha256) {
+        // stored for the next drop of the same bytes (the label is the drop's own)
+        await prisma.harvestFileCache
+          .upsert({ where: { sha256_model: { sha256: row.sha256, model: run.model } }, create: { sha256: row.sha256, model: run.model, docType: d?.docType || null, company: d?.company || null, values: checked.map((v) => ({ ...v, file: "F" })) }, update: {} })
+          .catch((err) => console.error(`[harvest] cache ${f.name}: ${err.message}`));
+      }
+      Object.assign(f, { status: "read", docType: d?.docType || null, values: checked.length, error: null });
+      await onProgress();
+      return { values: checked, docType: d ? { docType: d.docType, company: d.company || null } : null };
     } catch (err) {
-      Object.assign(f, { status: "failed", error: String(err.message).slice(0, 200) });
+      lastErr = err;
+      if (err.harvestTimeout) break; // the drop's time is up: no retry
+      console.error(`[harvest] ${f.name}: attempt ${attempt}/${FILE_ATTEMPTS} failed — ${err.message}`);
+      if (attempt < FILE_ATTEMPTS) await sleepMs(5000 * attempt);
     }
   }
-  const values = [];
-  const docTypes = {};
-  const settled = () => files.filter((f) => !["waiting", "reading"].includes(f.status)).length;
-  await onProgress(settled(), "uploading");
-  for (const group of groupsOf(parts)) {
-    // the card shows which files are being read now (one group = one call: they finish together)
-    const inGroup = new Set(group.map((p) => p.label));
-    for (const f of files) if (inGroup.has(f.label) && f.status === "waiting") f.status = "reading";
-    await onProgress(settled(), "reading");
-    const read = await readGroup(group, run);
-    for (const d of read.files) if (DOC_TYPES.includes(d.docType)) docTypes[d.file] = { docType: d.docType, company: d.company || null };
-    const failed = new Set(read.failed.map((x) => x.label));
-    await onProgress(settled(), "verifying");
-    const checked = await verifyGroup(group.filter((p) => !failed.has(p.label)), read.values, run);
-    values.push(...checked);
-    for (const label of new Set(group.map((p) => p.label))) {
-      const f = files.find((x) => x.label === label);
-      const fail = read.failed.find((x) => x.label === label);
-      // a file split in parts counts as failed only when none of it was read
-      if (fail && !read.values.some((v) => v.file === label)) Object.assign(f, { status: "failed", error: fail.error });
-      else if (["waiting", "reading"].includes(f.status)) Object.assign(f, { status: "read", docType: docTypes[label]?.docType || null, values: checked.filter((v) => v.file === label).length });
+  Object.assign(f, { status: "failed", error: arabicReason(lastErr) });
+  await onProgress();
+  return { values: [], docType: null };
+}
+
+export async function readAndVerify(files, run, onProgress = async () => {}, sink = { values: [], docTypes: {} }) {
+  // (each file's values land in `sink` as soon as it is read: a drop cut at its deadline keeps them)
+  const { values, docTypes } = sink;
+  const settled = () => files.filter((f) => !BUSY.includes(f.status)).length;
+  const report = () => onProgress(settled(), files.some((f) => f.status === "verifying") ? "verifying" : files.some((f) => f.status === "reading") ? "reading" : files.some((f) => f.status === "uploading") ? "uploading" : "reading");
+  await report();
+  // a few files at once; each finishes (or fails) on its own
+  const queue = [...files];
+  const lanes = Array.from({ length: Math.min(FILE_CONCURRENCY, queue.length) }, async () => {
+    for (let f = queue.shift(); f; f = queue.shift()) {
+      try {
+        const r = await readOneFile(f, run, report);
+        values.push(...r.values);
+        if (r.docType) docTypes[f.label] = r.docType;
+      } catch (err) {
+        Object.assign(f, { status: "failed", error: arabicReason(err) });
+        await report();
+        if (err.harvestTimeout) throw err;
+      }
     }
-    await onProgress(settled(), "reading");
-  }
+  });
+  await Promise.all(lanes);
   return { values, docTypes };
 }
 
@@ -487,7 +540,7 @@ export async function failHarvest(batchId, error, files = null) {
   const h = b?.harvest;
   if (!h || !["queued", "running"].includes(h.status)) return false;
   const why = String(error).slice(0, 300);
-  const list = (files || h.files || []).map((f) => (["waiting", "reading"].includes(f.status) ? { ...f, status: "failed", error: why } : f));
+  const list = (files || h.files || []).map((f) => (BUSY.includes(f.status) ? { ...f, status: "failed", error: why } : f));
   const patch = { status: "failed", error: why, files: list, done: list.length, finishedAt: new Date().toISOString() };
   const n = await prisma.$executeRaw`UPDATE intake_batches SET harvest = harvest || ${JSON.stringify(patch)}::jsonb, updated_at = NOW() WHERE id = ${batchId} AND harvest->>'status' IN ('queued', 'running')`;
   if (n) console.error(`[harvest] drop ${batchId}: read failed — ${why}`);
@@ -497,7 +550,7 @@ export async function failHarvest(batchId, error, files = null) {
 /** The drop's whole files (not a bundle's page items, not a .zip container) */
 async function dropFiles(batchId) {
   const items = await prisma.intakeItem.findMany({ where: { batchId, fileId: { not: null }, pageFrom: null }, orderBy: { createdAt: "asc" } });
-  return items.filter((i) => !/\.zip$/i.test(i.name) && i.status !== "duplicate");
+  return items.filter((i) => !/\.zip$/i.test(i.name)); // a duplicate too: its earlier read is reused (cache), or it is read
 }
 
 async function knownList(batch) {
@@ -537,9 +590,15 @@ export async function runDropHarvest(batchId, ctx = {}) {
     await failHarvest(batchId, harvestTimeout("waiting in the queue").message);
     return { status: "failed", reason: "timeout" };
   }
-  const items = await dropFiles(batchId);
-  const files = items.map((it, i) => ({ label: `F${i + 1}`, itemId: it.id, fileId: it.fileId, name: it.name, status: "waiting", error: null }));
-  await setHarvest(batchId, { status: "running", model: avail.model, done: 0, total: files.length, files, startedAt: new Date(queuedAt).toISOString(), runningAt: new Date().toISOString(), finishedAt: null, error: null, values: [], applied: false });
+  // «إعادة قراءة»: only the files that weren't read are read again; what was read stays
+  const retry = batch.harvest?.retry === true && Array.isArray(batch.harvest?.files) && batch.harvest.files.length;
+  const items = retry ? [] : await dropFiles(batchId);
+  const files = retry
+    ? batch.harvest.files.map((f) => (["failed", "skipped"].includes(f.status) ? { ...f, status: "waiting", error: null } : f))
+    : items.map((it, i) => ({ label: `F${i + 1}`, itemId: it.id, fileId: it.fileId, name: it.name, status: "waiting", error: null }));
+  const kept = retry ? (batch.harvest.values || []).filter((v) => files.find((f) => f.label === v.file)?.status === "read") : [];
+  const keptTypes = retry ? batch.harvest.docTypes || {} : {};
+  await setHarvest(batchId, { status: "running", retry: false, model: avail.model, done: files.filter((f) => f.status === "read").length, total: files.length, files, startedAt: new Date(queuedAt).toISOString(), runningAt: new Date().toISOString(), finishedAt: null, error: null, values: kept, applied: false });
   console.log(`[harvest] drop ${batchId}: reading ${files.length} file(s) with ${avail.model}, ${Math.round((deadline - Date.now()) / 1000)} s left`);
   const run = { model: avail.model, known: null, deadline, cancelled: false, ledgerCtx: { entityType: "intake_batch", entityId: batchId, ...(batch.companyId ? { companyId: batch.companyId } : {}) } };
   const progress = async (done, stage) => {
@@ -551,10 +610,12 @@ export async function runDropHarvest(batchId, ctx = {}) {
   let values;
   let docTypes;
   let timer;
+  const sink = { values: [], docTypes: {} };
   try {
     run.known = await knownList(batch);
     // the read itself, or the deadline — whichever comes first (a hung upload / call never holds Express)
-    const reading = readAndVerify(files, run, progress);
+    // (a retry reads only the files still waiting; the read ones are kept as they are)
+    const reading = readAndVerify(files.filter((f) => f.status === "waiting"), run, () => progress(files.filter((f) => !BUSY.includes(f.status)).length, "reading"), sink);
     // a read given up on still ends (its call returns or times out): said, never unhandled
     reading.catch((err) => run.cancelled && console.warn(`[harvest] drop ${batchId}: the stopped read ended: ${err.message}`));
     const out = await Promise.race([
@@ -564,10 +625,19 @@ export async function runDropHarvest(batchId, ctx = {}) {
       }),
     ]);
     ({ values, docTypes } = out);
+    values = [...kept, ...values];
+    docTypes = { ...keptTypes, ...docTypes };
   } catch (err) {
     run.cancelled = true; // a call still in flight sends nothing more and writes nothing
-    await failHarvest(batchId, err.message, files);
-    throw err;
+    if (!err.harvestTimeout || !sink.values.length) {
+      await failHarvest(batchId, err.message, files);
+      throw err;
+    }
+    // out of time with some files read: those are kept and used; only the unfinished files failed (each says why)
+    for (const f of files) if (BUSY.includes(f.status)) Object.assign(f, { status: "failed", error: arabicReason(err) });
+    values = [...kept, ...sink.values];
+    docTypes = { ...keptTypes, ...sink.docTypes };
+    console.warn(`[harvest] drop ${batchId}: out of time — ${files.filter((f) => f.status === "read").length}/${files.length} read, the rest failed`);
   } finally {
     clearTimeout(timer);
   }
@@ -741,4 +811,20 @@ export async function harvestStoredAi(companyId, files, { force = false, progres
   progress?.(95, "Filling the products");
   const merged = await mergeAll(companyId);
   return { files: files.length, read: rows.filter((f) => f.status === "read").length, skipped: files.length - list.length, failed: rows.filter((f) => f.status === "failed").map((f) => ({ name: f.name, error: f.error })), values: values.length, review: values.filter((v) => v.reviewStatus !== "confirmed").length, facts, ...merged };
+}
+
+/**
+ * The deploy's smoke read (scripts/deploy.sh): one small PDF through the real path — File API upload → URI →
+ * generateContent — against a short deadline. → { values, model, ms }
+ */
+export async function readSmokePdf(buffer, name = "smoke.pdf", timeoutMs = 100_000) {
+  const avail = aiHarvestAvailable();
+  if (!avail.on) throw new Error(`the harvest is off: ${avail.reason}`);
+  const t0 = Date.now();
+  const run = { model: avail.model, known: "Known products: none.", deadline: Date.now() + timeoutMs, cancelled: false, ledgerCtx: { entityType: "harvest_smoke", entityId: "deploy" } };
+  const { parts } = await partsOf({ label: "F1", name, buffer, mimeType: "application/pdf" });
+  for (const p of parts) await geminiRef(p, run);
+  const read = await readGroup(parts, run);
+  if (read.failed.length && !read.values.length) throw new Error(read.failed[0].error);
+  return { values: read.values.length, fields: read.values.map((v) => `${v.field}=${v.value}`).slice(0, 6), model: avail.model, ms: Date.now() - t0 };
 }

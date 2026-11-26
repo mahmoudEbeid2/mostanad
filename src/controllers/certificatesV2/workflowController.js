@@ -86,7 +86,7 @@ export const reharvest = catchAsync(async (req, res, next) => {
   const companyId = req.company ? req.company.id : req.params.id;
   if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
   if (!(await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } }))) return next(new AppError("Company not found!", 404));
-  const task = await enqueueTask({ queueName: QUEUES.template, jobName: "reharvestCompany", type: "company_reharvest", companyId, data: { entity: "company", entityId: companyId, companyId } });
+  const task = await enqueueTask({ queueName: QUEUES.harvest, jobName: "reharvestCompany", type: "company_reharvest", companyId, data: { entity: "company", entityId: companyId, companyId } });
   ok(res, { taskId: task.id }, 202);
 });
 

@@ -26,6 +26,8 @@ const targets = [
   { name: "cert-template-worker", script: "src/workers/certificateTemplateWorker.js" },
   { name: "invoice-worker", script: "src/workers/invoiceWorker.js" },
   { name: "cert-render-worker", script: "src/workers/certificateRenderWorker.js" },
+  // reading every file of a drop (its own queue; in production its own container: harvest-worker)
+  { name: "harvest-worker", script: "src/workers/harvestWorker.js" },
 ];
 
 // Tried Node's built-in --watch here first (no new dependency, matches

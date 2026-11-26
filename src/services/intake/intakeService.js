@@ -153,6 +153,23 @@ export function harvestProgress(h) {
   };
 }
 
+/**
+ * POST /intake/batches/:id/harvest/retry — «إعادة قراءة»: the files that weren't read are read again (the
+ * read ones are kept); the values then fill the products like the first read. → the progress
+ */
+export async function retryHarvest(actor, id) {
+  const batch = await loadBatch(actor, id);
+  const h = batch.harvest;
+  if (!h?.files?.length) throw new AppError("This drop's files were never read", 409);
+  if (["queued", "running"].includes(h.status)) throw new AppError("The files are being read now", 409);
+  if (!h.files.some((f) => ["failed", "skipped"].includes(f.status))) throw new AppError("Every file was read", 409);
+  const avail = aiHarvestAvailable();
+  if (!avail.on) throw new AppError(`The AI reader is off: ${avail.reason}`, 409);
+  await prisma.intakeBatch.update({ where: { id }, data: { harvest: { ...h, status: "queued", retry: true, startedAt: new Date().toISOString(), error: null } } });
+  await enqueueTask({ queueName: QUEUES.harvest, jobName: "harvestDrop", type: "intake_harvest", companyId: batch.companyId, data: { entity: "intake_batch", entityId: id, batchId: id } });
+  return getHarvest(actor, id);
+}
+
 /** GET /intake/batches/:id/harvest — the read's progress (the stream sends it as it moves) */
 export async function getHarvest(actor, id) {
   const batch = await loadBatch(actor, id);
@@ -171,7 +188,7 @@ async function startDropHarvest(batch) {
     return;
   }
   await prisma.intakeBatch.update({ where: { id: batch.id }, data: { harvest: { status: "queued", model: avail.model, startedAt: new Date().toISOString() } } });
-  await enqueueTask({ queueName: QUEUES.template, jobName: "harvestDrop", type: "intake_harvest", companyId: batch.companyId, data: { entity: "intake_batch", entityId: batch.id, batchId: batch.id } });
+  await enqueueTask({ queueName: QUEUES.harvest, jobName: "harvestDrop", type: "intake_harvest", companyId: batch.companyId, data: { entity: "intake_batch", entityId: batch.id, batchId: batch.id } });
 }
 
 // ── the review card ─────────────────────────────────────────────────────────
