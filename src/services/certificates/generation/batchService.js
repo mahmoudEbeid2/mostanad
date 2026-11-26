@@ -15,6 +15,7 @@ import { isProtected } from "../inference/policy.js";
 import { allocateDocNumber } from "./docNumbers.js";
 import { experimentFor, watermarkHtml, audit as experimentAudit } from "../experiment/experimentMode.js";
 import { experimentFill } from "../experiment/experimentFill.js";
+import { notApplicable } from "../labResults/applicability.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -260,6 +261,9 @@ export function resolveWithNeed(field, ctx, need) {
     // who confirmed it travels with the value (plan.md §14.4: the tier, evidence and the person, forever)
     return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
+  // Sterility / Pyrogen on an oral product: "N/A" by rule, shown with why — never asked every time (27 Nov QA)
+  const na = notApplicable(field, ctx.product);
+  if (na) return { value: na.value, resolved: na.value, flags: [], origin: "auto", provenance: { kind: "rule", rule: "not_applicable_oral", basis: na.basis } };
   const r = resolveField(field, ctx);
   const out = { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
   // 28 Nov: where a product value came from travels with it — a file (the source chip: file, page,

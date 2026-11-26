@@ -458,12 +458,20 @@ export function expressSteps(batch, items, ex) {
   if (ex.stage === "done") {
     const why = g.problemCode ? PROBLEM_AR[g.problemCode] : !certs ? PROBLEM_AR.no_templates : null;
     const fix = !certs ? (g.problemCode === "no_products" ? "add_products" : g.problemCode === "template_not_ready" ? "open_templates" : canMake ? "make_templates" : "open_templates") : null;
+    for (const n of ex.notMade || (certs ? [] : notMadeTypes(ex.requestedTypes))) steps.push({ key: `not_made_${n.code}`, status: "warn", ar: n.ar, en: n.en });
     steps.push({ key: "certificates", status: certs ? (g.missing?.length ? "warn" : "ok") : "fail", ar: certs ? `اتعمل ${certs} شهادة (مسودة)${g.missing?.length ? ` · ${g.missing.length} ناقصة قالب` : ""}` : `اتعمل 0 شهادات — ${why}`, en: certs ? `${certs} draft certificate(s)` : `0 certificates — ${g.problem || "no template"}`, ...(fix ? { fix } : {}) });
   }
   const FIX_AR = { make_templates: "اعمل قوالب من الملفات دي", open_templates: "افتح القوالب وحدد أماكنها", add_products: "ضيف المنتجات" };
   const last = steps[steps.length - 1];
   const summary = ex.stage === "done" ? { ok: certs > 0, ar: certs ? last.ar : `${last.ar}${last.fix ? ` — ${FIX_AR[last.fix]}` : ""}`, en: last.en } : null;
   return { steps: steps.map((s) => ({ ...s, ok: s.status === "ok", ...(s.fix ? { fixAr: FIX_AR[s.fix] } : {}) })), summary };
+}
+
+/** The asked types no certificate was made for → [{ code, ar, en }] */
+export function notMadeTypes(asked = [], made = new Set()) {
+  return [...new Set((asked || []).map((c) => String(c).toUpperCase()))]
+    .filter((c) => !made.has(c))
+    .map((code) => ({ code, ar: `قالب الـ ${code} لسه مش جاهز — متعملتش ${code}`, en: `${code} template isn't ready yet — no ${code} was made` }));
 }
 
 /** Step 3: the drafts made → their list (what each still needs) + the ZIP / combined PDF. → true when finished */
@@ -521,7 +529,11 @@ async function collect(batch, ex) {
   const files = (await prisma.intakeItem.count({ where: { batchId: batch.id, parentId: null } })) || 0;
   const products = new Set(list.flatMap((c) => c.products));
   const ready = list.filter((c) => c.status === "draft" && !missing.some((m) => m.certificateId === c.id)).length;
-  ex.replyAr = [`قريت ${files} ملف`, `شركة ${company?.name || "—"}`, `${products.size} منتج`, `${ready} شهادة جاهزة`, missing.length ? `ناقص: ${missing.reduce((n, m) => n + m.items.length, 0)} خانة في ${missing.length} شهادة` : "مفيش حاجة ناقصة"].join(" — ");
+  // a type asked for that made nothing says so, never a silent 0 (27 Nov QA: the FSC template is switched off
+  // until it passes its check — "FSC template isn't ready yet — no FSC was made")
+  const made = new Set(list.map((c) => c.type));
+  ex.notMade = notMadeTypes(ex.requestedTypes, made);
+  ex.replyAr = [`قريت ${files} ملف`, `شركة ${company?.name || "—"}`, `${products.size} منتج`, `${ready} شهادة جاهزة`, missing.length ? `ناقص: ${missing.reduce((n, m) => n + m.items.length, 0)} خانة في ${missing.length} شهادة` : "مفيش حاجة ناقصة", ...ex.notMade.map((n) => n.ar)].join(" — ");
   return true;
 }
 

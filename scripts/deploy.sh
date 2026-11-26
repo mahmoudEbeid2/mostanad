@@ -17,6 +17,7 @@ WORKERS=$($C config --services 2>/dev/null | grep -E -- '-worker$|^cert-renderer
 say() { echo "[deploy $(date -u +%H:%M:%S)] $*"; }
 fail() {
   say "FAILED — $*"
+  stop_probe
   $C --profile deploy rm -sf mostanad-app-next >/dev/null 2>&1 # the twin runs the new code: never left serving
   say "rolling back to the previous images"
   for s in $SERVICES; do
@@ -31,6 +32,27 @@ fail() {
   exit 1
 }
 inapp() { docker exec mostanad-app node -e "$1"; }
+
+# uptime probe (27 Nov QA): the public /health (through Traefik, as people reach it) every second while the
+# API is restarted; every answer is logged, the count of non-200s printed — the proof there was no gap
+PROBE_URL="${PROBE_URL:-https://backend.dossira.tech/api/v1/health}"
+PROBE_LOG="/root/backups/uptime_$STAMP.log"
+PROBE_PID=""
+start_probe() {
+  : > "$PROBE_LOG"
+  ( while :; do echo "$(date -u +%H:%M:%S) $(curl -s -o /dev/null -m 2 -w '%{http_code}' "$PROBE_URL")" >> "$PROBE_LOG"; sleep 1; done ) &
+  PROBE_PID=$!
+}
+stop_probe() {
+  [ -n "$PROBE_PID" ] || return 0
+  kill "$PROBE_PID" 2>/dev/null
+  PROBE_PID=""
+  local total bad
+  total=$(wc -l < "$PROBE_LOG")
+  bad=$(grep -vc ' 200$' "$PROBE_LOG")
+  say "uptime probe: $total checks, $bad not 200 (log $PROBE_LOG)"
+  [ "$bad" = 0 ] || grep -v ' 200$' "$PROBE_LOG" | head -10 | sed 's/^/[deploy]   /'
+}
 
 say "backup"
 $C exec -T postgres pg_dump -U mostanad_app -Fc mostanad_app > "/root/backups/mostanad_predeploy_$STAMP.dump" || { say "backup failed — nothing changed"; exit 1; }
@@ -47,6 +69,7 @@ $C build $SERVICES > "/root/backups/build_$STAMP.log" 2>&1 || { say "build faile
 
 # zero downtime (27 Nov QA: each deploy took the API down 20–40 s): a twin on the new image takes the
 # traffic first (same Traefik service, routed once healthy), the API restarts behind it, the twin goes
+start_probe
 say "start the API (a twin on the new image answers meanwhile)"
 twin=0
 if $C --profile deploy up -d --no-deps --no-build mostanad-app-next >/dev/null 2>&1; then
@@ -85,6 +108,7 @@ done
 say "queues: $out"
 [ $ok = 1 ] || fail "a queue has no connected worker: $out"
 
+stop_probe
 say "harvest smoke (a small PDF read end to end, 2 min at most)"
 docker exec mostanad-app node scripts/harvestSmoke.js || fail "the harvest smoke test didn't pass (docker logs harvest-worker)"
 

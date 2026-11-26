@@ -89,5 +89,17 @@ console.log("6/7 · the MO's batch facts");
 assert("«Oct-26» / «Oct-29» → 10/2026, 10/2029 (as the template prints month/year)", applyFormat(isoOf("Oct-26"), { date: "MM/YYYY" }).value === "10/2026" && applyFormat(isoOf("Oct-29"), { date: "MM/YYYY" }).value === "10/2029");
 assert("a batch size keeps its unit («240 KG»)", parseBatchLine("OLIGOVET حجم 240 KG", { products: ["OLIGOVET"] })[0]?.batchSize === "240 KG");
 
+console.log("follow-ups · Sterility / Pyrogen by route, a type made nothing");
+const { notApplicable, routeOf } = await import("../../src/services/certificates/labResults/applicability.js");
+const ster = { key: "result_sterility", label: "Sterility result", isLabResult: true };
+assert("an oral liquid supplement: Sterility «N/A» by rule (never asked)", notApplicable(ster, { name: "H-DURIN", physicalForm: "LIQUID", productType: "Supplement" })?.value === "N/A");
+assert("a powder: «N/A»", notApplicable({ ...ster, key: "result_pyrogen", label: "Pyrogen result" }, { name: "X", physicalForm: "Powder" })?.value === "N/A");
+assert("an injectable keeps it asked", notApplicable(ster, { name: "OLIGOVET", physicalForm: "LIQUID", productType: "Injectable" }) === null && routeOf({ productType: "Injectable" }) === "injectable");
+assert("a route the data doesn't settle keeps it asked", notApplicable(ster, { name: "Y", physicalForm: "LIQUID" }) === null);
+assert("other results are never touched (pH)", notApplicable({ key: "result_ph", label: "pH result", isLabResult: true }, { physicalForm: "Powder" }) === null);
+const { notMadeTypes } = await import("../../src/services/intake/expressService.js");
+const nm = notMadeTypes(["fsc", "COC"], new Set(["COC"]));
+assert("an asked type that made nothing says so, in both languages", nm.length === 1 && nm[0].ar === "قالب الـ FSC لسه مش جاهز — متعملتش FSC" && nm[0].en === "FSC template isn't ready yet — no FSC was made", nm);
+
 console.log(`\n📊 RESULTS: ${counts.passed} passed / ${counts.failed} failed / ${counts.passed + counts.failed} total`);
 process.exit(counts.failed ? 1 : 0);

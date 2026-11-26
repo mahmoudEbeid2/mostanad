@@ -273,7 +273,9 @@ export async function getRequest(id, companyId) {
       } else {
         const entry = t && plan.entries.find((e) => e.certificateTypeId === t.id && e.invoiceItemIds.includes(line.id));
         const why = !line.productId ? (line.data?.extra?.match === "new_pack" ? "new_pack" : "unmatched") : !t ? "no_type" : !entry ? "no_template" : !ready[entry.templateVersionId]?.ready ? "not_ready" : "not_generated";
-        cell = { status: "awaiting_inputs", missing: [{ code: why, ar: MISSING_AR[why], ...(why === "not_ready" ? { link: ready[entry.templateVersionId].link } : {}) }] };
+        // no active template: said plainly, per type (27 Nov QA: the FSC template is off until it passes its check)
+        const text = why === "no_template" ? { ar: `قالب الـ ${code} لسه مش جاهز — متعملتش ${code}`, en: `${code} template isn't ready yet — no ${code} was made` } : { ar: MISSING_AR[why] };
+        cell = { status: "awaiting_inputs", missing: [{ code: why, ...text, ...(why === "not_ready" ? { link: ready[entry.templateVersionId].link } : {}) }] };
       }
       cells[code] = cell;
       if (!["approved", "exported"].includes(cell.status)) outstanding.push({ lineNo: line.lineNo, product: line.product?.name || line.data?.name, code, status: cell.status, needs: cell.missing?.length ? cell.missing.map((m) => m.ar) : [STEP_NEED[cell.status]].filter(Boolean) });
