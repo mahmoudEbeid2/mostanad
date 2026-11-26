@@ -11,13 +11,14 @@ import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
 import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
 import { startGeneration } from "../certificates/generation/batchService.js";
 import { inferProductGaps } from "../harvest/harvestInfer.js";
-import { fromDocuments, missingFor, missingMessageAr } from "../certificates/generation/batchAnswer.js";
+import { fromDocuments, missingFor, missingMessageAr, setRequestConsignee } from "../certificates/generation/batchAnswer.js";
 import { numberingQuestionAr } from "../certificates/generation/docNumbers.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
 import { listFields, replaceFields } from "../certificates/templates/fieldService.js";
 import { productTableFrom } from "../certificates/templates/productTable.js";
+import { partyFields } from "../certificates/templates/partyBlocks.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -28,17 +29,22 @@ export async function blankOpenAreas(versionId, companyId, { extraAreas = [] } =
   const r = await getReadiness(versionId, companyId);
   // + the lines the page diff saw change between the file's pages that no rule found (Phase 2)
   const open = [...r.areas.filter((a) => !a.staticConfirmed), ...extraAreas.filter((x) => !r.areas.some((a) => a.lineId === x.lineId))];
-  if (!open.length) return 0;
   const [version, company, existing, last] = await Promise.all([
     prisma.templateVersion.findUnique({ where: { id: versionId }, select: { lines: true } }),
-    prisma.company.findUnique({ where: { id: companyId }, select: { profile: true } }),
-    prisma.templateField.findMany({ where: { versionId }, select: { key: true } }),
+    prisma.company.findUnique({ where: { id: companyId }, select: { name: true, profile: true } }),
+    prisma.templateField.findMany({ where: { versionId }, select: { key: true, lineId: true } }),
     prisma.templateField.aggregate({ where: { versionId }, _max: { sortOrder: true } }),
   ]);
+  // the party blocks (EXPORTER / CONSIGNEE): every line of them a field — the company record and the
+  // shipment's invoice, never the sample's consignee; they claim their lines before the rules' places
+  const marked = new Set(existing.map((f) => f.lineId));
+  const parties = partyFields(version.lines || [], { companyNames: [company?.profile?.producerName, company?.name] }).filter((f) => !marked.has(f.lineId));
+  const partyLines = new Set(parties.map((f) => f.lineId));
   // 28 Nov: each place filled from what it is (product data, composition row, specification, document
   // number, issue date, batch fact); only what nothing can fill stays a flagged blank
   const type = await prisma.templateVersion.findUnique({ where: { id: versionId }, select: { template: { select: { certificateType: { select: { code: true } } } } } });
-  const mapped = fieldsForAreas(open, version.lines || [], { dateFormat: company?.profile?.dateFormat || null, certCode: type?.template?.certificateType?.code || null });
+  const mapped = [...parties, ...fieldsForAreas(open.filter((a) => !partyLines.has(a.lineId)), version.lines || [], { dateFormat: company?.profile?.dateFormat || null, certCode: type?.template?.certificateType?.code || null })];
+  if (!mapped.length) return 0;
   const taken = new Set(existing.map((f) => f.key));
   const rows = mapped.map((f, i) => {
     let key = f.key;
@@ -82,7 +88,21 @@ async function save(batchId, express) {
 
 /** A design whose page lists several products in one table (an FSC listing 5 items): its rows can't be filled automatically. */
 // A bundle (one certificate per page: ADDVET's 10-page COA / COC) is NOT a table — its template is its first page (Phase 7 found it)
-const listsSeveralProducts = (item) => !item.pageFrom && !(item.classification?.parts || []).length && !["bundle", "bundle_template"].includes(item.result?.plan?.action) && (item.classification?.productNames || []).length >= 2;
+const listable = (item) => !item.pageFrom && !(item.classification?.parts || []).length && !["bundle", "bundle_template"].includes(item.result?.plan?.action);
+const normName = (s) => String(s || "").toUpperCase().replace(/[*•]/g, "").replace(/\s+/g, " ").trim();
+
+/**
+ * The products a design lists in one table: the ones the classification named, else (28 Nov: ADDVET's HC
+ * "ATTACHED LIST" — the classification named none) the company's products printed as the design's own lines
+ */
+async function listedNames(item, versionId, companyId) {
+  const named = item.classification?.productNames || [];
+  if (named.length >= 2) return named;
+  const v = await prisma.templateVersion.findUnique({ where: { id: versionId }, select: { lines: true } });
+  const printed = new Set((v?.lines || []).map((l) => normName(l.text)));
+  const products = await prisma.product.findMany({ where: { companyId }, select: { name: true } });
+  return products.map((p) => p.name).filter((n) => normName(n).length >= 3 && printed.has(normName(n)));
+}
 
 // filed now, or a duplicate that took what its earlier filing became (intakeExecute.adoptDuplicates)
 const usable = (i) => i.status === "done" || (i.status === "duplicate" && !!i.result?.reused);
@@ -97,8 +117,7 @@ async function record(batchId, entityType, row, companyId, itemId = null) {
  * it), then its product column becomes one repeating row (productTableFrom) and the template one
  * certificate per order (per_invoice). → { cur, pending } — cur.tableReady once the copy has its row
  */
-async function productTableStep(batch, item, t, cur) {
-  const names = item.classification?.productNames || [];
+async function productTableStep(batch, item, t, cur, names) {
   const needsPerson = (why) => ({ cur: { ...cur, status: "needs_table", why: `lists ${names.length} products in one table: ${why} — set up its product rows on the template screen` }, pending: false });
   const base = await prisma.templateVersion.findUnique({ where: { id: t.versionId }, select: { status: true, backgroundFormat: true, template: { select: { companyId: true } } } });
   if (!base) return needsPerson("the template is gone");
@@ -146,7 +165,13 @@ async function settleTemplates(batch, items, ex) {
   const templates = { ...(ex.templates || {}) };
   let pending = false;
   for (const item of items.filter((i) => usable(i) && i.result?.template?.versionId)) {
-    const t = item.result.template;
+    let t = item.result.template;
+    // a duplicate takes its template as it is now: the active version, not the draft its first filing
+    // made (28 Nov: ADDVET's HC v1 — page 1 only, failed preparation — was mapped again on every drop)
+    if (item.status === "duplicate") {
+      const tpl = await prisma.certificateTemplate.findUnique({ where: { id: t.templateId }, select: { activeVersionId: true } });
+      if (tpl?.activeVersionId && tpl.activeVersionId !== t.versionId) t = { ...t, versionId: tpl.activeVersionId, fields: "done" };
+    }
     const key = t.versionId; // the card's row; the version worked on may be its product-table copy
     const cur0 = templates[key] || { code: t.code, file: item.name, templateId: t.templateId, link: item.result.link };
     if (["active", "needs_table", "failed", "no_fields"].includes(cur0.status)) {
@@ -156,8 +181,11 @@ async function settleTemplates(batch, items, ex) {
     // a design listing several products in one table (an FSC, an HC's attached list): its rows
     // become ONE repeating row filled from each product, so one certificate covers them all
     let cur = cur0;
-    if (listsSeveralProducts(item) && !cur.tableReady) {
-      const step = await productTableStep(batch, item, t, cur);
+    const draft = !cur.tableReady && listable(item) && (await prisma.templateVersion.findUnique({ where: { id: t.versionId }, select: { status: true, template: { select: { companyId: true } } } }));
+    const names = draft && ["draft", "uploaded", "converting"].includes(draft.status) ? cur.listNames || (await listedNames(item, t.versionId, draft.template.companyId)) : [];
+    if (names.length >= 2) {
+      cur = { ...cur, listNames: names };
+      const step = await productTableStep(batch, item, t, cur, names);
       templates[key] = step.cur;
       if (step.pending) pending = true;
       if (!step.cur.tableReady) continue;
@@ -281,6 +309,22 @@ async function requestScope(batch, items, companyId, ex) {
   return [...new Set([...fromFiles, ...named])].map((productId) => ({ productId }));
 }
 
+/**
+ * The consignee of the shipment: from an invoice of the drop whose lines are this shipment's products —
+ * never an unrelated invoice's buyer (28 Nov: a Pakistani buyer's invoice in a drop for an Oman shipment).
+ * → { customerName, … } | null
+ */
+async function shipmentConsignee(items, companyId, productIds) {
+  const ids = items.filter((i) => usable(i) && i.result?.invoiceId && !i.result?.attached).map((i) => i.result.invoiceId);
+  if (!ids.length) return null;
+  const invoices = await prisma.invoice.findMany({ where: { id: { in: ids }, companyId }, select: { header: true, items: { select: { productId: true } } } });
+  const covering = invoices.find((v) => v.header?.customerName && v.items.some((i) => i.productId && productIds.includes(i.productId)));
+  if (!covering) return null;
+  const h = covering.header;
+  const text = (x) => (typeof x === "string" ? x.trim() : "") || null;
+  return { customerName: text(h.customerName), customerAddress: text(h.customerAddress), customerCountry: text(h.customerCountry), customerPhone: text(h.customerPhone) };
+}
+
 /** Step 2: one run for every product of the drop × the types (asked, or every one with a template now). */
 async function generate(batch, items, ex) {
   const active = Object.values(ex.templates || {}).filter((t) => t.status === "active");
@@ -301,6 +345,7 @@ async function generate(batch, items, ex) {
   const scope = await requestScope(batch, items, companyId, ex);
   if (scope === "wait") throw notReady();
   const productIds = [...new Set(scope.map((l) => l.productId))];
+  const consignee = await shipmentConsignee(items, companyId, productIds);
   const missingTypes = codes.filter((c) => !types.some((t) => t.code === c));
   if (!productIds.length) return { companyId, problem: "no product was found in the files", problemCode: "no_products", missingTypes };
   if (!types.length) return { companyId, problem: `no certificate type ${codes.join(", ")} for this company`, problemCode: "no_types", missingTypes };
@@ -331,6 +376,8 @@ async function generate(batch, items, ex) {
       const req = await createRequest({ companyId, userId, lines: scope, certificateCodes: types.map((t) => t.code), meta: { conversationId: batch.conversationId || null, intakeBatchIds: [batch.id], express: { intakeBatchId: batch.id } }, reviewed: true });
       requestId = req.request.id;
     }
+    // the consignee of the drop's invoice that covers this shipment (an HC's party block); none → asked once
+    if (consignee) await setRequestConsignee(requestId, consignee);
     const out = await startGeneration(requestId, companyId, userId, only ? { only } : {});
     return { companyId, requestId, invoiceId: requestId, addedToRequest: !!existing, certificateBatchId: out.batchId, taskId: out.taskId, planned: dry.planned, missing: dry.missing, missingTypes, inferred: inferredSummary };
   } catch (err) {

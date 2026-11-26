@@ -13,6 +13,9 @@ export const INVOICE_HEADER_FIELDS = [
   { path: "supplierName", label: "Supplier name", type: "string", synonyms: ["supplier", "seller", "exporter", "exporter company", "shipper"] },
   { path: "customerName", label: "Customer name", type: "string", synonyms: ["customer", "buyer", "consignee", "importer", "importer company"] },
   { path: "customerCountry", label: "Customer country", type: "string", synonyms: ["destination", "country of destination", "destination country"] },
+  // the consignee's address and phone (28 Nov: an HC's consignee block comes from the shipment's invoice)
+  { path: "customerAddress", label: "Customer address", type: "string", synonyms: ["consignee address", "ship to", "bill to", "buyer address", "delivery address"] },
+  { path: "customerPhone", label: "Customer phone", type: "string", synonyms: ["consignee tel", "consignee phone", "buyer phone", "contact"] },
   { path: "currency", label: "Currency", type: "string" },
 ];
 

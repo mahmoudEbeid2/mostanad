@@ -46,6 +46,9 @@ export function productTableFrom(lines = [], names = []) {
     lines
       .filter((l) => l.page === page && l.box && l.box.y < first.box.y - first.box.h * 0.5 && l.box.y > first.box.y - pitch * 3 && l.box.x < cell.box.x + cell.box.w && l.box.x + l.box.w > cell.box.x)
       .sort((a, b) => b.box.y - a.box.y)[0] || null;
+  // one header line over every column ("PRODUCT NAME BRAND DESCRIPTION PACKING SIZE FORM", ADDVET HC p.2):
+  // its column phrases, in order, are the row's cells in order — never the whole line for each cell
+  const phrases = headerPhrases(rowLines.map(headerOf));
   const fields = [];
   rowLines.forEach((l, i) => {
     const text = l.text;
@@ -53,8 +56,10 @@ export function productTableFrom(lines = [], names = []) {
     const e = text.trimEnd().length;
     if (e <= s) return;
     const isName = l.id === first.id;
-    const header = isName ? null : headerOf(l);
-    const known = header ? COLUMN_SOURCES.find(([re]) => re.test(header.text)) : null;
+    const header = isName ? null : phrases ? { text: phrases[i] } : headerOf(l);
+    let known = header ? COLUMN_SOURCES.find(([re]) => re.test(header.text)) : null;
+    // a description column of one or two words per row (INJECTABLE, SUPPLEMENT) is the category, not a description
+    if (known?.[1] === "product.description" && col.every((h) => sameRowWords(lines, h.line, l) <= 2)) known = [known[0], "product.category.name", "Description (category)"];
     fields.push({
       key: isName ? "row_product_name" : `row_cell_${i + 1}`,
       label: isName ? "Product name" : known ? known[2] : header?.text?.trim().slice(0, 40) || `Column ${i + 1}`,
@@ -74,6 +79,32 @@ export function productTableFrom(lines = [], names = []) {
     fields,
     rows: col.length,
   };
+}
+
+const NAME_HEADER = /PRODUCT\s+NAME|PRODUCT|NAME|ITEM|DESCRIPTION OF GOODS/i;
+/**
+ * Every cell found the same header line, and that line names as many columns as the row has cells →
+ * the column phrases in order (one per cell), else null (each cell keeps the header above it)
+ */
+function headerPhrases(headers) {
+  const h = headers[0];
+  if (!h || headers.length < 2 || headers.some((x) => x?.id !== h.id)) return null;
+  const starts = [];
+  const name = NAME_HEADER.exec(h.text);
+  if (name) starts.push(name.index);
+  for (const [re] of COLUMN_SOURCES) {
+    const m = new RegExp(re.source, "i").exec(h.text);
+    if (m && !starts.some((s) => Math.abs(s - m.index) < 2) && !(name && m.index > name.index && m.index < name.index + name[0].length)) starts.push(m.index);
+  }
+  starts.sort((a, b) => a - b);
+  if (starts.length !== headers.length) return null;
+  return starts.map((s, i) => h.text.slice(s, starts[i + 1] ?? h.text.length).trim());
+}
+
+/** The words of the cell in `nameLine`'s row that sits in the same column as `cell` */
+function sameRowWords(lines, nameLine, cell) {
+  const c = lines.find((l) => l.page === nameLine.page && l.box && Math.abs(l.box.y - nameLine.box.y) <= Math.max(2, nameLine.box.h * 0.4) && l.box.x < cell.box.x + cell.box.w && l.box.x + l.box.w > cell.box.x);
+  return c ? c.text.trim().split(/\s+/).length : 0;
 }
 
 /**

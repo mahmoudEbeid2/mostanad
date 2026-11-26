@@ -11,7 +11,8 @@
 import { prisma } from "../../../lib/prisma.js";
 import { editValues } from "../certificates/editService.js";
 import { listFields } from "../templates/fieldService.js";
-import { applyFormat } from "./valueResolver.js";
+import { applyFormat, resolveField } from "./valueResolver.js";
+import { isCountryLine } from "../templates/partyBlocks.js";
 
 const ROLE_AR = { batchNo: "رقم التشغيلة", productionDate: "تاريخ الإنتاج", expiryDate: "تاريخ الانتهاء", batchSize: "حجم التشغيلة" };
 const BLOCKING = new Set(["missing", "sample_value"]);
@@ -19,6 +20,8 @@ const normTest = (s) => String(s || "").toLowerCase().replace(/ﬁ/g, "fi").repl
 
 /** What a field holds, for the answer → { role: batchNo|productionDate|expiryDate|batchSize|result|other, test? } */
 export function fieldRole(f) {
+  // the shipment's consignee (an HC's party block): asked once for the request, never per product
+  if (f.source?.kind === "invoice" && /^customer/.test(String(f.source.path || ""))) return { role: "consignee" };
   const path = f.source?.kind === "item" ? String(f.source.path || "") : "";
   if (["batchNo", "productionDate", "expiryDate"].includes(path)) return { role: path };
   const label = String(f.label || "");
@@ -51,8 +54,16 @@ export async function missingFor(certificateIds) {
 }
 
 /** The ONE message: what's missing, per product, and how to answer in one line */
-export function missingMessageAr(list) {
-  if (!list.length) return null;
+export function missingMessageAr(all) {
+  if (!all.length) return null;
+  // the consignee: one question for the shipment (no invoice of the files covers it — the design's
+  // sample consignee is never printed)
+  const consigneeCodes = [...new Set(all.filter((m) => m.items.some((i) => i.role === "consignee")).map((m) => m.code))];
+  const ask = consigneeCodes.length
+    ? `المستلم (Consignee) في ${consigneeCodes.join("، ")} مش في أي فاتورة من الملفات — ومبنطبعش اللي في نموذج الشهادة. ابعته مرة واحدة في سطر، مثلاً:\nالمستلم: اسم الشركة — العنوان — الدولة — التليفون`
+    : null;
+  const list = all.map((m) => ({ ...m, items: m.items.filter((i) => i.role !== "consignee") })).filter((m) => m.items.length);
+  if (!list.length) return ask;
   const byProduct = new Map();
   for (const m of list) {
     if (!byProduct.has(m.product)) byProduct.set(m.product, []);
@@ -78,7 +89,92 @@ export function missingMessageAr(list) {
     "الشهادات اتعملت وكل البيانات اللي في الملفات اتملت. فاضل بيانات التشغيلة ونتايج التحليل — دي مبنكتبهاش من عندنا ولا من نموذج الشهادة:",
     ...lines,
     `ابعتهم في سطر واحد لكل منتج، مثلاً: ${first} باتش MADADD2610001 إنتاج 01/10/2026 حجم 1200 KG — pH 6.4 assay 99%`,
+    ...(ask ? ["", ask] : []),
   ].join("\n");
+}
+
+// ── the consignee, answered once ─────────────────────────────────────────────────────────
+const PHONE_PART = /^(?:(?:tel|phone|mob(?:ile)?|تليفون|تلفون|موبايل|هاتف)\s*[:.]?\s*)?(\+?\d[\d\s()\-]{5,}\d)$/i;
+
+/**
+ * "المستلم: MADHOOB TRADING GROUP — Mawaleh South, Muscat, P.O Box 437 — Sultanate of Oman — +968 2689 0441"
+ * → { customerName, customerAddress?, customerCountry?, customerPhone? } | null. Every value is a piece of
+ * the person's line: the first part is the name; a phone-shaped part the phone; a part that is only a
+ * country (or "country: …") the country; the rest the address, in order.
+ */
+export function parseConsigneeLine(text) {
+  const m = String(text || "").match(/(?:المستلم|المرسل\s*إليه|المستورد|consignee|buyer|importer)\s*[:：]?\s*([\s\S]+)/i);
+  if (!m) return null;
+  const parts = m[1].split(/\s+[—–-]\s+|\n|[;؛]/).map((s) => s.trim().replace(/^[,،]+|[,،]+$/g, "").trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const out = { customerName: parts.shift() };
+  const address = [];
+  for (const p of parts) {
+    const ph = p.match(PHONE_PART);
+    if (ph && !out.customerPhone) {
+      out.customerPhone = ph[1].trim();
+      continue;
+    }
+    const labelled = /^(?:الدولة|البلد|country)\s*[:.]?\s*/i.test(p);
+    const c = p.replace(/^(?:الدولة|البلد|country)\s*[:.]?\s*/i, "");
+    if (!out.customerCountry && (labelled || isCountryLine(c))) {
+      out.customerCountry = c;
+      continue;
+    }
+    address.push(p.replace(/^(?:العنوان|address)\s*[:.]?\s*/i, ""));
+  }
+  if (address.length) out.customerAddress = address.join(", ");
+  return out;
+}
+
+const CONSIGNEE_KEYS = ["customerName", "customerAddress", "customerCountry", "customerPhone"];
+
+/**
+ * The shipment's consignee on its request (the invoice the certificates are made from): a direct request
+ * takes it as given; a real invoice keeps what it says and only gains what it lacks. → the new header
+ */
+export async function setRequestConsignee(invoiceId, consignee) {
+  const inv = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { origin: true, header: true } });
+  if (!inv) return null;
+  const header = { ...(inv.header || {}) };
+  for (const k of CONSIGNEE_KEYS) if (consignee[k] && (inv.origin === "direct" || !header[k])) header[k] = consignee[k];
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { header } });
+  return header;
+}
+
+/**
+ * The consignee answered → each draft's consignee places refilled from its request (a new version, as a
+ * person's edit). → [{ certificateId, product, code, filled: [label], skipped? }]
+ */
+export async function applyConsignee({ companyId, userId = null, certificateIds, consignee, dryRun = false }) {
+  const certs = await prisma.certificate.findMany({ where: { id: { in: certificateIds }, companyId }, include: { product: { select: { name: true } }, certificateType: { select: { code: true } } } });
+  const headers = new Map();
+  const results = [];
+  for (const c of certs) {
+    const fields = (await listFields(c.templateVersionId)).filter((f) => !f.groupKey && fieldRole(f).role === "consignee");
+    if (!fields.length) continue;
+    if (c.status === "final") {
+      results.push({ certificateId: c.id, product: c.product?.name || null, code: c.certificateType.code, filled: [], skipped: "final" });
+      continue;
+    }
+    if (!headers.has(c.invoiceId)) {
+      const inv = await prisma.invoice.findUnique({ where: { id: c.invoiceId }, select: { header: true } });
+      headers.set(c.invoiceId, dryRun ? { ...(inv?.header || {}), ...consignee } : await setRequestConsignee(c.invoiceId, consignee));
+    }
+    const ctx = { invoice: headers.get(c.invoiceId) || {} };
+    const v = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true } });
+    const changes = {};
+    const filled = [];
+    for (const f of fields) {
+      const value = resolveField(f, ctx).value;
+      if (!value || v?.values?.[f.key]?.value === value) continue;
+      changes[f.key] = value;
+      filled.push(f.label);
+    }
+    if (!dryRun && Object.keys(changes).length) await editValues(c.id, companyId, userId, { expectedVersion: c.currentVersion, changes });
+    results.push({ certificateId: c.id, product: c.product?.name || null, code: c.certificateType.code, filled, changes: dryRun ? changes : undefined });
+  }
+  return results;
 }
 
 // ── the one-line answer ───────────────────────────────────────────────────────────────────

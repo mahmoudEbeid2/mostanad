@@ -1,7 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
-import { extractPages } from "./intakeText.js";
+import { extractPages, readPages } from "./intakeText.js";
 import { readProductSheet } from "./productSheet.js";
 import { queueReferenceLabel, uploadedOn } from "../label/labelUploads.js";
 import { uploadInvoice } from "../certificates/invoices/invoiceService.js";
@@ -45,7 +45,23 @@ async function asLabel(item, plan) {
   return { referenceLabel: { taskId: out.taskId }, taskId: out.taskId, link: "/reference-labels" };
 }
 
-/** The type (created for the company when missing) → a draft template from the design's first page. */
+// a page continuing the certificate as its product list (ADDVET's HC p.2 "ATTACHED LIST")
+const LIST_PAGE = /\bATTACHED\s+LIST\b|\bLIST\s+OF\s+(?:THE\s+)?PRODUCTS\b|\bPRODUCTS?\s+LIST\b|\bANNEX(?:ED)?\s+LIST\b/i;
+
+/** The design's last page: its first, plus the pages right after it that are its attached product list */
+export async function designLastPage(buffer) {
+  try {
+    const { pages } = await readPages(buffer, { maxPages: 4, maxChars: 800 });
+    let last = 1;
+    for (const p of pages.sort((a, b) => a.n - b.n)) if (p.n === last + 1 && LIST_PAGE.test(p.text)) last = p.n;
+    return last;
+  } catch (err) {
+    console.error(`[intake] the design's pages couldn't be read (its first page is used): ${err.message}`);
+    return 1;
+  }
+}
+
+/** The type (created for the company when missing) → a draft template from the design's first page (+ its attached list). */
 export const templateFromItem = (...a) => asTemplate(...a);
 async function asTemplate(item, plan, userId, record = null) {
   const code = plan.certCode;
@@ -59,7 +75,7 @@ async function asTemplate(item, plan, userId, record = null) {
   }
   const full = await bufferOf(item);
   const isPdf = /\.(pdf|ai)$/i.test(item.name) || item.pageFrom;
-  const buffer = isPdf && !item.pageFrom ? await extractPages(full, 1, 1) : full;
+  const buffer = isPdf && !item.pageFrom ? await extractPages(full, 1, await designLastPage(full)) : full;
   const file = { buffer, originalname: isPdf ? asPdfName(item.name) : item.name };
   const slot = await prisma.certificateTemplate.findFirst({ where: { companyId: plan.companyId, certificateTypeId: type.id, brandId: plan.brandId || null, country: null, scope: "per_product", archivedAt: null }, select: { id: true } });
   const brand = plan.brandId ? await prisma.brand.findUnique({ where: { id: plan.brandId }, select: { name: true } }) : null;

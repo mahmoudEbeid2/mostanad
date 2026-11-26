@@ -221,7 +221,8 @@ export async function mergeCompany(companyId) {
   const c = await prisma.company.findUnique({ where: { id: companyId } });
   if (!c) return null;
   const facts = await prisma.harvestedFact.findMany({ where: { companyId, entity: { in: ["company", "document"] }, reviewStatus: "confirmed" }, orderBy: { createdAt: "asc" } });
-  const first = (key) => facts.filter((f) => f.key === key).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0))[0];
+  // an invoice prints the BUYER's contacts too (28 Nov: ROSHAN's email became ADDVET's): never the company's
+  const first = (key) => facts.filter((f) => f.key === key && !(["email", "phone", "address"].includes(key) && f.sourceType === "invoice")).sort((a, b) => (PRIORITY[b.sourceType] || 0) - (PRIORITY[a.sourceType] || 0))[0];
   const profile = { ...(c.profile || {}) };
   const sources = { ...(profile.sources || {}) };
   for (const key of ["producerName", "registrationNo", "website", "country", "address", "email", "phone"]) {

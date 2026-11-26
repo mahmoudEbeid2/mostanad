@@ -230,3 +230,60 @@ defineTool({
     return { filled: out.filter((r) => r.filled.length).map((r) => ({ certificateId: r.certificateId, product: r.product, filled: r.filled })), stillMissing: missingMessageAr(still), stillMissingCount: still.reduce((n, m) => n + m.items.length, 0) };
   },
 });
+
+// 28 Nov: the shipment's consignee (an HC's party block), answered once when no invoice of the drop covers
+// the shipment. The line is the person's own (checked against their messages) and code parses it — the
+// design's sample consignee is never printed.
+async function planConsignee(a, ctx) {
+  if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
+  const said = (ctx.userTexts || []).some((t) => String(t).includes(a.text.trim()));
+  if (!said) throw new ToolError("text must be the user's own line, copied exactly from their message — the consignee is only written as the user typed it.", "protected_value");
+  const { parseConsigneeLine, applyConsignee } = await import("../../../certificates/generation/batchAnswer.js");
+  const consignee = parseConsigneeLine(a.text);
+  if (!consignee) throw new ToolError("That line doesn't start with the consignee. Ask the user to write it like: المستلم: اسم الشركة — العنوان — الدولة — التليفون", "nothing_parsed");
+  const certs = await conversationDrafts(ctx, a.requestId || null);
+  if (!certs.length) throw new ToolError("There are no certificate drafts from this conversation to fill yet.", "no_drafts");
+  const byCompany = new Map();
+  for (const c of certs) byCompany.set(c.companyId, [...(byCompany.get(c.companyId) || []), c.id]);
+  const plan = [];
+  for (const [companyId, ids] of byCompany) plan.push(...(await applyConsignee({ companyId, certificateIds: ids, consignee, dryRun: true })));
+  return { consignee, plan, byCompany };
+}
+
+defineTool({
+  name: "set_shipment_consignee",
+  module: "files",
+  core: true,
+  risk: "write",
+  permissions: ["create_certificates"],
+  label: "Setting the consignee",
+  description:
+    "The user answered the shipment's consignee (asked in the drafts' missing message: «المستلم (Consignee) …»), e.g. \"المستلم: MADHOOB TRADING GROUP — Mawaleh South, Muscat — Oman — +968 2689 0441\". " +
+    "text: that line EXACTLY as the user wrote it (copy it, never rewrite or add values). Code parses it into name, address, country and phone; the request keeps it and the drafts' consignee places of THIS conversation get a new version. requestId: the certificate request, when there is one.",
+  args: z.object({ text: z.string().trim().min(3).max(2000), requestId: z.string().uuid().optional() }),
+  preview: async (a, ctx) => {
+    const { consignee, plan } = await planConsignee(a, ctx);
+    const doing = plan.filter((p) => p.filled.length);
+    if (!doing.length) throw new ToolError("None of this conversation's drafts has a consignee place to fill.", "nothing_to_fill");
+    return {
+      title: `Consignee on ${doing.length} certificate${doing.length === 1 ? "" : "s"}`,
+      summary: "The consignee you wrote is kept for this request and printed on its drafts (a new version of each). Nothing else changes.",
+      runLabel: "Set",
+      details: [
+        ...Object.entries({ Name: consignee.customerName, Address: consignee.customerAddress, Country: consignee.customerCountry, Phone: consignee.customerPhone }).filter(([, v]) => v).map(([label, value]) => ({ label, value })),
+        ...doing.map((p) => ({ label: `${p.code}${p.product ? ` · ${p.product}` : ""}`, value: p.filled.join(", ") })),
+      ],
+      aiCalls: "No AI call",
+      missing: [],
+    };
+  },
+  run: async (a, ctx) => {
+    const { consignee, byCompany } = await planConsignee(a, ctx);
+    const { applyConsignee, missingFor, missingMessageAr } = await import("../../../certificates/generation/batchAnswer.js");
+    const userId = ctx.actor.kind === "user" ? ctx.actor.id : null;
+    const out = [];
+    for (const [companyId, ids] of byCompany) out.push(...(await applyConsignee({ companyId, userId, certificateIds: ids, consignee })));
+    const still = await missingFor([...byCompany.values()].flat());
+    return { consignee, filled: out.filter((r) => r.filled.length).map((r) => ({ certificateId: r.certificateId, code: r.code, filled: r.filled })), stillMissing: missingMessageAr(still), stillMissingCount: still.reduce((n, m) => n + m.items.length, 0) };
+  },
+});

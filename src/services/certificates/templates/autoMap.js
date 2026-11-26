@@ -35,6 +35,11 @@ const BY_LABEL = [
   [/^Manufacturing date$/i, (ctx) => ({ source: { kind: "item", path: "productionDate" }, isBatchFact: true, format: { date: ctx.monthYear ? "MM/YYYY" : dateFormat(ctx.dateFormat) } })],
 ];
 
+// a COA row the converter kept as ONE line: "Assay 90-110% of the labeled amount of constituents 101.7%"
+// (prod COA, 28 Nov: its "110%" and "101.7%" became two «Quantity / pack» blanks — the first one INSIDE
+// the specification). The test's name, its specification, then its result.
+const TEST_ROW = /^(\s*)(Appearance|Identification|pH|Sterility|Pyrogens?|Assay|Density|Moisture|Loss\s+on\s+drying|Viscosity|Clarity|Colou?r|Odou?r|Solubility|Endotoxins?|Heavy\s+metals|Fill\s+volume|Microbial\s+limits?)(\s+)\S/i;
+
 // the readiness rules' generic labels — a place labelled only by its kind
 const GENERIC = /^(?:Date|Analysis result|Quantity \/ pack|Product data|Value)$/;
 // a printed label → the label a BY_LABEL rule knows
@@ -120,9 +125,25 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
     // the unit is never required on its own: "Quantity not stated" has none (the figure carries the requirement)
     add(a, figEnd + m[3].length, e, `Ingredient ${slot + 1} unit`, { ...how("amountUnit"), required: false }, `comp_${slot}_unit`);
   };
+  const testRows = new Set(); // lines handled as one COA row
   for (const raw of areas) {
     const a = !raw.label || GENERIC.test(raw.label) ? { ...raw, label: rowLabel(raw, lines) || raw.label } : raw;
     const row = rowsOf.get(a.lineId);
+    if (testRows.has(a.lineId)) continue;
+    // a whole COA row on one line, found only by its generic places: its specification and its result
+    const lineText = lines.find((l) => l.id === a.lineId)?.text || "";
+    const tr = row === undefined && (!a.label || GENERIC.test(a.label)) ? TEST_ROW.exec(lineText) : null;
+    const trTail = tr ? lineText.match(RESULT_TAIL) : null;
+    if (tr && trTail) {
+      testRows.add(a.lineId);
+      const test = tr[2].replace(/\s+/g, " ");
+      const slug = test.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const specStart = tr[1].length + tr[2].length + tr[3].length;
+      const a1 = { ...a, label: test };
+      if (trTail.index > specStart) add(a1, specStart, trTail.index, `${test} specification`, { source: { kind: "product", path: `specifications.values.${test}` } }, `spec_${slug}`);
+      add(a1, trTail.index, lineText.trimEnd().length, `${test} result`, { source: { kind: "manual" }, isLabResult: true }, `result_${slug}`);
+      continue;
+    }
     // composition: each printed row is an ingredient slot (name, amount)
     if (row !== undefined && (a.kind === "result" || a.kind === "quantity" || a.kind === "value")) {
       const slot = row;

@@ -60,6 +60,7 @@ const COMPANY_PATHS = [
   { path: "email", label: "Company email", type: "string" },
   // harvested from the company's own documents (28 Nov)
   { path: "profile.producerName", label: "Producer (as printed)", type: "string" },
+  { path: "profile.email", label: "Company email (as printed)", type: "string" },
   { path: "profile.registrationNo", label: "Company registration no. (as printed)", type: "string" },
   { path: "profile.country", label: "Company country", type: "string" },
   { path: "profile.website", label: "Company website", type: "string" },
@@ -262,6 +263,11 @@ export function validateSource(source) {
     if (!lookupPath(kind, source.path)) return [`unknown ${kind} path "${source.path}"`];
   }
   if (kind === "static" && (typeof source.text !== "string" || !source.text.length)) return ["source.text is required for fixed text"];
+  // one line of a value spread over several printed lines (valueResolver.wrapPiece)
+  if (source.wrap !== undefined) {
+    const { index, widths } = source.wrap || {};
+    if (!PATH_KINDS.has(kind) || !Array.isArray(widths) || !widths.length || widths.length > 8 || !widths.every((w) => Number.isInteger(w) && w > 0 && w <= 200) || !Number.isInteger(index) || index < 0 || index >= widths.length) return ["source.wrap must be { index, widths: [chars per line] } on a path source"];
+  }
   if (kind === "template") {
     if (typeof source.template !== "string" || !source.template.length) return ["source.template is required for a combination"];
     const problems = [];

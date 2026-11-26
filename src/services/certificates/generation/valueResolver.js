@@ -15,6 +15,26 @@ import { resolveRelative, fromSource, parse, canonicalFull } from "../paths/sour
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/**
+ * One printed line of a value the design spreads over several lines (an address over two lines of a
+ * party block, 28 Nov): the words fill each line up to the width the sample printed there; the last
+ * line takes the rest. wrap: { index, widths: [chars per line] } → that line's text ("" past the end)
+ */
+export function wrapPiece(text, { index = 0, widths = [] } = {}) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  for (let i = 0; i < widths.length && words.length; i++) {
+    if (i === widths.length - 1) {
+      lines.push(words.splice(0).join(" "));
+      break;
+    }
+    let line = words.shift();
+    while (words.length && line.length + 1 + words[0].length <= widths[i]) line += ` ${words.shift()}`;
+    lines.push(line);
+  }
+  return lines[index] || "";
+}
+
 /** Reads a relative source path (plan.md §3.1 grammar: `a.b[0].c`,
  *  `values["Assay %"]`, `list[name="Vitamin E"].x`) — own data properties
  *  only (no prototype, no `constructor`, no functions). Never evaluates
@@ -120,7 +140,7 @@ function rawValue(source, ctx, hit = {}) {
     default: {
       const r = readText(source.kind, source.path, ctx);
       if (r.via) hit.via = r.via;
-      return r.text;
+      return source.wrap ? wrapPiece(r.text, source.wrap) : r.text;
     }
   }
 }
