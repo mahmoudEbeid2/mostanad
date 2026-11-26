@@ -45,8 +45,14 @@ $C build $SERVICES > "/root/backups/build_$STAMP.log" 2>&1 || { say "build faile
 
 say "start the API"
 $C up -d --no-deps mostanad-app >/dev/null 2>&1
-for i in $(seq 1 90); do $C logs --since 5m mostanad-app 2>/dev/null | grep -q "Starting Mostanad API server" && break; sleep 2; done
-$C logs --since 5m mostanad-app 2>/dev/null | grep -q "Starting Mostanad API server" || fail "the API didn't start (docker logs mostanad-app)"
+# (the log is captured first: with pipefail, "logs | grep -q" fails when grep stops at the first match)
+started=0
+for i in $(seq 1 90); do
+  log=$($C logs --since 5m mostanad-app 2>/dev/null || true)
+  case "$log" in *"Starting Mostanad API server"*) started=1; break ;; esac
+  sleep 2
+done
+[ $started = 1 ] || fail "the API didn't start in 3 min (docker logs mostanad-app)"
 say "start the workers"
 $C up -d --no-deps $WORKERS >/dev/null 2>&1
 
