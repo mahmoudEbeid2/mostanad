@@ -76,7 +76,9 @@ function readText(kind, path, ctx) {
   if (part) {
     const ing = ctx.product?.activeIngredients?.[Number(part[1])];
     const whole = asText(ing?.concentration) || asText(ing?.amountRaw);
-    return { text: whole && !/not stated/i.test(whole) ? amountParts(whole)[part[2]] : "" };
+    // the source prints "Quantity not stated" (ADDVET COC p.7, p.9): printed as the document says, no unit
+    if (whole && /not\s+stated/i.test(whole)) return { text: part[2] === "amountFigure" ? "Quantity not stated" : "" };
+    return { text: whole ? amountParts(whole)[part[2]] : "" };
   }
   const text = asText(readPath(contextFor(kind, ctx), path));
   if (text || !ctx.pathSynonyms) return { text };

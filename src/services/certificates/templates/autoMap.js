@@ -117,7 +117,8 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
     // right-aligned: a longer amount ("25,000" where the sample printed "300") grows left into the gap
     // before it, never right over its unit (28 Nov prod: 5 overflow flags on ADDHEPA's COC)
     add(a, s, figEnd, `Ingredient ${slot + 1} amount`, { ...how("amountFigure"), align: "right" }, `comp_${slot}_amount`);
-    add(a, figEnd + m[3].length, e, `Ingredient ${slot + 1} unit`, how("amountUnit"), `comp_${slot}_unit`);
+    // the unit is never required on its own: "Quantity not stated" has none (the figure carries the requirement)
+    add(a, figEnd + m[3].length, e, `Ingredient ${slot + 1} unit`, { ...how("amountUnit"), required: false }, `comp_${slot}_unit`);
   };
   for (const raw of areas) {
     const a = !raw.label || GENERIC.test(raw.label) ? { ...raw, label: rowLabel(raw, lines) || raw.label } : raw;

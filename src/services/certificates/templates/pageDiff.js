@@ -145,7 +145,8 @@ export async function applyPageDiff(versionId, { fileId, page = 1 }) {
   // variable lines nothing covers yet: a field each (the whole line, its label read from the row by autoMap)
   const covered = new Set(r.areas.map((a) => a.lineId));
   const extra = lines
-    .filter((l) => byLine.get(l.id)?.status === "variable" && !covered.has(l.id) && !marked.has(l.id) && !/:\s*$/.test(l.text))
+    // (a sentence is never a value: a long line that wraps differently on another page isn't a field — prod COA, 28 Nov)
+    .filter((l) => byLine.get(l.id)?.status === "variable" && !covered.has(l.id) && !marked.has(l.id) && !/:\s*$/.test(l.text) && l.text.trim().split(/\s+/).length <= 8)
     .map((l) => {
       const s = l.text.length - l.text.trimStart().length;
       const e = l.text.trimEnd().length;

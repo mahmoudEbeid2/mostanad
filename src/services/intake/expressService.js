@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { startPrepare, activateVersion } from "../certificates/templates/prepareService.js";
+import { startPrepare, activateVersion, cloneVersion } from "../certificates/templates/prepareService.js";
 import { generateForProducts } from "../certificates/direct/directService.js";
 import { startExportZip } from "../certificates/certificates/editService.js";
 import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
@@ -163,9 +163,25 @@ async function settleTemplates(batch, items, ex) {
       if (!step.cur.tableReady) continue;
       cur = step.cur;
     }
-    const vid = cur.tableVersionId || t.versionId;
-    const setT = (v) => (templates[key] = { ...v, ...(cur.tableVersionId ? { link: `/certificates/templates/${t.templateId}/versions/${cur.tableVersionId}` } : {}) });
-    const version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, prepareReport: true, template: { select: { companyId: true, name: true } } } });
+    let vid = cur.remapVersionId || cur.tableVersionId || t.versionId;
+    const setT = (v) => (templates[key] = { ...v, ...(cur.remapVersionId || cur.tableVersionId ? { link: `/certificates/templates/${t.templateId}/versions/${cur.remapVersionId || cur.tableVersionId}` } : {}) });
+    let version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, prepareReport: true, template: { select: { companyId: true, name: true } } } });
+    // 28 Nov (prod): a reused draft (a duplicate's earlier filing) whose preparation failed before — mapped by
+    // older code — is never prepared again as it is: once, a copy without its old suggested / detected fields
+    // is mapped with today's code and used instead (the old draft stays as it was)
+    if (version?.status === "draft" && version.prepareReport && version.prepareReport.passed === false && !cur.remapVersionId) {
+      try {
+        const copy = await cloneVersion(vid, version.template.companyId, batch.executedByUserId);
+        await prisma.templateField.deleteMany({ where: { versionId: copy.versionId, origin: { in: ["ai_suggested", "detected"] } } });
+        cur.remapVersionId = copy.versionId;
+        vid = copy.versionId;
+        version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, prepareReport: true, template: { select: { companyId: true, name: true } } } });
+        console.log(`[express] ${t.code}: v${copy.versionNumber} mapped again from a draft that failed preparation`);
+      } catch (err) {
+        setT({ ...cur, status: "failed", why: `the design didn't pass the preparation check before, and a new copy couldn't be made: ${err.message}` });
+        continue;
+      }
+    }
     if (!version) {
       setT({ ...cur, status: "failed", why: "the template is gone" });
       continue;
