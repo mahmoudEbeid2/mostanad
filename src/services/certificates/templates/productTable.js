@@ -11,6 +11,8 @@
 
 const norm = (s) => String(s || "").toUpperCase().replace(/[*•]/g, "").replace(/\s+/g, " ").trim();
 const COLUMN_SOURCES = [
+  // Phase 5: a quantity comes only from the invoice line (or a person) — never the sample's
+  [/\bQ(?:UAN)?TY\b|QUANTITY/i, "quantity", "Quantity"],
   [/PACK/i, "product.packaging", "Packing size"],
   [/\bFORM\b/i, "product.physicalForm", "Form"],
   [/BRAND/i, "product.brand.name", "Brand"],
