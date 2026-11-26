@@ -54,6 +54,7 @@ export function toCard(c) {
     exportedAt: c.exportedAt ?? null,
     revisionNumber: c.revisionNumber ?? 1,
     revisionOfId: c.revisionOfId ?? null,
+    isExperimentSample: c.isExperimentSample === true, // PART 3: an experiment-mode sample — never valid
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };
