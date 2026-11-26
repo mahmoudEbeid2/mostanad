@@ -17,7 +17,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service (generation part).
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmFirst } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmFirst, confirmStatic } from "./helpers.js";
 import { seedGoldenCompany, seedTemplate, loadGoldenInvoice, runGoldenInvoice, goldenModel, golden, needFor, INVOICES } from "./invoiceGoldenHarness.js";
 import { computeNeeds } from "../../src/services/certificates/dataNeeds/dataNeedsService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
@@ -223,6 +223,7 @@ try {
   assert("fields saved", r.status === 200, r.data);
   r = await api("POST", `/template-versions/${up.version.id}/prepare`, G);
   const prep = await pollTask(r.data.data.taskId, G, { timeoutMs: 120_000 });
+  await confirmStatic(up.version.id, G);
   r = await api("POST", `/template-versions/${up.version.id}/activate`, G);
   assert("template prepared + active", prep?.status === "completed" && r.status === 200, r.data);
   const pG = await prisma.product.create({ data: { companyId: coG.id, name: "ADD-E120", productCode: "ADDE120" } });

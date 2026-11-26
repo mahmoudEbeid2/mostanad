@@ -8,7 +8,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service.
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 
 const { assert, counts } = makeAssert();
 const golden = JSON.parse(fs.readFileSync(path.join(FIXTURES, "golden-fields.json"), "utf8"));
@@ -86,6 +86,7 @@ try {
   r = await api("PUT", `/template-versions/${pv.id}/fields`, A, { fields: pDrafts });
   assert("PUT PHARMAVET golden fields → 200, no suggestion left", r.status === 200 && Object.keys(r.data.data.suggestions).length === 0, r.data?.data?.suggestions);
 
+  await confirmStatic(av.id, A);
   r = await api("POST", `/template-versions/${av.id}/activate`, A);
   assert("activate a draft → 409 VERSION_NOT_READY", r.status === 409 && r.data?.code === "VERSION_NOT_READY", r.data);
   r = await api("GET", `/template-versions/${av.id}/html?variant=prepared`, A);
@@ -140,6 +141,7 @@ try {
   assert("another tenant's product → 404", r.status === 404, r.status);
 
   console.log("\n🧪 Activate, D10 and new versions");
+  await confirmStatic(av.id, A);
   r = await api("POST", `/template-versions/${av.id}/activate`, A);
   assert("activate ready ADDVET v1 → active", r.status === 200 && r.data.data.status === "active" && !r.data.data.supersededVersionId, r.data);
   r = await api("POST", `/template-versions/${av.id}/new-version`, A);
@@ -159,12 +161,14 @@ try {
   r = await api("PUT", `/template-versions/${v2}/fields`, A, { fields: aiDrafts });
   const { v: v2ready } = await prepare(v2);
   assert("v2 prepared → ready", v2ready?.status === "ready", v2ready?.status);
+  await confirmStatic(v2, A);
   r = await api("POST", `/template-versions/${v2}/activate`, A);
   assert("activate with an unconfirmed field → 409 FIELDS_UNCONFIRMED", r.status === 409 && r.data?.code === "FIELDS_UNCONFIRMED" && r.data.fields?.[0] === "ph_result", r.data);
   r = await api("POST", `/template-versions/${v2}/fields/confirm`, A, { keys: ["ph_result"] });
   assert("confirm → 200", r.status === 200 && r.data.data.fields.every((f) => f.confirmed), r.data);
   r = await api("GET", `/template-versions/${v2}`, A);
   assert("…the confirmation stays stored (only /fields/confirm set it)", r.data?.data?.version?.fields?.find((f) => f.key === "ph_result")?.confirmed === true);
+  await confirmStatic(v2, A);
   r = await api("POST", `/template-versions/${v2}/activate`, A);
   assert("activate v2 → active, supersedes v1", r.status === 200 && r.data.data.supersededVersionId === av.id, r.data);
   const tpl = (await api("GET", `/certificate-templates/${addvet.data.data.templateId}`, A)).data.data.template;

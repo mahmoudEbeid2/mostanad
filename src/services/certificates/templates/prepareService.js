@@ -9,6 +9,7 @@ import { listFields, listGroups, fieldsHash } from "./fieldService.js";
 import { resolveAll, resolveGroups } from "../generation/valueResolver.js";
 import { loadProductContext } from "../generation/contextLoader.js";
 import { rememberMappings } from "../mapping/mappingMemory.js";
+import { assertReady } from "./readinessService.js";
 
 // Prepare → ready → activate, new version, previews (CERTIFICATES_V2_PLAN.md
 // §7.3–§7.6, §8.4, D10, D11). Every number comes from the backend renderer.
@@ -105,6 +106,9 @@ export async function activateVersion(versionId, companyId, userId = null, { exp
       mappings: unconfirmed.filter((f) => !f.mappingConfirmed).map((f) => f.key),
     });
   }
+  // readiness (26 Nov): every variable-looking place is a field or confirmed static — an Express
+  // version had its open places marked as blank fields before prepare (expressService)
+  await assertReady(versionId, companyId);
   const t = version.template;
   const activated = await prisma.$transaction(async (tx) => {
     // the template slot is unique among non-archived templates (§6.1); the

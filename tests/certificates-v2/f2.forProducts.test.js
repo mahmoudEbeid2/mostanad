@@ -8,7 +8,7 @@
 // Needs `npm run dev:test` (cert-renderer + workers).
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 
 process.env.GEMINI_DISABLED = "true";
 const { assert, counts } = makeAssert();
@@ -32,6 +32,7 @@ async function activeTemplate(label, { file, typeId, brandId, scope }) {
   r = await api("POST", `/template-versions/${v.id}/prepare`, A);
   const task = await pollTask(r.data.data.taskId, A, { timeoutMs: 120_000 });
   if (task?.status !== "completed") throw new Error(`prepare ${task?.status} ${task?.error}`);
+  await confirmStatic(v.id, A);
   r = await api("POST", `/template-versions/${v.id}/activate`, A);
   if (r.status !== 200) throw new Error(`activate ${r.status} ${JSON.stringify(r.data)}`);
 }

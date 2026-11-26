@@ -2,6 +2,35 @@ import { prisma } from "../../lib/prisma.js";
 import { startPrepare, activateVersion } from "../certificates/templates/prepareService.js";
 import { generateForProducts } from "../certificates/direct/directService.js";
 import { startExportZip } from "../certificates/certificates/editService.js";
+import { getReadiness } from "../certificates/templates/readinessService.js";
+import { areaWords } from "../certificates/templates/readinessCheck.js";
+
+/**
+ * Readiness (26 Nov): an automatic template's places that look variable and that no field
+ * covers (the issued certificate's batch, dates, results…) become BLANK fields — empty and
+ * flagged on every draft, never printed as they are. → how many were added
+ */
+export async function blankOpenAreas(versionId, companyId) {
+  const r = await getReadiness(versionId, companyId);
+  const open = r.areas.filter((a) => !a.staticConfirmed).flatMap(areaWords); // a field never spans a column gap
+  if (!open.length) return 0;
+  const taken = new Set((await prisma.templateField.findMany({ where: { versionId }, select: { key: true } })).map((f) => f.key));
+  const last = await prisma.templateField.aggregate({ where: { versionId }, _max: { sortOrder: true } });
+  let n = 0;
+  const rows = open.map((a, i) => {
+    let key;
+    do key = `blank_${a.kind}_${++n}`;
+    while (taken.has(key));
+    taken.add(key);
+    return {
+      versionId, key, label: a.label, page: a.page, lineId: a.lineId, charStart: a.charStart, charEnd: a.charEnd, sampleValue: a.text,
+      source: { kind: "manual" }, required: true, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1,
+      isBatchFact: a.kind === "batch" || a.kind === "date", isLabResult: a.kind === "result", inferencePolicy: "never",
+    };
+  });
+  await prisma.templateField.createMany({ data: rows });
+  return rows.length;
+}
 
 // "Express" — an urgent order from the chat ("طلّعلي الشهادات دي لمنتجات MAXVET"): the
 // drop is filed as usual (company, brand, products, types, templates, references — one
@@ -52,7 +81,7 @@ async function settleTemplates(batch, items, ex) {
       templates[vid] = { ...cur, status: "needs_table", why: `lists ${(item.classification.productNames || []).length} products in one table — set up its product rows on the template screen` };
       continue;
     }
-    const version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, template: { select: { companyId: true, name: true } } } });
+    const version = await prisma.templateVersion.findUnique({ where: { id: vid }, select: { status: true, error: true, prepareReport: true, template: { select: { companyId: true, name: true } } } });
     if (!version) {
       templates[vid] = { ...cur, status: "failed", why: "the template is gone" };
       continue;
@@ -72,6 +101,21 @@ async function settleTemplates(batch, items, ex) {
         templates[vid] = { ...cur, status: "failed", why: version.error };
         continue;
       }
+      // prepared once and the quality check failed (back to draft, no error): never prepared again in a loop
+      const failing = cur.status === "preparing" ? (version.prepareReport?.checks || []).filter((c) => !c.passed) : [];
+      if (failing.length) {
+        const keys = [...new Set(failing.flatMap((c) => c.failing || []))];
+        const blanks = await prisma.templateField.findMany({ where: { versionId: vid, key: { in: keys.filter((k) => k.startsWith("blank_")) } }, select: { sampleValue: true } });
+        templates[vid] = {
+          ...cur,
+          status: "failed",
+          why: blanks.length
+            ? `these places couldn't be left blank automatically: ${blanks.map((b) => `"${b.sampleValue}"`).join(", ")} — mark them on the template screen (nothing from the file was printed)`
+            : `the design didn't pass the preparation check (${failing.map((c) => c.label || c.id).join(", ")}) — open it on the template screen`,
+        };
+        continue;
+      }
+      await blankOpenAreas(vid, companyId);
       const count = await prisma.templateField.count({ where: { versionId: vid } });
       if (!count) {
         templates[vid] = { ...cur, status: "no_fields", why: t.fields?.why || "no field could be found on it — mark its fields on the template screen" };

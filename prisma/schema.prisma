@@ -872,6 +872,7 @@ model TemplateVersion {
   conversion       Json? // { tool, version, zoom, ms, warnings[], background }
   backgroundFormat String              @default("png") @map("background_format") // png | svg — svg only when the version defines a repeating group (§7.8)
   prepareReport    Json?               @map("prepare_report") // §7.6 gate results
+  staticAreas      Json?               @map("static_areas") // readiness: text confirmed "static on purpose" [{ id, text, kind, byUserId, at }]
   error            String?
   basedOnVersionId String?             @map("based_on_version_id")
   createdByUserId  String?             @map("created_by_user_id")

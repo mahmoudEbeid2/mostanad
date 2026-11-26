@@ -12,6 +12,7 @@ import { PRINTABLE } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
+import { assertReady } from "../templates/readinessService.js";
 
 // Edit, versions, export, finalize (CERTIFICATES_V2_PLAN.md §11). Every
 // change is a NEW CertificateVersion (edits never overwrite, D8); concurrency
@@ -338,6 +339,9 @@ export async function finalize(id, companyId, userId, { expectedVersion } = {}) 
     const flags = Object.fromEntries(Object.entries(v.values || {}).map(([k, x]) => [k, (x.flags || []).filter(isBlocking)]).filter(([, f]) => f.length));
     throw new CertError("CERTIFICATE_FLAGGED", `Fix ${cert.flagCount} issue${cert.flagCount === 1 ? "" : "s"} before finalizing: ${Object.keys(flags).join(", ")}`, 409, { flags });
   }
+  // a draft made from a design with unmarked batch / date / result text prints that text as it
+  // is (another product's values) — it can't be approved until the design is fixed (26 Nov)
+  await assertReady(cert.templateVersionId);
   const pdfFileId = await ensureVersionPdf(cert);
   const done = await prisma.certificate.updateMany({
     where: { id, status: "draft", currentVersion: cert.currentVersion, flagCount: 0 },

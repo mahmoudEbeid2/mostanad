@@ -148,6 +148,7 @@ export const versionSchemas = {
   html: { params: idParams, query: companyQuery.extend({ variant: z.enum(["sanitized", "prepared", "sample"]).default("sanitized") }) },
   fields: { params: idParams, query: companyQuery, body: z.object({ fields: z.array(fieldDraft).max(200), groups: z.array(groupDraft).max(20).optional() }) },
   confirm: { params: idParams, query: companyQuery, body: z.object({ keys: z.array(z.string().max(60)).min(1).max(200) }) },
+  staticAreas: { params: idParams, query: companyQuery, body: z.object({ ids: z.array(z.string().max(80)).min(1).max(300), static: z.boolean().default(true) }) },
   // a shipped font (fallbackFamily) or one of the company's own (companyFontId)
   fontFallback: {
     params: idParams,

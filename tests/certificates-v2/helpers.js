@@ -193,3 +193,17 @@ export async function readWholeCatalogue(versionId) {
 }
 
 export { prisma };
+
+/**
+ * Readiness (26 Nov): a test design marks only the fields it exercises; the rest of its
+ * variable-looking text is confirmed "static on purpose" here, as a person would, so it can be
+ * activated. → the readiness after confirming
+ */
+export async function confirmStatic(versionId, headers) {
+  const r = await api("GET", `/template-versions/${versionId}/readiness`, headers);
+  const ids = (r.data?.data?.areas || []).filter((a) => !a.staticConfirmed).map((a) => a.id);
+  if (!ids.length) return r.data?.data;
+  const s = await api("POST", `/template-versions/${versionId}/static-areas`, headers, { ids, static: true });
+  if (s.status !== 200) throw new Error(`static-areas ${s.status} ${JSON.stringify(s.data)}`);
+  return s.data.data;
+}

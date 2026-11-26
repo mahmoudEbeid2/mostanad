@@ -14,7 +14,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service with ?bg=svg.
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
 
 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -51,6 +51,7 @@ async function prepareAndActivate(versionId) {
   let r = await api("POST", `/template-versions/${versionId}/prepare`, A);
   const task = await pollTask(r.data?.data?.taskId, A, { timeoutMs: 180_000 });
   const v = await getVersion(versionId);
+  await confirmStatic(versionId, A);
   r = v?.status === "ready" ? await api("POST", `/template-versions/${versionId}/activate`, A) : null;
   return { task, version: v, activate: r };
 }

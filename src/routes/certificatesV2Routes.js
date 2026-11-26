@@ -61,6 +61,9 @@ router.get("/template-versions/:id", guard("read_certificate_templates"), valida
 router.get("/template-versions/:id/html", guard("read_certificate_templates"), validate(versionSchemas.html), templates.getVersionHtml);
 router.get("/template-versions/:id/thumbnail", guard("read_certificate_templates"), validate(versionSchemas.byId), templates.getThumbnail);
 router.put("/template-versions/:id/fields", guard("update_certificate_templates"), validate(versionSchemas.fields), templates.putFields);
+// readiness (26 Nov): variable-looking places not marked; "static on purpose" confirmations
+router.get("/template-versions/:id/readiness", guard("read_certificate_templates"), validate(versionSchemas.byId), templates.getReadiness);
+router.post("/template-versions/:id/static-areas", guard("update_certificate_templates"), validate(versionSchemas.staticAreas), templates.setStaticAreas);
 router.post("/template-versions/:id/fields/confirm", guard("update_certificate_templates"), validate(versionSchemas.confirm), templates.confirmFields);
 // AI plan §5 (A1): label proposals (code), field mapping (memory → dictionary → one AI call), the "Why?" of a suggestion
 router.post("/template-versions/:id/label-proposals", guard("update_certificate_templates"), validate(mappingSchemas.labelProposals), certificateAi.labelProposals);

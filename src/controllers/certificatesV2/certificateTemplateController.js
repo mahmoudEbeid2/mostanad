@@ -4,6 +4,7 @@ import * as fieldService from "../../services/certificates/templates/fieldServic
 import * as prepareService from "../../services/certificates/templates/prepareService.js";
 import * as assistService from "../../services/certificates/templates/assistService.js";
 import * as repairService from "../../services/certificates/templates/repairService.js";
+import * as readinessService from "../../services/certificates/templates/readinessService.js";
 import { getSourceCatalogue } from "../../services/certificates/templates/sourceCatalogue.js";
 import { companySourceCatalogue } from "../../services/certificates/dictionary/dataDictionary.js";
 import { searchProducts } from "../../services/certificates/matching/productSearch.js";
@@ -102,6 +103,15 @@ export const enableGroups = catchAsync(async (req, res) => {
 export const confirmFields = catchAsync(async (req, res) => {
   const fields = await fieldService.confirmFields(req.params.id, scopeOf(req), req.body.keys, actorId(req));
   res.status(200).json({ status: "success", data: { fields } });
+});
+
+export const getReadiness = catchAsync(async (req, res) => {
+  res.status(200).json({ status: "success", data: await readinessService.getReadiness(req.params.id, scopeOf(req)) });
+});
+
+export const setStaticAreas = catchAsync(async (req, res) => {
+  const data = await readinessService.setStaticAreas(req.params.id, scopeOf(req), { ids: req.body.ids, isStatic: req.body.static !== false }, actorId(req));
+  res.status(200).json({ status: "success", data });
 });
 
 export const suggestFields = catchAsync(async (req, res) => {

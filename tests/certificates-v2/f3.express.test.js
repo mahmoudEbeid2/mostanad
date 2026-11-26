@@ -46,6 +46,9 @@ async function draftWithSuggestedFields(name, typeId, brandId) {
     const { occurrence, ...rest } = g;
     return { ...rest, charStart: start, charEnd: start + g.sampleValue.length, required: true };
   });
+  // the product name, as the AI suggests it on a real drop
+  const pl = v.lines.find((l) => l.text.includes("DOXYPHARMA"));
+  fields.push({ key: "product_name", label: "Product name", lineId: pl.id, charStart: pl.text.indexOf("DOXYPHARMA"), charEnd: pl.text.indexOf("DOXYPHARMA") + 10, sampleValue: "DOXYPHARMA", source: { kind: "product", path: "name" }, required: true });
   const r = await api("PUT", `/template-versions/${v.id}/fields`, A, { fields });
   if (r.status !== 200) throw new Error(`fields ${r.status} ${JSON.stringify(r.data)}`);
   await prisma.templateField.updateMany({ where: { versionId: v.id }, data: { confirmed: false, origin: "ai_suggested" } });
@@ -63,7 +66,8 @@ async function drive(batchId, ms = 240_000) {
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
-  throw new Error("express didn't finish in time");
+  const b = await prisma.intakeBatch.findUnique({ where: { id: batchId }, select: { express: true } });
+  throw new Error(`express didn't finish in time: ${JSON.stringify(b?.express)}`);
 }
 
 try {

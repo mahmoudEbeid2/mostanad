@@ -12,7 +12,7 @@
 //    a second template with the same labels needs 0 AI calls
 //  - repeating-group binding (code with a sample product; AI answer validated)
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service.
-import { api, asCompany, asAdmin, makeAssert, finish, createCompany, cleanupCompany, pollTask, prisma } from "./helpers.js";
+import { api, asCompany, asAdmin, makeAssert, finish, createCompany, cleanupCompany, pollTask, prisma, confirmStatic } from "./helpers.js";
 import { seedMappingCompany, uploadGolden, wizardFields, runGolden, goldenModel, score } from "./mappingHarness.js";
 import { mapFields } from "../../src/services/certificates/mapping/fieldMapper.js";
 import { closeQueues } from "../../src/services/certificates/jobs/queues.js";
@@ -186,6 +186,7 @@ try {
   r = await api("POST", `/template-versions/${addvet.id}/prepare`, A);
   const task = r.status === 202 ? await pollTask(r.data.data.taskId, A, { timeoutMs: 120_000 }) : null;
   assert("prepare → ready", task?.status === "completed", task || r.data);
+  await confirmStatic(addvet.id, A);
   r = await api("POST", `/template-versions/${addvet.id}/activate`, A);
   assert("activate with pending AI mappings → 409 FIELDS_UNCONFIRMED listing them", r.status === 409 && r.data.code === "FIELDS_UNCONFIRMED" && JSON.stringify(r.data.mappings.sort()) === JSON.stringify(["constituent_2_amount", "constituent_2_name"]), r.data);
   r = await api("POST", `/template-versions/${addvet.id}/fields/confirm`, A, { keys: ["constituent_2_name", "constituent_2_amount"] });
@@ -193,6 +194,7 @@ try {
   const accepted = await prisma.aiSuggestion.findUnique({ where: { id: mapped.constituent_2_amount.suggestionId } });
   assert("… the suggestion is accepted by that person", accepted.status === "accepted" && accepted.decidedAt);
   assert("… and remembered right away", (await prisma.fieldMappingMemory.count({ where: { companyId: company.id } })) === 2);
+  await confirmStatic(addvet.id, A);
   r = await api("POST", `/template-versions/${addvet.id}/activate`, A);
   assert("activate → 200, every label remembered", r.status === 200 && r.data.data.remembered === 8, r.data);
   const mem = await prisma.fieldMappingMemory.findMany({ where: { companyId: company.id } });

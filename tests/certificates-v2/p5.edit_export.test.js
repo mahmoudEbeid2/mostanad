@@ -10,7 +10,7 @@
 import fs from "fs";
 import path from "path";
 import JSZip from "jszip";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 import { comparePngs } from "../../src/services/certificates/engine/pixelDiff.js";
 import { rerenderGlyphDraft } from "../../src/services/certificates/certificates/editService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
@@ -39,6 +39,7 @@ async function activeTemplate(file, typeId, country) {
   r = await api("POST", `/template-versions/${v.id}/prepare`, A);
   const t = await pollTask(r.data.data.taskId, A, { timeoutMs: 120_000 });
   if (t?.status !== "completed") throw new Error(`${file}: prepare ${t?.error}`);
+  await confirmStatic(v.id, A);
   r = await api("POST", `/template-versions/${v.id}/activate`, A);
   if (r.status !== 200) throw new Error(`${file}: activate ${JSON.stringify(r.data)}`);
   return v.id;

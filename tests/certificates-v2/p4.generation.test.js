@@ -12,7 +12,7 @@
 // Needs the guarded stack (npm run dev:test) and the pdf2htmlex service.
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, finish, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 import { runGenerateBatch } from "../../src/services/certificates/generation/batchService.js";
 import * as fileStore from "../../src/services/certificates/storage/fileStore.js";
 
@@ -42,6 +42,7 @@ async function activeTemplate(label, { file, typeId, scope = "per_product", coun
   r = await api("POST", `/template-versions/${v.id}/prepare`, A);
   const task = await pollTask(r.data.data.taskId, A, { timeoutMs: 120_000 });
   if (task?.status !== "completed") throw new Error(`${label}: prepare ${task?.status} ${task?.error}`);
+  await confirmStatic(v.id, A);
   r = await api("POST", `/template-versions/${v.id}/activate`, A);
   if (r.status !== 200) throw new Error(`${label}: activate ${r.status} ${JSON.stringify(r.data)}`);
   return { templateId: up.data.data.templateId, versionId: v.id };

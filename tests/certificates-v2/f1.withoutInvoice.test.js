@@ -10,7 +10,7 @@
 // Needs `npm run dev:test` (cert-renderer + workers).
 import fs from "fs";
 import path from "path";
-import { api, asCompany, makeAssert, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma } from "./helpers.js";
+import { api, asCompany, makeAssert, createCompany, cleanupCompany, uploadTemplate, pollTask, FIXTURES, prisma, confirmStatic } from "./helpers.js";
 import * as registry from "../../src/services/assistant/registry/index.js";
 import * as actions from "../../src/services/assistant/actions.js";
 import * as assistant from "../../src/services/assistant/assistantService.js";
@@ -42,6 +42,7 @@ async function activeTemplate(label, { file, typeId, brandId }) {
   r = await api("POST", `/template-versions/${v.id}/prepare`, A);
   const task = await pollTask(r.data.data.taskId, A, { timeoutMs: 120_000 });
   if (task?.status !== "completed") throw new Error(`prepare ${task?.status} ${task?.error}`);
+  await confirmStatic(v.id, A);
   r = await api("POST", `/template-versions/${v.id}/activate`, A);
   if (r.status !== 200) throw new Error(`activate ${r.status} ${JSON.stringify(r.data)}`);
   return { templateId: up.data.data.templateId, versionId: v.id };

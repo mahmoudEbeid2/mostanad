@@ -10,6 +10,8 @@ import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
 import { refreshIfChecked, blockingCounts, usableNeeds, AWAITING } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { maskEstimates } from "../../catalogues/fieldProvenance.js";
+import { assertVersionsReady } from "../templates/readinessService.js";
+import { isProtected } from "../inference/policy.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -27,7 +29,7 @@ const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email
  *  an estimate nobody confirmed yet (`unconfirmed`: printed on the draft, never on a final certificate).
  *  Informational: `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
  *  review #7) and `empty_optional` (an optional value the pipeline couldn't fill). */
-export const isBlocking = (flag) => flag === "missing" || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
+export const isBlocking = (flag) => flag === "missing" || flag === "sample_value" || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
 /** Never blank silently (owner, 2026-11-05): an optional field left empty says so, unless the owner marked it not applicable. */
 export const emptyFlags = (field, value) => (value || field.required || field.notApplicable ? [] : ["empty_optional"]);
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
@@ -79,6 +81,9 @@ export async function startGeneration(invoiceId, companyId, userId, { force = fa
   if (!plan.entries.length) {
     throw new CertError("NOTHING_TO_GENERATE", "No active template applies to any line of this invoice", 409, { unassigned: plan.unassigned, gaps: plan.gaps });
   }
+  // every path (invoice, product, chat, Express, Make certificates) comes here: a template with
+  // unmarked batch / date / result text is refused, never printed with its sample's values
+  await assertVersionsReady(plan.entries.map((e) => e.templateVersionId));
   const items = await prisma.invoiceItem.findMany({ where: { invoiceId }, include: { product: { select: { name: true } } } });
   const itemById = new Map(items.map((i) => [i.id, i]));
   const invoiceNo = invoice.header?.invoiceNumber || null;
@@ -222,6 +227,19 @@ export async function certificateContext(cert, base, caches, design) {
  * exactly what is rendered; else its declared source (with accepted synonyms).
  * → { value, resolved, flags, origin: data_check|auto, provenance? }
  */
+/**
+ * The design's own sample text on a batch fact / lab result (26 Nov: CALCIUT printed DOXYPHARMA's
+ * batch): a fixed text there, or a value identical to what the template file printed, is never
+ * printed — blank and flagged `sample_value` (blocking). A value a person settled (the data check)
+ * or typed is theirs and stays.
+ */
+export function guardSample(field, r) {
+  if (!r.value || !isProtected(field)) return r;
+  const same = String(r.value).trim().toLowerCase() === String(field.sampleValue || "").trim().toLowerCase();
+  if (field.source?.kind !== "static" && !same) return r;
+  return { ...r, value: "", resolved: "", flags: [...new Set([...(r.flags || []).filter((f) => f !== "empty_optional"), "sample_value", ...(field.required ? ["missing"] : [])])], blockedSample: r.value };
+}
+
 export function resolveWithNeed(field, ctx, need) {
   if (need && need.value !== null && need.value !== undefined) {
     const { value, flags } = applyFormat(need.value, field.format);
@@ -229,7 +247,7 @@ export function resolveWithNeed(field, ctx, need) {
     return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
   const r = resolveField(field, ctx);
-  return { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
+  return guardSample(field, { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) });
 }
 
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */
