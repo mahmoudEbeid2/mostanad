@@ -9,6 +9,7 @@ import { FIELD_LABELS, labelIn, langOf } from "../i18n.js";
 import { sanitizeOutput, claimsAction, isReadOnlyQuestion, preparedSomething, NO_ACTION_RETRY, honestNoAction, announcesList, NO_LIST_RETRY, honestNoList, wantsTemplatesFromFiles, codesIn, preparedTemplatesCard, nextStepChoices } from "./answerGuard.js";
 import { prisma } from "../../../lib/prisma.js";
 import { replayText, toolRecord } from "./history.js";
+import { stepLabelAr } from "../cardArabic.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
 // model → tool calls → run them as the caller → results back → repeat until
@@ -296,7 +297,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           chosen = [...new Set([...chosen, t.module])].sort();
           guardEvents.push({ type: "module_autoloaded", module: t.module, tool: name });
         }
-        onEvent({ type: "tool_start", tool: name, label: getTool(name)?.label || name, args: call.args || {} });
+        onEvent({ type: "tool_start", tool: name, label: getTool(name)?.label || name, labelAr: stepLabelAr(getTool(name)?.label), args: call.args || {} });
         const started = Date.now();
         if (prefetch.has(callIndex)) {
           const done = await prefetch.get(callIndex);
@@ -318,7 +319,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
         }
       }
       const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
-      const entry = { name, label: getTool(name)?.label || name, args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}), ...(result.ok && result.data?.intakeBatchId ? { card: "intake" } : {}) };
+      const entry = { name, label: getTool(name)?.label || name, labelAr: stepLabelAr(getTool(name)?.label), args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}), ...(result.ok && result.data?.intakeBatchId ? { card: "intake" } : {}) };
       if (!result.ok && !result.repeat) failed.set(key, result.error);
       // a call refused for its arguments (or repeated) costs nothing from the budget
       if (name !== LOAD_TOOLS && !result.repeat && !(!result.ok && /^Invalid arguments/.test(result.error || ""))) {
