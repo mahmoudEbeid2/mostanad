@@ -1200,6 +1200,10 @@
         pitch: round(pitch),
         pad: round(pad),
         sampleRowCount: k,
+        // where the design's own rows are (table_rows): each row's text and each row's top rule, from the
+        // band's top — rows that exist in the design are drawn exactly there, not at i × the average pitch
+        // (28 Nov: ADDVET HC's rules step 21 / 22 px, its text 21.73 — one average moved rows by a pixel)
+        rowOffsets: shape === "table_rows" ? { text: [0, ...placeholderRows.map((r) => round(r.y - rowTop))], rules: [0, ...below.slice(0, k).map((l) => round(l.y - y0))] } : null,
         sampleRows,
         placeholderLines: placeholderRows.flatMap((r) => r.lines.map((l) => l.id)),
         minRowHeight: round(minRowHeight),
@@ -1299,7 +1303,12 @@
 
     // pitch and delta
     let p = p0;
-    const natural = (n, pp) => (hide ? 0 : shape === "cell_list" ? Math.max(geo.minRowHeight, geo.pad + n * pp) : n * pp);
+    // row i's offset from row 1 (text) / from the band's top (rules): the design's own rows where it has them
+    // (unshrunk table rows), then the pitch
+    const at = (list, i, pp) => (pp === p0 && list && list.length ? (i < list.length ? list[i] : list[list.length - 1] + (i - list.length + 1) * pp) : i * pp);
+    const textAt = (i, pp) => at(shape === "table_rows" ? geo.rowOffsets?.text : null, i, pp);
+    const ruleAt = (i, pp) => at(shape === "table_rows" ? geo.rowOffsets?.rules : null, i, pp);
+    const natural = (n, pp) => (hide ? 0 : shape === "cell_list" ? Math.max(geo.minRowHeight, geo.pad + n * pp) : ruleAt(n, pp));
     let delta;
     if (fixed) {
       delta = hide ? -bandH : -(k - N) * p0;
@@ -1351,7 +1360,7 @@
             } else s.textContent = "";
           });
           line.after(clone);
-          shiftEl(clone, i * p + rowAdj);
+          shiftEl(clone, textAt(i, p) + rowAdj);
         }
       }
       for (const line of rowLines) shiftEl(line, rowAdj);
@@ -1406,7 +1415,9 @@
         // table_rows, k > 1: row 1's members are repeated, rows 2..k's are placeholders
         if (onLevel(u, rowBottomY)) {
           // the band's own bottom rule draws the last row's bottom
-          for (let i = 1; i < N - 1; i++) ctx.clone(u, ctx.mShift(i * p + dp));
+          // (from where the design drew row 1's bottom to where row i's bottom goes; shrunk: (i + 1)·p − p0 = i·p + dp)
+          const drawnAt = geo.rowOffsets?.rules?.[1] ?? p0;
+          for (let i = 1; i < N - 1; i++) ctx.clone(u, ctx.mShift(ruleAt(i + 1, p) - drawnAt));
           if (N > 1) ctx.shift(u, dp);
           else ctx.remove(u);
           continue;
@@ -1417,7 +1428,7 @@
         }
         const tall = u.vertical || b.h >= 0.8 * p0;
         const m = tall ? ctx.mStretch(u, dp) : new DOMMatrix();
-        for (let i = 1; i < N; i++) ctx.clone(u, ctx.mShift(i * p).multiply(m));
+        for (let i = 1; i < N; i++) ctx.clone(u, ctx.mShift(ruleAt(i, p)).multiply(m));
         if (tall) ctx.stretch(u, dp);
       }
       await ctx.commit();
