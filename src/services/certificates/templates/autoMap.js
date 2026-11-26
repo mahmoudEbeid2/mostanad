@@ -26,7 +26,7 @@ const BY_LABEL = [
   [/Packaging|Packing|Pack size|Package/i, () => ({ source: { kind: "product", path: "packaging" } })],
   [/^Form$|Product form|Dosage form/i, () => ({ source: { kind: "product", path: "physicalForm" } })],
   [/^Validity$|Shelf life/i, () => ({ source: { kind: "product", path: "validity" } })],
-  [/Composition basis/i, () => ({ source: { kind: "product", path: "compositionBasis" } })],
+  [/Composition basis/i, () => ({ source: { kind: "product", path: "compositionBasis" }, role: "composition_basis" })],
   [/Document number/i, () => ({ source: { kind: "docnumber" } })],
   [/Issue date/i, (ctx) => ({ source: { kind: "today" }, format: { date: dateFormat(ctx.dateFormat) } })],
   [/^Batch number$/i, () => ({ source: { kind: "item", path: "batchNo" }, isBatchFact: true })],
@@ -61,7 +61,7 @@ function rowLabel(a, lines) {
 /** The lines of the composition block, in rows (same y), from its header to the next section */
 const HEAD_PREFIX = /^\s*(?:Composition\s*:?|Constituents?(?:\s*\([^)]*\))?|(?:Each|Every)\s+[\d.,]*\s*\w+\s+contains\s*:?|Contains\s+per\s+\S+\s*:?)\s*/i;
 
-function compositionRows(lines) {
+export function compositionRows(lines) {
   const out = new Map(); // lineId → ingredient row (0 = the first ingredient)
   const heads = lines.filter((l) => COMP_HEADER.test(l.text)).sort((a, b) => a.page - b.page || a.box.y - b.box.y);
   for (const head of heads) {
@@ -111,7 +111,7 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
   const amount = (a, s, e, slot) => {
     const text = (lines.find((l) => l.id === a.lineId)?.text || "").slice(s, e);
     const m = text.match(/^(\s*)(.*?[\d.,]+)(\s+)([A-Za-zµμ%]+(?:\/[A-Za-z]+)?)\s*$/);
-    const how = (part) => ({ source: { kind: "product", path: `activeIngredients[${slot}].${part}` }, required: slot === 0 });
+    const how = (part) => ({ source: { kind: "product", path: `activeIngredients[${slot}].${part}` }, required: slot === 0, role: "composition_amount" });
     if (!m) return add(a, s, e, `Ingredient ${slot + 1} amount`, how("concentration"), `comp_${slot}_amount`);
     const figEnd = s + m[1].length + m[2].length;
     add(a, s, figEnd, `Ingredient ${slot + 1} amount`, how("amountFigure"), `comp_${slot}_amount`);
@@ -129,12 +129,12 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
       }
       const tail = a.text.match(AMOUNT_TAIL);
       const nameEnd = tail ? a.charStart + tail.index : a.charEnd;
-      add(a, a.charStart, nameEnd, `Ingredient ${slot + 1}`, { source: { kind: "product", path: `activeIngredients[${slot}].name` }, required: slot === 0 }, `comp_${slot}_name`);
+      add(a, a.charStart, nameEnd, `Ingredient ${slot + 1}`, { source: { kind: "product", path: `activeIngredients[${slot}].name` }, required: slot === 0, role: "composition_name" }, `comp_${slot}_name`);
       if (tail) amount(a, nameEnd, a.charEnd, slot);
       continue;
     }
     if (a.kind === "basis") {
-      add(a, a.charStart, a.charEnd, "Composition basis", { source: { kind: "product", path: "compositionBasis" } }, "composition_basis");
+      add(a, a.charStart, a.charEnd, "Composition basis", { source: { kind: "product", path: "compositionBasis" }, role: "composition_basis" }, "composition_basis");
       continue;
     }
     // a COA row: the test's specification (the product's), then its result (a blank: a lab result)

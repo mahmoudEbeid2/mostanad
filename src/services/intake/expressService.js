@@ -3,7 +3,7 @@ import { startPrepare, activateVersion } from "../certificates/templates/prepare
 import { generateForProducts } from "../certificates/direct/directService.js";
 import { startExportZip } from "../certificates/certificates/editService.js";
 import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
-import { templateFromItem } from "./intakeExecute.js";
+import { templateFromItem, adoptDuplicates } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas } from "../certificates/templates/autoMap.js";
 import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
@@ -43,7 +43,7 @@ export async function blankOpenAreas(versionId, companyId) {
     taken.add(key);
     return {
       versionId, key, label: f.label, page: f.page, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue,
-      source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1,
+      source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1, role: f.role || null,
       // a lab result, a batch fact, a document's own number / date never; a product's descriptive value may be estimated
       isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: f.isBatchFact || f.isLabResult || f.source?.kind !== "product" ? "never" : "product_facts",
     };
@@ -80,6 +80,9 @@ async function save(batchId, express) {
 /** A design whose page lists several products in one table (an FSC listing 5 items): its rows can't be filled automatically. */
 // A bundle (one certificate per page: ADDVET's 10-page COA / COC) is NOT a table — its template is its first page (Phase 7 found it)
 const listsSeveralProducts = (item) => !item.pageFrom && !(item.classification?.parts || []).length && !["bundle", "bundle_template"].includes(item.result?.plan?.action) && (item.classification?.productNames || []).length >= 2;
+
+// filed now, or a duplicate that took what its earlier filing became (intakeExecute.adoptDuplicates)
+const usable = (i) => i.status === "done" || (i.status === "duplicate" && !!i.result?.reused);
 
 async function record(batchId, entityType, row, companyId, itemId = null) {
   const exists = await prisma.intakeCreated.findFirst({ where: { batchId, entityType, entityId: row.id }, select: { id: true } });
@@ -139,7 +142,7 @@ async function productTableStep(batch, item, t, cur) {
 async function settleTemplates(batch, items, ex) {
   const templates = { ...(ex.templates || {}) };
   let pending = false;
-  for (const item of items.filter((i) => i.status === "done" && i.result?.template?.versionId)) {
+  for (const item of items.filter((i) => usable(i) && i.result?.template?.versionId)) {
     const t = item.result.template;
     const key = t.versionId; // the card's row; the version worked on may be its product-table copy
     const cur0 = templates[key] || { code: t.code, file: item.name, templateId: t.templateId, link: item.result.link };
@@ -231,7 +234,7 @@ const INVOICE_DONE = ["review", "ready", "generated", "partially_failed", "faile
  * a real document's); otherwise the products the files are about, plus those named in the message.
  */
 async function requestScope(batch, items, companyId, ex) {
-  const invoiceItems = items.filter((i) => i.status === "done" && i.result?.invoiceId && !i.result?.attached);
+  const invoiceItems = items.filter((i) => usable(i) && i.result?.invoiceId && !i.result?.attached);
   if (invoiceItems.length) {
     const invoices = await prisma.invoice.findMany({ where: { id: { in: invoiceItems.map((i) => i.result.invoiceId) }, companyId }, include: { items: { orderBy: { lineNo: "asc" } } } });
     const reading = invoices.some((v) => !INVOICE_DONE.includes(v.status));
@@ -239,7 +242,7 @@ async function requestScope(batch, items, companyId, ex) {
     const lines = invoices.flatMap((v) => v.items.filter((i) => i.productId).map((i) => ({ productId: i.productId, packing: i.data?.packing || null, quantity: i.data?.quantity || null, lotNo: i.data?.batchNo || null })));
     if (lines.length) return lines;
   }
-  const fromFiles = items.filter((i) => i.status === "done" && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []);
+  const fromFiles = items.filter((i) => usable(i) && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []);
   const named = [];
   for (const n of ex.productNames || []) {
     const p = await prisma.product.findFirst({ where: { companyId, name: { equals: String(n).trim(), mode: "insensitive" } }, select: { id: true } });
@@ -251,7 +254,7 @@ async function requestScope(batch, items, companyId, ex) {
 /** Step 2: one run for every product of the drop × the types (asked, or every one with a template now). */
 async function generate(batch, items, ex) {
   const active = Object.values(ex.templates || {}).filter((t) => t.status === "active");
-  const companyIds = [...new Set(items.filter((i) => i.status === "done" && i.companyId).map((i) => i.companyId))];
+  const companyIds = [...new Set(items.filter((i) => usable(i) && i.companyId).map((i) => i.companyId))];
   const companyId = (active.length && (await prisma.certificateTemplate.findUnique({ where: { id: active[0].templateId }, select: { companyId: true } }))?.companyId) || companyIds[0] || null;
   if (!companyId) return { problem: "no company was filed", problemCode: "no_company" };
   const asked = (ex.requestedTypes || []).map((c) => String(c).toUpperCase());
@@ -329,6 +332,7 @@ export function expressSteps(batch, items, ex) {
   const top = items.filter((i) => !i.parentId);
   const filed = top.filter((i) => i.status === "done").length;
   const dupes = top.filter((i) => i.status === "duplicate").length;
+  const reused = top.filter((i) => i.status === "duplicate" && i.result?.reused).length;
   const failedItems = top.filter((i) => i.status === "failed").length;
   const tpl = Object.values(ex.templates || {});
   const active = tpl.filter((t) => t.status === "active").length;
@@ -338,9 +342,10 @@ export function expressSteps(batch, items, ex) {
   const steps = [];
   steps.push({
     key: "filing",
-    status: !filed ? "fail" : dupes || failedItems ? "warn" : "ok",
-    ar: !filed ? "مفيش ملف اتسجل" : `اتسجل ${filed} ملف${dupes ? ` · ${dupes} متكرر اترفع قبل كده` : ""}${failedItems ? ` · ${failedItems} فشل` : ""}`,
-    en: `${filed} filed${dupes ? `, ${dupes} already filed before` : ""}${failedItems ? `, ${failedItems} failed` : ""}`,
+    // a duplicate that reuses its earlier filing counts as filed (its template / products are used)
+    status: !filed && !reused ? "fail" : dupes - reused || failedItems ? "warn" : "ok",
+    ar: !filed && !reused ? "مفيش ملف اتسجل" : `اتسجل ${filed} ملف${reused ? ` · ${reused} متكرر اتسجل قبل كده واستخدمنا قالبه وبياناته` : ""}${dupes - reused ? ` · ${dupes - reused} متكرر اترفع قبل كده` : ""}${failedItems ? ` · ${failedItems} فشل` : ""}`,
+    en: `${filed} filed${reused ? `, ${reused} filed before (its template and data reused)` : ""}${dupes - reused ? `, ${dupes - reused} already filed before` : ""}${failedItems ? `, ${failedItems} failed` : ""}`,
   });
   if (ex.stage && ex.stage !== "templates") {
     const notUsed = tpl.filter((t) => t.status !== "active");
@@ -426,6 +431,13 @@ export async function runExpress({ batchId }) {
   if (!ex.stage && (await harvestGate(batchId)) === "wait") {
     if (ex.waitingHarvest !== true) await save(batchId, { ...ex, waitingHarvest: true });
     throw notReady();
+  }
+  // read, failed or timed out: the card stops saying it waits for the read
+  ex.waitingHarvest = false;
+  // files filed before (duplicates): their earlier template / products — also for a drop filed before this existed
+  if (!ex.stage) {
+    const rec = (entityType, row, itemId, companyId) => record(batchId, entityType, row, companyId, itemId);
+    await adoptDuplicates(batchId, { userId: batch.executedByUserId, record: rec });
   }
   const items = await prisma.intakeItem.findMany({ where: { batchId } });
   ex.startedAt ||= new Date().toISOString();

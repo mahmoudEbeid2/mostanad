@@ -6,6 +6,9 @@ import { loadVersion } from "./templateService.js";
 import { listFields } from "./fieldService.js";
 import { getSourceCatalogue, validateSource, validateFormat } from "./sourceCatalogue.js";
 import { runLogged } from "../ai/aiRunLog.js";
+import { isCompositionTemplate, compositionRoleOf } from "./compositionRoles.js";
+import { prisma } from "../../../lib/prisma.js";
+import { compositionRows } from "./autoMap.js";
 
 // Optional AI assistance for marking fields (CERTIFICATES_V2_PLAN.md §8.3, D3,
 // D10). The model receives the version's line TEXTS only — template HTML never
@@ -146,6 +149,15 @@ export async function suggestFields(versionId, companyId) {
       origin: "ai_suggested",
       confirmed: false,
     });
+  }
+  // Phase 1: in a Certificate of Composition the ingredient table is the product's composition, never a lab result
+  const certificateType = version.template.certificateTypeId ? await prisma.certificateType.findUnique({ where: { id: version.template.certificateTypeId }, select: { code: true, name: true } }) : null;
+  if (isCompositionTemplate({ ...version.template, certificateType })) {
+    const rowsOf = compositionRows(version.lines || []);
+    for (const s of suggestions) {
+      const r = compositionRoleOf(s, version.lines || [], rowsOf);
+      if (r && !r.needsRemap) Object.assign(s, { role: r.role, source: r.source, required: r.required, isLabResult: false, isBatchFact: false, label: r.role === "composition_basis" ? "Composition basis" : s.label });
+    }
   }
   return {
     suggestions,

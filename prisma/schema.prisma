@@ -930,6 +930,7 @@ model TemplateField {
   // catalogue or a product profile — only a supplier COA, a previous result of the same batch
   // or a person. Owner-set in "Mark fields"; pre-set for result / assay / complies / conforms labels.
   isLabResult         Boolean         @default(false) @map("is_lab_result")
+  role                String? // 28 Nov: composition_name | composition_amount | composition_basis (product data, never a lab result)
   // A batch fact (owner, 2026-10-27): batch / lot number, production / manufacturing date, expiry
   // date — never generated on any path (no inference, web, catalogue or product profile); only
   // the invoice, a supplier COA, a packing list or a person. Owner-set in "Mark fields" (true /

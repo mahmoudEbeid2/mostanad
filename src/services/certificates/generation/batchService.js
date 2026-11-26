@@ -30,7 +30,7 @@ const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email
  *  an estimate nobody confirmed yet (`unconfirmed`: printed on the draft, never on a final certificate).
  *  Informational: `estimated` (28 Nov: a descriptive value the AI estimated — printed, marked «مستنتج», never blocking), `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
  *  review #7) and `empty_optional` (an optional value the pipeline couldn't fill). */
-export const isBlocking = (flag) => flag === "missing" || flag === "sample_value" || flag === "rows_overflow" || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
+export const isBlocking = (flag) => flag === "missing" || flag === "sample_value" || String(flag).startsWith("rows_overflow") || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
 /** Never blank silently (owner, 2026-11-05): an optional field left empty says so, unless the owner marked it not applicable. */
 export const emptyFlags = (field, value) => (value || field.required || field.notApplicable ? [] : ["empty_optional"]);
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
@@ -284,13 +284,20 @@ export async function renderInitialVersion(cert, base, caches) {
   const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
   // a composition printed row by row: more ingredients than the design has rows is never cut silently
   // (only a table of rows 1…n — a design naming one ingredient, "activeIngredients[1]", is no table)
-  const slots = plainFields(design).filter((f) => /^activeIngredients\[\d+\]\.name$/.test(f.source?.path || ""));
-  const idx = slots.map((f) => Number(f.source.path.match(/\[(\d+)\]/)[1])).sort((a, b) => a - b);
+  // (a row: its name field by path, or by role — a whole printed row is a template of name + amount)
+  const rowIndex = (f) => {
+    const s = f.source?.path || f.source?.template || "";
+    const m = /activeIngredients\[(\d+)\]\.name/.exec(s);
+    return m && (f.role === "composition_name" || /^activeIngredients\[\d+\]\.name$/.test(f.source?.path || "")) ? Number(m[1]) : null;
+  };
+  const slots = plainFields(design).filter((f) => rowIndex(f) !== null);
+  const idx = slots.map(rowIndex).sort((a, b) => a - b);
   const isTable = idx.length > 1 && idx.every((n, i) => n === i);
   const ingredients = Array.isArray(ctx.product?.activeIngredients) ? ctx.product.activeIngredients.length : 0;
   if (isTable && ingredients > slots.length) {
+    // "المنتج فيه 16 مكوّن والقالب فيه 14 سطر" — never cut silently (the counts travel in the flag)
     const last = slots.sort((a, b) => a.sortOrder - b.sortOrder)[slots.length - 1];
-    resolved[last.key] = { ...resolved[last.key], flags: [...new Set([...(resolved[last.key].flags || []), "rows_overflow"])] };
+    resolved[last.key] = { ...resolved[last.key], flags: [...new Set([...(resolved[last.key].flags || []), `rows_overflow:${ingredients}/${slots.length}`])] };
   }
   const resolvedGroups = resolveGroups(design.groups, design.fields, ctx);
   const draft = Object.fromEntries(plainFields(design).map((f) => [f.key, { value: resolved[f.key].value }]));

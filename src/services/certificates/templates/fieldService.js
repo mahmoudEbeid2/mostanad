@@ -10,6 +10,7 @@ import { inspectDef } from "./prepareEngine.js";
 import { stableStringify } from "../ai/aiRunLog.js";
 import { rememberMappings } from "../mapping/mappingMemory.js";
 import { proposeLabel, slugKey, looksLikeBatchResult } from "../mapping/labelProposal.js";
+import { COMPOSITION_ROLES as FIELD_ROLES } from "./compositionRoles.js";
 
 // Field definitions on a draft TemplateVersion (CERTIFICATES_V2_PLAN.md §8.2,
 // D3, D10). The UI sends the full list; the server validates it against the
@@ -130,6 +131,8 @@ export function validateFieldList(input, lines, groups = []) {
       isLabResult: typeof raw.isLabResult === "boolean" ? raw.isLabResult : undefined,
       // the owner's batch-fact tick (owner, 2026-10-27): true / false; undefined = keep what is stored, else the pre-set
       isBatchFact: typeof raw.isBatchFact === "boolean" ? raw.isBatchFact : undefined,
+      // 28 Nov: what the field is (a COC composition row is product data); undefined = keep what is stored
+      role: FIELD_ROLES.includes(raw.role) ? raw.role : raw.role === null ? null : undefined,
       // owner setting: print the row's specification instead of a measured result
       showSpecInstead: raw.showSpecInstead === true,
       // the owner's "not applicable": never looked for, stays empty; undefined = keep what is stored
@@ -281,7 +284,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
   }
   // review #10: a stored suggested/detected field can't become "manual" (and so
   // confirmed) by re-sending it; its confirmation is the one /fields/confirm stored
-  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true, isBatchFact: true, notApplicable: true } })).map((s) => [s.key, s]));
+  const stored = new Map((await prisma.templateField.findMany({ where: { versionId }, select: { key: true, origin: true, confirmed: true, isLabResult: true, isBatchFact: true, notApplicable: true, role: true } })).map((s) => [s.key, s]));
   for (const f of fields) {
     const s = stored.get(f.key);
     // a client that doesn't send the lab-result tick (older UI, autosave of other edits) never resets the owner's choice
@@ -289,6 +292,12 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
     // …nor the batch-fact one; a new field gets the pre-set (true), or stays undecided (null)
     if (f.isBatchFact === undefined) f.isBatchFact = s ? s.isBatchFact : defaultIsBatchFact(f) ? true : null;
     if (f.notApplicable === undefined) f.notApplicable = s?.notApplicable === true;
+    if (f.role === undefined) f.role = s?.role ?? null;
+    // a composition row is never a lab result or a batch fact
+    if (FIELD_ROLES.includes(f.role)) {
+      f.isLabResult = false;
+      f.isBatchFact = false;
+    }
     if (f.notApplicable) f.required = false;
     if (s && s.origin !== "manual") {
       f.origin = s.origin;
@@ -345,6 +354,7 @@ export async function replaceFields(versionId, companyId, input, groupsInput = u
         showSpecInstead: f.showSpecInstead === true,
         specFieldKey: f.specFieldKey || null,
         notApplicable: f.notApplicable === true,
+        role: f.role || null,
       })),
     }),
     prisma.templateGroup.createMany({
