@@ -37,6 +37,7 @@ async function referencedFileIds() {
     UNION SELECT thumbnail_file_id FROM certificate_versions
     UNION SELECT final_pdf_file_id FROM certificates
     UNION SELECT zip_file_id FROM certificate_batches
+    UNION SELECT combined_pdf_file_id FROM certificate_batches
     UNION SELECT source_file_id FROM catalogue_versions
     UNION SELECT file_id FROM supplier_coas
     UNION SELECT file_id FROM label_uploads
