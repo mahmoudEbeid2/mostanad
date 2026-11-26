@@ -16,6 +16,7 @@ import { generateForProducts, BATCH_FACTS } from "../../../certificates/direct/d
 import { countryCode, countryLabel } from "../../countries.js";
 import { assertVerbatim } from "./actions.js";
 import { id } from "./common.js";
+import { certificatesOfBatch } from "../../../certificates/generation/batchService.js";
 
 // Registering from the chat (client, 25 Nov: "afterwards I add the company, the labels and
 // everything through the chatbot"). Every one is a confirmation card; nothing happens until
@@ -267,6 +268,6 @@ defineTool({
       return { productId, batch: { batchNo: b.batchNo, productionDate: b.productionDate, expiryDate: b.expiryDate } };
     });
     const out = await generateForProducts({ companyId: ctx.companyId, userId: userIdOf(ctx), products, certificateTypeIds: a.certificateTypeIds, country: a.country || null });
-    return { invoiceId: out.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, link: `/certificates?invoiceId=${out.invoiceId}`, note: "Drafts being made. Tell the user they open from the link; each is approved on its page." };
+    return { invoiceId: out.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, ...(await certificatesOfBatch(out.batchId)), note: "Drafts being made. They are shown on the card with their PDF and an open button; each is approved on its page. Never write a link yourself." };
   },
 });

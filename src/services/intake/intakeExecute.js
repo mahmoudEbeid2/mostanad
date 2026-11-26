@@ -169,6 +169,8 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
   const progress = ctx.progress || (() => {});
   const items = (await prisma.intakeItem.findMany({ where: { batchId, status: "executing" } })).sort((a, b) => ORDER.indexOf(a.result?.plan?.action) - ORDER.indexOf(b.result?.plan?.action));
   const record = (entityType, row, itemId, companyId) => prisma.intakeCreated.create({ data: { batchId, itemId, entityType, entityId: row.id, name: row.name, companyId } });
+  // an urgent order's review list also shows the evidence and reference labels it filed
+  const isExpress = (await prisma.intakeBatch.findUnique({ where: { id: batchId }, select: { mode: true } }))?.mode === "express";
   let n = 0;
   for (const item of items) {
     const plan = item.result?.plan || {};
@@ -211,6 +213,9 @@ export async function runExecute(batchId, ctx = {}, { userId = null } = {}) {
         default:
           result = { kept: true };
       }
+      // 26 Nov: "الطلبات السريعة" lists the evidence and reference labels a drop filed, not only products / brand
+      if (isExpress && result?.evidence) await record("evidence", { id: item.id, name: `${plan.certCode || "—"} · ${item.name}` }, item.id, plan.companyId).catch(() => {});
+      if (isExpress && result?.referenceLabel?.taskId) await record("reference_label", { id: result.referenceLabel.taskId, name: item.name }, item.id, plan.companyId).catch(() => {});
       // a COC page also says what is in its product: filled where the product has nothing yet
       if (item.classification?.composition) result = { ...result, composition: await fillFromComposition(item, plan) };
       const cost = await itemAiCost(item.id);

@@ -363,3 +363,18 @@ export async function loadBatch(id, companyId) {
   if (!b || (companyId && b.companyId !== companyId)) throw notFound("Certificate batch");
   return b;
 }
+
+/**
+ * A batch's certificates as a chat card shows them (26 Nov: "Open →" went to the hidden internal
+ * invoice of a no-invoice certificate): one → its own page; several → the list of that batch.
+ * → { certificates: [{ id, type, products }], link }
+ */
+export async function certificatesOfBatch(batchId) {
+  const certs = await prisma.certificate.findMany({
+    where: { batchId },
+    include: { certificateType: { select: { code: true } }, product: { select: { name: true } }, items: { include: { invoiceItem: { select: { product: { select: { name: true } }, data: true } } } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const certificates = certs.map((c) => ({ id: c.id, type: c.certificateType.code, products: c.product ? [c.product.name] : c.items.map((i) => i.invoiceItem?.product?.name || i.invoiceItem?.data?.name).filter(Boolean) }));
+  return { certificates, link: certificates.length === 1 ? `/certificates/${certificates[0].id}` : `/certificates?batchId=${batchId}` };
+}

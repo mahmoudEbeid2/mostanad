@@ -402,7 +402,20 @@ export async function listExpressToReview(actor, { companyId = null } = {}) {
     orderBy: { createdAt: "desc" },
     take: 500,
   });
-  const link = (r) => ({ company: `/companies`, brand: `/brands`, product: `/products`, certificate_type: `/certificates/types`, certificate_template: `/certificates/templates/${r.entityId}`, certificate: `/certificates/${r.entityId}` })[r.entityType] || null;
+  // evidence opens its own file at its page (the API serves it to the caller's company only)
+  const evidenceItems = await prisma.intakeItem.findMany({ where: { id: { in: rows.filter((r) => r.entityType === "evidence" && r.itemId).map((r) => r.itemId) } }, select: { id: true, fileId: true, pageFrom: true } });
+  const ev = new Map(evidenceItems.map((i) => [i.id, i]));
+  const link = (r) =>
+    ({
+      company: `/companies`,
+      brand: `/brands`,
+      product: `/products`,
+      certificate_type: `/certificates/types`,
+      certificate_template: `/certificates/templates/${r.entityId}`,
+      certificate: `/certificates/${r.entityId}`,
+      reference_label: `/reference-labels`,
+      evidence: ev.get(r.itemId)?.fileId ? `/api/v1/evidence-files/${ev.get(r.itemId).fileId}${ev.get(r.itemId).pageFrom ? `#page=${ev.get(r.itemId).pageFrom}` : ""}` : null,
+    })[r.entityType] || null;
   const orders = new Map();
   for (const r of rows) {
     if (!orders.has(r.batchId)) orders.set(r.batchId, { batchId: r.batchId, createdAt: r.batch.createdAt, conversationId: r.batch.conversationId, items: [] });

@@ -118,6 +118,13 @@ async function main() {
     const twice = await makeTemplatesFromFiles(batch.id);
     const nTemplates = await prisma.certificateTemplate.count({ where: { companyId: co.id } });
     assert("asking again makes nothing new (each file already a template)", twice.made.length === 0 && nTemplates === 3, { made: twice.made, nTemplates });
+    // Phase 6: «الطلبات السريعة» lists the evidence a drop filed, opening its file at its page
+    const evItem = await prisma.intakeItem.findFirst({ where: { batchId: batch.id, name: own[0] } });
+    await prisma.intakeItem.update({ where: { id: evItem.id }, data: { pageFrom: 2 } });
+    await prisma.intakeCreated.create({ data: { batchId: batch.id, itemId: evItem.id, entityType: "evidence", entityId: evItem.id, name: `COA · ${own[0]}`, companyId: co.id } });
+    const list = (await api("GET", "/intake/express", asAdmin)).data?.data;
+    const evRow = list?.orders?.find((o) => o.batchId === batch.id)?.items.find((i) => i.entityType === "evidence");
+    assert("the urgent-orders list shows the evidence, linked to its file at its page", evRow && evRow.link === `/api/v1/evidence-files/${evItem.fileId}#page=2`, evRow);
     const other = await createCompany("addvet-other");
     const foreign = await api("POST", `/intake/batches/${batch.id}/express/templates-from-files`, { ...asAdmin, "x-bypass-type": "company", "x-bypass-id": other.id });
     assert("another account can't run it on this drop (404)", foreign.status === 404, foreign.status);

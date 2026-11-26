@@ -95,6 +95,9 @@ try {
   card = t.data?.actionId ? await prisma.assistantAction.findUnique({ where: { id: t.data.actionId } }) : null;
   const d2 = Object.fromEntries((card?.preview?.details || []).map((d) => [d.label, d.value]));
   assert("card: product, COA and its template, Invoice: none, the typed facts", card?.status === "pending" && d2.Invoice === "none" && /VITAMAX 1L/.test(d2.Product) && /^COA · template/.test(d2.Certificate) && d2.batchNo === "LOT-9001", d2);
+  // 26 Nov (Phase 6): the card in Arabic, the English kept for the switch
+  const ar = Object.fromEntries((card?.preview?.details || []).map((d) => [d.label, d.labelAr]));
+  assert("the card's Arabic: «شهادة لمنتج (من غير فاتورة)», the run button, field labels", card.preview.titleAr === "شهادة لمنتج (من غير فاتورة)" && card.preview.runLabelAr === "اعمل الشهادة" && card.preview.title && ar.batchNo === "رقم التشغيلة", { titleAr: card.preview.titleAr, ar });
   const invoicesBefore = await prisma.invoice.count({ where: { companyId: co.id } });
   assert("nothing made before Run", invoicesBefore === 0);
   done = await actions.approveAction(actor, card.id);
@@ -102,6 +105,7 @@ try {
   const batchTask = await pollTask(done.result.taskId, A, { timeoutMs: 120_000 });
   const cert = await prisma.certificate.findFirst({ where: { companyId: co.id }, include: { invoice: true, versions: true } });
   assert("Run → a certificate draft through the usual engine (a version with values)", batchTask?.status === "completed" && cert && cert.status !== "final" && cert.versions.length >= 1, { task: batchTask?.status, error: batchTask?.error, cert: cert?.status });
+  assert("the result names the certificate and links to IT — not to /certificates?invoiceId= of the hidden record", done.result?.certificates?.length === 1 && done.result.certificates[0].id === cert.id && done.result.link === `/certificates/${cert.id}` && !/invoiceId/.test(done.result.link), done.result);
   assert("…on an internal 'direct' record with the product and the typed batch facts", cert?.invoice.origin === "direct" && cert.invoice.header.invoiceNumber === null && (await prisma.invoiceItem.findFirst({ where: { invoiceId: cert.invoiceId } })).data.batchNo === "LOT-9001");
   let r = await api("GET", "/invoices?limit=100", A);
   assert("that record is not in the invoice list", r.status === 200 && !(r.data.data.invoices || []).some((i) => i.id === cert.invoiceId), r.data?.data?.invoices?.map((i) => i.id));

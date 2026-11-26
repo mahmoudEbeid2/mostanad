@@ -8,6 +8,7 @@ import { planDirect, createDirectRequest, generateForProduct, BATCH_FACTS } from
 import { uploadCoas } from "../../../certificates/labResults/coaService.js";
 import { assertVerbatim } from "./actions.js";
 import { id } from "./common.js";
+import { certificatesOfBatch } from "../../../certificates/generation/batchService.js";
 
 // Client report 24 Nov ("maxvet label"): four certificate files of the brand
 // were attached and the assistant asked for an invoice number four times. A
@@ -127,6 +128,6 @@ defineTool({
       return { invoiceId, taskId: out.taskId, note: "The COA is being read. When it is done, propose generate_certificates with this invoiceId (it is the product's certificate request, not a real invoice — call it that to the user)." };
     }
     const out = await generateForProduct(base);
-    return { invoiceId: out.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, link: `/certificates?invoiceId=${out.invoiceId}` };
+    return { invoiceId: out.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, ...(await certificatesOfBatch(out.batchId)) };
   },
 });

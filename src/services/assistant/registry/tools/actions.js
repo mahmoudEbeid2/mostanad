@@ -17,6 +17,7 @@ import { startLabelVerification, queueReferenceLabel, uploadedOn } from "../../.
 import { updateProduct, createProduct } from "../../../productService.js";
 import { createProductSchema } from "../../../../validators/productValidator.js";
 import { id } from "./common.js";
+import { certificatesOfBatch } from "../../../certificates/generation/batchService.js";
 
 // C2 actions. A model call to any of these only PROPOSES a confirmation card
 // (preview); run() happens after the person presses Run, with the card's stored
@@ -313,7 +314,7 @@ defineTool({
   run: async (a, ctx) => {
     if (a.certificateTypeIds) await updateInvoice(a.invoiceId, ctx.companyId, { certificateTypeIds: a.certificateTypeIds });
     const out = await startGeneration(a.invoiceId, ctx.companyId, userIdOf(ctx), { force: false, canForce: false });
-    return { invoiceId: a.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, link: `/certificates?invoiceId=${a.invoiceId}` };
+    return { invoiceId: a.invoiceId, batchId: out.batchId, taskId: out.taskId, planned: out.planned, ...(await certificatesOfBatch(out.batchId)) };
   },
 });
 

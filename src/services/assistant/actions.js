@@ -5,6 +5,7 @@ import { executeApproved } from "./registry/index.js";
 import { presentError } from "../ai/aiErrorMessage.js";
 import { shapeResult } from "./registry/trim.js";
 import { draftForRun, markConfirmed, markExecuted, markFailed, draftCardCancelled } from "./drafts/draftService.js";
+import { withArabic } from "./cardArabic.js";
 
 // Confirmation cards (C2). A card is made only from a ready draft (drafts/draftService.js): the exact
 // args are stored with a hash; Run executes exactly those, as the person who
@@ -46,7 +47,7 @@ export function actionView(row) {
 /** A ready draft → a pending card. Called by the draft service (ctx.propose), never runs anything. */
 export async function proposeAction({ conversationId, messageId, actor, tool, args, companyId, preview, draftId = null, now = new Date() }) {
   return prisma.assistantAction.create({
-    data: { conversationId, messageId, draftId, ownerType: actor.kind, ownerId: actor.id, companyId, tool, args, argsHash: argsHashOf({ tool, companyId, args }), preview, status: "pending", expiresAt: new Date(now.getTime() + ACTION_TTL_MS) },
+    data: { conversationId, messageId, draftId, ownerType: actor.kind, ownerId: actor.id, companyId, tool, args, argsHash: argsHashOf({ tool, companyId, args }), preview: withArabic(tool, preview), status: "pending", expiresAt: new Date(now.getTime() + ACTION_TTL_MS) },
   });
 }
 
