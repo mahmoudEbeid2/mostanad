@@ -169,3 +169,26 @@ export const decideConflict = catchAsync(async (req, res, next) => {
   await prisma.product.update({ where: { id: p.id }, data: { ...data, fieldProvenance: prov, harvestConflicts: conflicts } });
   ok(res, { key: req.params.key, value, applied: !!col });
 });
+
+/**
+ * GET /entity-company/:type/:id — the company an item belongs to (Phase 6): a deep link (from the request
+ * page, a chat card, an email) opens it whatever company the screen had selected, switching to its company.
+ * A company session only ever learns about its own items (another's is "not found", like everywhere).
+ */
+const OWNER = {
+  certificate: (id) => prisma.certificate.findUnique({ where: { id }, select: { companyId: true } }),
+  template: (id) => prisma.certificateTemplate.findUnique({ where: { id }, select: { companyId: true } }),
+  version: (id) => prisma.templateVersion.findUnique({ where: { id }, select: { template: { select: { companyId: true } } } }).then((v) => v && { companyId: v.template.companyId }),
+  request: (id) => prisma.invoice.findUnique({ where: { id }, select: { companyId: true } }),
+  invoice: (id) => prisma.invoice.findUnique({ where: { id }, select: { companyId: true } }),
+  product: (id) => prisma.product.findUnique({ where: { id }, select: { companyId: true } }),
+  batch: (id) => prisma.certificateBatch.findUnique({ where: { id }, select: { companyId: true } }),
+};
+export const entityCompany = catchAsync(async (req, res, next) => {
+  const find = OWNER[req.params.type];
+  if (!find) return next(new AppError("Unknown item type", 400));
+  const row = await find(req.params.id).catch(() => null);
+  if (!row?.companyId || (req.company && req.company.id !== row.companyId)) return next(new AppError("Not found", 404));
+  const company = await prisma.company.findUnique({ where: { id: row.companyId }, select: { id: true, name: true } });
+  ok(res, { companyId: company.id, companyName: company.name });
+});

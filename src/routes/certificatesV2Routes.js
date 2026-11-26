@@ -179,6 +179,7 @@ router.post("/certificate-requests/:id/lines/:lineId/new-pack", guard("create_pr
 router.post("/certificate-requests/:id/generate", guard("create_certificates"), workflow.generateRequest);
 router.patch("/certificate-requests/:id", guard("create_certificates"), workflow.setRequestOptions);
 router.get("/companies/:id/numbering", guard("read_certificates"), workflow.getNumbering);
+router.get("/entity-company/:type/:id", guard("read_certificates"), workflow.entityCompany);
 router.put("/companies/:id/numbering/:code", guard("update_certificate_templates"), workflow.setNumbering);
 router.post("/certificates/:id/review", guard("update_certificates"), workflow.reviewAction);
 router.get("/certificates/:id/review-checks", guard("read_certificates"), workflow.reviewChecks);
