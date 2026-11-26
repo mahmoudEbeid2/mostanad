@@ -13,6 +13,8 @@ import { maskEstimates, provenanceFor } from "../../catalogues/fieldProvenance.j
 import { assertVersionsReady } from "../templates/readinessService.js";
 import { isProtected } from "../inference/policy.js";
 import { allocateDocNumber } from "./docNumbers.js";
+import { experimentFor, watermarkHtml, audit as experimentAudit } from "../experiment/experimentMode.js";
+import { experimentFill } from "../experiment/experimentFill.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -77,7 +79,9 @@ export async function startGeneration(invoiceId, companyId, userId, { force = fa
   if (!GENERATABLE.includes(invoice.status)) {
     throw new CertError("INVOICE_NOT_READY", `Confirm the invoice before generating (it is ${invoice.status})`, 409);
   }
-  await assertDataCheckGate(invoice, { force, canForce });
+  // PART 3: experiment mode (this company or all) — the policy's gates are off; what is made is a locked sample
+  const experiment = await experimentFor(invoice.companyId);
+  if (!experiment.on) await assertDataCheckGate(invoice, { force, canForce });
   const plan = await computePlan(invoice);
   // only (28 Nov, a request a second drop added to): just the new cells — the new lines, and every line
   // for a newly asked type; the drafts already made (and answered) are left as they are
@@ -92,7 +96,7 @@ export async function startGeneration(invoiceId, companyId, userId, { force = fa
   }
   // every path (invoice, product, chat, Express, Make certificates) comes here: a template with
   // unmarked batch / date / result text is refused, never printed with its sample's values
-  await assertVersionsReady(plan.entries.map((e) => e.templateVersionId));
+  if (!experiment.on) await assertVersionsReady(plan.entries.map((e) => e.templateVersionId));
   const items = await prisma.invoiceItem.findMany({ where: { invoiceId }, include: { product: { select: { name: true } } } });
   const itemById = new Map(items.map((i) => [i.id, i]));
   const invoiceNo = invoice.header?.invoiceNumber || null;
@@ -282,6 +286,24 @@ export async function renderInitialVersion(cert, base, caches) {
     ctx.docNumber = await allocateDocNumber(cert.companyId, type?.code, new Date(), cert.id);
   }
   const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
+  // PART 3: experiment mode — every field still empty filled by the AI (lab results, batch facts included),
+  // marked «مستنتج (تجربة)»; the certificate is a watermarked sample that can never become valid
+  const experiment = await experimentFor(cert.companyId);
+  const aiFilled = [];
+  if (experiment.on) {
+    const empty = plainFields(design).filter((f) => !resolved[f.key].value);
+    let got = {};
+    try {
+      got = await experimentFill(empty, ctx);
+    } catch (err) {
+      console.error(`[experiment] fill of ${cert.id}: ${err.message}`);
+    }
+    for (const f of empty) {
+      if (!got[f.key]) continue;
+      resolved[f.key] = { value: got[f.key], resolved: got[f.key], origin: "auto", flags: ["estimated"], provenance: { estimated: true, experiment: true, basis: "وضع التجربة", tier: "I" } };
+      aiFilled.push(f.key);
+    }
+  }
   // a composition printed row by row: more ingredients than the design has rows is never cut silently
   // (only a table of rows 1…n — a design naming one ingredient, "activeIngredients[1]", is no table)
   // (a row: its name field by path, or by role — a whole printed row is a template of name + amount)
@@ -319,14 +341,15 @@ export async function renderInitialVersion(cert, base, caches) {
     ])
   );
   for (const g of design.groups) values[g.key] = groupValue(g, resolvedGroups[g.key], out);
-  const html = await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_html", buffer: Buffer.from(out.html, "utf8"), mimeType: "text/html" });
+  const html = await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_html", buffer: Buffer.from(experiment.on ? watermarkHtml(out.html) : out.html, "utf8"), mimeType: "text/html" });
   const thumb = out.thumbnail ? await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_thumb", buffer: out.thumbnail, mimeType: "image/png" }) : null;
   const [, updated] = await prisma.$transaction([
     prisma.certificateVersion.create({
       data: { certificateId: cert.id, versionNumber: 1, values, htmlFileId: html.id, thumbnailFileId: thumb?.id || null, changeSource: "generation", changedByUserId: base.userId || null },
     }),
-    prisma.certificate.update({ where: { id: cert.id }, data: { status: "draft", currentVersion: 1, flagCount: countBlocking(values), error: null } }),
+    prisma.certificate.update({ where: { id: cert.id }, data: { status: "draft", currentVersion: 1, flagCount: countBlocking(values), error: null, ...(experiment.on ? { isExperimentSample: true } : {}) } }),
   ]);
+  if (experiment.on) await experimentAudit("generated", { companyId: cert.companyId, userId: base.userId || null, details: { certificateId: cert.id, scope: experiment.scope, aiFilled } });
   return updated;
 }
 

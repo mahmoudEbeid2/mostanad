@@ -13,6 +13,7 @@ import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
 import { assertReady } from "../templates/readinessService.js";
+import { watermarkHtml, assertNotSample } from "../experiment/experimentMode.js";
 
 // Edit, versions, export, finalize (CERTIFICATES_V2_PLAN.md §11). Every
 // change is a NEW CertificateVersion (edits never overwrite, D8); concurrency
@@ -54,6 +55,7 @@ const short = (s) => {
 async function renderValues(cert, values) {
   const design = await loadDesign(new Map(), cert.templateVersionId);
   const out = await renderDesign(design, values, { label: "certificate", thumbnailScale: THUMB_SCALE });
+  if (cert.isExperimentSample) out.html = watermarkHtml(out.html); // a sample stays a sample, edited or not
   const merged = {};
   for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
@@ -332,6 +334,7 @@ export async function getPdf(id, companyId, version = null) {
 /** POST /certificates/:id/finalize — refuses while blocking flags remain; freezes the PDF. */
 export async function finalize(id, companyId, userId, { expectedVersion } = {}) {
   const cert = await loadCertificate(id, companyId);
+  assertNotSample(cert); // PART 3: an experiment sample is never approved — the mode turned off later doesn't change it
   assertEditable(cert);
   assertVersion(cert, expectedVersion);
   if (cert.flagCount > 0) {
@@ -381,6 +384,7 @@ export async function duplicate(id, companyId, userId) {
         currentVersion: 1,
         flagCount: cert.flagCount,
         search: cert.search,
+        isExperimentSample: cert.isExperimentSample === true, // a copy of a sample is a sample (never a way to a valid one)
       },
     });
     await tx.certificateItem.createMany({ data: items.map((i) => ({ certificateId: copy.id, invoiceItemId: i.invoiceItemId, position: i.position })) });

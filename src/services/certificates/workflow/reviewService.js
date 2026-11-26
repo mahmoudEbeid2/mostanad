@@ -2,6 +2,7 @@ import { prisma } from "../../../lib/prisma.js";
 import { CertError, notFound } from "../errors.js";
 import { isBlocking } from "../generation/batchService.js";
 import { finalize, duplicate } from "../certificates/editService.js";
+import { assertNotSample } from "../experiment/experimentMode.js";
 
 // Review → authorization → approval (client workflow §5): a draft with nothing missing is sent to
 // review; the reviewer passes it on for authorization or RETURNS it with a field-specific comment;
@@ -88,6 +89,7 @@ export async function reviewAction(id, companyId, userId, { action, field = null
     return set({ reviewStatus: "returned", reviewComments: [...comments, { field, comment: String(comment).trim().slice(0, 1000), byUserId: userId, at: now(), resolvedAt: null }] });
   }
   if (action === "authorize") {
+    assertNotSample(c);
     if (c.reviewStatus !== "awaiting_authorization") throw new CertError("REVIEW_STATE", "Pass the review first", 409);
     await finalize(id, companyId, userId, { expectedVersion: expectedVersion ?? c.currentVersion });
     return set({ reviewStatus: null, reviewComments: [...comments, { action: "authorized", byUserId: userId, at: now() }] });
@@ -108,6 +110,7 @@ export async function reviewAction(id, companyId, userId, { action, field = null
  */
 export async function revise(id, companyId, userId) {
   const c = await load(id, companyId);
+  assertNotSample(c);
   if (c.status !== "final") throw new CertError("CERTIFICATE_NOT_FINAL", "Only an approved certificate is revised (a draft is simply edited)", 409);
   const later = await prisma.certificate.findFirst({ where: { revisionOfId: id }, select: { id: true } });
   if (later) throw new CertError("ALREADY_REVISED", "This revision was already revised — open the newest one", 409, { certificateId: later.id });

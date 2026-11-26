@@ -20,6 +20,7 @@ import productImportRoutes from "./productImportRoutes.js";
 import regulatoryRuleRoutes from "./regulatoryRuleRoutes.js";
 import assuranceRoutes from "./assuranceRoutes.js";
 import certificatesV2Routes from "./certificatesV2Routes.js";
+import experimentRoutes from "./experimentRoutes.js";
 import catalogueRoutes from "./catalogueRoutes.js";
 import assistantRoutes from "./assistantRoutes.js";
 import intakeRoutes from "./intakeRoutes.js";
@@ -66,6 +67,7 @@ router.use("/assurance", assuranceRoutes); // internal protect applied in assura
 router.use("/assistant", assistantRoutes); // in-app assistant (C0/C1) — protect applied in assistantRoutes.js
 router.use("/intake", intakeRoutes); // auto-intake: drop any files
 router.get("/review-inbox", protect, restrictToPermission("read_assurance"), getReviewInbox);
+router.use("/experiment-mode", experimentRoutes); // PART 3: the certificate policy off, owner only
 router.use("/", certificatesV2Routes); // Certificates V2 — protect + permission applied per route
 router.use("/", productImportRoutes); // products from many files at once — protect + permission per route
 router.use("/", catalogueRoutes); // product catalogues (plan.md §15) — protect + permission applied per route

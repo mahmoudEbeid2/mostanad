@@ -76,6 +76,9 @@ model Company {
   aiSettings Json?    @map("ai_settings") // certificate AI layers (plan.md §3.3): { enabled, autoAcceptThreshold, … }; null = defaults
   profile          Json?    // harvested: { producerName, country, website, registrationNo, code, numbering: { COA: "COAAVVI{YY}{MM}{SEQ3}" }, dateFormat, signatories[] }
   harvestConflicts Json?    @map("harvest_conflicts")
+  experimentMode   Boolean   @default(false) @map("experiment_mode") // PART 3: the certificate policy off — every certificate made is a locked sample
+  experimentModeBy String?   @map("experiment_mode_by")
+  experimentModeAt DateTime? @map("experiment_mode_at")
   defaultCertificateTypeIds Json? @map("default_certificate_type_ids") // used when an invoice upload sends no choice; same meaning as Invoice.certificateTypeIds
   isActive   Boolean  @default(true) @map("is_active")
   createdAt  DateTime @default(now()) @map("created_at")
@@ -1051,6 +1054,7 @@ model CertificateBatch {
 }
 
 model Certificate {
+  isExperimentSample Boolean @default(false) @map("is_experiment_sample") // PART 3: made in experiment mode — never valid
   id                String           @id @default(uuid())
   companyId         String           @map("company_id")
   company           Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -1910,4 +1914,27 @@ model DocumentNumber {
 
   @@unique([companyId, number])
   @@map("document_numbers")
+}
+
+// PART 3: app-wide settings (experiment_mode_global = { on, by, byName, at })
+model AppSetting {
+  key             String   @id
+  value           Json
+  updatedByUserId String?  @map("updated_by_user_id")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
+
+// PART 3: every experiment-mode toggle and generation
+model ExperimentAudit {
+  id        String   @id @default(uuid())
+  companyId String?  @map("company_id")
+  action    String // turned_on | turned_off | generated
+  userId    String?  @map("user_id")
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, createdAt])
+  @@map("experiment_audit")
 }

@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/prisma.js";
 import AppError from "../../../utils/appError.js";
+import { experimentFor } from "../experiment/experimentMode.js";
 
 // The designer's panel (client workflow §4): the product's data in the order the designer copies it
 // into Illustrator — Product Name → Packing Size → Type → Form → Composition Basis → Ingredients →
@@ -48,8 +49,11 @@ export async function designerData(productId, companyId, { requestId = null } = 
     shipment = lines.map((l) => ({ lineNo: l.lineNo, description: l.data?.name || p.name, packing: l.data?.packing || p.packaging || "", lot: l.data?.batchNo || "", lotSize: [l.data?.extra?.lotSize, l.data?.extra?.lotUnit].filter(Boolean).join(" ") }));
   }
   const tab = (rows) => rows.map((r) => r.join("\t")).join("\n");
-  return {
+  // PART 3: under experiment mode everything copied says it is a sample (never pasted into a real design unmarked)
+  const experiment = await experimentFor(p.companyId);
+  const result = {
     productId: p.id,
+    experiment: experiment.on,
     fields,
     ingredients,
     tsv: {
@@ -61,6 +65,8 @@ export async function designerData(productId, companyId, { requestId = null } = 
     },
     shipment,
   };
+  if (experiment.on) for (const k of Object.keys(result.tsv)) if (result.tsv[k]) result.tsv[k] = `SAMPLE – NOT VALID (AI-generated test data)\n${result.tsv[k]}`;
+  return result;
 }
 
 /** PUT /products/:id/design-estimates { appearance?, ph?, assumptions } — design fields only, marked as an estimate */
