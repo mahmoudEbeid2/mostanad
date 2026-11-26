@@ -49,6 +49,15 @@ export function productTableFrom(lines = [], names = []) {
   // one header line over every column ("PRODUCT NAME BRAND DESCRIPTION PACKING SIZE FORM", ADDVET HC p.2):
   // its column phrases, in order, are the row's cells in order — never the whole line for each cell
   const phrases = headerPhrases(rowLines.map(headerOf));
+  // each column's alignment: where its sample cells line up — left edges, centres or right edges
+  // (28 Nov: the HC's centred columns drifted when a row's text was wider or narrower than row 1's)
+  const alignOf = (cell) => {
+    const xs = col.map((h) => lines.find((l) => l.page === page && l.box && Math.abs(l.box.y - h.line.box.y) <= Math.max(2, h.line.box.h * 0.4) && l.box.x < cell.box.x + cell.box.w && l.box.x + l.box.w > cell.box.x)).filter(Boolean);
+    if (xs.length < 2) return "left";
+    const spread = (f) => Math.max(...xs.map(f)) - Math.min(...xs.map(f));
+    const s = { left: spread((b) => b.box.x), center: spread((b) => b.box.x + b.box.w / 2), right: spread((b) => b.box.x + b.box.w) };
+    return s.left <= 1.5 ? "left" : Object.entries(s).sort((a, b) => a[1] - b[1])[0][0];
+  };
   const fields = [];
   rowLines.forEach((l, i) => {
     const text = l.text;
@@ -72,6 +81,7 @@ export function productTableFrom(lines = [], names = []) {
       groupKey: "products",
       sortOrder: i,
       origin: "detected",
+      align: alignOf(l),
     });
   });
   return {

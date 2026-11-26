@@ -16,12 +16,14 @@ export const HC_PAGE1 = [
 ];
 const NAMES = ["ADDMECTIN 1%", "SULFARIM*", "OLIGOVET", "ADDOXY 200-LA", "ADD-E120", "AMINOVITA", "H-DURIN", "H-RESPI", "CURCUMARIN", "ADDHEPA"];
 const DESC = ["INJECTABLE", "ANTIBIOTIC", "INJECTION", "INJECTABLE", "SUPPLEMENT", "SUPPLEMENT", "SUPPLEMENT", "SUPPLEMENT", "SUPPLEMENT", "SUPPLEMENT"];
+// the converted boxes as on prod: the description and packing columns are centred
+const DESC_BOX = { INJECTABLE: [434, 81], ANTIBIOTIC: [437, 75], INJECTION: [439, 71], SUPPLEMENT: [430, 89] };
 export const HC_PAGE2 = [
   L("p2-l1", 2, 54, 248, 105, "ATTACHED LIST"),
   L("p2-l2", 2, 54, 270, 661, "PRODUCT NAME BRAND DESCRIPTION PACKING SIZE FORM"),
   ...NAMES.flatMap((n, i) => {
     const y = 292 + Math.round(i * 21.7);
-    return [L(`p2-l${3 + i}`, 2, 54, y, 9 * n.length, n), L(`p2-l${13 + i}`, 2, 337, y, 57, "ADDVET"), L(`p2-l${23 + i}`, 2, 430, y, 89, DESC[i]), L(`p2-l${33 + i}`, 2, 568, y, 46, i < 4 ? "100 ML" : "1 L"), L(`p2-l${43 + i}`, 2, 673, y, 45, "LIQUID")];
+    return [L(`p2-l${3 + i}`, 2, 54, y, 9 * n.length, n), L(`p2-l${13 + i}`, 2, 337, y, 57, "ADDVET"), L(`p2-l${23 + i}`, 2, DESC_BOX[DESC[i]][0], y, DESC_BOX[DESC[i]][1], DESC[i]), L(`p2-l${33 + i}`, 2, i < 4 ? 568 : 583, y, i < 4 ? 46 : 16, i < 4 ? "100 ML" : "1 L"), L(`p2-l${43 + i}`, 2, 673, y, 45, "LIQUID")];
   }),
 ];
 export const HC_PRODUCT_NAMES = NAMES.map((n) => n.replace("*", ""));

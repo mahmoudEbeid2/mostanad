@@ -1022,8 +1022,12 @@
         if (p <= lineH * 0.9 || p > lineH * 3) break;
         pitchText = p;
         following.push(r);
-      } else if (Math.abs(r.y - (rowTop + j * pitchText)) <= 1.2) following.push(r);
-      else break;
+      } else if (Math.abs(r.y - (rowTop + j * pitchText)) <= 1.2) {
+        following.push(r);
+        // the pitch is the rows' average so far: rows 21.67 px apart drift past the tolerance from the
+        // third row when only the first gap (21) counts (28 Nov: ADDVET HC's attached list)
+        pitchText = (r.y - rowTop) / j;
+      } else break;
     }
 
     // background rules

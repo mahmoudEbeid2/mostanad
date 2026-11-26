@@ -43,6 +43,17 @@ const cells = by(table.fields || []);
 assert("10 sample rows → one repeating row over the invoice lines", table.rows === 10 && table.group?.source?.kind === "invoice_lines", table.problem || table.rows);
 assert("each column from its own header phrase", cells.row_product_name?.source.path === "product.name" && cells.row_cell_2?.source.path === "product.brand.name" && cells.row_cell_4?.source.path === "product.packaging" && cells.row_cell_5?.source.path === "product.physicalForm", Object.values(cells).map((c) => `${c.key}:${c.source.path}`));
 assert("a one-word description column is the category", cells.row_cell_3?.source.path === "product.category.name", cells.row_cell_3?.source);
+assert("centred columns stay centred (the sample cells' centres line up)", cells.row_cell_3?.align === "center" && cells.row_cell_4?.align === "center" && cells.row_product_name?.align === "left", Object.values(cells).map((c) => `${c.key}:${c.align}`));
+const p2 = by(
+  fieldsForAreas(
+    [{ lineId: "n", page: 2, kind: "batch", label: "Batch number", text: "PL231562", charStart: 0, charEnd: 8 }],
+    [
+      { id: "l", page: 2, text: "CERTIFICATE NO:  ", box: { x: 48, y: 177, w: 109, h: 12 } },
+      { id: "n", page: 2, text: "PL231562", box: { x: 192, y: 177, w: 58, h: 12 } },
+    ],
+  ),
+);
+assert("a value right of «CERTIFICATE NO:» is the document number, not a batch number", p2.document_number?.source?.kind === "docnumber" && !p2.batch_number, Object.keys(p2));
 
 console.log("\n3 · a COA row on one line");
 const t = "Assay 90-110% of the labeled amount of constituents 101.7%";

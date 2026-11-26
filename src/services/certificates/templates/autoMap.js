@@ -49,6 +49,8 @@ const ROW_LABELS = [
   [/^(?:Batch|Lot)\s*(?:No\.?|Number|#)$/i, "Batch number"],
   [/^(?:Batch|Lot)\s*Size$/i, "Batch size"],
   [/^(?:Issue|Issuing)\s*Date$/i, "Issue date"],
+  [/^(?:Certificate|Document|Cert\.?|Doc\.?)\s*(?:No\.?|Number|#)$/i, "Document number"],
+  [/^Date\s+of\s+(?:Certificate|Issue)$/i, "Issue date"],
 ];
 
 /** The label printed left of a place on its row ("Production Date:" … "10/2026") → a known label, or null */
@@ -127,7 +129,9 @@ export function fieldsForAreas(areas, lines, ctx = {}) {
   };
   const testRows = new Set(); // lines handled as one COA row
   for (const raw of areas) {
-    const a = !raw.label || GENERIC.test(raw.label) ? { ...raw, label: rowLabel(raw, lines) || raw.label } : raw;
+    // the label printed left of the place ("CERTIFICATE NO:") beats the readiness rules' guess (HC p.2: "Batch number")
+    const printed = rowLabel(raw, lines);
+    const a = printed ? { ...raw, label: printed } : raw;
     const row = rowsOf.get(a.lineId);
     if (testRows.has(a.lineId)) continue;
     // a whole COA row on one line, found only by its generic places: its specification and its result
