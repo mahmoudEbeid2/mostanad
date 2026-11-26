@@ -8,6 +8,8 @@ import { prisma } from "../../../lib/prisma.js";
 //   document_numbers   every number given out, unique per company: a clash (a number a person typed, two
 //                      schemes giving the same text) takes the next one
 // The counter moves in one UPDATE … RETURNING, so two certificates never get the same sequence.
+// It never goes back (29 Nov): whoever sets it — the documents, a person, a switch of pattern — it starts
+// after the highest number this company already issued in that pattern.
 
 const pad = (n, w) => String(n).padStart(w, "0");
 export const codeOf = (certCode) => String(certCode || "DOC").toUpperCase().replace(/[^A-Z0-9]/g, "") || "DOC";
@@ -24,6 +26,29 @@ export function formatNumber(pattern, seq, at = new Date()) {
     .replace(/\{SEQ(\d+)\}/, (_m, w) => pad(seq, Number(w)));
 }
 
+/** "COAAVVI{MM}{YY}{SEQ3}" → a regex catching the sequence of a number written in it */
+export function patternRegex(pattern) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let src = "";
+  for (const part of String(pattern).split(/(\{(?:YYYY|YY|MM|SEQ\d+)\})/)) {
+    if (part === "{YYYY}") src += String.raw`\d{4}`;
+    else if (part === "{YY}" || part === "{MM}") src += String.raw`\d{2}`;
+    else if (/^\{SEQ(\d+)\}$/.test(part)) src += String.raw`(\d{` + part.match(/\d+/)[0] + ",})";
+    else src += esc(part);
+  }
+  return new RegExp(`^${src}$`);
+}
+
+/** The highest sequence this company already issued for a type in a pattern (0 when none) */
+export async function issuedMax(companyId, code, pattern) {
+  const re = patternRegex(pattern);
+  const rows = await prisma.documentNumber.findMany({ where: { companyId, certCode: code }, select: { number: true } });
+  return rows.reduce((max, r) => {
+    const m = re.exec(r.number);
+    return m ? Math.max(max, Number(m[1])) : max;
+  }, 0);
+}
+
 /**
  * The scheme of a company + type, made when missing: from what the company's documents taught
  * (company.profile.numbering, harvest) or the default. → the row
@@ -31,9 +56,13 @@ export function formatNumber(pattern, seq, at = new Date()) {
 export async function schemeFor(companyId, certCode) {
   const code = codeOf(certCode);
   const found = await prisma.numberingScheme.findUnique({ where: { companyId_certCode: { companyId, certCode: code } } });
-  if (found) return found;
-  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { profile: true } });
+  const company = found && found.source !== "default" ? null : await prisma.company.findUnique({ where: { id: companyId }, select: { profile: true } });
   const learnt = company?.profile?.numbering?.[code];
+  // a default nobody confirmed yields to what the documents taught since (its own numbers stay given)
+  if (found && found.source === "default" && !found.confirmed && learnt?.pattern && validPattern(learnt.pattern)) {
+    return learnScheme(companyId, code, { pattern: learnt.pattern, seq: Number(learnt.lastSeq) || 0, example: learnt.example || learnt.file || null });
+  }
+  if (found) return found;
   const data = learnt?.pattern
     ? { companyId, certCode: code, pattern: learnt.pattern, lastSeq: Number(learnt.lastSeq) || 0, source: "detected", example: learnt.example || learnt.file || null }
     : { companyId, certCode: code, pattern: defaultPattern(code), lastSeq: 0, source: "default" };
@@ -45,8 +74,10 @@ export async function learnScheme(companyId, certCode, { pattern, seq = 0, examp
   const code = codeOf(certCode);
   const cur = await prisma.numberingScheme.findUnique({ where: { companyId_certCode: { companyId, certCode: code } } });
   if (cur?.source === "user") return cur;
-  if (!cur) return prisma.numberingScheme.create({ data: { companyId, certCode: code, pattern, lastSeq: seq, source: "detected", example } });
-  return prisma.numberingScheme.update({ where: { id: cur.id }, data: { pattern, lastSeq: cur.pattern === pattern ? Math.max(cur.lastSeq, seq) : seq, source: "detected", example: example || cur.example } });
+  // never back: past the documents' last number AND every number already issued in this pattern
+  const floor = Math.max(Number(seq) || 0, await issuedMax(companyId, code, pattern));
+  if (!cur) return prisma.numberingScheme.create({ data: { companyId, certCode: code, pattern, lastSeq: floor, source: "detected", example } });
+  return prisma.numberingScheme.update({ where: { id: cur.id }, data: { pattern, lastSeq: cur.pattern === pattern ? Math.max(cur.lastSeq, floor) : floor, source: "detected", example: example || cur.example } });
 }
 
 /** The next number for a company's certificate type → "COAAVVI1126002" (claimed: never given again) */
@@ -74,7 +105,10 @@ export async function setScheme(companyId, certCode, { pattern, lastSeq = null }
   const code = codeOf(certCode);
   if (!validPattern(pattern)) throw Object.assign(new Error("The pattern needs {SEQ3} (or another width) and only {YYYY}, {YY}, {MM} as placeholders"), { statusCode: 400 });
   const cur = await schemeFor(companyId, code);
-  return prisma.numberingScheme.update({ where: { id: cur.id }, data: { pattern, ...(Number.isInteger(lastSeq) && lastSeq >= 0 ? { lastSeq } : {}), confirmed: true, source: "user", updatedByUserId: userId } });
+  // a person's counter never goes below a number already given in that pattern (no number twice, no reset)
+  const issued = await issuedMax(companyId, code, pattern);
+  const wanted = Number.isInteger(lastSeq) && lastSeq >= 0 ? lastSeq : cur.pattern === pattern ? cur.lastSeq : 0;
+  return prisma.numberingScheme.update({ where: { id: cur.id }, data: { pattern, lastSeq: Math.max(wanted, issued), confirmed: true, source: "user", updatedByUserId: userId } });
 }
 
 /** A company's schemes, each with its next number (nothing claimed) */

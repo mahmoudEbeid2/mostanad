@@ -17,7 +17,7 @@ import { mergeProduct } from "../../src/services/harvest/harvestService.js";
 import { findVariableAreas } from "../../src/services/certificates/templates/readinessCheck.js";
 import { fieldsForAreas } from "../../src/services/certificates/templates/autoMap.js";
 import { amountParts } from "../../src/services/certificates/generation/valueResolver.js";
-import { formatNumber, allocateDocNumber } from "../../src/services/certificates/generation/docNumbers.js";
+import { formatNumber, allocateDocNumber, learnScheme, setScheme } from "../../src/services/certificates/generation/docNumbers.js";
 
 process.env.GEMINI_DISABLED = "true";
 const { assert, counts } = makeAssert();
@@ -78,10 +78,43 @@ try {
   row = await prisma.product.findUnique({ where: { id: p.id } });
   assert("  a person's value is never overwritten by a file (re-merge)", row.physicalForm === "Suspension" && (row.harvestConflicts || []).filter((x) => x.key === "validity").length === 1, row);
 
+  // 29 Nov: a COC's "Product Form: Antibiotic" (filled by intake as the physical form) vs the HC's "LIQUID"
+  const q = await prisma.product.create({ data: { companyId: co.id, name: "OLIGOVET", physicalForm: "Antibiotic", fieldProvenance: { physicalForm: { source: "intake", file: "ADDVET COC.pdf", page: 3 } } } });
+  const qf = (o) => ({ companyId: co.id, entity: "product", productId: q.id, productName: q.name, snippet: "q", sourceType: "certificate", ...o });
+  await prisma.harvestedFact.createMany({
+    data: [
+      qf({ key: "physicalForm", value: "Antibiotic", valueNorm: "antibiotic", fileId: "f-coc", fileName: "ADDVET COC.pdf", page: 3 }),
+      qf({ key: "physicalForm", value: "LIQUID", valueNorm: "liquid", fileId: "f-hc", fileName: "ADDVET HC.pdf", page: 2 }),
+    ],
+  });
+  await mergeProduct(q.id);
+  const qrow = await prisma.product.findUnique({ where: { id: q.id } });
+  assert("  the physical form is the files' real form, not the COC's label", qrow.physicalForm === "LIQUID" && qrow.fieldProvenance?.physicalForm?.file === "ADDVET HC.pdf", { physicalForm: qrow.physicalForm, prov: qrow.fieldProvenance?.physicalForm });
+  assert("  the COC's «Product Form» label is kept apart (productForm), with its source", qrow.productForm === "Antibiotic" && qrow.fieldProvenance?.productForm?.file === "ADDVET COC.pdf", { productForm: qrow.productForm });
+  assert("  no form conflict between a label and a form", !(qrow.harvestConflicts || []).some((c) => c.key === "physicalForm" || c.key === "productForm"), qrow.harvestConflicts);
+  const r2 = await prisma.product.create({ data: { companyId: co.id, name: "X-ONLY-COC", physicalForm: "Supplement", fieldProvenance: { physicalForm: { source: "harvest", file: "ADDVET COC.pdf" } } } });
+  await mergeProduct(r2.id);
+  const r2row = await prisma.product.findUnique({ where: { id: r2.id } });
+  assert("  no real form in any file → the label is cleared from the physical form (to estimate)", r2row.physicalForm === null, r2row.physicalForm);
+
   const a = await Promise.all([1, 2, 3, 4].map(() => allocateDocNumber(co.id, "COA", new Date(2026, 10, 28))));
   assert("  4 numbers at once → 4 different, in sequence (no pattern known: COA-2026-0001…)", new Set(a).size === 4 && a.sort()[0] === "COA-2026-0001", a);
   await prisma.company.update({ where: { id: co.id }, data: { profile: { numbering: { COA: { pattern: "COAAVVI{MM}{YY}{SEQ3}", lastSeq: 10 } } } } });
-  assert("  a learnt numbering continues from its last number", (await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28))) === "COAAVVI1126011");
+  // a default scheme already used (4 numbers): what the documents taught since takes over, from its last number
+  const learnt = await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28));
+  assert("  a learnt numbering continues from its last number", learnt === "COAAVVI1126011", learnt);
+  // never back: documents teaching an older last number, a person typing a lower counter, a switch of pattern
+  await learnScheme(co.id, "COA", { pattern: "COAAVVI{MM}{YY}{SEQ3}", seq: 5 });
+  const afterOld = await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28));
+  assert("  an older document's last number doesn't move the counter back", afterOld === "COAAVVI1126012", afterOld);
+  await setScheme(co.id, "COA", { pattern: "COAAVVI{MM}{YY}{SEQ3}", lastSeq: 2 });
+  const afterPerson = await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28));
+  assert("  a person's lower counter doesn't reset it (no number given twice)", afterPerson === "COAAVVI1126013", afterPerson);
+  await setScheme(co.id, "COA", { pattern: "COA-{YYYY}-{SEQ4}", lastSeq: 0 });
+  const back = await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28));
+  assert("  back to an earlier pattern: it continues after that pattern's last number", back === "COA-2026-0005", back);
+  const given = await prisma.documentNumber.findMany({ where: { companyId: co.id }, select: { number: true } });
+  assert("  every number given once", given.length === 8 && new Set(given.map((g) => g.number)).size === 8, given.map((g) => g.number));
 } finally {
   await finish(counts, async () => {
     await prisma.harvestedFact.deleteMany({ where: { companyId: co.id } });
