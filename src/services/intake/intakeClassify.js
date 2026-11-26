@@ -171,7 +171,7 @@ export async function resolveBatch(batchId) {
     const earlier = await prisma.intakeItem.findMany({ where: { sha256: { in: hashes }, status: "done", parentId: null, batchId: { not: batchId }, companyId: batch.companyId || { not: null } }, select: { sha256: true, createdAt: true, companyId: true, name: true } });
     for (const e of earlier) if (!existingHashes.has(`${e.companyId}|${e.sha256}`)) existingHashes.set(`${e.companyId}|${e.sha256}`, { at: e.createdAt, name: e.name });
   }
-  const { proposals } = await resolveDrop({ items, scope, sessionCompanyId: batch.ownerType === "company" ? batch.companyId : null, hintCompanyId: batch.ownerType === "user" ? batch.companyId : null, existingHashes });
+  const { proposals } = await resolveDrop({ items, scope, sessionCompanyId: batch.ownerType === "company" ? batch.companyId : null, hintCompanyId: batch.ownerType === "user" ? batch.companyId : null, existingHashes, newCompanyName: batch.express?.newCompany || null });
   for (const i of items) {
     const p = proposals.get(i.id);
     if (!p) continue;

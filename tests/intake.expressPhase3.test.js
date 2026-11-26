@@ -40,6 +40,14 @@ async function main() {
   assert("the 5 ADDVET files → «شركة جديدة: ADDVET» (not OMAN, COA, a product)", guessCompanyName(files, "دي شهادات ADDVET وليبلات منتجين") === "ADDVET");
   assert("no shared word → no guess (only «خلّي السيستم يحدد»)", guessCompanyName(["scan 1.pdf", "photo.png"], "خد دول") === null);
 
+  // Phase 7 found it: another company with a brand "ADDVET" captured the drop the person said was a new ADDVET
+  const sc = { companies: [{ id: "c-vet", name: "Vetline" }], brands: [{ id: "b-addvet", name: "ADDVET", companyId: "c-vet" }], products: [] };
+  const named = [item("x1", "ADDVET OMAN COA.pdf", { docType: "certificate_filled", certCode: "COA", companies: [{ name: "ADDVET" }] })];
+  let pr = (await resolveDrop({ items: named, scope: sc })).proposals.get("x1");
+  assert("without a choice, a company whose brand is ADDVET is matched (Vetline)", pr.company?.id === "c-vet", pr.company);
+  pr = (await resolveDrop({ items: named, scope: sc, newCompanyName: "ADDVET" })).proposals.get("x1");
+  assert("«شركة جديدة: ADDVET» chosen → a NEW ADDVET, never Vetline", pr.company?.isNew === true && pr.company.name === "ADDVET" && !pr.company.id, pr.company);
+
   console.log("\n2 · a country on every row");
   const bundle = item("b1", "ADDVET OMAN COA 10-26.pdf", { docType: "certificate_filled", certCode: "COA", parts: [{ from: 1 }], expanded: null });
   const part = item("b1p1", "ADDVET OMAN COA 10-26.pdf — ADDMECTIN 1%", { docType: "certificate_filled", certCode: "COA", productNames: ["ADDMECTIN 1%"] }, { parentId: "b1", pageFrom: 1 });

@@ -75,7 +75,7 @@ export const ACTIONS = {
  * → Map(itemId → proposal { company, brand, products, country, action, docType, certCode, role, confidence, question, duplicateOf? })
  * company / brand: { id } (existing) | { name, isNew: true } | null; products: [{ id, name } | { name, volume, isNew }]
  */
-export async function resolveDrop({ items, scope, sessionCompanyId = null, hintCompanyId = null, existingHashes = new Map() }) {
+export async function resolveDrop({ items, scope, sessionCompanyId = null, hintCompanyId = null, existingHashes = new Map(), newCompanyName = null }) {
   const leaf = items.filter((i) => i.classification && !i.classification.expanded);
   // the company the drop as a whole names
   const fixed = sessionCompanyId || hintCompanyId || null;
@@ -93,7 +93,9 @@ export async function resolveDrop({ items, scope, sessionCompanyId = null, hintC
     if (c) ownCountry.set(i.id, c);
   }
   const dropCountry = majority(leaf.map((i) => ownCountry.get(i.id)?.[0]).filter(Boolean));
-  const company = dropCompanyId ? { id: dropCompanyId, name: dropCompanyName } : dropCompanyName ? { name: dropCompanyName, isNew: true } : null;
+  // the person's «شركة جديدة: X» wins over any match (another company's brand named X included)
+  const chosenNew = !fixed && newCompanyName ? { name: String(newCompanyName).trim(), isNew: true } : null;
+  const company = chosenNew || (dropCompanyId ? { id: dropCompanyId, name: dropCompanyName } : dropCompanyName ? { name: dropCompanyName, isNew: true } : null);
   // the brand: an existing brand of that company the files name, else one named like the company
   const brandName = majority(mentioned.map((n) => String(n).toUpperCase())) || dropCompanyName;
   const companyBrands = scope.brands.filter((b) => b.companyId === company?.id);
@@ -144,28 +146,34 @@ export async function resolveDrop({ items, scope, sessionCompanyId = null, hintC
     }
     if (i.sha256 && !i.parentId) seen.set(i.sha256, i.id);
     let names = [...new Set(c.productNames || [])];
+    let readOnPage = false;
     // a certificate page whose "Product Name:" is empty: a product of this drop printed on the page
     if (!names.length && c.pageText) {
       const page = norm(c.pageText);
       const onPage = dropProducts.filter((d) => norm(d.name).length >= 4 && page.includes(norm(d.name)));
       if (onPage.length === 1) {
         names = [onPage[0].name];
+        readOnPage = true;
         p.question = null;
         p.evidence = [...p.evidence, { from: "text", page: i.pageFrom || 1, says: `${onPage[0].name} is printed on the page (its "Product Name" is empty)` }];
       }
     }
     // a page whose product is unclear (none printed, or the same name on two pages): what the
-    // SAME page of the drop's other bundles names — a suggestion for ONE short question, never applied
-    if (i.parentId && (!names.length || c.question === "product")) {
+    // SAME page of the drop's other bundles names — a suggestion for ONE short question, never applied.
+    // Read from the page's own text, or the same name confirmed by the other file's page → settled.
+    if (i.parentId && !readOnPage && (!names.length || c.question === "product")) {
       const parentPages = (id) => items.filter((x) => x.parentId === id).length;
       const mine = parentPages(i.parentId);
       const same = items.filter((x) => x.parentId && x.parentId !== i.parentId && x.pageFrom === i.pageFrom && parentPages(x.parentId) === mine && (x.classification?.productNames || []).length === 1 && x.classification.question !== "product");
       const pick = majority(same.map((x) => x.classification.productNames[0]));
-      if (pick && !(names.length === 1 && names[0] === pick)) {
-        const from = items.find((x) => x.id === same.find((s) => s.classification.productNames[0] === pick).parentId);
-        p.suggested = { name: pick, says: `page ${i.pageFrom} of ${from?.name || "another file"} is ${pick}` };
+      const from = pick ? items.find((x) => x.id === same.find((s) => s.classification.productNames[0] === pick).parentId) : null;
+      if (pick && names.length === 1 && names[0] === pick) {
+        p.question = null;
+        p.evidence = [...p.evidence, { from: "drop", page: i.pageFrom, says: `page ${i.pageFrom} of ${from?.name || "another file"} is ${pick} too` }];
+      } else {
+        if (pick) p.suggested = { name: pick, says: `page ${i.pageFrom} of ${from?.name || "another file"} is ${pick}` };
+        p.question = "product";
       }
-      p.question = "product";
     }
     p.products = names.map(productFor);
     let action = c.docType;

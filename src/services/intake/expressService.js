@@ -65,7 +65,8 @@ async function save(batchId, express) {
 }
 
 /** A design whose page lists several products in one table (an FSC listing 5 items): its rows can't be filled automatically. */
-const listsSeveralProducts = (item) => !item.pageFrom && (item.classification?.productNames || []).length >= 2;
+// A bundle (one certificate per page: ADDVET's 10-page COA / COC) is NOT a table — its template is its first page (Phase 7 found it)
+const listsSeveralProducts = (item) => !item.pageFrom && !(item.classification?.parts || []).length && !["bundle", "bundle_template"].includes(item.result?.plan?.action) && (item.classification?.productNames || []).length >= 2;
 
 async function record(batchId, entityType, row, companyId, itemId = null) {
   const exists = await prisma.intakeCreated.findFirst({ where: { batchId, entityType, entityId: row.id }, select: { id: true } });

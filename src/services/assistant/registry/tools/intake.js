@@ -22,11 +22,13 @@ defineTool({
     "attachmentIds: the files (omit = every file attached in this conversation). After calling it, say in one short sentence that the card shows each file and the button files them all. " +
     "express: true when the user wants CERTIFICATES made from these files NOW (\"طلّعلي الشهادات دي\", \"طلّعلي شهادات COA وFSC للمنتجات دي\", urgent order) — after the same one click, the certificate files become templates, " +
     "and certificate DRAFTS are made for every product in the files (no registration first, no invoice); everything made is marked \"Express — needs review\". certificateTypes: the types they asked for (e.g. [\"COA\",\"FSC\"]), omit = every type in the files. " +
-    "Never fill batch numbers, dates or lab results: missing ones stay marked blanks on the drafts.",
+    "Never fill batch numbers, dates or lab results: missing ones stay marked blanks on the drafts. " +
+    "newCompanyName: when the user chose or said the files are for a NEW company (\"(شركة جديدة: ADDVET)\") — the drop then creates that company, even if another company has a brand of that name.",
   args: z.object({
     attachmentIds: z.array(z.string().uuid()).min(1).max(100).optional(),
     express: z.boolean().optional(),
     certificateTypes: z.array(z.string().trim().min(2).max(8)).max(10).optional(),
+    newCompanyName: z.string().trim().min(2).max(120).optional(),
   }),
   run: async (a, ctx) => {
     if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
@@ -34,7 +36,9 @@ defineTool({
     if (!atts.length) throw new ToolError("This conversation has no attached files. Tell the user to attach them with the paperclip (files sent on WhatsApp or by email are not here).", "no_files");
     if (a.attachmentIds && atts.length !== new Set(a.attachmentIds).size) throw new ToolError("Some of those files aren't in this conversation", "not_found");
     const actor = ctx.actor.kind === "company" ? { kind: "company", id: ctx.actor.id, companyId: ctx.actor.companyId } : { kind: "user", id: ctx.actor.id };
-    const batch = await createBatch(actor, { companyId: ctx.companyId || null, conversationId: ctx.conversationId, express: a.express ? { certificateTypes: a.certificateTypes || [] } : null });
+    // the chat's «شركة جديدة: X» chip writes the person's choice into their message: read it by code too
+    const chosen = a.newCompanyName || [...(ctx.userTexts || [])].reverse().map((t) => String(t || "").match(/\(\s*شركة جديدة\s*:\s*([^)\n]{2,120})\)/)?.[1]?.trim()).find(Boolean) || null;
+    const batch = await createBatch(actor, { companyId: ctx.companyId || null, conversationId: ctx.conversationId, express: a.express ? { certificateTypes: a.certificateTypes || [] } : null, newCompanyName: chosen });
     for (const att of atts) {
       const file = await prisma.storedFile.findUnique({ where: { id: att.fileId }, select: { sha256: true } });
       await prisma.intakeItem.create({ data: { batchId: batch.id, name: att.name, sizeBytes: att.sizeBytes, receivedBytes: att.sizeBytes, fileId: att.fileId, sha256: file?.sha256 || null, mimeType: att.mimeType, status: "uploaded" } });

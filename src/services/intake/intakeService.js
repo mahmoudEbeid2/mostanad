@@ -43,11 +43,14 @@ async function loadItem(actor, id) {
 }
 
 /** POST /intake/batches { companyId? } — a new drop. A company session always uses its own company. */
-export async function createBatch(actor, { companyId = null, conversationId = null, express = null } = {}) {
+export async function createBatch(actor, { companyId = null, conversationId = null, express = null, newCompanyName = null } = {}) {
   let scope = actor.kind === "company" ? actor.companyId : companyId || null;
   if (scope && actor.kind === "user" && !(await prisma.company.findUnique({ where: { id: scope }, select: { id: true } }))) throw new AppError("Company not found!", 404);
   // express: an urgent order — after filing, certificate drafts are made at once (expressService)
-  const ex = express ? { mode: "express", express: { requestedTypes: (express.certificateTypes || []).map((c) => String(c).toUpperCase().slice(0, 8)).slice(0, 10), stage: null } } : {};
+  // newCompanyName: the person chose «شركة جديدة: X» — the drop is X's, a NEW company, whatever
+  // other company has a brand with that name (system users in "All companies" only)
+  const newCompany = actor.kind === "user" && !scope && newCompanyName ? String(newCompanyName).trim().slice(0, 120) : null;
+  const ex = express ? { mode: "express", express: { requestedTypes: (express.certificateTypes || []).map((c) => String(c).toUpperCase().slice(0, 8)).slice(0, 10), stage: null, ...(newCompany ? { newCompany } : {}) } } : newCompany ? { express: { newCompany } } : {};
   return prisma.intakeBatch.create({ data: { ...owner(actor), companyId: scope, conversationId, ...ex } });
 }
 
