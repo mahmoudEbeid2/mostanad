@@ -34,7 +34,32 @@ const PARTS_PER_CALL = 40;
 const VALUES_PER_VERIFY = 300;
 const CALL_TIMEOUT_MS = 15 * 60 * 1000;
 const URI_MARGIN_MS = 60 * 60 * 1000; // a cached file with less than an hour left is sent again
-export const HARVEST_WAIT_MS = 20 * 60 * 1000; // Express waits this long for a drop's read, then goes on
+const UPLOAD_TIMEOUT_MS = 3 * 60 * 1000; // one File API upload (and each status check) — never waited on forever
+const PROCESSING_POLLS = 60; // × 3 s: how long Google may take to make an uploaded file ACTIVE
+// 26 Nov (prod: 5 files "waiting" 0/5 for 8+ minutes): a drop's whole read — queued, uploads, calls —
+// has HARVEST_TIMEOUT_MIN minutes. Past it the files still unread are failed with the reason and
+// Express goes on with the rules reader's facts (they were made at filing).
+export const HARVEST_TIMEOUT_MS = Math.max(1, Number(process.env.HARVEST_TIMEOUT_MIN) || 15) * 60 * 1000;
+export const HARVEST_WAIT_MS = HARVEST_TIMEOUT_MS; // Express waits this long for a drop's read, then goes on
+const GATE_GRACE_MS = 30 * 1000; // the job records its own timeout first; the gate only for a job that never answers
+
+const harvestTimeout = (what) => Object.assign(new Error(`the read took longer than ${Math.round(HARVEST_TIMEOUT_MS / 60000)} min (${what}) — stopped; the rules reader's facts are used`), { harvestTimeout: true });
+/** A promise that rejects after ms (the SDK's File API calls have no timeout of their own) */
+function within(promise, ms, what) {
+  let timer;
+  const t = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} didn't answer in ${Math.round(ms / 1000)} s`)), ms);
+  });
+  return Promise.race([promise, t]).finally(() => clearTimeout(timer));
+}
+/** The run's clock: throws once its deadline passed or it was given up (nothing more is sent) */
+function checkRun(run, what) {
+  if (!run?.deadline) return;
+  if (run.cancelled || Date.now() >= run.deadline) {
+    run.cancelled = true;
+    throw harvestTimeout(what);
+  }
+}
 
 /** Is the AI reader on? → { on, model, reason } */
 export function aiHarvestAvailable() {
@@ -195,20 +220,24 @@ export async function partsOf({ label, name, buffer, mimeType = null }) {
 }
 
 /** A part → its Gemini File API reference, uploaded once per content while Google keeps it */
-export async function geminiRef(part) {
+export async function geminiRef(part, run = null) {
   const hash = sha(part.buffer);
   const cached = await prisma.geminiFile.findFirst({ where: { sha256: hash, expiresAt: { gt: new Date(Date.now() + URI_MARGIN_MS) } }, orderBy: { expiresAt: "desc" } });
   if (cached) return { fileUri: cached.uri, mimeType: cached.mimeType };
   const tmp = path.join(os.tmpdir(), `harvest-${hash.slice(0, 16)}-${process.pid}${part.mimeType === "application/pdf" ? ".pdf" : ""}`);
   fs.writeFileSync(tmp, part.buffer);
   try {
-    const up = await geminiClient.uploadFile(tmp, { mimeType: part.mimeType, displayName: part.name.slice(0, 100) });
-    let f = await geminiClient.getFile(up.name);
-    for (let n = 0; f.state === "PROCESSING" && n < 60; n++) {
+    const t0 = Date.now();
+    console.log(`[harvest] uploading "${part.name}" (${Math.round(part.buffer.length / 1024)} KB) to the Gemini File API`);
+    const up = await within(geminiClient.uploadFile(tmp, { mimeType: part.mimeType, displayName: part.name.slice(0, 100) }), UPLOAD_TIMEOUT_MS, `the Gemini File API upload of "${part.name}"`);
+    let f = await within(geminiClient.getFile(up.name), UPLOAD_TIMEOUT_MS, "the Gemini File API");
+    for (let n = 0; f.state === "PROCESSING" && n < PROCESSING_POLLS; n++) {
+      checkRun(run, `"${part.name}" still processing at Google`);
       await new Promise((r) => setTimeout(r, 3000));
-      f = await geminiClient.getFile(up.name);
+      f = await within(geminiClient.getFile(up.name), UPLOAD_TIMEOUT_MS, "the Gemini File API");
     }
     if (f.state !== "ACTIVE") throw new Error(`Gemini didn't accept the file (state ${f.state})`);
+    console.log(`[harvest] "${part.name}" uploaded and ACTIVE in ${Math.round((Date.now() - t0) / 1000)} s`);
     // Google's own expiry for the file (48 h at the time of writing); 47 h when it doesn't say
     const expiresAt = f.expirationTime ? new Date(f.expirationTime) : new Date(Date.now() + 47 * 3600 * 1000);
     await prisma.geminiFile.create({ data: { sha256: hash, name: f.name, uri: f.uri, mimeType: f.mimeType || part.mimeType, sizeBytes: part.buffer.length, expiresAt } });
@@ -221,18 +250,22 @@ export async function geminiRef(part) {
 // ── the calls ──────────────────────────────────────────────────────────────────────────────
 const partKey = (p) => `${p.label}${p.pageOffset ? `@${p.pageOffset}` : ""}`;
 
-async function contentsFor(parts, intro) {
+async function contentsFor(parts, intro, run = null) {
   const content = [{ text: intro }];
   for (const p of parts) {
+    checkRun(run, "uploading the files");
     const header = `=== File ${partKey(p)}: "${p.name}"${p.pageOffset ? ` — pages ${p.pageOffset + 1}–${p.pageOffset + p.pages} of the file (number pages from ${p.pageOffset + 1})` : ""} ===`;
     content.push({ text: header });
     if (p.kind === "text") content.push({ text: p.text });
-    else content.push({ fileData: await geminiRef(p) });
+    else content.push({ fileData: await geminiRef(p, run) });
   }
   return [{ role: "user", parts: content }];
 }
 
-async function callJson({ model, contents, schema, feature, ledgerCtx }) {
+async function callJson({ model, contents, schema, feature, ledgerCtx, run = null }) {
+  checkRun(run, feature === "intake.harvest_verify" ? "checking the values" : "reading the files");
+  // never past the run's deadline: the call is aborted when the read's time is up
+  const timeoutMs = run?.deadline ? Math.max(5000, Math.min(CALL_TIMEOUT_MS, run.deadline - Date.now())) : CALL_TIMEOUT_MS;
   const request = {
     model,
     contents,
@@ -244,15 +277,29 @@ async function callJson({ model, contents, schema, feature, ledgerCtx }) {
       responseSchema: schema,
       mediaResolution: "MEDIA_RESOLUTION_HIGH", // labels and scans at full resolution
       allowFallback: false,
-      timeoutMs: CALL_TIMEOUT_MS,
+      timeoutMs,
     },
   };
+  const t0 = Date.now();
+  console.log(`[harvest] ${feature} → ${model} (timeout ${Math.round(timeoutMs / 1000)} s)`);
   // (each call site names its ledger feature literally)
-  const response = await withAiContext({ ...currentAiContext(), ...ledgerCtx }, () =>
-    feature === "intake.harvest_verify"
-      ? geminiClient.generateContentWithRetry({ ledger: { feature: "intake.harvest_verify" }, ...request })
-      : geminiClient.generateContentWithRetry({ ledger: { feature: "intake.harvest" }, ...request })
-  );
+  let response;
+  try {
+    response = await withAiContext({ ...currentAiContext(), ...ledgerCtx }, () =>
+      feature === "intake.harvest_verify"
+        ? geminiClient.generateContentWithRetry({ ledger: { feature: "intake.harvest_verify" }, ...request })
+        : geminiClient.generateContentWithRetry({ ledger: { feature: "intake.harvest" }, ...request })
+    );
+  } catch (err) {
+    console.error(`[harvest] ${feature} failed after ${Math.round((Date.now() - t0) / 1000)} s: ${err.message}`);
+    // the call was cut at the read's deadline: the whole read stops, not just this group
+    if (run?.deadline && Date.now() >= run.deadline - 1000) {
+      run.cancelled = true;
+      throw harvestTimeout(feature === "intake.harvest_verify" ? "checking the values" : "reading the files");
+    }
+    throw err;
+  }
+  console.log(`[harvest] ${feature} answered in ${Math.round((Date.now() - t0) / 1000)} s`);
   const finish = response.candidates?.[0]?.finishReason;
   if (finish && finish !== "STOP") throw Object.assign(new Error(`the answer stopped early (${finish})`), { splittable: true });
   try {
@@ -303,7 +350,7 @@ export function exactCheck(v) {
 async function readGroup(parts, ctx) {
   const labels = new Set(parts.map((p) => p.label));
   try {
-    const out = await callJson({ model: ctx.model, contents: await contentsFor(parts, `${EXTRACT_PROMPT}\n\n${ctx.known}`), schema: EXTRACT_SCHEMA, feature: "intake.harvest", ledgerCtx: ctx.ledgerCtx });
+    const out = await callJson({ model: ctx.model, contents: await contentsFor(parts, `${EXTRACT_PROMPT}\n\n${ctx.known}`, ctx), schema: EXTRACT_SCHEMA, feature: "intake.harvest", ledgerCtx: ctx.ledgerCtx, run: ctx });
     const values = [];
     for (const raw of out.values || []) {
       // a part of a split PDF numbers its pages from its first page in the file
@@ -312,6 +359,7 @@ async function readGroup(parts, ctx) {
     }
     return { values, files: (out.files || []).map((f) => ({ ...f, file: String(f.file || "").split("@")[0] })), failed: [] };
   } catch (err) {
+    if (err.harvestTimeout) throw err; // out of time: splitting would only send more
     if (parts.length > 1) {
       const half = Math.ceil(parts.length / 2);
       const a = await readGroup(parts.slice(0, half), ctx);
@@ -343,7 +391,7 @@ async function verifyGroup(parts, values, ctx) {
     const chunk = out.slice(start, start + VALUES_PER_VERIFY);
     const list = chunk.map((v, k) => ({ i: start + k, file: v.file, page: v.page, entity: v.entity, field: v.field, test: v.test, product: v.product, batchNo: v.batchNo, value: v.value, amount: v.amount }));
     try {
-      const res = await callJson({ model: ctx.model, contents: await contentsFor(parts, `${VERIFY_PROMPT}\n\nValues:\n${JSON.stringify(list)}`), schema: VERIFY_SCHEMA, feature: "intake.harvest_verify", ledgerCtx: ctx.ledgerCtx });
+      const res = await callJson({ model: ctx.model, contents: await contentsFor(parts, `${VERIFY_PROMPT}\n\nValues:\n${JSON.stringify(list)}`, ctx), schema: VERIFY_SCHEMA, feature: "intake.harvest_verify", ledgerCtx: ctx.ledgerCtx, run: ctx });
       const seen = new Set();
       for (const c of res.checks || []) {
         if (!Number.isInteger(c.i) || c.i < start || c.i >= start + chunk.length) continue;
@@ -353,6 +401,7 @@ async function verifyGroup(parts, values, ctx) {
       // a value the checker skipped is not confirmed by it
       for (let k = start; k < start + chunk.length; k++) if (!seen.has(k) && out[k].reviewStatus === "confirmed") Object.assign(out[k], { reviewStatus: "needs_review", verifyNote: "المراجعة ماوصلتلهاش" });
     } catch (err) {
+      if (err.harvestTimeout) throw err;
       for (let k = start; k < start + chunk.length; k++) if (out[k].reviewStatus === "confirmed") Object.assign(out[k], { reviewStatus: "needs_review", verifyNote: `المراجعة فشلت: ${String(err.message).slice(0, 120)}` });
     }
   }
@@ -395,11 +444,17 @@ export async function readAndVerify(files, run, onProgress = async () => {}) {
   }
   const values = [];
   const docTypes = {};
-  await onProgress(files.filter((f) => f.status !== "waiting").length);
+  const settled = () => files.filter((f) => !["waiting", "reading"].includes(f.status)).length;
+  await onProgress(settled(), "uploading");
   for (const group of groupsOf(parts)) {
+    // the card shows which files are being read now (one group = one call: they finish together)
+    const inGroup = new Set(group.map((p) => p.label));
+    for (const f of files) if (inGroup.has(f.label) && f.status === "waiting") f.status = "reading";
+    await onProgress(settled(), "reading");
     const read = await readGroup(group, run);
     for (const d of read.files) if (DOC_TYPES.includes(d.docType)) docTypes[d.file] = { docType: d.docType, company: d.company || null };
     const failed = new Set(read.failed.map((x) => x.label));
+    await onProgress(settled(), "verifying");
     const checked = await verifyGroup(group.filter((p) => !failed.has(p.label)), read.values, run);
     values.push(...checked);
     for (const label of new Set(group.map((p) => p.label))) {
@@ -407,9 +462,9 @@ export async function readAndVerify(files, run, onProgress = async () => {}) {
       const fail = read.failed.find((x) => x.label === label);
       // a file split in parts counts as failed only when none of it was read
       if (fail && !read.values.some((v) => v.file === label)) Object.assign(f, { status: "failed", error: fail.error });
-      else if (f.status === "waiting") Object.assign(f, { status: "read", docType: docTypes[label]?.docType || null, values: checked.filter((v) => v.file === label).length });
+      else if (["waiting", "reading"].includes(f.status)) Object.assign(f, { status: "read", docType: docTypes[label]?.docType || null, values: checked.filter((v) => v.file === label).length });
     }
-    await onProgress(files.filter((x) => x.status !== "waiting").length);
+    await onProgress(settled(), "reading");
   }
   return { values, docTypes };
 }
@@ -417,6 +472,26 @@ export async function readAndVerify(files, run, onProgress = async () => {}) {
 // ── a drop ─────────────────────────────────────────────────────────────────────────────────
 const setHarvest = (batchId, patch) =>
   prisma.$executeRaw`UPDATE intake_batches SET harvest = COALESCE(harvest, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb, updated_at = NOW() WHERE id = ${batchId}`;
+// the job's own writes while it runs: a read the gate already gave up on is never written over
+const setRunning = (batchId, patch) =>
+  prisma.$executeRaw`UPDATE intake_batches SET harvest = harvest || ${JSON.stringify(patch)}::jsonb, updated_at = NOW() WHERE id = ${batchId} AND harvest->>'status' = 'running'`;
+
+/**
+ * The read stopped (out of time, or an error): every file not read yet is failed with the reason,
+ * the drop's read is "failed" — Express goes on with the rules reader. Only a read still queued /
+ * running is marked (a finished one is never undone). → true when this call marked it
+ */
+export async function failHarvest(batchId, error, files = null) {
+  const b = await prisma.intakeBatch.findUnique({ where: { id: batchId }, select: { harvest: true } });
+  const h = b?.harvest;
+  if (!h || !["queued", "running"].includes(h.status)) return false;
+  const why = String(error).slice(0, 300);
+  const list = (files || h.files || []).map((f) => (["waiting", "reading"].includes(f.status) ? { ...f, status: "failed", error: why } : f));
+  const patch = { status: "failed", error: why, files: list, done: list.length, finishedAt: new Date().toISOString() };
+  const n = await prisma.$executeRaw`UPDATE intake_batches SET harvest = harvest || ${JSON.stringify(patch)}::jsonb, updated_at = NOW() WHERE id = ${batchId} AND harvest->>'status' IN ('queued', 'running')`;
+  if (n) console.error(`[harvest] drop ${batchId}: read failed — ${why}`);
+  return n > 0;
+}
 
 /** The drop's whole files (not a bundle's page items, not a .zip container) */
 async function dropFiles(batchId) {
@@ -453,19 +528,52 @@ export async function runDropHarvest(batchId, ctx = {}) {
   }
   const batch = await prisma.intakeBatch.findUnique({ where: { id: batchId } });
   if (!batch) return { status: "gone" };
+  // one clock for the job and Express's gate: from when the drop's read was queued
+  const queuedAt = new Date(batch.harvest?.startedAt || Date.now()).getTime();
+  const deadline = queuedAt + HARVEST_TIMEOUT_MS;
+  if (batch.harvest?.status === "failed" || Date.now() >= deadline) {
+    // waited in the queue past its time (the gate went on without it): not started at all
+    await failHarvest(batchId, harvestTimeout("waiting in the queue").message);
+    return { status: "failed", reason: "timeout" };
+  }
   const items = await dropFiles(batchId);
   const files = items.map((it, i) => ({ label: `F${i + 1}`, itemId: it.id, fileId: it.fileId, name: it.name, status: "waiting", error: null }));
-  await setHarvest(batchId, { status: "running", model: avail.model, done: 0, total: files.length, files, startedAt: new Date().toISOString(), finishedAt: null, values: [], applied: false });
+  await setHarvest(batchId, { status: "running", model: avail.model, done: 0, total: files.length, files, startedAt: new Date(queuedAt).toISOString(), runningAt: new Date().toISOString(), finishedAt: null, error: null, values: [], applied: false });
+  console.log(`[harvest] drop ${batchId}: reading ${files.length} file(s) with ${avail.model}, ${Math.round((deadline - Date.now()) / 1000)} s left`);
+  const run = { model: avail.model, known: null, deadline, cancelled: false, ledgerCtx: { entityType: "intake_batch", entityId: batchId, ...(batch.companyId ? { companyId: batch.companyId } : {}) } };
   const progress = async (done, stage) => {
-    await setHarvest(batchId, { done, stage, files });
+    if (run.cancelled) return;
+    await setRunning(batchId, { done, stage, files });
     ctx.progress?.(Math.round(5 + (90 * done) / Math.max(1, files.length)), `بقرا الملفات… ${done}/${files.length}`);
   };
 
-  const run = { model: avail.model, known: await knownList(batch), ledgerCtx: { entityType: "intake_batch", entityId: batchId, ...(batch.companyId ? { companyId: batch.companyId } : {}) } };
-  const { values, docTypes } = await readAndVerify(files, run, (done) => progress(done, "reading"));
+  let values;
+  let docTypes;
+  let timer;
+  try {
+    run.known = await knownList(batch);
+    // the read itself, or the deadline — whichever comes first (a hung upload / call never holds Express)
+    const reading = readAndVerify(files, run, progress);
+    // a read given up on still ends (its call returns or times out): said, never unhandled
+    reading.catch((err) => run.cancelled && console.warn(`[harvest] drop ${batchId}: the stopped read ended: ${err.message}`));
+    const out = await Promise.race([
+      reading,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(harvestTimeout("the deadline passed")), Math.max(0, deadline - Date.now()));
+      }),
+    ]);
+    ({ values, docTypes } = out);
+  } catch (err) {
+    run.cancelled = true; // a call still in flight sends nothing more and writes nothing
+    await failHarvest(batchId, err.message, files);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const cost = await harvestCost(batchId);
   const review = values.filter((v) => v.reviewStatus !== "confirmed").length;
-  await setHarvest(batchId, { status: "done", done: files.length, files, docTypes, values, review, cost, finishedAt: new Date().toISOString() });
+  const written = await setRunning(batchId, { status: "done", done: files.length, files, docTypes, values, review, cost, finishedAt: new Date().toISOString() });
+  if (!written) return { status: "failed", reason: "given up by the gate before it finished" };
   console.log(`[harvest] drop ${batchId}: ${files.filter((f) => f.status === "read").length}/${files.length} files, ${values.length} values (${review} to review), ${cost.calls} calls, ${cost.inputTokens}+${cost.outputTokens}+${cost.thinkingTokens} tokens, cost ${cost.costUsd ?? "unpriced"}`);
   // the drop filed already → its facts now (else execute / Express apply them)
   const now = await prisma.intakeBatch.findUnique({ where: { id: batchId }, select: { status: true } });
@@ -596,7 +704,11 @@ export async function harvestGate(batchId) {
     return "go";
   }
   const since = new Date(h.startedAt || b.createdAt).getTime();
-  return Date.now() - since < HARVEST_WAIT_MS ? "wait" : "go";
+  if (Date.now() - since < HARVEST_WAIT_MS + GATE_GRACE_MS) return "wait";
+  // still queued / running past its time and the job never said so (no worker took it, or it died):
+  // its files are failed with the reason, and the drafts are made from the rules reader's facts
+  await failHarvest(batchId, h.status === "queued" ? `no harvest worker took the read in ${Math.round(HARVEST_WAIT_MS / 60000)} min (is the certificate-template worker running?) — the rules reader's facts are used` : harvestTimeout("no answer from the job").message);
+  return "go";
 }
 
 // ── files already stored (re-harvest, one upload) ─────────────────────────────────────────────

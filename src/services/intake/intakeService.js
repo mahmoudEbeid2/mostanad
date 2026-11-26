@@ -134,11 +134,13 @@ function harvestLineOf(batch, ex) {
 export function harvestProgress(h) {
   if (!h) return null;
   const files = (h.files || []).map((f) => ({ name: f.name, status: f.status, error: f.error || null, values: f.values ?? null }));
-  const done = h.done ?? files.filter((f) => f.status !== "waiting").length;
+  const done = h.done ?? files.filter((f) => !["waiting", "reading"].includes(f.status)).length;
   const total = h.total ?? files.length;
   const running = ["queued", "running"].includes(h.status);
   return {
     status: h.status,
+    stage: running ? h.stage || (h.status === "queued" ? "queued" : "uploading") : null, // queued | uploading | reading | verifying
+    error: h.error || null,
     reason: h.reason || null,
     model: h.model || null,
     done,
