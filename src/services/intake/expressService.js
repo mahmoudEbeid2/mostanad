@@ -6,8 +6,11 @@ import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
 import { templateFromItem } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas } from "../certificates/templates/autoMap.js";
-import { harvestGate } from "../harvest/harvestAi.js";
+import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
+import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
+import { startGeneration } from "../certificates/generation/batchService.js";
 import { inferProductGaps } from "../harvest/harvestInfer.js";
+import { fromDocuments, missingFor, missingMessageAr } from "../certificates/generation/batchAnswer.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
@@ -219,6 +222,32 @@ async function settleTemplates(batch, items, ex) {
   return !pending;
 }
 
+// an invoice still being read: the request waits for its lines (as long as the files' read, at most)
+const INVOICE_DONE = ["review", "ready", "generated", "partially_failed", "failed"];
+
+/**
+ * The request's lines: [{ productId, packing?, quantity?, lotNo? }] in order, or "wait".
+ * An invoice in the drop defines them (its matched lines, their packs, quantities and batch numbers —
+ * a real document's); otherwise the products the files are about, plus those named in the message.
+ */
+async function requestScope(batch, items, companyId, ex) {
+  const invoiceItems = items.filter((i) => i.status === "done" && i.result?.invoiceId && !i.result?.attached);
+  if (invoiceItems.length) {
+    const invoices = await prisma.invoice.findMany({ where: { id: { in: invoiceItems.map((i) => i.result.invoiceId) }, companyId }, include: { items: { orderBy: { lineNo: "asc" } } } });
+    const reading = invoices.some((v) => !INVOICE_DONE.includes(v.status));
+    if (reading && Date.now() - new Date(ex.startedAt || batch.createdAt).getTime() < HARVEST_WAIT_MS) return "wait";
+    const lines = invoices.flatMap((v) => v.items.filter((i) => i.productId).map((i) => ({ productId: i.productId, packing: i.data?.packing || null, quantity: i.data?.quantity || null, lotNo: i.data?.batchNo || null })));
+    if (lines.length) return lines;
+  }
+  const fromFiles = items.filter((i) => i.status === "done" && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []);
+  const named = [];
+  for (const n of ex.productNames || []) {
+    const p = await prisma.product.findFirst({ where: { companyId, name: { equals: String(n).trim(), mode: "insensitive" } }, select: { id: true } });
+    if (p) named.push(p.id);
+  }
+  return [...new Set([...fromFiles, ...named])].map((productId) => ({ productId }));
+}
+
 /** Step 2: one run for every product of the drop × the types (asked, or every one with a template now). */
 async function generate(batch, items, ex) {
   const active = Object.values(ex.templates || {}).filter((t) => t.status === "active");
@@ -234,7 +263,11 @@ async function generate(batch, items, ex) {
     await record(batch.id, "certificate_type", { id: t.id, name: `${t.code} · ${t.name}` }, companyId);
   }
   const types = await prisma.certificateType.findMany({ where: { companyId, code: { in: codes }, isActive: true }, select: { id: true, code: true } });
-  const productIds = [...new Set(items.filter((i) => i.status === "done" && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []))];
+  // Part D (28 Nov): the request's lines — the drop's invoice decides them and their order; else the
+  // products of the files and those named in the message
+  const scope = await requestScope(batch, items, companyId, ex);
+  if (scope === "wait") throw notReady();
+  const productIds = [...new Set(scope.map((l) => l.productId))];
   const missingTypes = codes.filter((c) => !types.some((t) => t.code === c));
   if (!productIds.length) return { companyId, problem: "no product was found in the files", problemCode: "no_products", missingTypes };
   if (!types.length) return { companyId, problem: `no certificate type ${codes.join(", ")} for this company`, problemCode: "no_types", missingTypes };
@@ -246,9 +279,27 @@ async function generate(batch, items, ex) {
   } catch (err) {
     console.error(`[express] inference for ${batch.id}: ${err.message}`);
   }
+  const inferredSummary = inferred ? { asked: inferred.asked, filled: inferred.filled } : null;
   try {
-    const out = await generateForProducts({ companyId, userId: batch.executedByUserId, products: productIds.map((productId) => ({ productId })), certificateTypeIds: types.map((t) => t.id), express: { intakeBatchId: batch.id } });
-    return { companyId, invoiceId: out.invoiceId, certificateBatchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, missingTypes, inferred: inferred ? { asked: inferred.asked, filled: inferred.filled } : null };
+    // what will be made, per product × type (the card's list) — computed, nothing created
+    const dry = await generateForProducts({ companyId, products: productIds.map((productId) => ({ productId })), certificateTypeIds: types.map((t) => t.id), dryRun: true });
+    const userId = batch.executedByUserId;
+    // ONE certificate request per conversation: a second drop adds to it (only its new cells are made),
+    // unless the person asked for a new one («طلب جديد»)
+    const existing = ex.newRequest ? null : await conversationRequest({ companyId, conversationId: batch.conversationId });
+    let requestId;
+    let only = null;
+    if (existing) {
+      const r = await addToRequest(existing.id, companyId, { lines: scope, certificateCodes: types.map((t) => t.code), intakeBatchId: batch.id });
+      requestId = existing.id;
+      only = { itemIds: r.newItemIds, codes: r.newCodes };
+      if (!r.newItemIds.length && !r.newCodes.length) return { companyId, requestId, invoiceId: requestId, addedToRequest: true, nothingNew: true, planned: [], missing: [], missingTypes, inferred: inferredSummary };
+    } else {
+      const req = await createRequest({ companyId, userId, lines: scope, certificateCodes: types.map((t) => t.code), meta: { conversationId: batch.conversationId || null, intakeBatchIds: [batch.id], express: { intakeBatchId: batch.id } }, reviewed: true });
+      requestId = req.request.id;
+    }
+    const out = await startGeneration(requestId, companyId, userId, only ? { only } : {});
+    return { companyId, requestId, invoiceId: requestId, addedToRequest: !!existing, certificateBatchId: out.batchId, taskId: out.taskId, planned: dry.planned, missing: dry.missing, missingTypes, inferred: inferredSummary };
   } catch (err) {
     const problemCode = err.code === "NOTHING_TO_GENERATE" ? "no_templates" : err.code === "TEMPLATE_NOT_READY" ? "template_not_ready" : "failed";
     return { companyId, problem: err.message, problemCode, missing: err.extra?.missing || [], missingTypes };
@@ -317,6 +368,16 @@ async function collect(batch, ex) {
   const g = ex.generation;
   const cb = await prisma.certificateBatch.findUnique({ where: { id: g.certificateBatchId }, select: { status: true, zipFileId: true, combinedPdfFileId: true } });
   if (!cb || ["queued", "running"].includes(cb.status)) return false;
+  // Part C (28 Nov): batch facts a real manufacturing order / lab report of the files prints — before the files are made
+  if (!g.documentFacts) {
+    try {
+      const ids = (await prisma.certificate.findMany({ where: { batchId: g.certificateBatchId }, select: { id: true } })).map((c) => c.id);
+      const r = await fromDocuments({ companyId: g.companyId, certificateIds: ids });
+      g.documentFacts = { certificates: r.filter((x) => x.filled.length).length, values: r.reduce((n, x) => n + x.filled.length, 0) };
+    } catch (err) {
+      g.documentFacts = { error: err.message };
+    }
+  }
   if (!g.exportTaskId) {
     try {
       g.exportTaskId = (await startExportZip(g.certificateBatchId, g.companyId)).taskId;
@@ -341,6 +402,17 @@ async function collect(batch, ex) {
   }
   ex.certificates = list;
   ex.files = { zip: !!cb.zipFileId, combinedPdf: !!cb.combinedPdfFileId };
+  // what stays missing (batch facts, lab results — never estimated): ONE message, answerable in one line
+  // (the whole request's open drafts — a second drop's request lists everything still missing, once)
+  const open = g.requestId ? (await prisma.certificate.findMany({ where: { invoiceId: g.requestId, status: "draft" }, select: { id: true } })).map((c) => c.id) : certs.map((c) => c.id);
+  const missing = await missingFor(open);
+  ex.missing = { ar: missingMessageAr(missing), certificates: missing.length, items: missing.reduce((n, m) => n + m.items.length, 0), list: missing };
+  // the chat card's line: "قريت N ملف — شركة X — Y منتج — Z شهادة جاهزة — ناقص: …"
+  const company = await prisma.company.findUnique({ where: { id: g.companyId }, select: { name: true } });
+  const files = (await prisma.intakeItem.count({ where: { batchId: batch.id, parentId: null } })) || 0;
+  const products = new Set(list.flatMap((c) => c.products));
+  const ready = list.filter((c) => c.status === "draft" && !missing.some((m) => m.certificateId === c.id)).length;
+  ex.replyAr = [`قريت ${files} ملف`, `شركة ${company?.name || "—"}`, `${products.size} منتج`, `${ready} شهادة جاهزة`, missing.length ? `ناقص: ${missing.reduce((n, m) => n + m.items.length, 0)} خانة في ${missing.length} شهادة` : "مفيش حاجة ناقصة"].join(" — ");
   return true;
 }
 

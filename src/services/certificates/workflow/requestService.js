@@ -51,7 +51,7 @@ async function matchLine(companyId, line) {
  * POST /certificate-requests { companyId, text? | lines?: [{ productId? | name, packing?, lotNo?, lotSize?, lotUnit?, quantity? }],
  *   certificateCodes? (default COA, COC, HC, FSC), country? } → the request with its matrix
  */
-export async function createRequest({ companyId, userId = null, text = null, lines = [], certificateCodes = null, country = null }) {
+export async function createRequest({ companyId, userId = null, text = null, lines = [], certificateCodes = null, country = null, meta = null, reviewed = false }) {
   const wanted = [...(lines || []), ...linesFromText(text)];
   if (!wanted.length) throw new CertError("LINES_REQUIRED", "Paste the product names, or choose the products", 400);
   if (wanted.length > 200) throw new CertError("TOO_MANY_LINES", "At most 200 lines in one request", 400);
@@ -69,9 +69,11 @@ export async function createRequest({ companyId, userId = null, text = null, lin
       sourceFileId: source.id,
       country: clean(country)?.toUpperCase().slice(0, 2) || null,
       certificateTypeIds: types.map((t) => t.id),
-      header: { invoiceNumber: null, invoiceDate: { iso: today, raw: today }, direct: true, request: { codes } },
+      // meta (28 Nov, a chat drop): { conversationId, intakeBatchIds } — a second drop of the conversation adds to it
+      header: { invoiceNumber: null, invoiceDate: { iso: today, raw: today }, direct: true, request: { codes, ...(meta || {}) } },
       headerExtracted: {},
       uploadedByUserId: userId,
+      ...(reviewed ? { reviewedAt: new Date(), reviewedByUserId: userId } : {}),
       items: {
         create: matched.map(({ line, m }, i) => ({
           lineNo: i + 1,
@@ -85,6 +87,36 @@ export async function createRequest({ companyId, userId = null, text = null, lin
     },
   });
   return getRequest(invoice.id, companyId);
+}
+
+/** The conversation's open request for this company (the latest), or null — a second drop adds to it */
+export async function conversationRequest({ companyId, conversationId }) {
+  if (!conversationId) return null;
+  return prisma.invoice.findFirst({ where: { companyId, origin: "direct", header: { path: ["request", "conversationId"], equals: conversationId } }, orderBy: { createdAt: "desc" }, select: { id: true, header: true } });
+}
+
+/**
+ * Add lines (products not on the request yet) and certificate types to a request.
+ * lines: [{ productId, packing?, quantity?, lotNo? }] → { newItemIds, newCodes }
+ */
+export async function addToRequest(id, companyId, { lines = [], certificateCodes = [], intakeBatchId = null }) {
+  const inv = await loadRequest(id, companyId);
+  const have = new Set(inv.items.map((i) => `${i.productId}|${norm(i.data?.packing)}`));
+  const fresh = lines.filter((l) => l.productId && !have.has(`${l.productId}|${norm(l.packing)}`));
+  const codes = inv.header?.request?.codes || DEFAULT_CODES;
+  const newCodes = [...new Set(certificateCodes.map((c) => String(c).toUpperCase()))].filter((c) => !codes.includes(c));
+  const newItemIds = [];
+  let lineNo = inv.items.reduce((n, i) => Math.max(n, i.lineNo || 0), 0);
+  for (const l of fresh) {
+    const m = await matchLine(companyId, l);
+    const row = await prisma.invoiceItem.create({ data: { invoiceId: id, lineNo: ++lineNo, productId: m.productId, matchStatus: m.status === "matched" ? "matched" : "unmatched", matchMethod: "user", dataExtracted: {}, data: { name: m.name || "", code: null, batchNo: clean(l.lotNo), productionDate: null, expiryDate: null, quantity: clean(l.quantity), unit: null, packing: clean(l.packing), extra: { asked: m.name, match: m.status, candidates: m.candidates } } } });
+    newItemIds.push(row.id);
+  }
+  const allCodes = [...codes, ...newCodes];
+  const types = await prisma.certificateType.findMany({ where: { companyId: inv.companyId, code: { in: allCodes }, isActive: true }, select: { id: true } });
+  const header = { ...inv.header, request: { ...(inv.header?.request || {}), codes: allCodes, intakeBatchIds: [...new Set([...(inv.header?.request?.intakeBatchIds || []), ...(intakeBatchId ? [intakeBatchId] : [])])] } };
+  await prisma.invoice.update({ where: { id }, data: { header, certificateTypeIds: types.map((t) => t.id) } });
+  return { newItemIds, newCodes };
 }
 
 async function loadRequest(id, companyId) {

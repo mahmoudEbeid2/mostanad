@@ -72,13 +72,21 @@ export async function assertDataCheckGate(invoice, { force = false, canForce = f
  * which needs update_certificates: `canForce`; an estimate still prints, flagged). Never run → V2 behaviour (D7:
  * empty required values render flagged).
  */
-export async function startGeneration(invoiceId, companyId, userId, { force = false, canForce = false } = {}) {
+export async function startGeneration(invoiceId, companyId, userId, { force = false, canForce = false, only = null } = {}) {
   const invoice = await loadInvoice(invoiceId, companyId);
   if (!GENERATABLE.includes(invoice.status)) {
     throw new CertError("INVOICE_NOT_READY", `Confirm the invoice before generating (it is ${invoice.status})`, 409);
   }
   await assertDataCheckGate(invoice, { force, canForce });
   const plan = await computePlan(invoice);
+  // only (28 Nov, a request a second drop added to): just the new cells — the new lines, and every line
+  // for a newly asked type; the drafts already made (and answered) are left as they are
+  if (only) {
+    const lines = new Set(only.itemIds || []);
+    const codes = new Set((only.codes || []).map((c) => String(c).toUpperCase()));
+    const typeCodes = codes.size ? new Map((await prisma.certificateType.findMany({ where: { companyId: invoice.companyId }, select: { id: true, code: true } })).map((t) => [t.id, t.code])) : new Map();
+    plan.entries = plan.entries.filter((e) => e.invoiceItemIds.some((i) => lines.has(i)) || codes.has(typeCodes.get(e.certificateTypeId)));
+  }
   if (!plan.entries.length) {
     throw new CertError("NOTHING_TO_GENERATE", "No active template applies to any line of this invoice", 409, { unassigned: plan.unassigned, gaps: plan.gaps });
   }

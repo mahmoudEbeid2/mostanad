@@ -7,6 +7,7 @@ import AppError from "../../utils/appError.js";
 import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
 import { aiHarvestAvailable } from "../harvest/harvestAi.js";
+import { summaryAr } from "../harvest/harvestService.js";
 import { createProduct } from "../productService.js";
 import { newEntities, ACTIONS } from "./intakeResolve.js";
 import { expressSteps, certificateFilesWithoutTemplate, makeTemplatesFromFiles } from "./expressService.js";
@@ -51,7 +52,7 @@ export async function createBatch(actor, { companyId = null, conversationId = nu
   // newCompanyName: the person chose «شركة جديدة: X» — the drop is X's, a NEW company, whatever
   // other company has a brand with that name (system users in "All companies" only)
   const newCompany = actor.kind === "user" && !scope && newCompanyName ? String(newCompanyName).trim().slice(0, 120) : null;
-  const ex = express ? { mode: "express", express: { requestedTypes: (express.certificateTypes || []).map((c) => String(c).toUpperCase().slice(0, 8)).slice(0, 10), stage: null, ...(newCompany ? { newCompany } : {}) } } : newCompany ? { express: { newCompany } } : {};
+  const ex = express ? { mode: "express", express: { requestedTypes: (express.certificateTypes || []).map((c) => String(c).toUpperCase().slice(0, 8)).slice(0, 10), productNames: (express.productNames || []).map((n) => String(n).trim()).filter(Boolean).slice(0, 100), newRequest: express.newRequest === true, stage: null, ...(newCompany ? { newCompany } : {}) } } : newCompany ? { express: { newCompany } } : {};
   return prisma.intakeBatch.create({ data: { ...owner(actor), companyId: scope, conversationId, ...ex } });
 }
 
@@ -120,6 +121,13 @@ export async function startClassify(actor, batchId) {
   await prisma.intakeBatch.update({ where: { id: batch.id }, data: { status: "classifying", classifyTaskId: task.id } });
   await startDropHarvest(batch);
   return { taskId: task.id };
+}
+
+/** "قريت 14 ملف — ملّيت 212 قيمة — 3 تعارضات — 6 خانات باتش ناقصة" — with the drafts' real batch blanks */
+function harvestLineOf(batch, ex) {
+  const s = batch.harvest?.summary || batch.summary?.harvest || null;
+  if (!s) return null;
+  return summaryAr({ files: s.files ?? 0, filled: s.filled ?? 0, conflicts: s.conflicts ?? 0, batchMissing: ex?.missing?.items ?? s.batchMissing ?? 0 });
 }
 
 /** The drop's AI read as the card shows it (never the values themselves: a catalogue gives thousands) */
@@ -417,15 +425,24 @@ async function expressView(batch) {
   // every AI call of the order: recognising the files, suggesting each template's fields, the certificates' run
   const itemIds = (await prisma.intakeItem.findMany({ where: { batchId: batch.id }, select: { id: true } })).map((i) => i.id);
   const calls = await prisma.aiCall
-    .findMany({ where: { OR: [{ entityType: "intake_item", entityId: { in: itemIds } }, { entityType: "template_version", entityId: { in: Object.keys(ex.templates || {}) } }, ...(g?.certificateBatchId ? [{ entityType: "certificate_batch", entityId: g.certificateBatchId }] : [])] }, select: { costUsd: true } })
+    .findMany({ where: { OR: [{ entityType: "intake_item", entityId: { in: itemIds } }, { entityType: "intake_batch", entityId: batch.id }, { entityType: "template_version", entityId: { in: Object.keys(ex.templates || {}) } }, ...(g?.certificateBatchId ? [{ entityType: "certificate_batch", entityId: g.certificateBatchId }] : [])] }, select: { costUsd: true } })
     .catch(() => []);
   return {
     requestedTypes: ex.requestedTypes || [],
     stage: batch.status !== "done" ? "filing" : ex.stage || "templates",
     templates: Object.entries(ex.templates || {}).map(([versionId, t]) => ({ versionId, ...t })),
-    generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, problemCode: g.problemCode || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null },
+    generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, problemCode: g.problemCode || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null, nothingNew: !!g.nothingNew },
+    // Part D: the one certificate request this drop made or added to (its page: the product × certificate matrix)
+    request: g?.requestId ? { id: g.requestId, link: `/certificates/requests/${g.requestId}`, added: !!g.addedToRequest } : null,
+    replyAr: ex.replyAr || null,
     certificates: ex.certificates || [],
     files: ex.files || null,
+    // 28 Nov: what the files filled, what was estimated, what only a person can give (one message, one-line answer)
+    missing: ex.missing ? { ar: ex.missing.ar, certificates: ex.missing.certificates, items: ex.missing.items } : null,
+    inferred: g?.inferred || null,
+    documentFacts: g?.documentFacts || null,
+    waitingHarvest: !!ex.waitingHarvest && ["queued", "running"].includes(batch.harvest?.status),
+    harvestLine: harvestLineOf(batch, ex),
     steps,
     summary,
     canMakeTemplates: certificateFilesWithoutTemplate(allItems).length > 0,

@@ -57,7 +57,7 @@ async function renderValues(cert, values) {
   const merged = {};
   for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
-    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed");
+    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed" || x === "estimated"); // an estimate stays marked until accepted or typed over
     merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || []), ...emptyFlags(f, v.value)])] };
   }
   for (const g of design.groups) {

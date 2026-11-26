@@ -23,12 +23,16 @@ defineTool({
     "express: true when the user wants CERTIFICATES made from these files NOW (\"طلّعلي الشهادات دي\", \"طلّعلي شهادات COA وFSC للمنتجات دي\", urgent order) — after the same one click, the certificate files become templates, " +
     "and certificate DRAFTS are made for every product in the files (no registration first, no invoice); everything made is marked \"Express — needs review\". certificateTypes: the types they asked for (e.g. [\"COA\",\"FSC\"]), omit = every type in the files. " +
     "Never fill batch numbers, dates or lab results: missing ones stay marked blanks on the drafts. " +
+    "productNames: products the user NAMED in the message (they join the request with the files' products; an invoice in the files decides the products by itself). " +
+    "newRequest: true only when the user says «طلب جديد» / a new request — otherwise the drop adds to the conversation's certificate request. " +
     "newCompanyName: when the user chose or said the files are for a NEW company (\"(شركة جديدة: ADDVET)\") — the drop then creates that company, even if another company has a brand of that name.",
   args: z.object({
     attachmentIds: z.array(z.string().uuid()).min(1).max(100).optional(),
     express: z.boolean().optional(),
     certificateTypes: z.array(z.string().trim().min(2).max(8)).max(10).optional(),
     newCompanyName: z.string().trim().min(2).max(120).optional(),
+    productNames: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
+    newRequest: z.boolean().optional(),
   }),
   run: async (a, ctx) => {
     if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
@@ -38,7 +42,9 @@ defineTool({
     const actor = ctx.actor.kind === "company" ? { kind: "company", id: ctx.actor.id, companyId: ctx.actor.companyId } : { kind: "user", id: ctx.actor.id };
     // the chat's «شركة جديدة: X» chip writes the person's choice into their message: read it by code too
     const chosen = a.newCompanyName || [...(ctx.userTexts || [])].reverse().map((t) => String(t || "").match(/\(\s*شركة جديدة\s*:\s*([^)\n]{2,120})\)/)?.[1]?.trim()).find(Boolean) || null;
-    const batch = await createBatch(actor, { companyId: ctx.companyId || null, conversationId: ctx.conversationId, express: a.express ? { certificateTypes: a.certificateTypes || [] } : null, newCompanyName: chosen });
+    // «طلب جديد» starts a new certificate request; otherwise a drop adds to the conversation's request
+    const newRequest = a.newRequest === true || (ctx.userTexts || []).slice(-1).some((t) => /طلب\s*جديد|new\s+request/i.test(String(t || "")));
+    const batch = await createBatch(actor, { companyId: ctx.companyId || null, conversationId: ctx.conversationId, express: a.express ? { certificateTypes: a.certificateTypes || [], productNames: a.productNames || [], newRequest } : null, newCompanyName: chosen });
     for (const att of atts) {
       const file = await prisma.storedFile.findUnique({ where: { id: att.fileId }, select: { sha256: true } });
       await prisma.intakeItem.create({ data: { batchId: batch.id, name: att.name, sizeBytes: att.sizeBytes, receivedBytes: att.sizeBytes, fileId: att.fileId, sha256: file?.sha256 || null, mimeType: att.mimeType, status: "uploaded" } });
@@ -153,5 +159,74 @@ defineTool({
       out.push({ dropId: d.id, reader: h.status === "off" ? "rules" : "rules (AI read not finished)", values });
     }
     return { drops: out };
+  },
+});
+
+// 28 Nov, Part C: the drafts' missing batch facts and lab results, answered in one chat line
+// ("ADDHEPA باتش MADADD2610001 إنتاج 01/10/2026 — pH 6.4 assay 99%"). The line must be the person's own,
+// word for word (it is checked against their messages), and code parses it — the model never supplies
+// a value. The card shows which value goes where before anything is written.
+async function conversationDrafts(ctx, requestId = null) {
+  const drops = await prisma.intakeBatch.findMany({ where: { conversationId: ctx.conversationId, ownerType: ctx.actor.kind === "company" ? "company" : "user", ownerId: ctx.actor.id }, orderBy: { createdAt: "desc" }, take: 10, select: { express: true } });
+  const ids = new Set(drops.flatMap((d) => (d.express?.certificates || []).map((c) => c.id)));
+  // the conversation's certificate request(s): a direct invoice whose header names this conversation
+  const reqs = await prisma.invoice.findMany({ where: { origin: "direct", ...(requestId ? { id: requestId } : { header: { path: ["request", "conversationId"], equals: ctx.conversationId } }) }, select: { id: true } });
+  if (reqs.length) for (const c of await prisma.certificate.findMany({ where: { invoiceId: { in: reqs.map((r) => r.id) } }, select: { id: true } })) ids.add(c.id);
+  const certs = await prisma.certificate.findMany({ where: { id: { in: [...ids] }, status: { not: "final" }, ...(ctx.companyId ? { companyId: ctx.companyId } : {}) }, select: { id: true, companyId: true } });
+  return certs;
+}
+
+async function planAnswer(a, ctx) {
+  if (!ctx.conversationId) throw new ToolError("No conversation", "no_conversation");
+  const said = (ctx.userTexts || []).some((t) => String(t).includes(a.text.trim()));
+  if (!said) throw new ToolError("text must be the user's own line, copied exactly from their message — batch facts and lab results are only written as the user typed them.", "protected_value");
+  const { missingFor, parseBatchLine, applyAnswer } = await import("../../../certificates/generation/batchAnswer.js");
+  const certs = await conversationDrafts(ctx, a.requestId || null);
+  if (!certs.length) throw new ToolError("There are no certificate drafts from this conversation to fill yet.", "no_drafts");
+  const missing = await missingFor(certs.map((c) => c.id));
+  const products = [...new Set(missing.map((m) => m.product).filter((p) => p && p !== "—"))];
+  const tests = [...new Set(missing.flatMap((m) => m.items.filter((i) => i.role === "result").map((i) => i.test)))];
+  const answers = parseBatchLine(a.text, { products, tests });
+  if (!answers.length) throw new ToolError("Nothing in that line reads as a batch number, a date, a batch size or a test result. Ask the user to write it like: ADDHEPA باتش MADADD2610001 إنتاج 01/10/2026 — pH 6.4 assay 99%", "nothing_parsed");
+  const byCompany = new Map();
+  for (const c of certs) byCompany.set(c.companyId, [...(byCompany.get(c.companyId) || []), c.id]);
+  const plan = [];
+  for (const [companyId, ids] of byCompany) plan.push(...(await applyAnswer({ companyId, certificateIds: ids.filter((id) => missing.some((m) => m.certificateId === id)), answers, dryRun: true })).map((r) => ({ ...r, companyId })));
+  return { certs, answers, plan, byCompany };
+}
+
+defineTool({
+  name: "fill_missing_batch_values",
+  module: "files",
+  core: true,
+  risk: "write",
+  permissions: ["create_certificates"],
+  label: "Filling the batch data",
+  description:
+    "The user answered the drafts' missing batch data / lab results in a line (\"ADDHEPA باتش MADADD2610001 إنتاج 01/10/2026 حجم 1200 KG — pH 6.4 assay 99%\", several products separated by ; or new lines). " +
+    "text: that line EXACTLY as the user wrote it (copy it, never rewrite or add values). The line is parsed by code into batch number, production / expiry date (day/month/year), batch size and test results; " +
+    "an expiry not given is computed from the production date and the product's validity. Shows a card with what goes where; the drafts of THIS conversation get a new version. requestId: the certificate request, when there is one.",
+  args: z.object({ text: z.string().trim().min(3).max(2000), requestId: z.string().uuid().optional() }),
+  preview: async (a, ctx) => {
+    const { plan } = await planAnswer(a, ctx);
+    const doing = plan.filter((p) => p.filled.length);
+    if (!doing.length) throw new ToolError(plan.some((p) => p.skipped === "which_product") ? "Several products are missing data and the line doesn't name one — ask which product the values are for (write its name before them)." : "None of those values matches a missing place on the drafts.", "nothing_to_fill");
+    return {
+      title: `Fill ${doing.length} certificate${doing.length === 1 ? "" : "s"}`,
+      summary: "The values you wrote go into the drafts (a new version of each). Nothing else changes.",
+      runLabel: "Fill",
+      details: doing.map((p) => ({ label: p.product || "Certificate", value: Object.values(p.changes || {}).join(" · ") + (p.computed?.length ? " (expiry from the validity)" : "") })),
+      aiCalls: "No AI call",
+      missing: [],
+    };
+  },
+  run: async (a, ctx) => {
+    const { answers, byCompany } = await planAnswer(a, ctx);
+    const { applyAnswer, missingFor, missingMessageAr } = await import("../../../certificates/generation/batchAnswer.js");
+    const userId = ctx.actor.kind === "user" ? ctx.actor.id : null;
+    const out = [];
+    for (const [companyId, ids] of byCompany) out.push(...(await applyAnswer({ companyId, userId, certificateIds: ids, answers })));
+    const still = await missingFor([...byCompany.values()].flat());
+    return { filled: out.filter((r) => r.filled.length).map((r) => ({ certificateId: r.certificateId, product: r.product, filled: r.filled })), stillMissing: missingMessageAr(still), stillMissingCount: still.reduce((n, m) => n + m.items.length, 0) };
   },
 });
