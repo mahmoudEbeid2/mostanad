@@ -10,6 +10,13 @@
 // confirmedAt is what marks a signature (confirmedByUserId is null for a company session)
 export const isUnconfirmedEstimate = (p) => !!p && p.estimated === true && !p.confirmedAt;
 
+// 28 Nov (owner, "infer all descriptive data"): an estimate of a DESCRIPTIVE field is printed — marked
+// «مستنتج» with its basis, never blocking a draft, an export or an approval — until a person accepts it
+// («اعتمد كل المستنتج»). Every other estimate (withdrawal period, identity, codes) stays emptied until
+// confirmed. Protected values (lab results, batch facts) are never estimated at all.
+const PRINTABLE_COLUMNS = new Set(["specifications", "appearance", "physicalForm", "dosageForm", "productType", "storage", "validity", "dosage", "routeOfAdmin", "indications", "targetSpecies", "description", "mixingInstructions", "contraindications", "userSafety", "compositionBasis"]);
+export const isPrintableEstimatePath = (path) => PRINTABLE_COLUMNS.has(String(path || "").split(/[.[]/)[0]);
+
 /** Unconfirmed estimates of a product → { [path]: provenance } */
 export function estimatesOf(product) {
   const out = {};
@@ -34,7 +41,7 @@ function clearPath(obj, path) {
 /** The product as certificates may read it: every unconfirmed estimate emptied (a copy; null stays null). */
 export function maskEstimates(product) {
   if (!product) return product;
-  const est = Object.keys(estimatesOf(product));
+  const est = Object.keys(estimatesOf(product)).filter((p) => !isPrintableEstimatePath(p)); // a descriptive one is printed, marked
   if (!est.length) return product;
   const copy = { ...product };
   for (const path of est) clearPath(copy, path);

@@ -262,6 +262,11 @@ export const MODELS = {
   // live (§15.8): same model and behaviour as before (no thinking budget was
   // set, i.e. the model's dynamic default), now through geminiClient.
   CATALOGUE_LEGACY: task("CATALOGUE_LEGACY", { thinkingBudget: -1, temperature: 0 }),
+  // 28 Nov (add-on Part B): a product's descriptive fields no file states (specifications per test,
+  // appearance, form, category, storage, validity, dosage, administration, indications, species,
+  // composition wording) estimated from the product and the company's similar products — each with
+  // its reasoning and basis, printed marked «مستنتج». Reasoning: some thinking.
+  PRODUCT_INFER: task("PRODUCT_INFER", { thinkingBudget: 4096, temperature: 0 }),
 };
 
 // 28 Nov (owner): reading every file of a drop — accuracy over cost. The model is env only

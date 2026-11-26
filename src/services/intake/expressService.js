@@ -7,6 +7,7 @@ import { templateFromItem } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas } from "../certificates/templates/autoMap.js";
 import { harvestGate } from "../harvest/harvestAi.js";
+import { inferProductGaps } from "../harvest/harvestInfer.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
@@ -40,7 +41,8 @@ export async function blankOpenAreas(versionId, companyId) {
     return {
       versionId, key, label: f.label, page: f.page, lineId: f.lineId, charStart: f.charStart, charEnd: f.charEnd, sampleValue: f.sampleValue,
       source: f.source, format: f.format ?? undefined, required: f.required !== false, origin: "detected", confirmed: false, sortOrder: (last._max.sortOrder ?? 0) + i + 1,
-      isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: "never",
+      // a lab result, a batch fact, a document's own number / date never; a product's descriptive value may be estimated
+      isBatchFact: !!f.isBatchFact, isLabResult: !!f.isLabResult, inferencePolicy: f.isBatchFact || f.isLabResult || f.source?.kind !== "product" ? "never" : "product_facts",
     };
   });
   await prisma.templateField.createMany({ data: rows });
@@ -236,9 +238,17 @@ async function generate(batch, items, ex) {
   const missingTypes = codes.filter((c) => !types.some((t) => t.code === c));
   if (!productIds.length) return { companyId, problem: "no product was found in the files", problemCode: "no_products", missingTypes };
   if (!types.length) return { companyId, problem: `no certificate type ${codes.join(", ")} for this company`, problemCode: "no_types", missingTypes };
+  // Part B (28 Nov): what no file states is estimated first (descriptive fields only, marked «مستنتج»),
+  // so the drafts are filled — a model failure only leaves those fields empty
+  let inferred = null;
+  try {
+    inferred = await inferProductGaps({ companyId, productIds });
+  } catch (err) {
+    console.error(`[express] inference for ${batch.id}: ${err.message}`);
+  }
   try {
     const out = await generateForProducts({ companyId, userId: batch.executedByUserId, products: productIds.map((productId) => ({ productId })), certificateTypeIds: types.map((t) => t.id), express: { intakeBatchId: batch.id } });
-    return { companyId, invoiceId: out.invoiceId, certificateBatchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, missingTypes };
+    return { companyId, invoiceId: out.invoiceId, certificateBatchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, missingTypes, inferred: inferred ? { asked: inferred.asked, filled: inferred.filled } : null };
   } catch (err) {
     const problemCode = err.code === "NOTHING_TO_GENERATE" ? "no_templates" : err.code === "TEMPLATE_NOT_READY" ? "template_not_ready" : "failed";
     return { companyId, problem: err.message, problemCode, missing: err.extra?.missing || [], missingTypes };

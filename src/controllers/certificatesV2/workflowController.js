@@ -9,6 +9,7 @@ import * as designer from "../../services/certificates/workflow/designerService.
 import * as composition from "../../services/catalogues/compositionReview.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
 import { enqueueTask, QUEUES } from "../../services/certificates/jobs/queues.js";
+import { acceptEstimates as acceptProductEstimates } from "../../services/harvest/harvestInfer.js";
 
 // The client's certificate workflow (Dossira_Certificate_Workflow_EN): request → matrix → review →
 // delivery, the designer's panel, composition disagreements and the evidence behind a value.
@@ -70,6 +71,76 @@ export const productHarvest = catchAsync(async (req, res, next) => {
   const p = await prisma.product.findFirst({ where: { id: req.params.id, ...(companyId ? { companyId } : {}) }, select: { id: true, harvestConflicts: true } });
   if (!p) return next(new AppError("Product not found!", 404));
   const facts = await prisma.harvestedFact.findMany({ where: { productId: p.id }, orderBy: [{ perBatch: "asc" }, { key: "asc" }] });
-  const view = (f) => ({ id: f.id, key: f.key, value: f.value, sourceType: f.sourceType, certCode: f.certCode, file: f.fileName, page: f.page, snippet: f.snippet, batchNo: f.batchNo, link: f.fileId ? `/api/v1/evidence-files/${f.fileId}${f.page ? `#page=${f.page}` : ""}` : null });
-  ok(res, { facts: facts.filter((f) => !f.perBatch).map(view), perBatch: facts.filter((f) => f.perBatch).map(view), conflicts: p.harvestConflicts || [] });
+  const view = (f) => ({ id: f.id, key: f.key, value: f.value, sourceType: f.sourceType, certCode: f.certCode, file: f.fileName, page: f.page, snippet: f.snippet, batchNo: f.batchNo, extractor: f.extractor, needsReview: f.reviewStatus !== "confirmed" ? f.verifyNote || true : undefined, link: f.fileId ? `/api/v1/evidence-files/${f.fileId}${f.page ? `#page=${f.page}` : ""}` : null });
+  // what was estimated (Part B): printed marked «مستنتج» until accepted
+  const prov = (await prisma.product.findUnique({ where: { id: p.id }, select: { fieldProvenance: true } }))?.fieldProvenance || {};
+  const estimates = Object.entries(prov).filter(([, v]) => v?.estimated === true && v.printable === true).map(([path, v]) => ({ path, basis: v.basis, reasoning: v.reasoning || null, modelId: v.modelId, accepted: !!v.confirmedAt, at: v.at }));
+  ok(res, { facts: facts.filter((f) => !f.perBatch).map(view), perBatch: facts.filter((f) => f.perBatch).map(view), conflicts: p.harvestConflicts || [], estimates });
+});
+
+/**
+ * POST /products/estimates/accept { productIds?, certificateIds? } — «اعتمد كل المستنتج»: a person
+ * accepts every printed estimate of these products (or of these certificates' products); the drafts'
+ * «مستنتج» marks are cleared (the value and the version stay as they are).
+ */
+export const acceptEstimates = catchAsync(async (req, res, next) => {
+  const companyId = scopeOf(req);
+  const certIds = Array.isArray(req.body?.certificateIds) ? req.body.certificateIds.slice(0, 2000) : [];
+  const certs = certIds.length ? await prisma.certificate.findMany({ where: { id: { in: certIds }, ...(companyId ? { companyId } : {}) }, select: { id: true, productId: true, companyId: true } }) : [];
+  const productIds = [...new Set([...(Array.isArray(req.body?.productIds) ? req.body.productIds.slice(0, 2000) : []), ...certs.map((c) => c.productId).filter(Boolean)])];
+  if (!productIds.length) return next(new AppError("Send productIds or certificateIds", 400));
+  const owners = await prisma.product.findMany({ where: { id: { in: productIds }, ...(companyId ? { companyId } : {}) }, select: { id: true, companyId: true } });
+  const userId = req.user?.id || null;
+  let accepted = 0;
+  for (const cid of new Set(owners.map((o) => o.companyId))) {
+    const r = await acceptProductEstimates({ companyId: cid, productIds: owners.filter((o) => o.companyId === cid).map((o) => o.id), userId });
+    accepted += r.accepted;
+  }
+  // the drafts' marks: every certificate of these products (or the ones named), latest version
+  const targets = certs.length ? certs : await prisma.certificate.findMany({ where: { productId: { in: owners.map((o) => o.id) }, status: { not: "final" } }, select: { id: true } });
+  let cleared = 0;
+  const at = new Date().toISOString();
+  for (const t of targets) {
+    const v = await prisma.certificateVersion.findFirst({ where: { certificateId: t.id }, orderBy: { versionNumber: "desc" }, select: { id: true, values: true } });
+    if (!v?.values) continue;
+    let n = 0;
+    const values = Object.fromEntries(
+      Object.entries(v.values).map(([k, x]) => {
+        if (!(x?.flags || []).includes("estimated")) return [k, x];
+        n++;
+        return [k, { ...x, flags: x.flags.filter((f) => f !== "estimated"), provenance: { ...(x.provenance || {}), confirmedAt: at, confirmedByUserId: userId, acceptedInBulk: true } }];
+      })
+    );
+    if (n) {
+      await prisma.certificateVersion.update({ where: { id: v.id }, data: { values } });
+      cleared += n;
+    }
+  }
+  ok(res, { products: owners.length, accepted, certificates: targets.length, marksCleared: cleared });
+});
+
+/**
+ * POST /products/:id/harvest/conflicts/:key { value } — the person settles a conflict: the chosen
+ * value is theirs (provenance user — no file overwrites it), the conflict keeps both sources and the decision.
+ */
+export const decideConflict = catchAsync(async (req, res, next) => {
+  const companyId = scopeOf(req);
+  const p = await prisma.product.findFirst({ where: { id: req.params.id, ...(companyId ? { companyId } : {}) } });
+  if (!p) return next(new AppError("Product not found!", 404));
+  const conflicts = [...(p.harvestConflicts || [])];
+  const i = conflicts.findIndex((c) => c.key === req.params.key && !c.decision);
+  if (i < 0) return next(new AppError("No open conflict for this field", 404));
+  const value = String(req.body?.value ?? "").trim();
+  if (!value) return next(new AppError("Send the chosen value", 400));
+  const COLUMNS = { physicalForm: "physicalForm", packaging: "packaging", validity: "validity", storage: "storage", indications: "indications", dosage: "dosage", withdrawalPeriod: "withdrawalPeriod", contraindications: "contraindications", appearance: "appearance", compositionBasis: "compositionBasis", origin: "origin", category: "productType", routeOfAdmin: "routeOfAdmin", registrationNumber: "registrationNumber", productCode: "productCode" };
+  const col = COLUMNS[req.params.key];
+  const data = {};
+  const prov = { ...(p.fieldProvenance || {}) };
+  if (col) {
+    data[col] = value;
+    prov[col] = { tier: "manual", source: "user", by: req.user?.id || null, at: new Date().toISOString(), chosenFromConflict: true };
+  }
+  conflicts[i] = { ...conflicts[i], decision: { value, by: req.user?.id || null, at: new Date().toISOString() } };
+  await prisma.product.update({ where: { id: p.id }, data: { ...data, fieldProvenance: prov, harvestConflicts: conflicts } });
+  ok(res, { key: req.params.key, value, applied: !!col });
 });

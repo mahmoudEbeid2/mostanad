@@ -9,25 +9,28 @@ import { ledgerTags } from "./catalogueExtractor.js";
 // promptHash } (tier I, estimated: true), shown with an "Estimated" badge and
 // never used in a certificate until a person confirms it (fieldProvenance).
 //  - NEVER estimated (always empty unless printed): composition / ingredient
-//    amounts, product code, specification values, registration number — and
-//    the name, producer, origin, packaging and category (identity and
-//    commercial facts the supplier states or doesn't).
+//    amounts, product code, registration number — and the name, producer,
+//    origin and packaging (identity and commercial facts the supplier states
+//    or doesn't). 28 Nov: a descriptive estimate is now printed, marked.
 //  - withdrawalPeriod may be estimated, and is always flagged for the admin.
 //  - No hedging: a value is clean or absent. "likely …", "not specified",
 //    "unknown", a question mark → dropped.
 // One call per catalogue version; a failed call leaves the verified values only.
 
-export const INFERABLE = ["description", "indications", "targetSpecies", "physicalForm", "appearance", "dosage", "mixingInstructions", "contraindications", "userSafety", "storage", "withdrawalPeriod"];
-export const NEVER_INFERRED = ["name", "productCode", "activeIngredients", "specifications", "registrationNumber", "producer", "origin", "packaging", "category"];
+// 28 Nov (owner, add-on Part B): validity, category (productType) and the administration route are
+// descriptive too and may be estimated; a descriptive estimate is printed marked «مستنتج» (fieldProvenance).
+// Specifications are estimated per test by harvest/harvestInfer.js (it knows the templates' tests).
+export const INFERABLE = ["description", "indications", "targetSpecies", "physicalForm", "appearance", "dosage", "mixingInstructions", "contraindications", "userSafety", "storage", "withdrawalPeriod", "validity", "productType", "routeOfAdmin"];
+export const NEVER_INFERRED = ["name", "productCode", "activeIngredients", "registrationNumber", "producer", "origin", "packaging"];
 export const FLAGGED_WHEN_ESTIMATED = new Set(["withdrawalPeriod"]);
-const HEDGE = /\b(likely|probably|possibly|perhaps|presumably|maybe|may be|might|could be|not specified|not stated|not available|unspecified|unknown|unclear|assumed?|approximately|approx\.?|typically|usually|generally|estimated?|n\/a)\b|\?|\b(tbd|tbc)\b/i;
+export const HEDGE = /\b(likely|probably|possibly|perhaps|presumably|maybe|may be|might|could be|not specified|not stated|not available|unspecified|unknown|unclear|assumed?|approximately|approx\.?|typically|usually|generally|estimated?|n\/a)\b|\?|\b(tbd|tbc)\b/i;
 
 const INSTRUCTIONS = [
   "You complete missing product data for an animal-feed / veterinary product catalogue, from professional domain knowledge.",
   "For each product you get what its catalogue page states (`known`) and the fields it does NOT state (`missing`). Fill only `missing` fields that a professional can state with confidence for this kind of product; leave the rest out.",
   "Each value must be clean and final, as it would be printed on a product sheet — never hedged (no 'likely', 'probably', 'not specified', 'unknown', no question marks). If you can't state it cleanly, leave the field out.",
   "`basis`: ONE short sentence saying what the estimate rests on (e.g. 'Water-soluble vitamin premixes for drinking water are stored dry below 25 °C').",
-  "targetSpecies: a comma-separated list. Never output composition, amounts, codes, specifications, registration numbers, producer, origin or packaging.",
+  "targetSpecies: a comma-separated list. productType: the product's category (e.g. Supplement, Antibiotic, Antiparasitic). validity: the shelf life as printed on a sheet (e.g. 24 months). Never output composition, amounts, codes, registration numbers, producer, origin or packaging.",
 ].join("\n");
 
 export const RESPONSE_SCHEMA = {

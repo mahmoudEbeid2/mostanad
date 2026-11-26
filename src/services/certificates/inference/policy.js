@@ -13,6 +13,11 @@
 //     (hard guard on the source and the label, for fields categorised wrongly);
 //   - registration numbers: never inferred (tier I), and from the web only from
 //     an official registry page (§14.3).
+//   - 28 Nov (owner, add-on Part B): every DESCRIPTIVE field no file states (specifications,
+//     appearance, form, category, storage, validity, dosage, administration, indications, species,
+//     wording) is estimated (harvest/harvestInfer.js), printed marked «مستنتج» and never blocking
+//     (flag `estimated`); Express's automatic fields allow it (product_facts). The protected classes
+//     above, quantities, invoice and document numbers stay never — unchanged.
 
 export const POLICIES = ["never", "product_facts", "product_facts_and_web"];
 const RANK = { never: 0, product_facts: 1, product_facts_and_web: 2 };

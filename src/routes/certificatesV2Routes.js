@@ -185,6 +185,8 @@ router.post("/products/:id/composition-review/:index/decide", guard("update_prod
 router.get("/evidence-files/:id", guard("read_products"), workflow.evidenceFile);
 router.post("/companies/:id/harvest", guard("update_products"), workflow.reharvest);
 router.get("/products/:id/harvest", guard("read_products"), workflow.productHarvest);
+router.post("/products/estimates/accept", guard("update_products"), workflow.acceptEstimates);
+router.post("/products/:id/harvest/conflicts/:key", guard("update_products"), workflow.decideConflict);
 
 router.use((err, req, res, next) => {
   if (err instanceof CertError) {

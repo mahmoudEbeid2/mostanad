@@ -9,7 +9,7 @@ import { computePlan, previewPlan as planPreview } from "./planService.js";
 import { resolveField, resolveGroups, applyFormat } from "./valueResolver.js";
 import { refreshIfChecked, blockingCounts, usableNeeds, AWAITING } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
-import { maskEstimates } from "../../catalogues/fieldProvenance.js";
+import { maskEstimates, provenanceFor } from "../../catalogues/fieldProvenance.js";
 import { assertVersionsReady } from "../templates/readinessService.js";
 import { isProtected } from "../inference/policy.js";
 import { allocateDocNumber } from "./docNumbers.js";
@@ -28,7 +28,7 @@ const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email
 
 /** Flags that block finalisation (§10.4): a required value missing, overflow, a character no available font has,
  *  an estimate nobody confirmed yet (`unconfirmed`: printed on the draft, never on a final certificate).
- *  Informational: `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
+ *  Informational: `estimated` (28 Nov: a descriptive value the AI estimated — printed, marked «مستنتج», never blocking), `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
  *  review #7) and `empty_optional` (an optional value the pipeline couldn't fill). */
 export const isBlocking = (flag) => flag === "missing" || flag === "sample_value" || flag === "rows_overflow" || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
 /** Never blank silently (owner, 2026-11-05): an optional field left empty says so, unless the owner marked it not applicable. */
@@ -248,7 +248,16 @@ export function resolveWithNeed(field, ctx, need) {
     return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
   const r = resolveField(field, ctx);
-  return guardSample(field, { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) });
+  const out = { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
+  // 28 Nov: where a product value came from travels with it — a file (the source chip: file, page,
+  // quote) or an estimate (the «مستنتج» chip: basis, reasoning; flag `estimated`, never blocking)
+  const pv = r.value && field.source?.kind === "product" && !r.via ? provenanceFor(ctx.product, field.source.path) : null;
+  if (pv) {
+    const { path: _p, ...rest } = pv;
+    out.provenance = { kind: "product", path: field.source.path, ...rest };
+    if (pv.estimated === true && !pv.confirmedAt) out.flags = [...out.flags, "estimated"];
+  }
+  return guardSample(field, out);
 }
 
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */

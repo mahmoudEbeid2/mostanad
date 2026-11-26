@@ -171,7 +171,7 @@ export async function mergeProduct(productId) {
       const values = { ...(p.specifications?.values || {}), ...(data.specifications?.values || {}) };
       if (!values[test]) {
         data.specifications = { type: p.specifications?.type || "string", values: { ...values, [test]: show(best.value) } };
-        prov[`specifications.${test}`] = provenanceOf(best);
+        prov[`specifications.values.${test}`] = provenanceOf(best);
         filled.push(key);
       }
       continue;
@@ -276,7 +276,8 @@ export async function reharvestCompany(companyId, ctx = {}, { force = false } = 
     const stored = await prisma.storedFile.findMany({ where: { companyId, kind: { in: READABLE.filter((k) => k !== "direct_request") } }, select: { id: true, originalName: true, mimeType: true, sha256: true }, orderBy: { createdAt: "asc" } });
     const seen = new Set(); // the same content stored twice is read once
     const files = stored.filter((f) => aiReadable(f.mimeType) && !seen.has(f.sha256) && seen.add(f.sha256)).map((f) => ({ id: f.id, name: f.originalName || f.id }));
-    return { reader: "ai", ...(await harvestStoredAi(companyId, files, { force, progress: ctx.progress })) };
+    const read = await harvestStoredAi(companyId, files, { force, progress: ctx.progress });
+    return { reader: "ai", ...read, inferred: await inferRest(companyId, ctx) };
   }
   const files = await prisma.storedFile.findMany({ where: { companyId, kind: { in: READABLE.filter((k) => k !== "direct_request") }, mimeType: "application/pdf" }, select: { id: true, kind: true, originalName: true }, orderBy: { createdAt: "asc" } });
   // what a drop said about each file: its kind, and the product of the file (a label) or of each page (a bundle)
@@ -308,7 +309,21 @@ export async function reharvestCompany(companyId, ctx = {}, { force = false } = 
   }
   ctx.progress?.(95, "Filling the products");
   const merged = await mergeAll(companyId);
-  return { files: files.length, facts: stored, ...merged };
+  return { files: files.length, facts: stored, ...merged, inferred: await inferRest(companyId, ctx) };
+}
+
+/** Part B after a re-harvest: what no file states, estimated for every product of the company (marked) */
+async function inferRest(companyId, ctx = {}) {
+  try {
+    ctx.progress?.(97, "Estimating what no file states");
+    const { inferProductGaps } = await import("./harvestInfer.js");
+    const ids = (await prisma.product.findMany({ where: { companyId }, select: { id: true } })).map((p) => p.id);
+    const r = await inferProductGaps({ companyId, productIds: ids });
+    return { asked: r.asked, filled: r.filled, skipped: r.skipped || undefined };
+  } catch (err) {
+    console.error(`[harvest] inference for ${companyId}: ${err.message}`);
+    return { error: err.message };
+  }
 }
 
 /** The review card's line: "قريت 14 ملف — ملّيت 212 قيمة — 3 تعارضات — 6 خانات باتش ناقصة" */
