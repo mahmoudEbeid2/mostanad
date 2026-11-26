@@ -6,7 +6,7 @@
 //     «Quantity / pack» blank inside the specification
 //   4 the consignee answered once in a chat line, parsed by code; the ask is one line of its own
 import { makeAssert } from "./helpers.js";
-import { partyFields, isCountryLine } from "../../src/services/certificates/templates/partyBlocks.js";
+import { partyFields, isCountryLine, splitPartyBlock } from "../../src/services/certificates/templates/partyBlocks.js";
 import { productTableFrom } from "../../src/services/certificates/templates/productTable.js";
 import { fieldsForAreas } from "../../src/services/certificates/templates/autoMap.js";
 import { resolveField, wrapPiece } from "../../src/services/certificates/generation/valueResolver.js";
@@ -35,6 +35,9 @@ assert(
   resolveField(parties.exporter_address_1, { company }).value === "Jordan-Amman -Ghardenz St. Yousef Center" && resolveField(parties.exporter_address_2, { company }).value === "2-Building No:12",
 );
 assert("no invoice consignee → the consignee name is empty (flagged, asked), never the sample", resolveField(parties.consignee_name, { invoice: {} }).value === "");
+const block = splitPartyBlock("Madhoob Trading Group Mawaleh South, Muscat. Sultante Of Oman P.O Box 437 Tel: +968268904412");
+assert("a party printed as one cell is split into name, address, country, phone", block?.name === "Madhoob Trading Group" && block.address === "Mawaleh South, Muscat. P.O Box 437" && block.country === "Sultante Of Oman" && block.phone === "+968268904412", block);
+assert("a block without a company-form word is never guessed apart", splitPartyBlock("Some Person Street 5") === null);
 assert("a short address leaves the second line empty", wrapPiece("Muscat", { index: 1, widths: [22, 11] }) === "");
 
 console.log("\n2 · the attached list");

@@ -18,7 +18,7 @@ import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
 import { listFields, replaceFields } from "../certificates/templates/fieldService.js";
 import { productTableFrom } from "../certificates/templates/productTable.js";
-import { partyFields } from "../certificates/templates/partyBlocks.js";
+import { partyFields, splitPartyBlock } from "../certificates/templates/partyBlocks.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -322,7 +322,17 @@ async function shipmentConsignee(items, companyId, productIds) {
   if (!covering) return null;
   const h = covering.header;
   const text = (x) => (typeof x === "string" ? x.trim() : "") || null;
-  return { customerName: text(h.customerName), customerAddress: text(h.customerAddress), customerCountry: text(h.customerCountry), customerPhone: text(h.customerPhone) };
+  const out = { customerName: text(h.customerName), customerAddress: text(h.customerAddress), customerCountry: text(h.customerCountry), customerPhone: text(h.customerPhone) };
+  // a document printing the whole party in its "Customer Name" cell (MADADD2610001): split by code, so the
+  // name, address and phone print in their own places (a block that can't be split stays whole)
+  const block = !out.customerAddress ? splitPartyBlock(out.customerName) : null;
+  if (block && (block.address || block.phone || block.country)) {
+    out.customerName = block.name;
+    out.customerAddress = block.address || null;
+    out.customerPhone = out.customerPhone || block.phone || null;
+    out.customerCountry = out.customerCountry || block.country || null;
+  }
+  return out;
 }
 
 /** Step 2: one run for every product of the drop × the types (asked, or every one with a template now). */

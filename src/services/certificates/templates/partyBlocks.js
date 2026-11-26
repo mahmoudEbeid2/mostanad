@@ -43,6 +43,7 @@ export function isCountryLine(text) {
   return !t.replace(new RegExp(hit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " ").replace(COUNTRY_FILLER, " ").trim();
 }
 
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const norm = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 const sameRow = (a, b) => Math.abs(a.box.y - b.box.y) <= Math.max(3, Math.min(a.box.h, b.box.h) * 0.6);
 
@@ -177,4 +178,47 @@ export function partyFields(lines = [], ctx = {}) {
     });
   }
   return fields;
+}
+
+// a company's legal-form / trade words that end its name ("Madhoob Trading Group", "X Pharma Co.")
+const NAME_END = /^(?:Group|Company|Co\.?|LLC|L\.L\.C\.?|Ltd\.?|Limited|Est\.?|Establishment|Corporation|Corp\.?|Inc\.?|SAOC|S\.A\.O\.C\.?|Pharma|Pharmaceuticals?|Trading|Enterprises?|Industries|Vet|Veterinary|Agencies|Holding)[,.]?$/i;
+
+/**
+ * A party printed as ONE block ("Madhoob Trading Group Mawaleh South, Muscat. Sultante Of Oman P.O Box 437
+ * Tel: +968268904412" — the shipment document's "Customer Name" cell, 28 Nov) → { name, address, country,
+ * phone }, every part a piece of the block. The name ends at its last legal-form / trade word; no such
+ * word → null (the block is kept whole, never guessed apart).
+ */
+export function splitPartyBlock(text) {
+  let rest = String(text || "").replace(/\s+/g, " ").trim();
+  if (!rest) return null;
+  const out = {};
+  const ph = rest.match(/\b(?:Tel|Phone|Mob(?:ile)?)\.?\s*[:.]?\s*(\+?\d[\d\s()\-]{5,}\d)/i);
+  if (ph) {
+    out.phone = ph[1].trim();
+    rest = (rest.slice(0, ph.index) + rest.slice(ph.index + ph[0].length)).trim();
+  }
+  const words = rest.split(" ");
+  let end = -1;
+  for (let i = 0; i < Math.min(words.length, 10); i++) {
+    if (NAME_END.test(words[i])) {
+      end = i;
+      while (end + 1 < words.length && NAME_END.test(words[end + 1])) end++;
+      break;
+    }
+  }
+  if (end < 0) return null;
+  out.name = words.slice(0, end + 1).join(" ").replace(/[,.]$/, "");
+  rest = words.slice(end + 1).join(" ");
+  for (const n of countryNames()) {
+    const m = new RegExp(String.raw`(?:\b(?:Sultanate|Sultante|Kingdom|Republic|State|United|Emirate|Hashemite)\s+(?:of\s+)?(?:the\s+)?)?\b` + escapeRe(n) + String.raw`\b`, "i").exec(rest);
+    if (m) {
+      out.country = m[0].trim();
+      rest = `${rest.slice(0, m.index)} ${rest.slice(m.index + m[0].length)}`;
+      break;
+    }
+  }
+  const address = rest.replace(/\s+/g, " ").replace(/\s+([,.])/g, "$1").replace(/^[\s,.;|-]+|[\s,;|-]+$/g, "").trim();
+  if (address) out.address = address;
+  return out;
 }
