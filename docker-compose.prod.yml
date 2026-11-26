@@ -257,6 +257,10 @@ services:
       pdf2htmlex:
         condition: service_started
     command: node src/workers/certificateTemplateWorker.js
+    networks:
+      - internal
+    volumes:
+      - app-uploads:/app/uploads
 
   # 28 Nov: reading every file of a drop (harvest) — its own container and queue (harvestQueue), so a
   # read never waits behind template work and a dead worker is restarted (healthcheck: a worker must be
