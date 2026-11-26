@@ -1880,3 +1880,34 @@ model GeminiFile {
   @@index([sha256, expiresAt])
   @@map("gemini_files")
 }
+
+// Phase 3 (28 Nov): a company's certificate numbering per type (learnt, default or set by a person)
+model NumberingScheme {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  certCode        String   @map("cert_code")
+  pattern         String // e.g. COCAF{YY}0{MM}{SEQ3}
+  lastSeq         Int      @default(0) @map("last_seq")
+  confirmed       Boolean  @default(false) // a person confirmed or set it
+  source          String   @default("default") // detected | default | user
+  example         String? // the number it was learnt from
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([companyId, certCode])
+  @@map("numbering_schemes")
+}
+
+// every certificate number given out — never twice in a company
+model DocumentNumber {
+  id            String   @id @default(uuid())
+  companyId     String   @map("company_id")
+  certCode      String   @map("cert_code")
+  number        String
+  certificateId String?  @map("certificate_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([companyId, number])
+  @@map("document_numbers")
+}

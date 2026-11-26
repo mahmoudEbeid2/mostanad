@@ -92,7 +92,14 @@ export async function reviewAction(id, companyId, userId, { action, field = null
     await finalize(id, companyId, userId, { expectedVersion: expectedVersion ?? c.currentVersion });
     return set({ reviewStatus: null, reviewComments: [...comments, { action: "authorized", byUserId: userId, at: now() }] });
   }
-  throw new CertError("UNKNOWN_ACTION", "action must be submit, pass, return or authorize", 400);
+  // Phase 3: a result outside its specification is approved only with a written reason, for this version
+  if (action === "override_spec") {
+    if (!String(comment || "").trim()) throw new CertError("COMMENT_REQUIRED", "اكتب سبب اعتماد النتيجة اللي برّا المواصفة", 400);
+    const { outOfSpec } = await reviewChecks(id, companyId);
+    if (!outOfSpec.length) throw new CertError("NOTHING_OUT_OF_SPEC", "No result is outside its specification", 409);
+    return set({ reviewComments: [...comments, { action: "spec_override", fields: outOfSpec.map((o) => o.field), comment: String(comment).trim().slice(0, 1000), version: c.currentVersion, byUserId: userId, at: now() }] });
+  }
+  throw new CertError("UNKNOWN_ACTION", "action must be submit, pass, return, authorize or override_spec", 400);
 }
 
 /**

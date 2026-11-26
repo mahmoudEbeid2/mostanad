@@ -10,6 +10,7 @@ import * as composition from "../../services/catalogues/compositionReview.js";
 import { companyFor, scopeOf, actorId } from "./requestScope.js";
 import { enqueueTask, QUEUES } from "../../services/certificates/jobs/queues.js";
 import { acceptEstimates as acceptProductEstimates } from "../../services/harvest/harvestInfer.js";
+import { listSchemes, setScheme } from "../../services/certificates/generation/docNumbers.js";
 
 // The client's certificate workflow (Dossira_Certificate_Workflow_EN): request → matrix → review →
 // delivery, the designer's panel, composition disagreements and the evidence behind a value.
@@ -31,9 +32,30 @@ const requestBody = z.object({
 export const createRequest = catchAsync(async (req, res) => ok(res, await requests.createRequest({ companyId: companyFor(req), userId: actorId(req), ...parse(requestBody, req.body) }), 201));
 export const getRequest = catchAsync(async (req, res) => ok(res, await requests.getRequest(req.params.id, scopeOf(req))));
 export const resolveLine = catchAsync(async (req, res) => ok(res, await requests.resolveLine(req.params.id, scopeOf(req), req.params.lineId, parse(z.object({ productId: z.string().uuid() }), req.body))));
+export const setRequestOptions = catchAsync(async (req, res) => ok(res, await requests.setRequestOptions(req.params.id, scopeOf(req), parse(z.object({ issueDate: z.string().nullable() }), req.body))));
+
+/** GET /companies/:id/numbering — the company's certificate numbering per type, each with its next number */
+export const getNumbering = catchAsync(async (req, res, next) => {
+  const companyId = req.company ? req.company.id : req.params.id;
+  if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
+  ok(res, { schemes: await listSchemes(companyId) });
+});
+/** PUT /companies/:id/numbering/:code { pattern, lastSeq? } — a person sets (or confirms) a type's numbering */
+export const setNumbering = catchAsync(async (req, res, next) => {
+  const companyId = req.company ? req.company.id : req.params.id;
+  if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
+  const body = parse(z.object({ pattern: z.string().min(3).max(60), lastSeq: z.number().int().min(0).optional() }), req.body);
+  try {
+    await setScheme(companyId, req.params.code, body, actorId(req));
+  } catch (err) {
+    return next(new AppError(err.message, err.statusCode || 400));
+  }
+  ok(res, { schemes: await listSchemes(companyId) });
+});
+
 export const generateRequest = catchAsync(async (req, res) => ok(res, await requests.generateRequest(req.params.id, scopeOf(req), actorId(req)), 202));
 
-const reviewBody = z.object({ action: z.enum(["submit", "pass", "return", "authorize"]), field: z.string().max(80).optional(), comment: z.string().max(1000).optional(), expectedVersion: z.number().int().optional() });
+const reviewBody = z.object({ action: z.enum(["submit", "pass", "return", "authorize", "override_spec"]), field: z.string().max(80).optional(), comment: z.string().max(1000).optional(), expectedVersion: z.number().int().optional() });
 export const reviewAction = catchAsync(async (req, res) => ok(res, { certificate: await review.reviewAction(req.params.id, scopeOf(req), actorId(req), parse(reviewBody, req.body)) }));
 export const reviewChecks = catchAsync(async (req, res) => ok(res, await review.reviewChecks(req.params.id, scopeOf(req))));
 export const revise = catchAsync(async (req, res) => ok(res, { certificate: await review.revise(req.params.id, scopeOf(req), actorId(req)) }, 201));

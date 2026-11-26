@@ -176,6 +176,9 @@ router.post("/certificate-requests", guard("create_certificates"), workflow.crea
 router.get("/certificate-requests/:id", guard("read_certificates"), workflow.getRequest);
 router.patch("/certificate-requests/:id/lines/:lineId", guard("create_certificates"), workflow.resolveLine);
 router.post("/certificate-requests/:id/generate", guard("create_certificates"), workflow.generateRequest);
+router.patch("/certificate-requests/:id", guard("create_certificates"), workflow.setRequestOptions);
+router.get("/companies/:id/numbering", guard("read_certificates"), workflow.getNumbering);
+router.put("/companies/:id/numbering/:code", guard("update_certificate_templates"), workflow.setNumbering);
 router.post("/certificates/:id/review", guard("update_certificates"), workflow.reviewAction);
 router.get("/certificates/:id/review-checks", guard("read_certificates"), workflow.reviewChecks);
 router.post("/certificates/:id/revise", guard("update_certificates"), workflow.revise);

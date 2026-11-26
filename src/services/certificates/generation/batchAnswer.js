@@ -162,6 +162,7 @@ async function changesFor(cert, answer, values) {
   }
   const changes = {};
   const filled = [];
+  const computedKeys = {}; // key → the formula (shown «محسوب» with it)
   for (const f of fields) {
     const cur = values?.[f.key];
     if (!cur || cur.kind === "group" || cur.origin === "manual") continue; // never over what a person typed
@@ -176,8 +177,9 @@ async function changesFor(cert, answer, values) {
     const printed = role === "productionDate" || role === "expiryDate" ? applyFormat(raw, f.format || { date: "DD/MM/YYYY" }).value : raw;
     changes[f.key] = printed;
     filled.push(f.label);
+    if (role === "expiryDate" && computed.includes("expiryDate")) computedKeys[f.key] = `${prodIso} + ${validityMonths(product.validity)} شهر (${product.validity})`;
   }
-  return { changes, filled, computed };
+  return { changes, filled, computed, computedKeys };
 }
 
 /**
@@ -200,9 +202,20 @@ export async function applyAnswer({ companyId, userId = null, certificateIds, an
       continue;
     }
     const v = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true } });
-    const { changes, filled, computed } = await changesFor(c, mine, v?.values);
+    const { changes, filled, computed, computedKeys } = await changesFor(c, mine, v?.values);
     // dryRun: what the card shows before the person presses it
-    if (!dryRun && Object.keys(changes).length) await editValues(c.id, companyId, userId, { expectedVersion: c.currentVersion, changes });
+    if (!dryRun && Object.keys(changes).length) {
+      const out = await editValues(c.id, companyId, userId, { expectedVersion: c.currentVersion, changes });
+      // a computed expiry says so, with its formula as the evidence (Phase 3: «محسوب»)
+      if (Object.keys(computedKeys).length) {
+        const row = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: out.version } }, select: { id: true, values: true } });
+        if (row) {
+          const values = { ...row.values };
+          for (const [k, formula] of Object.entries(computedKeys)) if (values[k]) values[k] = { ...values[k], provenance: { ...(values[k].provenance || {}), kind: "computed", formula } };
+          await prisma.certificateVersion.update({ where: { id: row.id }, data: { values } });
+        }
+      }
+    }
     results.push({ certificateId: c.id, product: c.product?.name || null, filled, computed, changes: dryRun ? changes : undefined });
   }
   return results;
@@ -224,6 +237,17 @@ export async function fromDocuments({ companyId, certificateIds }) {
     const results = Object.fromEntries(facts.filter((f) => f.key.startsWith("result:")).map((f) => [normTest(f.key.slice(7)), String(f.value)]));
     answers.push({ product: certs.find((c) => c.productId === pid)?.product?.name || null, batchNo: [...batches][0], productionDate: pick("productionDate"), expiryDate: pick("expiryDate"), batchSize: pick("batchSize"), results });
   }
-  if (!answers.length) return [];
-  return applyAnswer({ companyId, certificateIds, answers: answers.filter((a) => a.product) });
+  if (!answers.length) return Object.assign([], { notes: [] });
+  const results = await applyAnswer({ companyId, certificateIds, answers: answers.filter((a) => a.product) });
+  // the document's batch number shaped unlike the design's sample (MADADD2610001 vs MADADD02610001): both shown,
+  // printed as the document prints it — the person says once if the company writes it differently
+  const notes = [];
+  const certRows = await prisma.certificate.findMany({ where: { id: { in: certificateIds } }, select: { templateVersionId: true } });
+  const samples = await prisma.templateField.findMany({ where: { versionId: { in: [...new Set(certRows.map((c) => c.templateVersionId))] }, source: { path: ["path"], equals: "batchNo" } }, select: { sampleValue: true } });
+  const shape = (s) => String(s || "").replace(/[A-Za-z]/g, "A").replace(/\d/g, "9");
+  for (const a of answers) {
+    const s = samples.find((x) => x.sampleValue && /^[A-Za-z]+/.exec(x.sampleValue)?.[0] === /^[A-Za-z]+/.exec(a.batchNo || "")?.[0]);
+    if (s && shape(s.sampleValue) !== shape(a.batchNo)) notes.push(`رقم التشغيلة في أمر التصنيع ${a.batchNo} وشكله في نموذج الشهادة ${s.sampleValue} — اتكتب زي أمر التصنيع. لو الشركة بتكتبه بشكل تاني قولنا مرة واحدة.`);
+  }
+  return Object.assign(results, { notes: [...new Set(notes)] });
 }

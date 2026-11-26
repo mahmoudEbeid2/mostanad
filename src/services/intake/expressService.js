@@ -12,6 +12,7 @@ import { createRequest, addToRequest, conversationRequest } from "../certificate
 import { startGeneration } from "../certificates/generation/batchService.js";
 import { inferProductGaps } from "../harvest/harvestInfer.js";
 import { fromDocuments, missingFor, missingMessageAr } from "../certificates/generation/batchAnswer.js";
+import { numberingQuestionAr } from "../certificates/generation/docNumbers.js";
 import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
 import { createType } from "../certificates/types/certificateTypeService.js";
 import { enableGroups } from "../certificates/templates/templateService.js";
@@ -391,7 +392,7 @@ async function collect(batch, ex) {
     try {
       const ids = (await prisma.certificate.findMany({ where: { batchId: g.certificateBatchId }, select: { id: true } })).map((c) => c.id);
       const r = await fromDocuments({ companyId: g.companyId, certificateIds: ids });
-      g.documentFacts = { certificates: r.filter((x) => x.filled.length).length, values: r.reduce((n, x) => n + x.filled.length, 0) };
+      g.documentFacts = { certificates: r.filter((x) => x.filled.length).length, values: r.reduce((n, x) => n + x.filled.length, 0), notes: r.notes || [] };
     } catch (err) {
       g.documentFacts = { error: err.message };
     }
@@ -424,7 +425,10 @@ async function collect(batch, ex) {
   // (the whole request's open drafts — a second drop's request lists everything still missing, once)
   const open = g.requestId ? (await prisma.certificate.findMany({ where: { invoiceId: g.requestId, status: "draft" }, select: { id: true } })).map((c) => c.id) : certs.map((c) => c.id);
   const missing = await missingFor(open);
-  ex.missing = { ar: missingMessageAr(missing), certificates: missing.length, items: missing.reduce((n, m) => n + m.items.length, 0), list: missing };
+  // + asked once: a numbering nobody confirmed, a batch number shaped unlike the design's sample (Phase 3)
+  const numbering = await numberingQuestionAr(g.companyId, [...new Set(list.map((c) => c.type))]);
+  const ar = [missingMessageAr(missing), ...(g.documentFacts?.notes || []), numbering].filter(Boolean).join("\n\n") || null;
+  ex.missing = { ar, certificates: missing.length, items: missing.reduce((n, m) => n + m.items.length, 0), list: missing };
   // the chat card's line: "قريت N ملف — شركة X — Y منتج — Z شهادة جاهزة — ناقص: …"
   const company = await prisma.company.findUnique({ where: { id: g.companyId }, select: { name: true } });
   const files = (await prisma.intakeItem.count({ where: { batchId: batch.id, parentId: null } })) || 0;

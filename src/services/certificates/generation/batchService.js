@@ -279,7 +279,7 @@ export async function renderInitialVersion(cert, base, caches) {
   // its own document number, once (the company's numbering, never the sample's)
   if (plainFields(design).some((f) => f.source?.kind === "docnumber")) {
     const type = await prisma.certificateType.findUnique({ where: { id: cert.certificateTypeId }, select: { code: true } });
-    ctx.docNumber = await allocateDocNumber(cert.companyId, type?.code);
+    ctx.docNumber = await allocateDocNumber(cert.companyId, type?.code, new Date(), cert.id);
   }
   const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
   // a composition printed row by row: more ingredients than the design has rows is never cut silently
@@ -358,7 +358,9 @@ export async function runGenerateBatch(batchId, ctx = {}) {
     const company = await prisma.company.findUnique({ where: { id: batch.companyId }, select: COMPANY_SELECT });
     const invoiceBrand = batch.invoice.brandId ? await prisma.brand.findUnique({ where: { id: batch.invoice.brandId }, select: { id: true, name: true } }) : null;
     const dict = await getDictionary(batch.companyId);
-    const base = { invoice: batch.invoice, company, invoiceBrand, today: new Date(), userId: batch.startedByUserId, needs: await usableNeeds(batch.invoiceId), pathSynonyms: pathSynonymMap(dict.entries) };
+    // Phase 3: a request may set one issue date for all its certificates (else today)
+    const issueDate = batch.invoice?.header?.request?.issueDate ? new Date(`${batch.invoice.header.request.issueDate}T12:00:00Z`) : null;
+    const base = { invoice: batch.invoice, company, invoiceBrand, today: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : new Date(), userId: batch.startedByUserId, needs: await usableNeeds(batch.invoiceId), pathSynonyms: pathSynonymMap(dict.entries) };
     const caches = { designs: new Map(), products: new Map() };
     const certs = await prisma.certificate.findMany({
       where: { batchId },

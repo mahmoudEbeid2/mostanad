@@ -236,6 +236,9 @@ export async function mergeCompany(companyId) {
     if (!cur || (f.value.pattern === cur.pattern && f.value.seq > cur.lastSeq)) numbering[f.value.certCode] = { pattern: f.value.pattern, prefix: f.value.prefix, lastSeq: Math.max(cur?.lastSeq || 0, f.value.seq || 0), file: f.fileName };
   }
   profile.numbering = numbering;
+  // the numbering scheme table (Phase 3): what the documents taught, unless a person set it
+  const { learnScheme } = await import("../certificates/generation/docNumbers.js");
+  for (const [code, n] of Object.entries(numbering)) await learnScheme(companyId, code, { pattern: n.pattern, seq: n.lastSeq || 0, example: n.file || null });
   if (!profile.dateFormat && first("dateFormat")) profile.dateFormat = show(first("dateFormat").value);
   profile.sources = sources;
   const data = { profile };

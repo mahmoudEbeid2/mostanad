@@ -342,6 +342,15 @@ export async function finalize(id, companyId, userId, { expectedVersion } = {}) 
   // a draft made from a design with unmarked batch / date / result text prints that text as it
   // is (another product's values) — it can't be approved until the design is fixed (26 Nov)
   await assertReady(cert.templateVersionId);
+  // Phase 3: a result outside its specification (pH 7.8 for 5.0–7.0) blocks — unless a person wrote why
+  // it is approved anyway, for THIS version (an edit afterwards needs a new override)
+  const { reviewChecks } = await import("../workflow/reviewService.js");
+  const { outOfSpec } = await reviewChecks(id, companyId);
+  if (outOfSpec.length) {
+    const full = await prisma.certificate.findUnique({ where: { id }, select: { reviewComments: true } });
+    const overridden = (full?.reviewComments || []).some((c) => c.action === "spec_override" && c.version === cert.currentVersion);
+    if (!overridden) throw new CertError("OUT_OF_SPEC", `نتيجة برّا المواصفة: ${outOfSpec.map((o) => `${o.label} = ${o.value} (المواصفة ${o.spec})`).join("، ")} — مينفعش تتعتمد غير بتعليق يشرح السبب`, 409, { outOfSpec });
+  }
   const pdfFileId = await ensureVersionPdf(cert);
   const done = await prisma.certificate.updateMany({
     where: { id, status: "draft", currentVersion: cert.currentVersion, flagCount: 0 },

@@ -125,6 +125,14 @@ async function loadRequest(id, companyId) {
   return inv;
 }
 
+/** PATCH /certificate-requests/:id { issueDate: "YYYY-MM-DD" | null } — one issue date for all its certificates (Phase 3) */
+export async function setRequestOptions(id, companyId, { issueDate }) {
+  const inv = await loadRequest(id, companyId);
+  if (issueDate !== null && (typeof issueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(issueDate) || Number.isNaN(new Date(issueDate).getTime()))) throw new CertError("INVALID_DATE", "issueDate is YYYY-MM-DD (or null for today)", 400);
+  await prisma.invoice.update({ where: { id }, data: { header: { ...inv.header, request: { ...(inv.header?.request || {}), issueDate: issueDate || null } } } });
+  return getRequest(id, companyId);
+}
+
 /** PATCH /certificate-requests/:id/lines/:lineId { productId } — a person picks the product of an unclear line */
 export async function resolveLine(id, companyId, lineId, { productId }) {
   const inv = await loadRequest(id, companyId);
@@ -239,5 +247,5 @@ export async function getRequest(id, companyId) {
     });
   }
   const batch = await prisma.certificateBatch.findFirst({ where: { invoiceId: id }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, zipFileId: true, combinedPdfFileId: true } });
-  return { request: { id: inv.id, companyId: inv.companyId, status: inv.status, country: inv.country, createdAt: inv.createdAt }, codes, rows, outstanding, batch: batch ? { id: batch.id, status: batch.status, zip: !!batch.zipFileId, combinedPdf: !!batch.combinedPdfFileId } : null };
+  return { request: { id: inv.id, companyId: inv.companyId, status: inv.status, country: inv.country, createdAt: inv.createdAt, issueDate: inv.header?.request?.issueDate || null }, codes, rows, outstanding, batch: batch ? { id: batch.id, status: batch.status, zip: !!batch.zipFileId, combinedPdf: !!batch.combinedPdfFileId } : null };
 }
