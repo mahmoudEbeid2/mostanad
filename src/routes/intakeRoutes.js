@@ -19,5 +19,6 @@ router.post("/batches/:id/execute", c.execute);
 router.get("/created", c.listCreated);
 router.get("/express", c.listExpress);
 router.post("/express/reviewed", c.markExpressReviewed);
+router.post("/batches/:id/express/templates-from-files", c.makeExpressTemplates);
 
 export default router;

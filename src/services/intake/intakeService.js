@@ -8,6 +8,7 @@ import * as fileStore from "../certificates/storage/fileStore.js";
 import { enqueueTask, QUEUES } from "../certificates/jobs/queues.js";
 import { createProduct } from "../productService.js";
 import { newEntities, ACTIONS } from "./intakeResolve.js";
+import { expressSteps, certificateFilesWithoutTemplate, makeTemplatesFromFiles } from "./expressService.js";
 
 // "ارفع ملفاتك" — drop any files (many, a folder, a .zip) and the system works out
 // what each one is and whose, proposes what to create, and files everything when
@@ -350,8 +351,18 @@ export async function listCreated(actor, { companyId = null } = {}) {
 }
 
 /** An Express batch's progress for its card: the stage, each template, the drafts (with their blanks), the files, the AI cost. */
+/** POST /intake/batches/:id/express/templates-from-files — "اعمل قوالب من الملفات دي" on an Express card. */
+export async function makeExpressTemplates(actor, id) {
+  const batch = await loadBatch(actor, id);
+  if (batch.mode !== "express") throw new AppError("This drop isn't an urgent order", 409);
+  if (actor.can && !actor.can("create_certificate_templates")) throw new AppError("Making templates needs the create_certificate_templates permission", 403);
+  return makeTemplatesFromFiles(id, { userId: actor.kind === "user" ? actor.id : null });
+}
+
 async function expressView(batch) {
   const ex = batch.express || {};
+  const allItems = await prisma.intakeItem.findMany({ where: { batchId: batch.id }, select: { id: true, parentId: true, status: true, classification: true, result: true } });
+  const { steps, summary } = expressSteps(batch, allItems, { ...ex, stage: batch.status !== "done" ? null : ex.stage });
   const g = ex.generation || null;
   // every AI call of the order: recognising the files, suggesting each template's fields, the certificates' run
   const itemIds = (await prisma.intakeItem.findMany({ where: { batchId: batch.id }, select: { id: true } })).map((i) => i.id);
@@ -362,9 +373,12 @@ async function expressView(batch) {
     requestedTypes: ex.requestedTypes || [],
     stage: batch.status !== "done" ? "filing" : ex.stage || "templates",
     templates: Object.entries(ex.templates || {}).map(([versionId, t]) => ({ versionId, ...t })),
-    generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null },
+    generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, problemCode: g.problemCode || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null },
     certificates: ex.certificates || [],
     files: ex.files || null,
+    steps,
+    summary,
+    canMakeTemplates: certificateFilesWithoutTemplate(allItems).length > 0,
     startedAt: ex.startedAt || null,
     finishedAt: ex.finishedAt || null,
     seconds: batch.createdAt && ex.finishedAt ? Math.round((new Date(ex.finishedAt) - new Date(batch.createdAt)) / 1000) : null,

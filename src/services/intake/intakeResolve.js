@@ -174,6 +174,6 @@ export function newEntities(effective) {
     companies: uniq(live.map((e) => e.company).filter((c) => c?.isNew)),
     brands: uniq(live.map((e) => e.brand).filter((b) => b?.isNew)),
     products: uniq(live.flatMap((e) => e.products || []).filter((p) => p.isNew)),
-    certificateTypes: [...new Set(live.filter((e) => ["certificate_template", "certificate_both"].includes(e.action)).map((e) => e.certCode).filter(Boolean))],
+    certificateTypes: [...new Set(live.filter((e) => ["certificate_template", "certificate_both", "bundle_template"].includes(e.action)).map((e) => e.certCode).filter(Boolean))],
   };
 }

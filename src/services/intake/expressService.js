@@ -2,8 +2,12 @@ import { prisma } from "../../lib/prisma.js";
 import { startPrepare, activateVersion } from "../certificates/templates/prepareService.js";
 import { generateForProducts } from "../certificates/direct/directService.js";
 import { startExportZip } from "../certificates/certificates/editService.js";
+import { enqueueRaw, QUEUES } from "../certificates/jobs/queues.js";
+import { templateFromItem } from "./intakeExecute.js";
 import { getReadiness } from "../certificates/templates/readinessService.js";
 import { areaWords } from "../certificates/templates/readinessCheck.js";
+import { KNOWN_TYPES, findType } from "../certificates/templates/fromFiles.js";
+import { createType } from "../certificates/types/certificateTypeService.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -149,19 +153,84 @@ async function generate(batch, items, ex) {
   const active = Object.values(ex.templates || {}).filter((t) => t.status === "active");
   const companyIds = [...new Set(items.filter((i) => i.status === "done" && i.companyId).map((i) => i.companyId))];
   const companyId = (active.length && (await prisma.certificateTemplate.findUnique({ where: { id: active[0].templateId }, select: { companyId: true } }))?.companyId) || companyIds[0] || null;
-  if (!companyId) return { problem: "no company was filed" };
+  if (!companyId) return { problem: "no company was filed", problemCode: "no_company" };
   const asked = (ex.requestedTypes || []).map((c) => String(c).toUpperCase());
   const codes = [...new Set((asked.length ? asked : active.map((t) => t.code)).filter(Boolean))];
+  // the types asked for are the company's from now on (COC = Certificate of Composition, COO = Origin)
+  for (const code of codes.filter((c) => KNOWN_TYPES[c])) {
+    if (await findType(companyId, code)) continue;
+    const t = await createType(companyId, { code, name: KNOWN_TYPES[code].name });
+    await record(batch.id, "certificate_type", { id: t.id, name: `${t.code} · ${t.name}` }, companyId);
+  }
   const types = await prisma.certificateType.findMany({ where: { companyId, code: { in: codes }, isActive: true }, select: { id: true, code: true } });
   const productIds = [...new Set(items.filter((i) => i.status === "done" && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []))];
   const missingTypes = codes.filter((c) => !types.some((t) => t.code === c));
-  if (!types.length || !productIds.length) return { problem: !productIds.length ? "no product was found in the files" : `no certificate type ${codes.join(", ")} for this company`, missingTypes };
+  if (!productIds.length) return { companyId, problem: "no product was found in the files", problemCode: "no_products", missingTypes };
+  if (!types.length) return { companyId, problem: `no certificate type ${codes.join(", ")} for this company`, problemCode: "no_types", missingTypes };
   try {
     const out = await generateForProducts({ companyId, userId: batch.executedByUserId, products: productIds.map((productId) => ({ productId })), certificateTypeIds: types.map((t) => t.id), express: { intakeBatchId: batch.id } });
     return { companyId, invoiceId: out.invoiceId, certificateBatchId: out.batchId, taskId: out.taskId, planned: out.planned, missing: out.missing, missingTypes };
   } catch (err) {
-    return { companyId, problem: err.message, missing: err.extra?.missing || [], missingTypes };
+    const problemCode = err.code === "NOTHING_TO_GENERATE" ? "no_templates" : err.code === "TEMPLATE_NOT_READY" ? "template_not_ready" : "failed";
+    return { companyId, problem: err.message, problemCode, missing: err.extra?.missing || [], missingTypes };
   }
+}
+
+// ── what each step really produced (26 Nov: every step showed a green check, 0 certificates) ──
+const PROBLEM_AR = {
+  no_company: "مفيش شركة اتسجلت من الملفات",
+  no_products: "ملقيناش منتجات في الملفات",
+  no_types: "الشركة مفيهاش أنواع الشهادات المطلوبة",
+  no_templates: "مفيش قالب شغّال للأنواع المطلوبة",
+  template_not_ready: "القالب لسه فيه أماكن متغيرة مش متحددة",
+  failed: "حصل خطأ وإحنا بنطلّع الشهادات",
+};
+
+/** The drop's certificate files that are not a template yet (kept as evidence only, or skipped as duplicates). */
+export function certificateFilesWithoutTemplate(items) {
+  return items.filter((i) => !i.parentId && ["certificate_filled", "certificate_template"].includes(i.classification?.docType) && i.classification?.certCode && !i.result?.template && ["done", "duplicate"].includes(i.status));
+}
+
+/**
+ * → [{ key, ok, status: ok|warn|fail, ar, en, fix? }] and the one-line summary. A step that made
+ * nothing is never "ok"; it says why and what to do (fix: make_templates | open_templates | add_products).
+ */
+export function expressSteps(batch, items, ex) {
+  const top = items.filter((i) => !i.parentId);
+  const filed = top.filter((i) => i.status === "done").length;
+  const dupes = top.filter((i) => i.status === "duplicate").length;
+  const failedItems = top.filter((i) => i.status === "failed").length;
+  const tpl = Object.values(ex.templates || {});
+  const active = tpl.filter((t) => t.status === "active").length;
+  const certs = (ex.certificates || []).filter((c) => c.status !== "failed").length;
+  const g = ex.generation || {};
+  const canMake = certificateFilesWithoutTemplate(items).length > 0;
+  const steps = [];
+  steps.push({
+    key: "filing",
+    status: !filed ? "fail" : dupes || failedItems ? "warn" : "ok",
+    ar: !filed ? "مفيش ملف اتسجل" : `اتسجل ${filed} ملف${dupes ? ` · ${dupes} متكرر اترفع قبل كده` : ""}${failedItems ? ` · ${failedItems} فشل` : ""}`,
+    en: `${filed} filed${dupes ? `, ${dupes} already filed before` : ""}${failedItems ? `, ${failedItems} failed` : ""}`,
+  });
+  if (ex.stage && ex.stage !== "templates") {
+    const notUsed = tpl.filter((t) => t.status !== "active");
+    steps.push({
+      key: "templates",
+      status: !active ? "fail" : notUsed.length ? "warn" : "ok",
+      ar: !tpl.length ? "مفيش ملف اتعمل منه قالب" : `${active} قالب شغّال${notUsed.length ? ` · ${notUsed.length} محتاج تظبيط (${notUsed.map((t) => t.code).join("، ")})` : ""}`,
+      en: !tpl.length ? "no file became a template" : `${active} template(s) used${notUsed.length ? `, ${notUsed.length} need a person` : ""}`,
+      ...(!active ? { fix: canMake ? "make_templates" : tpl.length ? "open_templates" : null } : {}),
+    });
+  }
+  if (ex.stage === "done") {
+    const why = g.problemCode ? PROBLEM_AR[g.problemCode] : !certs ? PROBLEM_AR.no_templates : null;
+    const fix = !certs ? (g.problemCode === "no_products" ? "add_products" : g.problemCode === "template_not_ready" ? "open_templates" : canMake ? "make_templates" : "open_templates") : null;
+    steps.push({ key: "certificates", status: certs ? (g.missing?.length ? "warn" : "ok") : "fail", ar: certs ? `اتعمل ${certs} شهادة (مسودة)${g.missing?.length ? ` · ${g.missing.length} ناقصة قالب` : ""}` : `اتعمل 0 شهادات — ${why}`, en: certs ? `${certs} draft certificate(s)` : `0 certificates — ${g.problem || "no template"}`, ...(fix ? { fix } : {}) });
+  }
+  const FIX_AR = { make_templates: "اعمل قوالب من الملفات دي", open_templates: "افتح القوالب وحدد أماكنها", add_products: "ضيف المنتجات" };
+  const last = steps[steps.length - 1];
+  const summary = ex.stage === "done" ? { ok: certs > 0, ar: certs ? last.ar : `${last.ar}${last.fix ? ` — ${FIX_AR[last.fix]}` : ""}`, en: last.en } : null;
+  return { steps: steps.map((s) => ({ ...s, ok: s.status === "ok", ...(s.fix ? { fixAr: FIX_AR[s.fix] } : {}) })), summary };
 }
 
 /** Step 3: the drafts made → their list (what each still needs) + the ZIP / combined PDF. → true when finished */
@@ -232,3 +301,37 @@ export async function runExpress({ batchId }) {
 }
 
 export const EXPRESS_NOT_READY = NOT_READY;
+
+/**
+ * POST /intake/batches/:id/express/templates-from-files — the fix of "0 certificates": the
+ * drop's certificate files that were kept only as evidence (or skipped as already filed)
+ * each become their type's template (one per type; the type is created when missing),
+ * then Express runs again from the templates step. The same as "use the certificates I sent
+ * as templates" in the chat. → { made: [{ code, file, templateId, versionId }], restarted }
+ */
+export async function makeTemplatesFromFiles(batchId, { userId = null, companyId = null } = {}) {
+  const batch = await prisma.intakeBatch.findUnique({ where: { id: batchId } });
+  if (!batch) throw Object.assign(new Error("Intake batch not found"), { statusCode: 404 });
+  if (companyId && batch.companyId && batch.companyId !== companyId) throw Object.assign(new Error("Intake batch not found"), { statusCode: 404 });
+  const items = await prisma.intakeItem.findMany({ where: { batchId } });
+  const ex = { ...(batch.express || {}) };
+  // a type with a template already — used by Express, or made from a file of this drop — gets no second one
+  const haveActive = new Set([...Object.values(ex.templates || {}).filter((t) => t.status === "active").map((t) => t.code), ...items.filter((i) => i.result?.template?.code).map((i) => i.result.template.code)]);
+  const made = [];
+  const record = (entityType, row, itemId, cid) => prisma.intakeCreated.create({ data: { batchId, itemId, entityType, entityId: row.id, name: row.name, companyId: cid } });
+  for (const item of certificateFilesWithoutTemplate(items)) {
+    const code = item.classification.certCode;
+    if (haveActive.has(code) || made.some((m) => m.code === code)) continue;
+    const prop = item.classification?.proposal || {};
+    const cid = item.result?.plan?.companyId || item.companyId || prop.company?.id || batch.companyId;
+    if (!cid) continue;
+    const plan = { ...(item.result?.plan || {}), action: "certificate_both", companyId: cid, brandId: item.result?.plan?.brandId ?? prop.brand?.id ?? null, certCode: code, productIds: item.result?.plan?.productIds || [] };
+    const out = await templateFromItem(item, plan, userId, record);
+    await prisma.intakeItem.update({ where: { id: item.id }, data: { status: "done", companyId: cid, result: { ...(item.result || {}), plan, ...out } } });
+    made.push({ code, file: item.name, templateId: out.template.templateId, versionId: out.template.versionId });
+  }
+  if (!made.length) return { made, restarted: false };
+  await save(batchId, { ...ex, stage: "templates", generation: null, certificates: [], files: null, finishedAt: null });
+  await enqueueRaw(QUEUES.template, "intakeExpress", { batchId }, { attempts: 600, backoff: { type: "fixed", delay: 3000 } });
+  return { made, restarted: true };
+}

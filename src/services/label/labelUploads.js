@@ -29,12 +29,16 @@ export async function startLabelVerification({ buffer, originalName, mimeType, c
  * another company's file with the same name is not a duplicate.
  * → { taskId } | { skipped: true, existing: { id, createdAt } }
  */
-export async function queueReferenceLabel({ buffer, originalName, mimeType, country, companyId = null, brandId = null, categoryId = null, manualCategoryName = null }) {
+export async function queueReferenceLabel({ buffer, originalName, mimeType, country, companyId = null, brandId = null, categoryId = null, manualCategoryName = null, productId = null }) {
   // a duplicate is the SAME FILE for the same owner — a corrected label under the same name is new,
   // and the same file for another company is that company's own reference
   const sourceSha256 = crypto.createHash("sha256").update(buffer).digest("hex");
   const existing = await prisma.referenceLabel.findFirst({ where: { sourceSha256, companyId: companyId ?? null }, select: { id: true, createdAt: true, name: true }, orderBy: { createdAt: "asc" } });
-  if (existing) return { skipped: true, existing, sourceSha256 };
+  if (existing) {
+    // the same label filed again for its product: link the existing reference (it had none)
+    if (productId) await prisma.referenceLabel.updateMany({ where: { id: existing.id, productId: null }, data: { productId } });
+    return { skipped: true, existing, sourceSha256 };
+  }
   const task = await prisma.backgroundTask.create({ data: { type: "reference_label_extraction", status: "pending", companyId, brandId } });
   try {
     await referenceQueue().add(
@@ -50,6 +54,7 @@ export async function queueReferenceLabel({ buffer, originalName, mimeType, coun
         categoryId,
         manualCategoryName: manualCategoryName?.trim() || null,
         sourceSha256,
+        productId,
       },
       { jobId: task.id, removeOnComplete: true, removeOnFail: 100, attempts: 4, backoff: { type: "exponential", delay: 15000 } }
     );

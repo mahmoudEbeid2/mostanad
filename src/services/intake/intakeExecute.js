@@ -35,12 +35,15 @@ const fileOf = (item, buffer) => ({ buffer, originalname: /\.(pdf|ai)$/i.test(it
 // ── one item per kind ──────────────────────────────────────────────────────────
 async function asLabel(item, plan) {
   const buffer = await bufferOf(item);
-  const out = await queueReferenceLabel({ buffer, originalName: asPdfName(item.name), mimeType: item.mimeType?.startsWith("image/") ? item.mimeType : "application/pdf", country: plan.country || "Global", companyId: plan.companyId, brandId: plan.brandId });
+  // linked to its product when the drop names exactly one (26 Nov: the drop's labels were never filed)
+  const productId = (plan.productIds || []).length === 1 ? plan.productIds[0] : null;
+  const out = await queueReferenceLabel({ buffer, originalName: asPdfName(item.name), mimeType: item.mimeType?.startsWith("image/") ? item.mimeType : "application/pdf", country: plan.country || "Global", companyId: plan.companyId, brandId: plan.brandId, productId });
   if (out.skipped) return { referenceLabel: { skipped: true, uploadedOn: uploadedOn(out.existing.createdAt) }, link: "/reference-labels" };
   return { referenceLabel: { taskId: out.taskId }, taskId: out.taskId, link: "/reference-labels" };
 }
 
 /** The type (created for the company when missing) → a draft template from the design's first page. */
+export const templateFromItem = (...a) => asTemplate(...a);
 async function asTemplate(item, plan, userId, record = null) {
   const code = plan.certCode;
   if (!code) throw new Error("Which certificate is it? (no type)");

@@ -66,6 +66,10 @@ export const listExpress = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await intake.listExpressToReview(actorOf(req), { companyId: req.query.companyId || null }) });
 });
 
+export const makeExpressTemplates = catchAsync(async (req, res) => {
+  res.status(202).json({ status: "success", data: await intake.makeExpressTemplates(actorOf(req), req.params.id) });
+});
+
 export const markExpressReviewed = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await intake.markExpressReviewed(actorOf(req), req.body?.ids || []) });
 });

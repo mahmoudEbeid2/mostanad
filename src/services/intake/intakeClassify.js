@@ -155,7 +155,14 @@ export async function resolveBatch(batchId) {
   const hashes = [...new Set(items.map((i) => i.sha256).filter(Boolean))];
   const existingHashes = new Map();
   if (hashes.length) {
-    const files = await prisma.storedFile.findMany({ where: { sha256: { in: hashes }, companyId: batch.companyId || { not: null }, kind: { not: "intake_file" } }, select: { sha256: true, createdAt: true, kind: true, companyId: true } });
+    // never the drop's own files (26 Nov: ADDVET's 5 chat files were "duplicates" of themselves —
+    // a chat attachment is stored in the company before it is classified): only files FILED before
+    // this drop started, by an upload or a completed intake
+    const own = [...new Set(items.map((i) => i.fileId).filter(Boolean))];
+    const files = await prisma.storedFile.findMany({
+      where: { sha256: { in: hashes }, companyId: batch.companyId || { not: null }, kind: { notIn: ["intake_file", "assistant_attachment"] }, id: { notIn: own }, createdAt: { lt: batch.createdAt } },
+      select: { sha256: true, createdAt: true, kind: true, companyId: true },
+    });
     for (const f of files) if (!existingHashes.has(`${f.companyId}|${f.sha256}`)) existingHashes.set(`${f.companyId}|${f.sha256}`, { at: f.createdAt, kind: f.kind });
     const earlier = await prisma.intakeItem.findMany({ where: { sha256: { in: hashes }, status: "done", parentId: null, batchId: { not: batchId }, companyId: batch.companyId || { not: null } }, select: { sha256: true, createdAt: true, companyId: true, name: true } });
     for (const e of earlier) if (!existingHashes.has(`${e.companyId}|${e.sha256}`)) existingHashes.set(`${e.companyId}|${e.sha256}`, { at: e.createdAt, name: e.name });

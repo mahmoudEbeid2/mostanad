@@ -460,6 +460,7 @@ model ReferenceLabel {
   sourceType         String  @default("upload") @map("source_type") // "upload" | "manual"
   manualCategoryName String? @map("manual_category_name")
   sourceSha256       String? @map("source_sha256") // the uploaded file's content hash: a duplicate is the same file, not the same name
+  productId          String? @map("product_id") // the product it is the label of (filed from a drop); no FK — a product may be deleted, the reference stays
 
   // Optional Company & Brand ID (Null = Global Reference)
   companyId  String?   @map("company_id")

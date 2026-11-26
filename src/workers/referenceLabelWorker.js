@@ -136,6 +136,7 @@ const referenceLabelWorker = new Worker(
           country: country || extractedData.accepted_country || null,
           sourceType: "upload",
           sourceSha256: job.data.sourceSha256 || null,
+          productId: job.data.productId || null,
           fullText,
           extractedData: extractedData
         }
