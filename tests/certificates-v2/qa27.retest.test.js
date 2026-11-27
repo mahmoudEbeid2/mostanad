@@ -10,6 +10,7 @@ import { packsOfOne } from "../../src/services/assistant/productSearch.js";
 import { partyFields, onlyPartyWords } from "../../src/services/certificates/templates/partyBlocks.js";
 import { basisFact, mergeProduct } from "../../src/services/harvest/harvestService.js";
 import { asPrinted } from "../../src/services/harvest/harvestAi.js";
+import { compositionFrom } from "../../src/services/intake/intakeRules.js";
 import { sameFilesRequest, createRequest } from "../../src/services/certificates/workflow/requestService.js";
 
 const { assert, counts } = makeAssert();
@@ -45,6 +46,8 @@ async function main() {
   assert("«2 %» read from «Silymarin 2%» → «2%»", asPrinted("2 %", "Silymarin 2% Plant extract (Boldo)") === "2%");
   assert("the page's spacing kept: «400,000 mg», «ad 1 L»", asPrinted("400,000 mg", "Sorbitol 400,000 mg") === "400,000 mg" && asPrinted("ad 1 L", "Carrier ad 1 L") === "ad 1 L");
   assert("no quote → as read", asPrinted("10 mg", null) === "10 mg");
+  const parsed = compositionFrom("Trade Name: ADDHEPA Composition: Each 1 L contains: Sorbitol 400,000 mg Silymarin 2% Carrier ad 1 L Package Size: 1L").ingredients.map((i) => i.amountRaw);
+  assert("the rules reader keeps «2%», «400,000 mg», «ad 1 L» as printed", parsed.join("|") === "400,000 mg|2%|ad 1 L", parsed);
 
   console.log("\n2. packs of one product in the chat");
   const hit = (id, name, pack, via = ["exact_name"]) => ({ productId: id, name, pack, via });

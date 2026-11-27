@@ -295,7 +295,8 @@ export function compositionFrom(text) {
     }
     const name = m[1].trim().replace(/^[,;.]\s*/, "");
     if (!name || name.length > 80) continue;
-    const amountRaw = `${m[2] ? m[2].trim() + " " : ""}${m[3]} ${m[4]}`;
+    // the amount exactly as printed: "2%" stays "2%", "ad 1 L" stays "ad 1 L" (acceptance #3: rebuilt as "2 %")
+    const amountRaw = m[0].slice(m[1].length).trim();
     ingredients.push({ name, amountRaw, amount: m[2] ? null : Number(m[3].replace(/,/g, "")), unit: m[4].replace(/^u?[μµ]g$|^ug$/, "mcg") });
   }
   const one = (re2) => t.match(re2)?.[1]?.trim() || null;
