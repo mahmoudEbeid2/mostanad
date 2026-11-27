@@ -22,5 +22,6 @@ router.get("/created", c.listCreated);
 router.get("/express", c.listExpress);
 router.post("/express/reviewed", c.markExpressReviewed);
 router.post("/batches/:id/express/templates-from-files", c.makeExpressTemplates);
+router.post("/batches/:id/express/new-request", c.expressNewRequest);
 
 export default router;

@@ -104,6 +104,10 @@ export const makeExpressTemplates = catchAsync(async (req, res) => {
   res.status(202).json({ status: "success", data: await intake.makeExpressTemplates(actorOf(req), req.params.id) });
 });
 
+export const expressNewRequest = catchAsync(async (req, res) => {
+  res.status(202).json({ status: "success", data: await intake.expressNewRequest(actorOf(req), req.params.id) });
+});
+
 export const markExpressReviewed = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: await intake.markExpressReviewed(actorOf(req), req.body?.ids || []) });
 });

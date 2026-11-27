@@ -10,7 +10,7 @@ import { aiHarvestAvailable } from "../harvest/harvestAi.js";
 import { summaryAr } from "../harvest/harvestService.js";
 import { createProduct } from "../productService.js";
 import { newEntities, ACTIONS } from "./intakeResolve.js";
-import { expressSteps, certificateFilesWithoutTemplate, makeTemplatesFromFiles } from "./expressService.js";
+import { expressSteps, certificateFilesWithoutTemplate, makeTemplatesFromFiles, expressAsNewRequest } from "./expressService.js";
 
 // "ارفع ملفاتك" — drop any files (many, a folder, a .zip) and the system works out
 // what each one is and whose, proposes what to create, and files everything when
@@ -436,6 +436,13 @@ export async function makeExpressTemplates(actor, id) {
   return makeTemplatesFromFiles(id, { userId: actor.kind === "user" ? actor.id : null });
 }
 
+/** POST /intake/batches/:id/express/new-request — «طلب جديد» on a drop that reused an earlier request */
+export async function expressNewRequest(actor, id) {
+  const batch = await loadBatch(actor, id);
+  if (batch.mode !== "express") throw new AppError("This drop isn't an urgent order", 409);
+  return expressAsNewRequest(id);
+}
+
 async function expressView(batch) {
   const ex = batch.express || {};
   const allItems = await prisma.intakeItem.findMany({ where: { batchId: batch.id }, select: { id: true, parentId: true, status: true, classification: true, result: true } });
@@ -452,7 +459,7 @@ async function expressView(batch) {
     templates: Object.entries(ex.templates || {}).map(([versionId, t]) => ({ versionId, ...t })),
     generation: g && { planned: g.planned || [], missing: g.missing || [], missingTypes: g.missingTypes || [], problem: g.problem || null, problemCode: g.problemCode || null, certificateBatchId: g.certificateBatchId || null, invoiceId: g.invoiceId || null, exportProblem: g.exportProblem || null, nothingNew: !!g.nothingNew },
     // Part D: the one certificate request this drop made or added to (its page: the product × certificate matrix)
-    request: g?.requestId ? { id: g.requestId, link: `/certificates/requests/${g.requestId}`, added: !!g.addedToRequest } : null,
+    request: g?.requestId ? { id: g.requestId, link: `/certificates/requests/${g.requestId}`, added: !!g.addedToRequest, sameFiles: !!g.sameFiles } : null,
     replyAr: ex.replyAr || null,
     certificates: ex.certificates || [],
     files: ex.files || null,

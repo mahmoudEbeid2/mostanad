@@ -8,7 +8,7 @@ import { getReadiness } from "../certificates/templates/readinessService.js";
 import { fieldsForAreas, testRowFields } from "../certificates/templates/autoMap.js";
 import { applyPageDiff } from "../certificates/templates/pageDiff.js";
 import { harvestGate, HARVEST_WAIT_MS } from "../harvest/harvestAi.js";
-import { createRequest, addToRequest, conversationRequest } from "../certificates/workflow/requestService.js";
+import { createRequest, addToRequest, conversationRequest, sameFilesRequest } from "../certificates/workflow/requestService.js";
 import { startGeneration, isBlocking } from "../certificates/generation/batchService.js";
 import { inferProductGaps } from "../harvest/harvestInfer.js";
 import { fromDocuments, missingFor, missingMessageAr, setRequestConsignee, fieldLabelAr } from "../certificates/generation/batchAnswer.js";
@@ -385,14 +385,18 @@ async function generate(batch, items, ex) {
     const userId = batch.executedByUserId;
     // ONE certificate request per conversation: a second drop adds to it (only its new cells are made),
     // unless the person asked for a new one («طلب جديد»)
-    const existing = ex.newRequest ? null : await conversationRequest({ companyId, conversationId: batch.conversationId });
+    // …and the same files dropped again soon (another conversation, a second drop) reuse the earlier request
+    const inConversation = ex.newRequest ? null : await conversationRequest({ companyId, conversationId: batch.conversationId });
+    const sameFiles = ex.newRequest || inConversation ? null : await sameFilesRequest({ companyId, batchId: batch.id });
+    const existing = inConversation || sameFiles;
+    const reused = sameFiles ? { sameFiles: true } : {};
     let requestId;
     let only = null;
     if (existing) {
       const r = await addToRequest(existing.id, companyId, { lines: scope, certificateCodes: types.map((t) => t.code), intakeBatchId: batch.id });
       requestId = existing.id;
       only = { itemIds: r.newItemIds, codes: r.newCodes };
-      if (!r.newItemIds.length && !r.newCodes.length) return { companyId, requestId, invoiceId: requestId, addedToRequest: true, nothingNew: true, planned: [], missing: [], missingTypes, inferred: inferredSummary };
+      if (!r.newItemIds.length && !r.newCodes.length) return { companyId, requestId, invoiceId: requestId, addedToRequest: true, nothingNew: true, ...reused, planned: [], missing: [], missingTypes, inferred: inferredSummary };
     } else {
       const req = await createRequest({ companyId, userId, lines: scope, certificateCodes: types.map((t) => t.code), meta: { conversationId: batch.conversationId || null, intakeBatchIds: [batch.id], express: { intakeBatchId: batch.id } }, reviewed: true });
       requestId = req.request.id;
@@ -400,7 +404,7 @@ async function generate(batch, items, ex) {
     // the consignee of the drop's invoice that covers this shipment (an HC's party block); none → asked once
     if (consignee) await setRequestConsignee(requestId, consignee);
     const out = await startGeneration(requestId, companyId, userId, only ? { only } : {});
-    return { companyId, requestId, invoiceId: requestId, addedToRequest: !!existing, certificateBatchId: out.batchId, taskId: out.taskId, planned: dry.planned, missing: dry.missing, missingTypes, inferred: inferredSummary };
+    return { companyId, requestId, invoiceId: requestId, addedToRequest: !!existing, ...reused, certificateBatchId: out.batchId, taskId: out.taskId, planned: dry.planned, missing: dry.missing, missingTypes, inferred: inferredSummary };
   } catch (err) {
     const problemCode = err.code === "NOTHING_TO_GENERATE" ? "no_templates" : err.code === "TEMPLATE_NOT_READY" ? "template_not_ready" : "failed";
     return { companyId, problem: err.message, problemCode, missing: err.extra?.missing || [], missingTypes };
@@ -590,6 +594,21 @@ export async function runExpress({ batchId }) {
 }
 
 export const EXPRESS_NOT_READY = NOT_READY;
+
+/**
+ * POST /intake/batches/:id/express/new-request — the card's «طلب جديد» on a drop that reused an
+ * earlier request (same files): the drafts are made again on a new request of their own.
+ */
+export async function expressAsNewRequest(batchId) {
+  const batch = await prisma.intakeBatch.findUnique({ where: { id: batchId } });
+  if (!batch || batch.mode !== "express") throw Object.assign(new Error("This drop isn't an urgent order"), { statusCode: 409 });
+  const ex = { ...(batch.express || {}) };
+  if (!ex.generation?.requestId || ex.generation.sameFiles !== true) throw Object.assign(new Error("This drop already has its own request"), { statusCode: 409 });
+  if (ex.stage !== "done") throw Object.assign(new Error("Wait until this drop has finished"), { statusCode: 409 });
+  await save(batchId, { ...ex, newRequest: true, stage: "generate", generation: null, certificates: [], files: null, missing: null, finishedAt: null });
+  await enqueueRaw(QUEUES.template, "intakeExpress", { batchId }, { attempts: 600, backoff: { type: "fixed", delay: 3000 } });
+  return { restarted: true };
+}
 
 /**
  * POST /intake/batches/:id/express/templates-from-files — the fix of "0 certificates": the

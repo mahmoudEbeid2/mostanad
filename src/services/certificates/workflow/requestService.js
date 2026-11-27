@@ -129,6 +129,26 @@ export async function conversationRequest({ companyId, conversationId }) {
   return prisma.invoice.findFirst({ where: { companyId, origin: "direct", header: { path: ["request", "conversationId"], equals: conversationId } }, orderBy: { createdAt: "desc" }, select: { id: true, header: true } });
 }
 
+// QA 27 Nov (re-test): the same ADDVET files dropped 4 times made 4 identical requests. A drop of
+// the same files (by content) for the same company soon after an earlier one reuses its request.
+export const SAME_FILES_HOURS = Number(process.env.EXPRESS_SAME_FILES_HOURS) || 24;
+
+/** The request an earlier Express drop of the same files made for this company (within SAME_FILES_HOURS), or null */
+export async function sameFilesRequest({ companyId, batchId, hours = SAME_FILES_HOURS }) {
+  const shasOf = (items) => [...new Set(items.filter((i) => !i.parentId && i.sha256).map((i) => i.sha256))].sort().join(",");
+  const mine = shasOf(await prisma.intakeItem.findMany({ where: { batchId }, select: { parentId: true, sha256: true } }));
+  if (!mine) return null;
+  const since = new Date(Date.now() - hours * 3600_000);
+  const earlier = await prisma.intakeBatch.findMany({ where: { id: { not: batchId }, mode: "express", createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, express: true, items: { select: { parentId: true, sha256: true } } } });
+  for (const b of earlier) {
+    const requestId = b.express?.generation?.requestId;
+    if (!requestId || shasOf(b.items) !== mine) continue;
+    const inv = await prisma.invoice.findFirst({ where: { id: requestId, companyId, origin: "direct" }, select: { id: true, header: true } });
+    if (inv) return inv;
+  }
+  return null;
+}
+
 /**
  * Add lines (products not on the request yet) and certificate types to a request.
  * lines: [{ productId, packing?, quantity?, lotNo? }] → { newItemIds, newCodes }
