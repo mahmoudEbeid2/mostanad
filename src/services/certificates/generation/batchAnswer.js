@@ -267,6 +267,7 @@ async function changesFor(cert, answer, values) {
   const filled = [];
   const computedKeys = {}; // key → the formula (shown «محسوب» with it)
   const warnings = []; // a result outside its specification (27 Nov QA: pH 7.5 against "3.0 – 6.0" passed silently)
+  const roles = {}; // key → its role (batchNo, productionDate…): where a document-given value came from
   for (const f of fields) {
     const cur = values?.[f.key];
     if (!cur || cur.kind === "group" || cur.origin === "manual") continue; // never over what a person typed
@@ -280,6 +281,7 @@ async function changesFor(cert, answer, values) {
     if (!raw) continue;
     const printed = role === "productionDate" || role === "expiryDate" ? applyFormat(raw, f.format || { date: "DD/MM/YYYY" }).value : raw;
     changes[f.key] = printed;
+    roles[f.key] = role;
     filled.push(f.label);
     if (role === "result") {
       const specKey = f.specFieldKey || f.key.replace(/^result_/, "spec_");
@@ -288,7 +290,7 @@ async function changesFor(cert, answer, values) {
     }
     if (role === "expiryDate" && computed.includes("expiryDate")) computedKeys[f.key] = `${prodIso} + ${validityMonths(product.validity)} شهر (${product.validity})`;
   }
-  return { changes, filled, computed, computedKeys, warnings };
+  return { changes, filled, computed, computedKeys, warnings, roles };
 }
 
 /**
@@ -311,16 +313,19 @@ export async function applyAnswer({ companyId, userId = null, certificateIds, an
       continue;
     }
     const v = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true } });
-    const { changes, filled, computed, computedKeys, warnings } = await changesFor(c, mine, v?.values);
+    const { changes, filled, computed, computedKeys, warnings, roles } = await changesFor(c, mine, v?.values);
     // dryRun: what the card shows before the person presses it
     if (!dryRun && Object.keys(changes).length) {
       const out = await editValues(c.id, companyId, userId, { expectedVersion: c.currentVersion, changes });
       // a computed expiry says so, with its formula as the evidence (Phase 3: «محسوب»); a result outside its
       // specification carries `out_of_spec` (shown on the certificate; finalize needs a comment — reviewService)
-      if (Object.keys(computedKeys).length || warnings.length) {
+      // a value a document gave (fromDocuments) names its file and page (acceptance #5: not "typed by hand")
+      const sourced = mine.sources ? Object.keys(changes).filter((k) => !computedKeys[k] && mine.sources[roles[k]]) : [];
+      if (Object.keys(computedKeys).length || warnings.length || sourced.length) {
         const row = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: out.version } }, select: { id: true, values: true } });
         if (row) {
           const values = { ...row.values };
+          for (const k of sourced) if (values[k]) values[k] = { ...values[k], origin: "document", provenance: { ...(values[k].provenance || {}), ...mine.sources[roles[k]] } };
           for (const [k, formula] of Object.entries(computedKeys)) if (values[k]) values[k] = { ...values[k], provenance: { ...(values[k].provenance || {}), kind: "computed", formula } };
           for (const w of warnings) if (values[w.key]) values[w.key] = { ...values[w.key], flags: [...new Set([...(values[w.key].flags || []), "out_of_spec"])], spec: w.spec };
           await prisma.certificateVersion.update({ where: { id: row.id }, data: { values } });
@@ -360,7 +365,12 @@ export async function fromDocuments({ companyId, certificateIds }) {
       return distinct.size === 1 ? [...distinct][0] : null;
     };
     const results = Object.fromEntries(facts.filter((f) => f.key.startsWith("result:")).map((f) => [normTest(f.key.slice(7)), String(f.value)]));
-    answers.push({ product: certs.find((c) => c.productId === pid)?.product?.name || null, batchNo: [...batches][0], productionDate: await docDate("productionDate"), expiryDate: await docDate("expiryDate"), batchSize: pick("batchSize"), results });
+    // where each value is printed: its own fact, else the document's header fact of that key (same file)
+    const factOf = async (k) => facts.find((f) => f.key === k) || (await prisma.harvestedFact.findFirst({ where: { companyId, key: k, reviewStatus: "confirmed", fileId: { in: facts.map((f) => f.fileId).filter(Boolean) } } }));
+    const src = (f) => (f ? { kind: "document", source: f.sourceType, file: f.fileName || null, page: f.page ?? null, quote: f.snippet ? String(f.snippet).slice(0, 200) : null } : null);
+    const batchFact = facts.find((f) => f.batchNo) || null;
+    const sources = Object.fromEntries(Object.entries({ batchNo: src(batchFact), productionDate: src(await factOf("productionDate")), expiryDate: src(await factOf("expiryDate")), batchSize: src(await factOf("batchSize")) }).filter(([, v]) => v));
+    answers.push({ product: certs.find((c) => c.productId === pid)?.product?.name || null, batchNo: [...batches][0], productionDate: await docDate("productionDate"), expiryDate: await docDate("expiryDate"), batchSize: pick("batchSize"), results, sources });
   }
   if (!answers.length) return Object.assign([], { notes: [] });
   const results = await applyAnswer({ companyId, certificateIds, answers: answers.filter((a) => a.product) });
