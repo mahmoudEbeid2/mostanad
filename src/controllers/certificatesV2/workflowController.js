@@ -133,7 +133,8 @@ export const acceptEstimates = catchAsync(async (req, res, next) => {
     let n = 0;
     const values = Object.fromEntries(
       Object.entries(v.values).map(([k, x]) => {
-        if (!(x?.flags || []).includes("estimated")) return [k, x];
+        // an experiment sample's AI values are test data: never accepted, their mark stays (QA 28 Nov)
+        if (!(x?.flags || []).includes("estimated") || x?.provenance?.experiment) return [k, x];
         n++;
         return [k, { ...x, flags: x.flags.filter((f) => f !== "estimated"), provenance: { ...(x.provenance || {}), confirmedAt: at, confirmedByUserId: userId, acceptedInBulk: true } }];
       })
