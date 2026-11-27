@@ -173,7 +173,7 @@ async function main() {
     const rows = certs[0]?.versions[0]?.values?.products?.rows || [];
     assert("ONE FSC certificate for the 3 products, linked to each", certs.length === 1 && certs[0].items.length === 3, certs.map((c) => c.items.length));
     const own = await prisma.product.findMany({ where: { id: { in: ps.map((p) => p.id) } }, select: { name: true, packaging: true, physicalForm: true } });
-    assert("…its rows filled from each product's own name, pack and form (never the design's sample)", rows.length === 3 && own.every((p) => rows.some((r) => r.row_product_name === p.name && r.row_cell_2 === p.packaging && r.row_cell_3 === p.physicalForm)), { rows, own });
+    assert("…its rows filled from each product's own name, pack and form (never the design's sample)", rows.length === 3 && own.every((p) => rows.some((r) => r.row_product_name === p.name && (r.row_cell_pack ?? r.row_cell_2) === p.packaging && (r.row_cell_form ?? r.row_cell_3) === p.physicalForm)), { rows, own });
   } catch (err) {
     assert(`no crash: ${err.stack}`, false);
   } finally {

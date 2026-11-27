@@ -16,6 +16,8 @@ const OTHER_JOB = [
   "لائحه", "لوائح", "regulat", "eda", "sfda", "متطلبات",
   "سجل الملفات بس", "سجل بس", "ارفع بس", "file them only", "just file", "only file",
   "صحح", "check this", "افحص", "راجع الليبل",
+  // an invoice to upload (its own card, "upload_invoice"), not an urgent order
+  "upload this invoice", "upload the invoice", "upload invoice", "upload these invoices", "ارفع الفاتوره", "ارفع فاتوره", "ارفع الفواتير",
 ].map(fold);
 const MAX_WORDS = 10;
 

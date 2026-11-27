@@ -15,7 +15,7 @@ for (const text of ["شهادات ADDVET", "📎 الملفات دي", "طلّع
   assert(`"${text}" + files → Express`, !!expressDrop(text, withFiles));
 }
 assert("the types named in the message are kept", JSON.stringify(expressDrop("شهادات COA و FSC لـ ADDVET", withFiles)?.certificateTypes) === JSON.stringify(["COA", "FSC"]));
-for (const text of ["اعمل قالب من الشهادات دي", "اعملهم قوالب", "use these as templates", "افحص الليبل ده", "غيّر مقاس الليبل", "دا كتالوج ADDVET", "سجّل الملفات بس"]) {
+for (const text of ["اعمل قالب من الشهادات دي", "اعملهم قوالب", "use these as templates", "افحص الليبل ده", "غيّر مقاس الليبل", "دا كتالوج ADDVET", "سجّل الملفات بس", "upload this invoice", "ارفع الفاتورة دي"]) {
   assert(`"${text}" + files → not Express by code`, expressDrop(text, withFiles) === null);
 }
 assert("no files → no route", expressDrop("شهادات ADDVET", noFiles) === null);
