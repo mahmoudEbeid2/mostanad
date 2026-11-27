@@ -294,7 +294,9 @@ export async function getRequest(id, companyId) {
         const entry = t && plan.entries.find((e) => e.certificateTypeId === t.id && e.invoiceItemIds.includes(line.id));
         const why = !line.productId ? (line.data?.extra?.match === "new_pack" ? "new_pack" : "unmatched") : !t ? "no_type" : !entry ? "no_template" : !ready[entry.templateVersionId]?.ready ? "not_ready" : "not_generated";
         // no active template: said plainly, per type (27 Nov QA: the FSC template is off until it passes its check)
-        const text = why === "no_template" ? { ar: `قالب الـ ${code} لسه مش جاهز — متعملتش ${code}`, en: `${code} template isn't ready yet — no ${code} was made` } : { ar: MISSING_AR[why] };
+        // a type with no template, or one whose template isn't ready yet: the same words as the drop's card,
+        // in both languages (acceptance #10 — "not_ready" said only an Arabic generic line)
+        const text = why === "no_template" || why === "not_ready" ? { ar: `قالب الـ ${code} لسه مش جاهز — متعملتش ${code}`, en: `${code} template isn't ready yet — no ${code} was made` } : { ar: MISSING_AR[why] };
         cell = { status: "awaiting_inputs", missing: [{ code: why, ...text, ...(why === "not_ready" ? { link: ready[entry.templateVersionId].link } : {}) }] };
       }
       cells[code] = cell;
