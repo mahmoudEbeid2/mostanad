@@ -298,3 +298,63 @@ export async function getRequest(id, companyId) {
   const batch = await prisma.certificateBatch.findFirst({ where: { invoiceId: id }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, zipFileId: true, combinedPdfFileId: true } });
   return { request: { id: inv.id, companyId: inv.companyId, status: inv.status, country: inv.country, createdAt: inv.createdAt, issueDate: inv.header?.request?.issueDate || null }, codes, rows, outstanding, batch: batch ? { id: batch.id, status: batch.status, zip: !!batch.zipFileId, combinedPdf: !!batch.combinedPdfFileId } : null };
 }
+
+/**
+ * GET /certificate-requests — the requests list (UI plan, 27 Nov: "/certificates/requests" showed "Invalid
+ * UUID"; a request could only be found through a chat link). Newest first. Codes and numbers only — the page
+ * words them in the UI language.
+ * → { items: [{ id, company, products: [{ name, pack }], codes, types: { COA: { total, final, draft, failed } },
+ *               status: new|in_progress|ready, consignee, createdAt, updatedAt }], total, page, pageSize }
+ */
+export async function listRequests(scopeCompanyId, { companyId = null, page = 1, pageSize = 25 } = {}) {
+  const where = { origin: "direct", ...(scopeCompanyId ? { companyId: scopeCompanyId } : companyId ? { companyId } : {}) };
+  const take = Math.min(100, Math.max(1, Number(pageSize) || 25));
+  const skip = (Math.max(1, Number(page) || 1) - 1) * take;
+  const [total, rows] = await Promise.all([
+    prisma.invoice.count({ where }),
+    prisma.invoice.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        header: true,
+        createdAt: true,
+        updatedAt: true,
+        company: { select: { id: true, name: true } },
+        items: { orderBy: { lineNo: "asc" }, select: { data: true, product: { select: { name: true, packaging: true } } } },
+        certificates: { where: { status: { notIn: ["pending", "superseded"] } }, select: { status: true, certificateType: { select: { code: true } } } },
+      },
+    }),
+  ]);
+  const items = rows.map((r) => {
+    const codes = r.header?.request?.codes || DEFAULT_CODES;
+    const types = Object.fromEntries(codes.map((c) => [c, { total: 0, final: 0, draft: 0, failed: 0 }]));
+    for (const c of r.certificates) {
+      const t = (types[c.certificateType.code] ||= { total: 0, final: 0, draft: 0, failed: 0 });
+      t.total++;
+      if (c.status === "final") t.final++;
+      else if (c.status === "failed") t.failed++;
+      else t.draft++;
+    }
+    const made = Object.values(types).reduce((n, t) => n + t.total, 0);
+    const done = Object.values(types).every((t) => t.total > 0 && t.final === t.total);
+    const seen = new Set();
+    const products = r.items
+      .map((i) => ({ name: i.product?.name || i.data?.name || null, pack: i.product?.packaging || i.data?.packing || null }))
+      .filter((p) => p.name && !seen.has(`${p.name}|${p.pack}`) && seen.add(`${p.name}|${p.pack}`));
+    return {
+      id: r.id,
+      company: r.company,
+      products,
+      codes,
+      types,
+      status: !made ? "new" : done ? "ready" : "in_progress",
+      consignee: r.header?.customerName || null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  });
+  return { items, total, page: Math.max(1, Number(page) || 1), pageSize: take };
+}

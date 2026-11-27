@@ -173,6 +173,7 @@ router.get("/certificate-metrics", guard("read_certificates"), validate(certific
 // else falls through to the global handler unchanged.
 // ── the client's workflow (Dossira_Certificate_Workflow_EN): request → matrix → review → delivery ──
 router.post("/certificate-requests", guard("create_certificates"), workflow.createRequest);
+router.get("/certificate-requests", guard("read_certificates"), workflow.listRequests);
 router.get("/certificate-requests/:id", guard("read_certificates"), workflow.getRequest);
 router.patch("/certificate-requests/:id/lines/:lineId", guard("create_certificates"), workflow.resolveLine);
 router.post("/certificate-requests/:id/lines/:lineId/new-pack", guard("create_products"), workflow.addPackVariant);

@@ -30,6 +30,7 @@ const requestBody = z.object({
   country: z.string().max(60).nullable().optional(),
 });
 export const createRequest = catchAsync(async (req, res) => ok(res, await requests.createRequest({ companyId: companyFor(req), userId: actorId(req), ...parse(requestBody, req.body) }), 201));
+export const listRequests = catchAsync(async (req, res) => ok(res, await requests.listRequests(scopeOf(req), parse(z.object({ companyId: z.string().uuid().optional(), page: z.coerce.number().int().min(1).optional(), pageSize: z.coerce.number().int().min(1).max(100).optional() }), req.query))));
 export const getRequest = catchAsync(async (req, res) => ok(res, await requests.getRequest(req.params.id, scopeOf(req))));
 export const resolveLine = catchAsync(async (req, res) => ok(res, await requests.resolveLine(req.params.id, scopeOf(req), req.params.lineId, parse(z.object({ productId: z.string().uuid() }), req.body))));
 export const setRequestOptions = catchAsync(async (req, res) => ok(res, await requests.setRequestOptions(req.params.id, scopeOf(req), parse(z.object({ issueDate: z.string().nullable() }), req.body))));
