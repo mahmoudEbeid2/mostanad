@@ -101,7 +101,9 @@ try {
   const a = await Promise.all([1, 2, 3, 4].map(() => allocateDocNumber(co.id, "COA", new Date(2026, 10, 28))));
   assert("  4 numbers at once → 4 different, in sequence (no pattern known: COA-2026-0001…)", new Set(a).size === 4 && a.sort()[0] === "COA-2026-0001", a);
   await prisma.company.update({ where: { id: co.id }, data: { profile: { numbering: { COA: { pattern: "COAAVVI{MM}{YY}{SEQ3}", lastSeq: 10 } } } } });
-  // a default scheme already used (4 numbers): what the documents taught since takes over, from its last number
+  // a default scheme already used (4 numbers): what the documents taught since takes over, from its last number —
+  // for a sequence that runs on (the monthly switch off; a monthly one restarts: numbering.monthly.test.js)
+  await prisma.numberingScheme.updateMany({ where: { companyId: co.id, certCode: "COA" }, data: { resetMonthly: false } });
   const learnt = await allocateDocNumber(co.id, "COA", new Date(2026, 10, 28));
   assert("  a learnt numbering continues from its last number", learnt === "COAAVVI1126011", learnt);
   // never back: documents teaching an older last number, a person typing a lower counter, a switch of pattern

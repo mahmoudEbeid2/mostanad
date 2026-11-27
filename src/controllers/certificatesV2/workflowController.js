@@ -41,11 +41,12 @@ export const getNumbering = catchAsync(async (req, res, next) => {
   if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
   ok(res, { schemes: await listSchemes(companyId) });
 });
-/** PUT /companies/:id/numbering/:code { pattern, lastSeq? } — a person sets (or confirms) a type's numbering */
+/** PUT /companies/:id/numbering/:code { pattern, nextNumber?, lastSeq?, resetMonthly? } — a person sets (or confirms) a type's numbering */
 export const setNumbering = catchAsync(async (req, res, next) => {
   const companyId = req.company ? req.company.id : req.params.id;
   if (req.company && req.params.id !== req.company.id) return next(new AppError("Company not found!", 404));
-  const body = parse(z.object({ pattern: z.string().min(3).max(60), lastSeq: z.number().int().min(0).optional() }), req.body);
+  // nextNumber: the sequence the client's next certificate carries (this month's, for a monthly one)
+  const body = parse(z.object({ pattern: z.string().min(3).max(60), lastSeq: z.number().int().min(0).optional(), nextNumber: z.number().int().min(1).max(999_999).optional(), resetMonthly: z.boolean().optional() }), req.body);
   try {
     await setScheme(companyId, req.params.code, body, actorId(req));
   } catch (err) {

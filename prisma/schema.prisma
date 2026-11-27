@@ -1893,6 +1893,8 @@ model NumberingScheme {
   certCode        String   @map("cert_code")
   pattern         String // e.g. COCAF{YY}0{MM}{SEQ3}
   lastSeq         Int      @default(0) @map("last_seq")
+  resetMonthly    Boolean  @default(true) @map("reset_monthly") // the sequence restarts every month (only for a pattern with {MM} and the year)
+  seqPeriod       String?  @map("seq_period") // the month ("2026-11") lastSeq counts in; null = set before monthly counting
   confirmed       Boolean  @default(false) // a person confirmed or set it
   source          String   @default("default") // detected | default | user
   example         String? // the number it was learnt from
