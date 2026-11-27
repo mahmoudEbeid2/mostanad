@@ -284,6 +284,13 @@ export function resolveWithNeed(field, ctx, need) {
   }
   return guardSample(field, out);
 }
+/**
+ * The engine's flags for a field, as they count: the engine marks every empty required place "missing",
+ * but a draft's number place (given on finalize) and a basis line its source page doesn't print are empty
+ * on purpose (QA 27 Nov re-test: the regenerated CURCUMARIN COC was blocked by both).
+ */
+export const emptyOnPurpose = (v) => !String(v?.value ?? "").trim() && ((v?.flags || []).includes(NUMBER_ON_FINALIZE) || v?.provenance?.rule === NUMBER_ON_FINALIZE || v?.provenance?.rule === "no_basis_on_source");
+export const engineFlags = (v, flags = []) => (emptyOnPurpose(v) ? (flags || []).filter((f) => f !== "missing") : flags || []);
 const isBasisField = (field) => field.role === "composition_basis" || (field.source?.kind === "product" && field.source.path === "compositionBasis");
 
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */
@@ -345,7 +352,7 @@ export async function renderInitialVersion(cert, base, caches) {
         resolved: resolved[f.key].resolved,
         origin: resolved[f.key].origin,
         ...(resolved[f.key].provenance ? { provenance: resolved[f.key].provenance } : {}),
-        flags: [...new Set([...(resolved[f.key].flags || []), ...(out.flags[f.key] || [])])],
+        flags: [...new Set([...(resolved[f.key].flags || []), ...engineFlags(resolved[f.key], out.flags[f.key])])],
         editedByUserId: null,
         editedAt: null,
       },

@@ -7,7 +7,7 @@ import * as fileStore from "../storage/fileStore.js";
 import * as renderer from "../engine/rendererClient.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { resolveGroup } from "../generation/valueResolver.js";
-import { loadDesign, certificateContext, countBlocking, emptyFlags, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed, NUMBER_ON_FINALIZE } from "../generation/batchService.js";
+import { loadDesign, certificateContext, countBlocking, emptyFlags, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed, NUMBER_ON_FINALIZE, engineFlags } from "../generation/batchService.js";
 import { allocateDocNumber } from "../generation/docNumbers.js";
 import { PRINTABLE } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
@@ -61,7 +61,7 @@ async function renderValues(cert, values) {
   for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
     const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed" || x === "estimated" || x === NUMBER_ON_FINALIZE); // an estimate stays marked until accepted or typed over
-    merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || []), ...emptyFlags(f, v.value)])] };
+    merged[f.key] = { ...v, flags: [...new Set([...kept, ...engineFlags(v, out.flags[f.key]), ...emptyFlags(f, v.value)])] };
   }
   for (const g of design.groups) {
     const v = values[g.key] || groupValue(g, { rows: [], flags: [] }, { flags: {} });

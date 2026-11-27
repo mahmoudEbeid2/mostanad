@@ -5,7 +5,7 @@
 //  5. CURCUMARIN's COC: "missing composition basis" when its page prints no basis line
 // Needs Postgres (no API).
 import { makeAssert, createCompany, cleanupCompany, prisma } from "./helpers.js";
-import { resolveWithNeed, isBlocking } from "../../src/services/certificates/generation/batchService.js";
+import { resolveWithNeed, isBlocking, engineFlags } from "../../src/services/certificates/generation/batchService.js";
 import { packsOfOne } from "../../src/services/assistant/productSearch.js";
 import { partyFields, onlyPartyWords } from "../../src/services/certificates/templates/partyBlocks.js";
 import { sameFilesRequest, createRequest } from "../../src/services/certificates/workflow/requestService.js";
@@ -18,6 +18,8 @@ async function main() {
   const r = resolveWithNeed(numberField, { product: {} }, null);
   assert("a draft holds no number: empty, flagged «number_on_finalize»", r.value === "" && r.flags.includes("number_on_finalize"), r);
   assert("…which never blocks finalize", !r.flags.some(isBlocking), r.flags);
+  // the renderer marks every empty required place "missing" — not this one (the CURCUMARIN draft on prod was blocked)
+  assert("the engine's «missing» on the number place doesn't count", JSON.stringify(engineFlags(r, ["missing", "shrunk"])) === '["shrunk"]');
   const given = resolveWithNeed(numberField, { product: {}, docNumber: "COC-2026-0081" }, null);
   assert("a number given (on finalize) is printed", given.value === "COC-2026-0081", given);
 
@@ -25,6 +27,8 @@ async function main() {
   const basis = { key: "composition_basis", label: "Composition basis", required: true, role: "composition_basis", source: { kind: "product", path: "compositionBasis" } };
   const noBasis = resolveWithNeed(basis, { product: { activeIngredients: [{ name: "Curcumin", concentration: "10 g" }] } }, null);
   assert("composition read, no basis line on its page → optional, not blocking", noBasis.value === "" && !noBasis.flags.some(isBlocking), noBasis.flags);
+  assert("…nor on a basis its page doesn't print", !engineFlags(noBasis, ["missing"]).includes("missing"));
+  assert("a required place left empty by accident still counts as missing", engineFlags({ value: "", flags: [] }, ["missing"]).includes("missing"));
   const withBasis = resolveWithNeed(basis, { product: { compositionBasis: "Each 1 L contains:", activeIngredients: [{ name: "x" }] } }, null);
   assert("a basis the product has is printed", withBasis.value === "Each 1 L contains:", withBasis);
 
