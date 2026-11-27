@@ -505,6 +505,17 @@ export const SPECS = {
     fields: { batchId: [user()], certificateTypes: [user()] },
     errors: [[/file|certificate|template/i, "batchId"]],
   },
+  // the person's one-line answer to the drafts' missing message: the line itself, as they typed it
+  fill_missing_batch_values: {
+    title: "Fill the drafts' batch data",
+    fields: { text: [user()], requestId: [user()] },
+    errors: [[/request/i, "requestId"], [/product|value|missing|draft|line/i, "text"]],
+  },
+  set_shipment_consignee: {
+    title: "Set the shipment's consignee",
+    fields: { text: [user()], requestId: [user()] },
+    errors: [[/request/i, "requestId"], [/consignee|line|draft|user/i, "text"]],
+  },
   create_certificate_templates: {
     title: "Make certificate templates from files",
     fields: { attachmentIds: [attachment({ many: true })], codes: [user()], brandId: [brand], country: [country] },
