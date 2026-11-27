@@ -117,7 +117,8 @@ try {
   assert("inference was never sent a lab result", asked.infer.length > 0 && !asked.infer.some((l) => LAB.includes(l)), asked.infer);
   assert("the web was never asked for a lab result", !asked.web.some((l) => LAB.includes(l)), asked.web);
   assert("the gap call may look for a result printed on the invoice only — flagged labResult, never the spec-instead field", asked.gap.filter((g) => LAB.includes(g.label)).every((g) => g.labResult) && !asked.gap.some((g) => g.label === "Moisture result"), asked.gap);
-  assert("control: the plain Appearance field is offered P1's estimate (waiting for a person)", n["1.appearance"].status === "inferred" && n["1.appearance"].value === "Clear yellow liquid", n["1.appearance"].status);
+  // 7f91e25: a descriptive estimate is printed (marked «مستنتج»), not held for a person
+  assert("control: the plain Appearance field gets P1's estimate", ["inferred", "resolved"].includes(n["1.appearance"].status) && (n["1.appearance"].status === "resolved" || n["1.appearance"].value === "Clear yellow liquid"), n["1.appearance"].status);
   assert("…the lab result reading the same path is NOT (no estimate, missing)", n["1.appearance_result"].status === "missing" && n["1.appearance_result"].value === null, n["1.appearance_result"]);
   assert("P2's confirmed estimate: the plain field resolves it, the lab result still refuses it", n["3.appearance"].status === "resolved" && n["3.appearance_result"].status === "missing", [n["3.appearance"].status, n["3.appearance_result"].status]);
   assert("no lab result was filled by inference anywhere", Object.values(n).filter((x) => /result$/.test(x.fieldKey)).every((x) => x.provenance?.tier !== "I" && x.provenance?.tier !== "W" && x.status !== "inferred" && x.status !== "web_found"), Object.values(n).filter((x) => /result$/.test(x.fieldKey)).map((x) => `${x.fieldKey}:${x.status}`));

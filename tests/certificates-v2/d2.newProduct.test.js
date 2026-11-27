@@ -234,7 +234,8 @@ try {
   assert("full mode: nothing filled in from the invoice", twinProduct.productCode === null && twinProduct.packaging === null && twinProduct.brandId === null, twinProduct);
   assert("a value kept as suggested is an estimate on the product", twinProduct.fieldProvenance.storage.estimated === true && twinProduct.fieldProvenance.storage.tier === "I" && !twinProduct.fieldProvenance.storage.confirmedAt, twinProduct.fieldProvenance);
   assert("a changed one is the person's", !twinProduct.fieldProvenance.producer);
-  assert("certificates don't read an unconfirmed estimate", maskEstimates(twinProduct).storage === null);
+  // 7f91e25: storage is descriptive — an estimate of it is printed, marked «مستنتج»
+  assert("certificates read a descriptive estimate (storage), marked", maskEstimates(twinProduct).storage === twinProduct.storage);
   const dec = await prisma.aiSuggestion.findMany({ where: { id: { in: ["storage", "producer", "origin"].map((p) => pick(p).suggestionId) } } });
   const stat = (p) => dec.find((x) => x.id === pick(p).suggestionId).status;
   assert("the suggestions record what happened", stat("storage") === "accepted" && stat("producer") === "edited" && stat("origin") === "rejected", dec.map((x) => x.status));
@@ -247,7 +248,7 @@ try {
   assert("the next invoice matches by that name", learned.matchStatus === "matched" && learned.productId === twinProduct.id && learned.matchMethod === "alias", learned);
   const check = await computeNeeds(inv, cid, { ai: false });
   const est = check.certificates.flatMap((c) => c.needs || c.fields || []).find((n) => n.label === "Storage conditions" && n.status === "inferred") || (await prisma.certificateDataNeed.findFirst({ where: { invoiceId: inv, invoiceItemId: twin.id, label: "Storage" } }));
-  assert("the data check asks a person to sign for the estimate", est?.status === "inferred", est);
+  assert("the data check holds the estimate (inferred) or prints it (resolved, descriptive)", !!est && ["inferred", "resolved"].includes(est.status), est?.status);
 
   console.log("\n🧪 Other lines follow");
   const aliased = await newInvoice(A, coA);

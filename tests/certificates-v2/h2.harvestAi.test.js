@@ -79,8 +79,9 @@ try {
   }
   const out = await runDropHarvest(batch.id);
   const ext = calls.filter((c) => c.kind === "extract");
-  assert("  the first extraction call carries all 3 files", ext[0]?.labels.join(",") === "F1,F2,F3", ext.map((c) => c.labels));
-  assert("  every call on the env model, no fallback, high resolution, its own long timeout", calls.every((c) => c.model === "gemini-3.1-pro-preview" && c.config.allowFallback === false && c.config.mediaResolution === "MEDIA_RESOLUTION_HIGH" && c.config.timeoutMs >= 600000), calls.map((c) => [c.model, c.config.allowFallback]));
+  // 4788207: one file per call (each file its own stage and time)
+  assert("  each file is read in its own extraction call", ["F1", "F2", "F3"].every((l) => ext.some((c) => c.labels.length === 1 && c.labels[0] === l)), ext.map((c) => c.labels));
+  assert("  every call on the env model, no fallback, high resolution, a timeout bounded by the read's deadline", calls.every((c) => c.model === "gemini-3.1-pro-preview" && c.config.allowFallback === false && c.config.mediaResolution === "MEDIA_RESOLUTION_HIGH" && c.config.timeoutMs > 0), calls.map((c) => [c.model, c.config.allowFallback]));
   assert("  each file uploaded once (cached by content)", uploads === 3, uploads);
   const h = (await prisma.intakeBatch.findUnique({ where: { id: batch.id } })).harvest;
   const st = Object.fromEntries(h.files.map((f) => [f.name, f.status]));

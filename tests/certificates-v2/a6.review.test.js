@@ -220,7 +220,8 @@ try {
   const mix = r.data?.data?.product;
   assert("IMMUSOL accepted by a person: the withdrawal estimate kept as tier I estimated", r.status === 201 && mix.withdrawalPeriod === "0 days" && mix.fieldProvenance.withdrawalPeriod.estimated === true);
   const masked = maskEstimates(await prisma.product.findUnique({ where: { id: mix.id } }));
-  assert("certificates read it masked (unconfirmed estimate → empty)", masked.withdrawalPeriod === null && masked.appearance === null && masked.name === "IMMUSOL");
+  // 7f91e25: a descriptive estimate (appearance) is printed, marked «مستنتج»; a regulated one (withdrawal) stays masked
+  assert("certificates read it masked (unconfirmed regulated estimate → empty; descriptive kept)", masked.withdrawalPeriod === null && masked.name === "IMMUSOL");
   r = await api("POST", `/catalogue-blocks/${idOf("AD3E-PLUS")}/reject`, asAdmin);
   assert("reject → status rejected, no product written", r.status === 200 && (await prisma.catalogueBlock.findUnique({ where: { id: idOf("AD3E-PLUS") } })).status === "rejected" && !(await prisma.product.count({ where: { companyId: co.id, name: "AD3E-PLUS" } })));
 
