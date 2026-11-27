@@ -32,6 +32,8 @@ export const fillDef = (f) => ({
   align: f.align || "left",
   required: f.required !== false,
   fontClass: f.fontClass,
+  // the design's ":" after a composition basis ("Each 1 L contains:") goes when the basis is empty (QA 27 Nov)
+  ...(f.role === "composition_basis" || (f.source?.kind === "product" && f.source.path === "compositionBasis") ? { dropColonWhenEmpty: true } : {}),
 });
 
 /** A group's cells (fields with groupKey) for the engine's inspectGroups(). */

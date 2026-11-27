@@ -1488,6 +1488,17 @@
     return subs ? Array.from(value).map((ch) => subs[ch] ?? ch).join("") : value;
   };
 
+  // an empty place whose design prints ":" right after it ("Each 1 L contains:" with no basis): the
+  // lone colon goes too — the next text in reading order, only when it starts with that colon
+  function dropFollowingColon(span) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    walker.currentNode = span;
+    let node = walker.nextNode();
+    while (node && span.contains(node)) node = walker.nextNode();
+    while (node && !node.nodeValue.trim()) node = walker.nextNode();
+    if (node && /^\s*:/.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(/^(\s*):/, "$1");
+  }
+
   function setFieldText(span, value, def, plan) {
     const text = shownText(value, def, plan);
     span.textContent = text;
@@ -1542,6 +1553,7 @@
       const raw = values[def.key];
       const value = raw === null || raw === undefined ? "" : String(raw);
       setFieldText(span, value, def, plan);
+      if (!value.trim() && def.dropColonWhenEmpty) dropFollowingColon(span);
       const res = layoutField(span, def);
       list.push(...res.flags, ...glyphFlags(value, def, coverage, plan));
       if (!value && def.required) list.push("missing");
