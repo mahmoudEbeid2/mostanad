@@ -52,3 +52,6 @@ uploads/intake_tmp/
 .test-bypass-secret
 /reports/
 __pycache__/
+
+# The client's real files for the certificates acceptance run (scripts/acceptance/certificates.mjs): local only
+/fixtures/addvet/*.pdf
