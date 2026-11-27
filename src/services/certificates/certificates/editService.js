@@ -7,7 +7,8 @@ import * as fileStore from "../storage/fileStore.js";
 import * as renderer from "../engine/rendererClient.js";
 import { enqueueTask, QUEUES } from "../jobs/queues.js";
 import { resolveGroup } from "../generation/valueResolver.js";
-import { loadDesign, certificateContext, countBlocking, emptyFlags, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed } from "../generation/batchService.js";
+import { loadDesign, certificateContext, countBlocking, emptyFlags, isBlocking, loadBatch, renderDesign, plainFields, groupValue, resolveWithNeed, NUMBER_ON_FINALIZE } from "../generation/batchService.js";
+import { allocateDocNumber } from "../generation/docNumbers.js";
 import { PRINTABLE } from "../dataNeeds/dataNeedsService.js";
 import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
@@ -59,7 +60,7 @@ async function renderValues(cert, values) {
   const merged = {};
   for (const f of plainFields(design)) {
     const v = values[f.key] || { value: "", source: f.source, resolved: "", origin: "auto", editedByUserId: null, editedAt: null };
-    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed" || x === "estimated"); // an estimate stays marked until accepted or typed over
+    const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format" || x === "unconfirmed" || x === "estimated" || x === NUMBER_ON_FINALIZE); // an estimate stays marked until accepted or typed over
     merged[f.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[f.key] || []), ...emptyFlags(f, v.value)])] };
   }
   for (const g of design.groups) {
@@ -331,6 +332,33 @@ export async function getPdf(id, companyId, version = null) {
 }
 
 // ── finalize / duplicate ─────────────────────────────────────────────────────
+/**
+ * The certificate's number, given on finalize (QA 27 Nov re-test: numbers given to drafts were burnt
+ * by every replaced or deleted draft). Each empty number place of the current version gets the
+ * company's next number — or the one already claimed for this certificate (a finalize that failed
+ * after claiming it) — as a new version. → the certificate after it, or null when nothing was empty
+ */
+async function numberOnFinalize(cert, userId) {
+  const design = await loadDesign(new Map(), cert.templateVersionId);
+  const places = plainFields(design).filter((f) => f.source?.kind === "docnumber");
+  if (!places.length) return null;
+  const current = await currentVersionRow(cert);
+  const empty = places.filter((f) => !String(current.values?.[f.key]?.value ?? "").trim());
+  if (!empty.length) return null;
+  const claimed = await prisma.documentNumber.findFirst({ where: { certificateId: cert.id }, orderBy: { createdAt: "asc" }, select: { number: true } });
+  const type = await prisma.certificateType.findUnique({ where: { id: cert.certificateTypeId }, select: { code: true } });
+  const number = claimed?.number || (await allocateDocNumber(cert.companyId, type?.code, new Date(), cert.id));
+  const values = structuredClone(current.values || {});
+  for (const f of empty) {
+    const v = values[f.key] || { source: f.source, origin: "auto", editedByUserId: null, editedAt: null };
+    values[f.key] = { ...v, value: number, resolved: number, origin: "auto", flags: (v.flags || []).filter((x) => x !== NUMBER_ON_FINALIZE && x !== "missing" && x !== "empty_optional"), provenance: { kind: "docnumber", givenOn: "finalize" } };
+  }
+  const rendered = await renderValues(cert, values);
+  const out = await commitVersion(cert, rendered.values, { changeSource: "finalize_number", userId, summary: `certificate number ${number} given on finalize`, files: { html: rendered.html, thumbnail: rendered.thumbnail } });
+  if (out.flagCount > 0) throw new CertError("CERTIFICATE_FLAGGED", `The number ${number} was written, but the certificate now has ${out.flagCount} issue(s) — check it and finalize again`, 409);
+  return prisma.certificate.findUnique({ where: { id: cert.id } });
+}
+
 /** POST /certificates/:id/finalize — refuses while blocking flags remain; freezes the PDF. */
 export async function finalize(id, companyId, userId, { expectedVersion } = {}) {
   const cert = await loadCertificate(id, companyId);
@@ -354,9 +382,10 @@ export async function finalize(id, companyId, userId, { expectedVersion } = {}) 
     const overridden = (full?.reviewComments || []).some((c) => c.action === "spec_override" && c.version === cert.currentVersion);
     if (!overridden) throw new CertError("OUT_OF_SPEC", `نتيجة برّا المواصفة: ${outOfSpec.map((o) => `${o.label} = ${o.value} (المواصفة ${o.spec})`).join("، ")} — مينفعش تتعتمد غير بتعليق يشرح السبب`, 409, { outOfSpec });
   }
-  const pdfFileId = await ensureVersionPdf(cert);
+  const numbered = (await numberOnFinalize(cert, userId)) || cert;
+  const pdfFileId = await ensureVersionPdf(numbered);
   const done = await prisma.certificate.updateMany({
-    where: { id, status: "draft", currentVersion: cert.currentVersion, flagCount: 0 },
+    where: { id, status: "draft", currentVersion: numbered.currentVersion, flagCount: 0 },
     data: { status: "final", finalizedAt: new Date(), finalizedByUserId: userId || null, finalPdfFileId: pdfFileId },
   });
   if (!done.count) throw new CertError("VERSION_CONFLICT", "The certificate changed meanwhile — reload and try again", 409);

@@ -12,7 +12,6 @@ import { getDictionary, pathSynonymMap } from "../dictionary/dataDictionary.js";
 import { maskEstimates, provenanceFor } from "../../catalogues/fieldProvenance.js";
 import { assertVersionsReady } from "../templates/readinessService.js";
 import { isProtected } from "../inference/policy.js";
-import { allocateDocNumber } from "./docNumbers.js";
 import { experimentFor, watermarkHtml, audit as experimentAudit } from "../experiment/experimentMode.js";
 import { experimentFill } from "../experiment/experimentFill.js";
 import { notApplicable } from "../labResults/applicability.js";
@@ -33,9 +32,11 @@ const COMPANY_SELECT = { id: true, name: true, address: true, phone: true, email
  *  an estimate nobody confirmed yet (`unconfirmed`: printed on the draft, never on a final certificate).
  *  Informational: `estimated` (28 Nov: a descriptive value the AI estimated — printed, marked «مستنتج», never blocking), `glyph_fallback:…` (drawn in the matched fallback font), `glyph_unknown` (the font couldn't be parsed,
  *  review #7) and `empty_optional` (an optional value the pipeline couldn't fill). */
+/** A draft's certificate number: given on finalize (informational, never blocking) */
+export const NUMBER_ON_FINALIZE = "number_on_finalize";
 export const isBlocking = (flag) => flag === "missing" || flag === "sample_value" || String(flag).startsWith("rows_overflow") || flag === "overflow" || flag === "missing_span" || flag === "unconfirmed" || String(flag).startsWith("glyph:");
 /** Never blank silently (owner, 2026-11-05): an optional field left empty says so, unless the owner marked it not applicable. */
-export const emptyFlags = (field, value) => (value || field.required || field.notApplicable ? [] : ["empty_optional"]);
+export const emptyFlags = (field, value) => (value || field.required || field.notApplicable || field.source?.kind === "docnumber" ? [] : ["empty_optional"]);
 export const countBlocking = (values) => Object.values(values || {}).filter((v) => (v.flags || []).some(isBlocking)).length;
 
 /** GET /invoices/:id/generation-plan — what "Generate" would produce (plan §13.5, §20 I19). */
@@ -261,6 +262,7 @@ export function resolveWithNeed(field, ctx, need) {
     // who confirmed it travels with the value (plan.md §14.4: the tier, evidence and the person, forever)
     return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
+  if (field.source?.kind === "docnumber" && !ctx.docNumber && ctx.docNumberOnFinalize !== false) return { value: "", resolved: "", flags: [NUMBER_ON_FINALIZE], origin: "auto", provenance: { kind: "rule", rule: NUMBER_ON_FINALIZE } };
   // Sterility / Pyrogen on an oral product: "N/A" by rule, shown with why — never asked every time (27 Nov QA)
   const na = notApplicable(field, ctx.product);
   if (na) return { value: na.value, resolved: na.value, flags: [], origin: "auto", provenance: { kind: "rule", rule: "not_applicable_oral", basis: na.basis } };
@@ -274,8 +276,15 @@ export function resolveWithNeed(field, ctx, need) {
     out.provenance = { kind: "product", path: field.source.path, ...rest };
     if (pv.estimated === true && !pv.confirmedAt) out.flags = [...out.flags, "estimated"];
   }
+  // QA 27 Nov (re-test), CURCUMARIN's COC: the product's composition was read from a page that prints
+  // no basis line ("Each 1 L contains:") — the basis is then optional, never a blocking blank
+  if (!out.value && isBasisField(field) && Array.isArray(ctx.product?.activeIngredients) && ctx.product.activeIngredients.length) {
+    out.flags = [...new Set([...out.flags.filter((f) => f !== "missing"), "empty_optional"])];
+    out.provenance = { kind: "rule", rule: "no_basis_on_source" };
+  }
   return guardSample(field, out);
 }
+const isBasisField = (field) => field.role === "composition_basis" || (field.source?.kind === "product" && field.source.path === "compositionBasis");
 
 /** Renders version 1 of one certificate. Idempotent: a certificate that already has v1 is left alone. */
 export async function renderInitialVersion(cert, base, caches) {
@@ -285,11 +294,8 @@ export async function renderInitialVersion(cert, base, caches) {
   const design = await loadDesign(caches.designs, cert.templateVersionId);
   const ctx = await certificateContext(cert, base, caches, design);
   const needs = base.needs?.get(cert.planKey);
-  // its own document number, once (the company's numbering, never the sample's)
-  if (plainFields(design).some((f) => f.source?.kind === "docnumber")) {
-    const type = await prisma.certificateType.findUnique({ where: { id: cert.certificateTypeId }, select: { code: true } });
-    ctx.docNumber = await allocateDocNumber(cert.companyId, type?.code, new Date(), cert.id);
-  }
+  // its own document number is given on finalize, never on a draft (QA 27 Nov re-test: drafts burnt
+  // the numbers — COC already at 080): the draft's number place stays empty, flagged «سيُعطى عند الاعتماد»
   const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
   // PART 3: experiment mode — every field still empty filled by the AI (lab results, batch facts included),
   // marked «مستنتج (تجربة)»; the certificate is a watermarked sample that can never become valid
