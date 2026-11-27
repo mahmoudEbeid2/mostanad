@@ -158,6 +158,9 @@ export async function mergeProduct(productId) {
   // a "form" that isn't a physical form is the document's "Product Form" label (29 Nov: ADDVET's COC
   // "Product Form: Antibiotic" had become the products' physical form)
   for (const f of facts) if (f.key === "physicalForm") f.key = formColumnOf(show(f.value));
+  // what a certificate prints under "Product Form:" is the COC's «Product Form» as printed — also when it is a
+  // physical form (ADDMECTIN 1%: "Product Form: Liquid" left its COC's Product form blank, acceptance #3)
+  for (const f of [...facts]) if (f.key === "physicalForm" && f.sourceType === "certificate" && /Product\s*Form/i.test(f.snippet || "")) facts.push({ ...f, key: "productForm" });
   // a basis only from a COC / label basis line (never a COA table's "Constituents (per …)")
   for (let i = facts.length - 1; i >= 0; i--) if (facts[i].key === "compositionBasis" && !basisFact(facts[i])) facts.splice(i, 1);
   const prov = { ...(p.fieldProvenance || {}) };
