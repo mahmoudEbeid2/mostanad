@@ -1,4 +1,4 @@
-// Certificates — definition of done (CERT_DONE_CHECKLIST.md): the 14 scenarios, run on PRODUCTION against
+// Certificates — definition of done (CERT_DONE_CHECKLIST.md): the 19 scenarios, run on PRODUCTION against
 // the company ADDVET with the client's real files, PASS / FAIL per scenario. Everything the run creates is
 // deleted at the end (exact ids it recorded — never by pattern), and the numbering counters it moved are
 // put back as they were. Run it after every certificates-related deploy; a FAIL blocks the "done" report.
@@ -22,7 +22,8 @@ import { notMadeTypes } from "../../src/services/intake/expressService.js";
 import { createRequest, getRequest } from "../../src/services/certificates/workflow/requestService.js";
 import { reviewAction, revise, reviewChecks } from "../../src/services/certificates/workflow/reviewService.js";
 import { finalize, editValues } from "../../src/services/certificates/certificates/editService.js";
-import { isBlocking } from "../../src/services/certificates/generation/batchService.js";
+import { isBlocking, isNA } from "../../src/services/certificates/generation/batchService.js";
+import { batchFacts, guardBatchSize } from "../../src/services/certificates/experiment/experimentFill.js";
 import { fieldRole } from "../../src/services/certificates/generation/batchAnswer.js";
 import { listSchemes, formatNumber } from "../../src/services/certificates/generation/docNumbers.js";
 import { samePack, splitNamePack } from "../../src/services/certificates/matching/packNormalizer.js";
@@ -109,6 +110,7 @@ async function drop(admin, message) {
   if (!done) throw new Error("Express didn't finish (40 min)");
   view = await intake.getBatchView(admin, batch.id);
   if (view.express?.request?.id) created.requests.add(view.express.request.id);
+  (ctx.views ||= []).push(view);
   return { conv, first, batch: done, view };
 }
 
@@ -225,9 +227,7 @@ async function main() {
     return { pass: cocs.length > 0 && !bad.length, detail: bad.length ? bad.join(" · ") : `${cocs.length} COCs clean` };
   });
 
-  // SULFAPRIM's route is "intramuscular administration", ADDMECTIN's "Subcutaneous injection"
-  const injectable = (p) => /inject|parenteral|intramuscular|subcutaneous|intravenous|\bI\.?M\b|\bS\.?C\b|\bI\.?V\b/i.test(`${p?.physicalForm || ""} ${p?.productForm || ""} ${p?.productType || ""} ${p?.routeOfAdmin || ""}`);
-  await scenario(5, "COA of every product: blanks only lab results + batch size; batch, dates with file + page", async () => {
+  await scenario(5, "COA of every product: no blank (an unknown result / batch size is taken off — #15); batch, dates with file + page", async () => {
     const coas = await certsOf(ctx.requestId, "COA");
     if (!coas.length) return { pass: false, detail: "no COA drafts" };
     const bad = [];
@@ -236,12 +236,8 @@ async function main() {
       const fields = await fieldsOf(c.templateVersionId);
       const role = new Map(fields.map((f) => [f.key, fieldRole(f)]));
       const problems = [];
-      for (const [k] of blockingOf(values)) {
-        const r = role.get(k) || {};
-        const sterile = /steril|pyrogen/i.test(r.test || k);
-        if (r.role === "batchSize" || (r.role === "result" && (!sterile || injectable(c.product)))) continue;
-        problems.push(`blank ${k}`);
-      }
+      // 28 Nov (owner): a COA test with no result, and an unknown batch size, is taken off — never a blank
+      for (const [k] of blockingOf(values)) problems.push(`blank ${k} (${(role.get(k) || {}).role})`);
       for (const want of ["batchNo", "productionDate", "expiryDate"]) {
         const f = fields.find((x) => role.get(x.key)?.role === want);
         if (!f) continue;
@@ -276,6 +272,79 @@ async function main() {
     return { pass: coas.length > 0 && !bad.length, detail: bad.length ? bad.join(" · ") : `${coas.length} COAs` };
   });
 
+  // 28 Nov (owner), the COA rule: a test whose result is unknown is taken off (never blank, never "N/A", never
+  // inferred); the table closes up; the certificate stays a normal one; the card lists what was taken off
+  const printedText = async (htmlFileId) => (htmlFileId ? await fileStore.readText(htmlFileId) : "");
+  const visible = (html) => flat(String(html).replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " "));
+  const PRINTS_NA = /(^|[^A-Za-z])N\s*\/\s*A([^A-Za-z]|$)/i;
+  const WATERMARK = /SAMPLE\s*[–-]\s*NOT VALID/i;
+  const REMOVED_LINE = /^اتشال من الشهادة: .+ — مفيش نتيجة\. ابعت النتيجة في سطر وترجع$/;
+  await scenario(15, "COA: an unknown test / batch size is taken off — not blank, not N/A; finalizable; the card lists it in one line", async () => {
+    const coas = await certsOf(ctx.requestId, "COA");
+    if (!coas.length) return { pass: false, detail: "no COA drafts" };
+    // the card that made these drafts (a drop of the same files may reuse an earlier request's COAs)
+    const card = new Map((ctx.views || []).flatMap((v) => v.express?.certificates || []).map((c) => [c.id, c]));
+    const madeBy = [...(ctx.views || [])].reverse().find((v) => (v.express?.certificates || []).some((c) => c.type === "COA"));
+    const bad = [];
+    let taken = 0;
+    for (const c of coas) {
+      const { values, htmlFileId } = await valuesOf(c);
+      const fields = await fieldsOf(c.templateVersionId);
+      const html = await printedText(htmlFileId);
+      const problems = [];
+      const listed = [];
+      for (const f of fields) {
+        const r = fieldRole(f);
+        if (r.role !== "result" && r.role !== "batchSize") continue;
+        const v = values[f.key] || {};
+        const removed = (v.flags || []).includes("row_removed");
+        if (!flat(v.value)) {
+          if (!removed) problems.push(`${f.key} empty but printed`);
+          else if (html.includes(`data-field="${f.key}"`)) problems.push(`${f.key} still in the page`);
+          else taken++;
+          if (removed && v.provenance?.rule !== "not_applicable_oral") listed.push(f.key);
+        } else if (removed) problems.push(`${f.key} "${v.value}" has a value but was taken off`);
+      }
+      // the rule's own places never block (other blanks — dates, composition — are #3 / #5's)
+      const ruled = blockingOf(values).filter(([k]) => ["result", "batchSize"].includes(fieldRole(fields.find((f) => f.key === k) || {}).role));
+      if (ruled.length) problems.push(`blocking: ${ruled.map(([k]) => k).join(", ")}`);
+      if (PRINTS_NA.test(visible(html))) problems.push("prints N/A");
+      if (WATERMARK.test(html)) problems.push("watermarked");
+      const line = card.get(c.id)?.removedAr || null;
+      if (listed.length && !REMOVED_LINE.test(line || "")) problems.push(`card line ${line ? `"${line}"` : "MISSING"}`);
+      if (!listed.length && line) problems.push(`card lists "${line}" but nothing was taken off`);
+      if (problems.length) bad.push(`${who(c)}: ${problems.join(", ")}`);
+    }
+    const msg = madeBy?.express?.missing?.ar || "";
+    if (taken && !/اتشال من الشهادة/.test(msg)) bad.push("the drop's message doesn't list the rows taken off");
+    const sample = (madeBy?.express?.certificates || []).find((c) => c.removedAr)?.removedAr;
+    return { pass: !bad.length && taken > 0, detail: bad.length ? bad.join(" · ") : `${coas.length} COAs · ${taken} rows taken off · card: "${sample || "—"}"` };
+  });
+
+  await scenario(17, "No «N/A» for an unknown value on any certificate; a test the product type doesn't have is taken off", async () => {
+    const all = await certsOf(ctx.requestId);
+    const bad = [];
+    let notApplicable = 0;
+    for (const c of all) {
+      const { values, htmlFileId } = await valuesOf(c);
+      const problems = [];
+      for (const [k, v] of Object.entries(values || {})) {
+        if (v?.kind === "group") {
+          for (const row of v.rows || []) for (const [ck, cv] of Object.entries(row || {})) if (isNA(cv)) problems.push(`${k}.${ck} "N/A"`);
+          continue;
+        }
+        if (isNA(v?.value) && v?.origin !== "manual" && v?.provenance?.needStatus !== "provided") problems.push(`${k} "${v.value}"`);
+        if (v?.provenance?.rule === "not_applicable_oral") {
+          notApplicable++;
+          if (c.certificateType.code === "COA" && !(v.flags || []).includes("row_removed")) problems.push(`${k} not applicable but its row stayed`);
+        }
+      }
+      if (PRINTS_NA.test(visible(await printedText(htmlFileId)))) problems.push("the page prints N/A");
+      if (problems.length) bad.push(`${c.certificateType.code} ${who(c)}: ${problems.join(", ")}`);
+    }
+    return { pass: all.length > 0 && !bad.length, detail: bad.length ? bad.join(" · ") : `${all.length} certificates · ${notApplicable} not-applicable tests taken off` };
+  });
+
   // a chat answer → its card → the person presses it
   const answer = async (text) => {
     const turn = await assistant.sendMessage(admin, ctx.drop1.conv.id, { text });
@@ -296,6 +365,24 @@ async function main() {
     const got = { appearance: res("appearance"), identification: res("identification"), pH: res("^ph"), assay: res("assay"), batchSize: get((f) => fieldRole(f).role === "batchSize") };
     const pass = /conforms/i.test(got.appearance) && /positive/i.test(got.identification) && got.pH === "5.2" && /^99\s*%$/.test(got.assay) && /^240\s*KG$/i.test(got.batchSize);
     return { pass, detail: JSON.stringify(got) };
+  });
+
+  await scenario(16, "The result given later brings its row back (ADDHEPA after #7)", async () => {
+    const c = await coaOf("ADDHEPA");
+    if (!c) return { pass: false, detail: "no ADDHEPA COA" };
+    const { values, htmlFileId } = await valuesOf(await prisma.certificate.findUnique({ where: { id: c.id } }));
+    const fields = await fieldsOf(c.templateVersionId);
+    const html = await printedText(htmlFileId);
+    const back = fields.filter((f) => ["result", "batchSize"].includes(fieldRole(f).role) && flat(values[f.key]?.value));
+    const problems = [];
+    for (const f of back) {
+      if ((values[f.key].flags || []).includes("row_removed")) problems.push(`${f.key} still flagged removed`);
+      if (!html.includes(`data-field="${f.key}"`)) problems.push(`${f.key} not in the page`);
+    }
+    const ph = fields.find((f) => fieldRole(f).role === "result" && /^ph/i.test(fieldRole(f).test || f.label));
+    if (!ph || flat(values[ph.key]?.value) !== "5.2") problems.push(`pH "${ph ? values[ph.key]?.value : "no field"}"`);
+    if (!/5\.2/.test(visible(html))) problems.push("5.2 not printed");
+    return { pass: back.length >= 5 && !problems.length, detail: problems.length ? problems.join(", ") : `back: ${back.map((f) => `${fieldRole(f).test || "batch size"}=${flat(values[f.key].value)}`).join(", ")}` };
   });
 
   await scenario(8, "pH outside its spec: a warning on the card, finalize refused without a comment", async () => {
@@ -417,6 +504,45 @@ async function main() {
     return { pass, detail: `drafts holding a number: ${draftNumbers} · finals: ${first?.number || "-"} (want ${want1}), ${n2 || "-"} (want ${want2}) · next month COC/COA restart at 1: ${monthly} · the test finals are deleted and the counters put back at the end` };
   });
 
+  await scenario(18, "A COA with rows taken off is a normal certificate: finalizes (number given), no watermark", async () => {
+    const coas = await certsOf(ctx.requestId, "COA");
+    let pick = null;
+    for (const c of coas) {
+      if (c.status !== "draft" || /ADDHEPA|H-RESPI/i.test(c.product?.name || "")) continue;
+      const { values } = await valuesOf(c);
+      if (!blockingOf(values).length && Object.values(values).some((v) => (v?.flags || []).includes("row_removed"))) {
+        pick = c;
+        break;
+      }
+    }
+    if (!pick) return { pass: false, detail: "no COA draft with rows taken off and nothing blocking" };
+    const fresh = await prisma.certificate.findUnique({ where: { id: pick.id } });
+    let error = null;
+    try {
+      await finalize(pick.id, cid, admin.id, { expectedVersion: fresh.currentVersion });
+    } catch (err) {
+      error = `${err.code || ""} ${err.message}`;
+    }
+    created.certificates.add(pick.id);
+    const after = await prisma.certificate.findUnique({ where: { id: pick.id } });
+    const number = (await prisma.documentNumber.findFirst({ where: { certificateId: pick.id }, select: { number: true } }))?.number;
+    const html = await printedText((await valuesOf(after)).htmlFileId);
+    const pass = !error && after.status === "final" && !!number && !WATERMARK.test(html) && !after.isExperimentSample;
+    return { pass, detail: error ? `finalize refused: ${error}` : `${who(pick)} → ${after.status}, number ${number || "NONE"}, watermark ${WATERMARK.test(html) ? "PRESENT" : "none"}` };
+  });
+
+  await scenario(19, "Experiment mode's batch size: pack × quantity, never the count with a volume unit (code check)", async () => {
+    const f = batchFacts({ quantity: 2400, packing: "100 mL" });
+    const cases = [
+      ['2400 × 100 mL, the model said "2400 L"', guardBatchSize("2400 L", f), "240 L"],
+      ['the model said "240 L"', guardBatchSize("240 L", f), "240 L"],
+      ['no pack, the model said "2400 L"', guardBatchSize("2400 L", batchFacts({ quantity: 2400 })), "2400 units"],
+      ["500 × 1 KG", batchFacts({ quantity: 500, packing: "1 KG" })?.total, "500 kg"],
+    ];
+    const bad = cases.filter(([, got, want]) => got !== want);
+    return { pass: !bad.length, detail: cases.map(([t, got, want]) => `${t} → ${got}${got === want ? "" : ` (want ${want})`}`).join(" · ") };
+  });
+
   await scenario(14, "Deep link with another company selected opens and switches company", async () => {
     const call = (type, id, company = null) =>
       new Promise((resolve) => {
@@ -478,7 +604,7 @@ try {
   console.log("\n════ Certificates — definition of done ════");
   for (const r of results.sort((a, b) => a.n - b.n)) console.log(`${r.pass ? "PASS" : "FAIL"}  #${String(r.n).padStart(2)}  ${r.title}${r.detail ? `\n        ${r.detail}` : ""}`);
   const passed = results.filter((r) => r.pass).length;
-  console.log(`\n${passed} / ${results.length} passed · ${Math.round((Date.now() - t0) / 1000)} s${results.length === 14 ? "" : " (not every scenario ran)"}`);
+  console.log(`\n${passed} / ${results.length} passed · ${Math.round((Date.now() - t0) / 1000)} s${results.length === 19 ? "" : " (not every scenario ran)"}`);
   await prisma.$disconnect();
   process.exit(exitCode);
 }

@@ -14,7 +14,7 @@ The certificates feature is **DONE** when every scenario below passes on product
 | 2 | Same drop again within 24 h | Reuses the same request; no new duplicate drafts |
 | 3 | COC of every product | 0 blanks; composition identical to the source page (names, amounts, order, "ad 1 L", "Quantity not stated"); basis only when the source page prints one |
 | 4 | COC render | No overflow / shrunk flags on amounts; no stray ":" |
-| 5 | COA of every product | Blanks are only lab results + batch size (+ Sterility / Pyrogen for injectables); production / expiry dates and batch number filled **with source file + page** |
+| 5 | COA of every product | No blank (an unknown result / batch size is taken off, see #15); production / expiry dates and batch number filled **with source file + page** |
 | 6 | COA content | No result printed from the sample; no result word inside a spec; results column shows amounts, not names |
 | 7 | One-line answer «PRODUCT حجم 240 KG — Appearance Conforms, Identification Positive, pH 5.2, assay 99%» | All values filled, batch size keeps its unit |
 | 8 | pH outside spec | Warning in the card; finalize refused without a comment |
@@ -24,6 +24,11 @@ The certificates feature is **DONE** when every scenario below passes on product
 | 12 | Numbering | Drafts take no number; finalize gives the next number with no gap and no repeat; COC / COA restart monthly; delete the test finals afterwards and reset the counters |
 | 13 | Review chain | draft → in review → approved → final; edit after final → revision 2, and revision 1 stays read-only |
 | 14 | Deep link with another company selected | Opens and switches company |
+| 15 | COA: a test with no result (rule of 28 Nov) | Its row is taken off: not printed, not blank, never «N/A»; an unknown batch size takes its header line off; nothing blocks; no watermark; the card says «اتشال من الشهادة: pH، Assay — مفيش نتيجة. ابعت النتيجة في سطر وترجع» |
+| 16 | The result given later | The row comes back with its value (ADDHEPA after #7) |
+| 17 | «N/A» | Never printed for an unknown value on any certificate; a test the product type doesn't have (Sterility / Pyrogen on an oral product) is taken off, not «N/A» |
+| 18 | A COA with rows taken off | Finalizes as a normal certificate: a number given, no watermark |
+| 19 | Experiment mode's batch size | Pack × quantity, or the quantity in its own unit; never «2400 L» for 2400 bottles (code check) |
 
 ## How each scenario is checked
 
