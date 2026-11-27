@@ -7,6 +7,7 @@
 import { makeAssert, createCompany, cleanupCompany, prisma } from "./helpers.js";
 import { resolveWithNeed, isBlocking } from "../../src/services/certificates/generation/batchService.js";
 import { packsOfOne } from "../../src/services/assistant/productSearch.js";
+import { partyFields, onlyPartyWords } from "../../src/services/certificates/templates/partyBlocks.js";
 import { sameFilesRequest, createRequest } from "../../src/services/certificates/workflow/requestService.js";
 
 const { assert, counts } = makeAssert();
@@ -35,6 +36,16 @@ async function main() {
   assert("a variant named with its pack counts too", named?.ids.length === 2, named);
   assert("two different products → not packs of one", packsOfOne([hit("a", "OLIGOVET", "1 L"), hit("b", "H-RESPI", "1 L")]) === null);
   assert("the same pack twice → a real duplicate, still asked", packsOfOne([hit("a", "OLIGOVET", "1 L"), hit("b", "OLIGOVET", "1000 mL")]) === null);
+
+  console.log("\nf3: a table's column header naming «EXPORTER COMPANY» is no party block (MAXVET COA)");
+  const box = (x, y, w) => ({ x, y, w, h: 11 });
+  const coaLines = [
+    { id: "h", page: 1, text: "PRODUCT NAME EXPIRATION DATE EXPORTER COMPANY", box: box(136, 179, 494) },
+    { id: "plus", page: 1, text: " +", box: box(201, 205, 11) },
+    { id: "v", page: 1, text: "PHARMAVETDOXYPHARMA 09/2028", box: box(141, 203, 460) },
+  ];
+  assert("no exporter field on the product's value row", partyFields(coaLines, {}).length === 0, partyFields(coaLines, {}));
+  assert("«EXPORTER | CONSIGNEE» and «Exporter Company Details» are still party headings", onlyPartyWords("EXPORTER | CONSIGNEE") && onlyPartyWords("Exporter Company Details") && onlyPartyWords("CONSIGNEE / BUYER"));
 
   const co = await createCompany("qa27re");
   try {

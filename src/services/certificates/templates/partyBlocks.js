@@ -67,11 +67,22 @@ function splitAt(line, boundaryX, companyNames) {
   return starts.reduce((a, b) => (Math.abs(b - est) < Math.abs(a - est) ? b : a));
 }
 
+// a party heading holds party words only ("EXPORTER", "CONSIGNEE / BUYER", "Exporter Company Details").
+// A table's column header that names one column "EXPORTER COMPANY" among others ("PRODUCT NAME EXPIRATION
+// DATE EXPORTER COMPANY", MAXVET's COA) is no party block: its value row is the product's, not a party's.
+const PARTY_FILLER = /\b(?:COMPANY|NAME|DETAILS?|INFO(?:RMATION)?|ADDRESS|PARTY|AND|THE|OF)\b|[\s/&|:.,()-]+/gi;
+export const onlyPartyWords = (text) =>
+  !String(text || "")
+    .replace(new RegExp(EXPORTER.source, "gi"), " ")
+    .replace(new RegExp(CONSIGNEE.source, "gi"), " ")
+    .replace(PARTY_FILLER, " ")
+    .trim();
+
 /** lines: a version's lines; ctx: { companyNames } → field rows */
 export function partyFields(lines = [], ctx = {}) {
   const companyNames = (ctx.companyNames || []).filter((n) => String(n || "").trim().length >= 3);
   const usable = lines.filter((l) => l.box && l.text?.trim());
-  const headers = usable.filter((l) => (EXPORTER.test(l.text) || CONSIGNEE.test(l.text)) && l.text.trim().split(/\s+/).length <= 6 && !/:\s*\S/.test(l.text));
+  const headers = usable.filter((l) => (EXPORTER.test(l.text) || CONSIGNEE.test(l.text)) && l.text.trim().split(/\s+/).length <= 6 && !/:\s*\S/.test(l.text) && onlyPartyWords(l.text));
   const fields = [];
   const used = new Set();
   const claimed = new Set();

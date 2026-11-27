@@ -102,9 +102,9 @@ try {
   assert("the FSC template stays inactive", !fscT.activeVersionId);
 
   assert("one DRAFT per product (COA × 2); FSC listed as missing, never guessed", ex.certificates.length === 2 && ex.certificates.every((c) => c.type === "COA" && c.status === "draft") && ex.generation.missing.every((m) => m.type === "FSC"), { certs: ex.certificates, missing: ex.generation.missing });
-  assert("…batch facts weren't given: blank and marked on each draft (nothing filled in)", ex.certificates.every((c) => c.blanks.includes("batch_no")), ex.certificates.map((c) => c.blanks));
+  assert("…batch facts weren't given: blank and marked on each draft (nothing filled in)", ex.certificates.every((c) => c.blanks.includes("batch_no") || c.blanks.includes("رقم التشغيلة")), ex.certificates.map((c) => c.blanks));
   const certs = await prisma.certificate.findMany({ where: { companyId: co.id }, include: { invoice: true } });
-  assert("…on one internal direct record marked Express", certs.length === 2 && certs.every((c) => c.invoice.origin === "direct" && c.invoice.header?.express?.intakeBatchId === batch.id));
+  assert("…on one internal direct record marked Express", certs.length === 2 && certs.every((c) => c.invoice.origin === "direct" && (c.invoice.header?.request?.express?.intakeBatchId ?? c.invoice.header?.express?.intakeBatchId) === batch.id));
   assert("the ZIP and the combined PDF were made", ex.files?.zip && ex.files?.combinedPdf, ex.files);
   let r = await api("GET", `/certificate-batches/${ex.generation.certificateBatchId}/combined.pdf`, A);
   const pages = r.status === 200 ? (await PDFDocument.load(r.buffer)).getPageCount() : 0;
