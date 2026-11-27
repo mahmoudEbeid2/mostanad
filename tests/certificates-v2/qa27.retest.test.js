@@ -8,6 +8,7 @@ import { makeAssert, createCompany, cleanupCompany, prisma } from "./helpers.js"
 import { resolveWithNeed, isBlocking, engineFlags } from "../../src/services/certificates/generation/batchService.js";
 import { packsOfOne } from "../../src/services/assistant/productSearch.js";
 import { partyFields, onlyPartyWords } from "../../src/services/certificates/templates/partyBlocks.js";
+import { basisFact } from "../../src/services/harvest/harvestService.js";
 import { sameFilesRequest, createRequest } from "../../src/services/certificates/workflow/requestService.js";
 
 const { assert, counts } = makeAssert();
@@ -31,6 +32,13 @@ async function main() {
   assert("a required place left empty by accident still counts as missing", engineFlags({ value: "", flags: [] }, ["missing"]).includes("missing"));
   const withBasis = resolveWithNeed(basis, { product: { compositionBasis: "Each 1 L contains:", activeIngredients: [{ name: "x" }] } }, null);
   assert("a basis the product has is printed", withBasis.value === "Each 1 L contains:", withBasis);
+
+  console.log("\n5. a basis only from a COC / label line");
+  const fact = (value, sourceType, certCode = null) => basisFact({ value, sourceType, certCode });
+  assert("a COA's table label «Constituents (per Litre)» is no basis", !fact("Constituents (per Litre)", "certificate", "COA") && !fact("Constituents (per Litre)", "certificate", "COC"));
+  assert("…whatever file it is on", !fact("Constituents (per gm)", "label"));
+  assert("«Each 1 L contains:» on a COC or a label is", fact("Each 1 L contains:", "certificate", "COC") && fact("Each 1 mL contains", "label") && fact("Contains per mL:", "label"));
+  assert("…but not taken from a COA", !fact("Each 1 L contains:", "certificate", "COA"));
 
   console.log("\n2. packs of one product in the chat");
   const hit = (id, name, pack, via = ["exact_name"]) => ({ productId: id, name, pack, via });

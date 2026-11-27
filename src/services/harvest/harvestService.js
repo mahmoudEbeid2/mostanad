@@ -55,6 +55,19 @@ const comparable = (key, v) => {
 const sameValue = (key, a, b) => comparable(key, a) === comparable(key, b);
 const show = (v) => (typeof v === "string" ? v : v?.text || v?.code || JSON.stringify(v));
 
+// QA 27 Nov (user, CURCUMARIN): "Constituents (per Litre)" became the product's composition basis. It is a COA
+// results table's row label (COA page 9); the COC page prints no basis line at all. A basis is only the line a
+// COC or a label prints before its composition ("Each 1 L contains:", "Contains per mL:"), never a COA's.
+const BASIS_LINE = /^\s*(?:Composition\s*:?\s*)?(?:(?:Each|Every)\s+[\d.,]*\s*[A-Za-z]+\.?\s+contains?|Contains?\s+per\s+[\d.,]*\s*[A-Za-z]+)/i;
+const TABLE_LABEL = /^\s*(?:Constituents?|Active\s+(?:ingredients?|substances?)|Ingredients?|Composition|Content)\s*\(\s*per/i;
+/** a composition basis fact this file may give: a COC / label line in the basis wording */
+export const basisFact = (f) => {
+  const text = show(f?.value);
+  if (!text || TABLE_LABEL.test(text) || !BASIS_LINE.test(text)) return false;
+  if (f.sourceType === "label") return true;
+  return f.sourceType === "certificate" && (!f.certCode || String(f.certCode).toUpperCase() === "COC");
+};
+
 /** What kind of document a file is, for the reader and the priority */
 export function kindOf({ docType = null, certCode = null, fileKind = null, name = "" }) {
   if (docType === "label" || fileKind === "label_upload" || fileKind === "reference_label") return "label";
@@ -145,6 +158,8 @@ export async function mergeProduct(productId) {
   // a "form" that isn't a physical form is the document's "Product Form" label (29 Nov: ADDVET's COC
   // "Product Form: Antibiotic" had become the products' physical form)
   for (const f of facts) if (f.key === "physicalForm") f.key = formColumnOf(show(f.value));
+  // a basis only from a COC / label basis line (never a COA table's "Constituents (per …)")
+  for (let i = facts.length - 1; i >= 0; i--) if (facts[i].key === "compositionBasis" && !basisFact(facts[i])) facts.splice(i, 1);
   const prov = { ...(p.fieldProvenance || {}) };
   const data = {};
   const filled = [];

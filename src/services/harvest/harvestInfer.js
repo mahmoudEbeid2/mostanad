@@ -25,7 +25,7 @@ export const DESCRIPTIVE = {
   routeOfAdmin: "route of administration (e.g. Oral, via drinking water; Intramuscular)",
   indications: "indications",
   targetSpecies: "target species, comma-separated",
-  compositionBasis: "the composition's basis wording (e.g. \"Each 1 mL contains\") — from the form and pack",
+  // no compositionBasis: a basis is only what a COC or label prints (QA 27 Nov), never estimated
 };
 const MAX_PER_CALL = 15;
 
