@@ -68,6 +68,9 @@ const line = ({ open }) => ({
   },
 });
 
+/** "OLIGOVET · 1L · ADD-OL" — the pack shown whenever the name doesn't already print it (QA 27 Nov re-test) */
+const productLabel = (r) => `${r.name}${r.pack && !String(r.name).toLowerCase().replace(/\s+/g, "").includes(String(r.pack).toLowerCase().replace(/\s+/g, "")) ? ` · ${r.pack}` : ""}${r.productCode ? ` · ${r.productCode}` : ""}`;
+
 /** A product: search_products with the hint, or else the invoice line's printed name. */
 const product = {
   kind: "lookup",
@@ -83,15 +86,15 @@ const product = {
     if (!q) return null;
     const data = await d.run("search_products", { queries: [String(q)] });
     const results = data?.results || [];
-    const options = results.map((r) => ({ value: r.productId, label: `${r.name}${r.productCode ? ` · ${r.productCode}` : ""}` }));
+    const options = results.map((r) => ({ value: r.productId, label: productLabel(r) }));
     // only an exact, single match is filled; close or several are a choice for the person
     if (data?.verdict === "exact" && !data.several && options.length) return { value: options[0].value, display: options[0].label, evidence: `search_products: exact match for "${q}"${from}` };
     return options.length ? { options: options.slice(0, MAX_OPTIONS) } : null;
   },
   verify: async (value, d) => {
-    const p = await prisma.product.findFirst({ where: { id: value, companyId: d.companyId }, select: { name: true, productCode: true } });
+    const p = await prisma.product.findFirst({ where: { id: value, companyId: d.companyId }, select: { name: true, productCode: true, packaging: true } });
     if (!p) throw new Error("Product not found!");
-    return { display: `${p.name}${p.productCode ? ` · ${p.productCode}` : ""}` };
+    return { display: productLabel({ ...p, pack: p.packaging }) };
   },
 };
 
@@ -165,9 +168,9 @@ const productsMany = {
   resolve: async () => null,
   verify: async (value, d) => {
     const ids = Array.isArray(value) ? value : [value];
-    const rows = await prisma.product.findMany({ where: { id: { in: ids }, companyId: d.companyId }, select: { name: true } });
+    const rows = await prisma.product.findMany({ where: { id: { in: ids }, companyId: d.companyId }, select: { name: true, packaging: true } });
     if (rows.length !== new Set(ids).size) throw new Error("A product isn't a product of this company");
-    return { display: rows.map((r) => r.name).join(", ") };
+    return { display: rows.map((r) => productLabel({ name: r.name, pack: r.packaging })).join(", ") };
   },
 };
 

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { normalizeName } from "../certificates/matching/productMatcher.js";
 import { searchCatalogues } from "../catalogues/searchService.js";
+import { splitNamePack, packKey } from "../certificates/matching/packNormalizer.js";
 
 // Product search for the assistant (C1). The invoice matching layers, in order:
 //   1. exact product code (case-insensitive)          score 1.00
@@ -98,7 +99,7 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
   const ranked = all.slice(from, from + size);
   const products = await prisma.product.findMany({
     where: { id: { in: ranked.map(([id]) => id) }, ...companyWhere(companyId) },
-    select: { id: true, name: true, productCode: true, brand: { select: { name: true } }, company: { select: { id: true, name: true } } },
+    select: { id: true, name: true, productCode: true, packaging: true, brand: { select: { name: true } }, company: { select: { id: true, name: true } } },
   });
   const byId = new Map(products.map((p) => [p.id, p]));
   const results = ranked
@@ -109,6 +110,8 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
         productId: id,
         name: p.name,
         productCode: p.productCode || null,
+        // a pack variant is its own product row for now (QA 27 Nov re-test: "OLIGOVET / OLIGOVET"): the pack names it
+        pack: packOf(p),
         brand: p.brand?.name || null,
         ...(companyId ? {} : { company: p.company.name, companyId: p.company.id }),
         score: h.score,
@@ -120,7 +123,29 @@ export async function searchProductsForAssistant({ companyId = null, queries = [
     });
   // every match counted; the rows also as a table (its "shown of total" and «عرض المزيد» are the chat's)
   const more = Math.max(0, all.length - (from + ranked.length));
-  return { verdict: verdictOf(results), ...(severalExact(results) ? { several: true } : {}), results, total: all.length, more, nextPage: more ? Math.max(1, page) + 1 : null, notes };
+  const packs = packsOfOne(results);
+  if (packs) notes.push(`${packs.name} is one product in ${packs.ids.length} packs (${packs.packs.join(", ")}). When the person named no pack, use ALL of these productIds; when they named one, use that pack's.`);
+  return { verdict: verdictOf(results), ...(severalExact(results) && !packs ? { several: true } : {}), ...(packs ? { packsOfOne: packs } : {}), results, total: all.length, more, nextPage: more ? Math.max(1, page) + 1 : null, notes };
+}
+
+const packOf = (p) => p.packaging || splitNamePack(p.name).pack || null;
+
+/**
+ * The exact matches are one product in several packs (same name, same company, each pack once):
+ * → { name, ids, packs } | null. Then nothing is ambiguous: no pack named = every pack.
+ */
+export function packsOfOne(results) {
+  const strong = results.filter((r) => r.via.some((v) => STRONG.includes(v)));
+  if (!strong.length) return null;
+  const base = (r) => `${r.companyId || ""}|${splitNamePack(r.name).name.toLowerCase().replace(/\s+/g, "")}`;
+  if (new Set(strong.map(base)).size !== 1) return null;
+  // the same name with its pack in it ("OLIGOVET 1L") is a pack of it too
+  const group = results.filter((r) => base(r) === base(strong[0]));
+  if (group.length < 2) return null;
+  const packs = group.map((r) => r.pack || splitNamePack(r.name).pack || null);
+  const keys = packs.map((p) => (p ? packKey(p) : null));
+  if (keys.some((k) => !k) || new Set(keys).size !== keys.length) return null;
+  return { name: splitNamePack(strong[0].name).name, ids: group.map((r) => r.productId), packs };
 }
 
 const STRONG = ["code", "alias", "exact_name"];
