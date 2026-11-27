@@ -190,8 +190,18 @@ export async function mergeProduct(productId) {
         prov.activeIngredients = provenanceOf(best);
         filled.push(key);
       }
-      // a different composition elsewhere is the reviewer's to settle (both kept), never applied
-      for (const f of distinct.slice(has ? 0 : 1)) await recordConflicts({ ...p, ...data, fieldProvenance: prov }, { ingredients: f.value, basis: null, source: provenanceOf(f) });
+      // the same composition stored with other spacing ("2 %" for a printed "2%", acceptance #3): the page's
+      // form replaces it — only a composition the harvest itself stored, never one a person typed
+      const tight = (s) => String(s ?? "").replace(/\s+/g, "");
+      const sameButSpacing = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => tight(x.name).toLowerCase() === tight(b[i].name).toLowerCase() && tight(x.amountRaw ?? x.concentration) === tight(b[i].amountRaw));
+      // (the newest read of it: since 27 Nov a read's amounts follow its own quote)
+      const newest = [...list].sort((a, b) => b.createdAt - a.createdAt).find((f) => sameButSpacing(p.activeIngredients, f.value));
+      if (has && newest && prov.activeIngredients?.source === "harvest" && p.activeIngredients.some((x, i) => (x.amountRaw ?? x.concentration) !== newest.value[i].amountRaw)) {
+        data.activeIngredients = p.activeIngredients.map((x, i) => ({ ...x, amountRaw: newest.value[i].amountRaw, concentration: newest.value[i].amountRaw }));
+        filled.push(key);
+      }
+      // a different composition elsewhere is the reviewer's to settle (both kept), never applied — spacing alone isn't one
+      for (const f of distinct.slice(has ? 0 : 1)) if (!sameButSpacing(p.activeIngredients, f.value)) await recordConflicts({ ...p, ...data, fieldProvenance: prov }, { ingredients: f.value, basis: null, source: provenanceOf(f) });
       continue;
     }
     if (key.startsWith("spec:")) {

@@ -103,6 +103,14 @@ async function systemScope(companyId) {
 
 const scopeFor = async (actor, requested) => (actor.kind === "company" ? actor.companyId : systemScope(requested));
 
+/** The one company this conversation's latest drop went to (its files filed there), or null */
+async function dropCompany(conversationId) {
+  const drop = await prisma.intakeBatch.findFirst({ where: { conversationId }, orderBy: { createdAt: "desc" }, select: { companyId: true, items: { where: { parentId: null }, select: { companyId: true } } } });
+  if (!drop) return null;
+  const ids = [...new Set([drop.companyId, ...drop.items.map((i) => i.companyId)].filter(Boolean))];
+  return ids.length === 1 ? ids[0] : null;
+}
+
 const conversationView = async (c) => ({ id: c.id, title: c.title, companyId: c.companyId, companyName: await companyName(c.companyId), createdAt: c.createdAt, updatedAt: c.updatedAt });
 
 export async function createConversation(actor, { companyId } = {}) {
@@ -211,7 +219,10 @@ export async function sendMessage(actor, conversationId, { text, page, companyId
   const limits = await checkLimits(actor);
 
   // the scope: a company session → its company, always; a system user may switch it per message
-  const scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
+  let scope = actor.kind === "company" ? actor.companyId : companyId !== undefined ? await systemScope(companyId) : conv.companyId;
+  // a chat in "All companies" whose drop went to ONE company works in it (acceptance #7: the one-line answer
+  // after an ADDVET drop asked "which company?") — not a message with new files, which may be another's
+  if (!scope && actor.kind === "user" && !(Array.isArray(attachmentIds) && attachmentIds.length)) scope = await dropCompany(conversationId);
   const scopeKey = scopeKeyOf(actor);
   const pg = pageOf(page);
   // files sent with this message: this conversation's, in this message's company

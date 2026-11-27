@@ -8,7 +8,8 @@ import { makeAssert, createCompany, cleanupCompany, prisma } from "./helpers.js"
 import { resolveWithNeed, isBlocking, engineFlags } from "../../src/services/certificates/generation/batchService.js";
 import { packsOfOne } from "../../src/services/assistant/productSearch.js";
 import { partyFields, onlyPartyWords } from "../../src/services/certificates/templates/partyBlocks.js";
-import { basisFact } from "../../src/services/harvest/harvestService.js";
+import { basisFact, mergeProduct } from "../../src/services/harvest/harvestService.js";
+import { asPrinted } from "../../src/services/harvest/harvestAi.js";
 import { sameFilesRequest, createRequest } from "../../src/services/certificates/workflow/requestService.js";
 
 const { assert, counts } = makeAssert();
@@ -40,6 +41,11 @@ async function main() {
   assert("«Each 1 L contains:» on a COC or a label is", fact("Each 1 L contains:", "certificate", "COC") && fact("Each 1 mL contains", "label") && fact("Contains per mL:", "label"));
   assert("…but not taken from a COA", !fact("Each 1 L contains:", "certificate", "COA"));
 
+  console.log("\nacceptance #3: an amount as its page prints it");
+  assert("«2 %» read from «Silymarin 2%» → «2%»", asPrinted("2 %", "Silymarin 2% Plant extract (Boldo)") === "2%");
+  assert("the page's spacing kept: «400,000 mg», «ad 1 L»", asPrinted("400,000 mg", "Sorbitol 400,000 mg") === "400,000 mg" && asPrinted("ad 1 L", "Carrier ad 1 L") === "ad 1 L");
+  assert("no quote → as read", asPrinted("10 mg", null) === "10 mg");
+
   console.log("\n2. packs of one product in the chat");
   const hit = (id, name, pack, via = ["exact_name"]) => ({ productId: id, name, pack, via });
   const two = packsOfOne([hit("a", "OLIGOVET", "100 mL"), hit("b", "OLIGOVET", "1 L")]);
@@ -62,6 +68,16 @@ async function main() {
   const co = await createCompany("qa27re");
   try {
     const p100 = await prisma.product.create({ data: { companyId: co.id, name: "OLIGOVET", packaging: "100 mL" } });
+
+    console.log("\nacceptance #3: a stored «2 %» takes the page's «2%» from a newer read");
+    const ing = (amount) => [{ name: "Sorbitol", amountRaw: "400,000 mg", concentration: "400,000 mg" }, { name: "Silymarin", amountRaw: amount, concentration: amount }];
+    const hepa = await prisma.product.create({ data: { companyId: co.id, name: "ADDHEPA", packaging: "1L", activeIngredients: ing("2 %"), fieldProvenance: { activeIngredients: { source: "harvest", sourceType: "certificate", tier: "D" } } } });
+    const fact = (amount, at) => ({ companyId: co.id, entity: "product", productId: hepa.id, key: "activeIngredients", value: ing(amount).map((x) => ({ name: x.name, amountRaw: x.amountRaw })), valueNorm: `ing ${amount}`, sourceType: "certificate", certCode: "COC", fileName: "ADDVET OMAN COC 10-26.pdf", page: 10, extractor: "ai", reviewStatus: "confirmed", createdAt: at });
+    await prisma.harvestedFact.createMany({ data: [fact("2 %", new Date(Date.now() - 86400_000)), fact("2%", new Date())] });
+    await mergeProduct(hepa.id);
+    const merged = await prisma.product.findUnique({ where: { id: hepa.id }, select: { activeIngredients: true, harvestConflicts: true } });
+    assert("Silymarin is «2%» now, the rest untouched", merged.activeIngredients[1].amountRaw === "2%" && merged.activeIngredients[1].concentration === "2%" && merged.activeIngredients[0].amountRaw === "400,000 mg", merged.activeIngredients);
+    assert("…and spacing alone is no conflict", !(merged.harvestConflicts || []).some((c) => c.key === "activeIngredients"), merged.harvestConflicts);
 
 
     console.log("\n3. the same files dropped again");

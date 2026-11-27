@@ -113,7 +113,7 @@ async function drop(admin, message) {
 }
 
 const certsOf = (invoiceId, code = null) =>
-  prisma.certificate.findMany({ where: { invoiceId, ...(code ? { certificateType: { code } } : {}) }, include: { certificateType: { select: { code: true } }, product: { select: { id: true, name: true, packaging: true, physicalForm: true, productType: true, routeOfAdmin: true, activeIngredients: true } } }, orderBy: { createdAt: "asc" } });
+  prisma.certificate.findMany({ where: { invoiceId, ...(code ? { certificateType: { code } } : {}) }, include: { certificateType: { select: { code: true } }, product: { select: { id: true, name: true, packaging: true, physicalForm: true, productForm: true, productType: true, routeOfAdmin: true, activeIngredients: true } } }, orderBy: { createdAt: "asc" } });
 const valuesOf = async (c) => (await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true, htmlFileId: true } })) || { values: {} };
 const fieldsOf = (versionId) => prisma.templateField.findMany({ where: { versionId }, orderBy: { sortOrder: "asc" } });
 const blockingOf = (values) => Object.entries(values || {}).filter(([, v]) => (v.flags || []).some(isBlocking));
@@ -225,7 +225,8 @@ async function main() {
     return { pass: cocs.length > 0 && !bad.length, detail: bad.length ? bad.join(" · ") : `${cocs.length} COCs clean` };
   });
 
-  const injectable = (p) => /inject|parenteral|\bIM\b|\bSC\b|\bIV\b/i.test(`${p?.physicalForm || ""} ${p?.productType || ""} ${p?.routeOfAdmin || ""}`);
+  // SULFAPRIM's route is "intramuscular administration", ADDMECTIN's "Subcutaneous injection"
+  const injectable = (p) => /inject|parenteral|intramuscular|subcutaneous|intravenous|\bI\.?M\b|\bS\.?C\b|\bI\.?V\b/i.test(`${p?.physicalForm || ""} ${p?.productForm || ""} ${p?.productType || ""} ${p?.routeOfAdmin || ""}`);
   await scenario(5, "COA of every product: blanks only lab results + batch size; batch, dates with file + page", async () => {
     const coas = await certsOf(ctx.requestId, "COA");
     if (!coas.length) return { pass: false, detail: "no COA drafts" };

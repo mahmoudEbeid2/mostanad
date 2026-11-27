@@ -653,6 +653,18 @@ export async function runDropHarvest(batchId, ctx = {}) {
 }
 
 // ── values → facts ─────────────────────────────────────────────────────────────────────────
+/**
+ * An amount as its quote prints it: "2 %" read from "Silymarin 2%" → "2%" (the same characters, the page's
+ * spacing). Not in the quote (or no quote) → the amount as read.
+ */
+export function asPrinted(amount, quote) {
+  const a = String(amount ?? "").trim();
+  if (!a || !quote) return a || null;
+  const chars = [...a.replace(/\s+/g, "")].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const m = new RegExp(chars.join("\\s*")).exec(String(quote));
+  return m ? m[0] : a;
+}
+
 const SOURCE_OF = { certificate_coa: "certificate", certificate_coc: "certificate", certificate_hc: "certificate", certificate_fsc: "certificate", certificate_other: "certificate", label: "label", catalogue: "catalogue", invoice: "invoice", manufacturing_order: "mo", lab_report: "lab", registration: "registration", product_list: "list", other: "other" };
 const CERT_OF = { certificate_coa: "COA", certificate_coc: "COC", certificate_hc: "HC", certificate_fsc: "FSC" };
 const PRODUCT_KEY = { administration: "routeOfAdmin", registrationNumber: "registrationNumber", productCode: "productCode" };
@@ -684,7 +696,8 @@ export function factRows(values, { companyId, fileOf, docTypes, modelId, product
   for (const list of comps.values()) {
     list.sort((a, b) => (a.row ?? 999) - (b.row ?? 999));
     const doubt = list.find((x) => x.reviewStatus !== "confirmed");
-    const value = list.map((x) => ({ name: x.value, amountRaw: x.amount || null, amount: x.amount ? Number(String(x.amount).replace(/[^\d.]/g, "")) || null : null, unit: x.unit || null }));
+    // the amount as the page prints it: the reader writes "2 %" for a printed "2%" (acceptance #3) — its own quote decides
+    const value = list.map((x) => { const raw = asPrinted(x.amount, x.snippet); return { name: x.value, amountRaw: raw || null, amount: raw ? Number(String(raw).replace(/[^\d.]/g, "")) || null : null, unit: x.unit || null }; });
     push({ ...list[0], reviewStatus: doubt ? "needs_review" : "confirmed", verifyNote: doubt?.verifyNote || null, snippet: list.map((x) => x.snippet).join(" · ").slice(0, 400) }, { entity: "product", key: "activeIngredients", value });
   }
   // a document's own number and date: only their pattern (a certificate never reprints them)
