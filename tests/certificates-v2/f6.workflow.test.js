@@ -88,7 +88,8 @@ try {
   r = await api("POST", `/certificate-requests/${req4.request.id}/generate`, A);
   await pollTask(r.data?.data?.taskId, A, { timeoutMs: 180_000 });
   let m = (await api("GET", `/certificate-requests/${req4.request.id}`, A)).data.data;
-  assert("the batch has no lab report: its COA waits for it (named), the COC goes on as a draft", m.rows[0].cells.COA.status === "awaiting_inputs" && m.rows[0].cells.COA.missing[0].code === "lab_report" && /pH result/.test(m.rows[0].cells.COA.missing[0].ar) && m.rows[0].cells.COC.status === "draft", m.rows[0].cells);
+  // 28 Nov (owner): no lab report → the COA's unknown tests are taken off; it goes on as a normal draft
+  assert("the batch has no lab report: the COA's pH row is taken off, both go on as drafts", m.rows[0].cells.COA.status === "draft" && !m.rows[0].cells.COA.missing.length && m.rows[0].cells.COC.status === "draft", m.rows[0].cells);
   const coa = await prisma.certificate.findUnique({ where: { id: m.rows[0].cells.COA.certificateId } });
   r = await api("PATCH", `/certificates/${coa.id}/values`, A, { expectedVersion: coa.currentVersion, changes: { ph_result: "3.3" } });
   const checks = (await api("GET", `/certificates/${coa.id}/review-checks`, A)).data.data;

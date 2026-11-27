@@ -45,16 +45,17 @@ export const prepareRoundTrip = (html, { samples, defs, fontCoverage = null, fon
     { label: "prepare:roundtrip" }
   );
 
-/** fill a prepared document (§7.4, §7.8) → { html, flags, geometry, thumbnail } */
-export const fill = (html, { values, defs, fontCoverage = null, fontFallbacks = null, companyFontData = null, groups = [], thumbnailScale = null, label = "fill" }) =>
+/** fill a prepared document (§7.4, §7.8); `remove`: fields whose row is taken off (28 Nov) → { html, flags, geometry, thumbnail, rows } */
+export const fill = (html, { values, defs, fontCoverage = null, fontFallbacks = null, companyFontData = null, groups = [], remove = [], thumbnailScale = null, label = "fill" }) =>
   renderer.withDocument(
     html,
     async (page) => {
       const plan = await loadGlyphPlan(page, { values, defs, groups, fontCoverage, fontFallbacks, companyFontData });
       const res = await renderer.engine(page, "fill", values, defs, fontCoverage, groups, plan);
+      const rows = remove.length ? await renderer.engine(page, "removeRows", remove) : { removed: {}, failed: [] };
       const out = await renderer.serialize(page);
       const thumbnail = thumbnailScale ? (await renderer.screenshotPagesOf(page, { scale: thumbnailScale }))[0]?.png || null : null;
-      return { html: out, flags: res.flags, geometry: res.geometry, thumbnail };
+      return { html: out, flags: res.flags, geometry: res.geometry, thumbnail, rows };
     },
     { label }
   );

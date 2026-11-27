@@ -240,9 +240,10 @@ try {
     return { gaps: gaps.map((g) => (g.fieldKey === "production" ? { gapId: g.gapId, found: true, value: "06/2026", evidence: [{ type: "invoice_text", quote: "Mfg 06/2026", page: 1 }], confidence: 0.9 } : { gapId: g.gapId, found: false, evidence: [], confidence: 0 })) };
   };
   check = await computeNeeds(invG.id, coG.id, { generate: stubG });
-  assert("check: production found (needs confirmation), pH result missing", check.summary.needsConfirmation === 1 && check.summary.missing === 1, check.summary);
+  // 28 Nov (owner): a COA's lab result is still asked, but never blocks — with no result its row is taken off
+  assert("check: production found (needs confirmation); the COA's pH result asked, never blocking", check.summary.needsConfirmation === 1 && check.summary.missing === 0 && check.summary.missingOptional === 1, check.summary);
   r = await api("POST", `/invoices/${invG.id}/generate`, G);
-  assert("generate while values are open → 409 DATA_NEEDS_OPEN with counts", r.status === 409 && r.data.code === "DATA_NEEDS_OPEN" && r.data.missing === 1 && r.data.needsConfirmation === 1, r.data);
+  assert("generate while values are open → 409 DATA_NEEDS_OPEN with counts", r.status === 409 && r.data.code === "DATA_NEEDS_OPEN" && r.data.missing === 0 && r.data.needsConfirmation === 1, r.data);
   const needOf = (c, key) => c.certificates[0].needs.find((x) => x.fieldKey === key);
   r = await api("PATCH", `/invoices/${invG.id}/data-needs`, G, { decisions: [{ needId: needOf(check, "production").id, action: "accept" }, { needId: needOf(check, "ph_result").id, action: "edit", value: "4.0" }] });
   assert("accepted + provided → nothing blocks", r.status === 200 && r.data.data.check.summary.blocking === 0, r.data?.data?.check?.summary);
@@ -265,7 +266,7 @@ try {
   assert("'Generate anyway' (force, update_certificates) → 202", r.status === 202, r.data);
   const t2 = await pollTask(r.data.data.taskId, G, { timeoutMs: 180_000 });
   const cert2 = await prisma.certificate.findFirst({ where: { invoiceId: invG2.id }, include: { versions: true } });
-  assert("… open values render empty and flagged missing (D7)", t2?.status === "completed" && cert2.versions[0].values.ph_result.flags.includes("missing") && cert2.flagCount >= 1, cert2?.versions?.[0]?.values?.ph_result);
+  assert("… a COA's open result: its row taken off, never blank, never blocking (28 Nov)", t2?.status === "completed" && cert2.versions[0].values.ph_result.value === "" && cert2.versions[0].values.ph_result.flags.includes("row_removed") && !cert2.versions[0].values.ph_result.flags.includes("missing"), cert2?.versions?.[0]?.values?.ph_result);
   const invG3 = await mkInvoice("G-3");
   r = await api("POST", `/invoices/${invG3.id}/generate`, G);
   assert("an invoice whose check was never run → V2 behaviour (202, flagged)", r.status === 202, r.data);

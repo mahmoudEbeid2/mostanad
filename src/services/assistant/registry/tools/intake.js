@@ -185,7 +185,7 @@ async function planAnswer(a, ctx) {
   if (!certs.length) throw new ToolError("There are no certificate drafts from this conversation to fill yet.", "no_drafts");
   const missing = await missingFor(certs.map((c) => c.id));
   const products = [...new Set(missing.map((m) => m.product).filter((p) => p && p !== "—"))];
-  const tests = [...new Set(missing.flatMap((m) => m.items.filter((i) => i.role === "result").map((i) => i.test)))];
+  const tests = [...new Set(missing.flatMap((m) => [...m.items, ...(m.removed || [])].filter((i) => i.role === "result").map((i) => i.test)))];
   const answers = parseBatchLine(a.text, { products, tests });
   if (!answers.length) throw new ToolError("Nothing in that line reads as a batch number, a date, a batch size or a test result. Ask the user to write it like: ADDHEPA باتش MADADD2610001 إنتاج 01/10/2026 — pH 6.4 assay 99%", "nothing_parsed");
   const byCompany = new Map();

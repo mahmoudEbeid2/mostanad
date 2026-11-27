@@ -21,6 +21,7 @@ import { productTableFrom, numberedTable } from "../certificates/templates/produ
 import { partyFields, splitPartyBlock } from "../certificates/templates/partyBlocks.js";
 import { splitNamePack, samePack } from "../certificates/matching/packNormalizer.js";
 import { brandScore } from "../brandMatch.js";
+import { removedKeys, rowName, removedLineAr } from "../certificates/labResults/rowRemoval.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -612,7 +613,9 @@ async function collect(batch, ex) {
     const labels = new Map((await prisma.templateField.findMany({ where: { versionId: c.templateVersionId }, select: { key: true, label: true } })).map((f) => [f.key, f]));
     const blanks = [...new Set(Object.entries(v?.values || {}).filter(([, x]) => (x?.flags || []).some(isBlocking)).map(([k]) => fieldLabelAr(labels.get(k) || { key: k })))];
     const products = c.product ? [c.product.name] : c.items.map((i) => i.invoiceItem?.product?.name).filter(Boolean);
-    list.push({ id: c.id, type: c.certificateType.code, products, status: c.status, error: c.error, blanks });
+    // 28 Nov (owner): a COA's tests with no result are taken off — the card says which, in one line
+    const removed = removedKeys(v?.values).filter((k) => v.values[k]?.provenance?.rule !== "not_applicable_oral").map((k) => rowName(labels.get(k) || { key: k }));
+    list.push({ id: c.id, type: c.certificateType.code, products, status: c.status, error: c.error, blanks, removed, removedAr: removedLineAr(removed), ...(c.isExperimentSample ? { experiment: true } : {}) });
     await record(batch.id, "certificate", { id: c.id, name: `${c.certificateType.code} — ${products.join(", ")}` }, c.companyId);
   }
   ex.certificates = list;
@@ -624,17 +627,17 @@ async function collect(batch, ex) {
   // + asked once: a numbering nobody confirmed, a batch number shaped unlike the design's sample (Phase 3)
   const numbering = await numberingQuestionAr(g.companyId, [...new Set(list.map((c) => c.type))]);
   const ar = [missingMessageAr(missing), ...(g.documentFacts?.notes || []), numbering].filter(Boolean).join("\n\n") || null;
-  ex.missing = { ar, certificates: missing.length, items: missing.reduce((n, m) => n + m.items.length, 0), list: missing };
+  ex.missing = { ar, certificates: missing.filter((m) => m.items.length).length, items: missing.reduce((n, m) => n + m.items.length, 0), list: missing };
   // the chat card's line: "قريت N ملف — شركة X — Y منتج — Z شهادة جاهزة — ناقص: …"
   const company = await prisma.company.findUnique({ where: { id: g.companyId }, select: { name: true } });
   const files = (await prisma.intakeItem.count({ where: { batchId: batch.id, parentId: null } })) || 0;
   const products = new Set(list.flatMap((c) => c.products));
-  const ready = list.filter((c) => c.status === "draft" && !missing.some((m) => m.certificateId === c.id)).length;
+  const ready = list.filter((c) => c.status === "draft" && !missing.some((m) => m.certificateId === c.id && m.items.length)).length;
   // a type asked for that made nothing says so, never a silent 0 (27 Nov QA: the FSC template is switched off
   // until it passes its check — "FSC template isn't ready yet — no FSC was made")
   const made = new Set(list.map((c) => c.type));
   ex.notMade = notMadeTypes(ex.requestedTypes, made);
-  ex.replyAr = [`قريت ${files} ملف`, `شركة ${company?.name || "—"}`, `${products.size} منتج`, `${ready} شهادة جاهزة`, missing.length ? `ناقص: ${missing.reduce((n, m) => n + m.items.length, 0)} خانة في ${missing.length} شهادة` : "مفيش حاجة ناقصة", ...ex.notMade.map((n) => n.ar)].join(" — ");
+  ex.replyAr = [`قريت ${files} ملف`, `شركة ${company?.name || "—"}`, `${products.size} منتج`, `${ready} شهادة جاهزة`, missing.some((m) => m.items.length) ? `ناقص: ${missing.reduce((n, m) => n + m.items.length, 0)} خانة في ${missing.filter((m) => m.items.length).length} شهادة` : "مفيش حاجة ناقصة", ...ex.notMade.map((n) => n.ar)].join(" — ");
   return true;
 }
 

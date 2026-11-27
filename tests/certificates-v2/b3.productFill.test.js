@@ -142,7 +142,8 @@ try {
   assert("estimate rules: no reasoning or an unquoted fact → refused", !verifyInference({ found: true, value: "x", derivation: "estimate", evidence: [{ path: "physicalForm", quote: "Liquid" }] }, P).ok && !verifyInference({ found: true, value: "x", derivation: "estimate", evidence: [{ path: "physicalForm" }], reasoning: "r" }, P).ok);
 
   let open = await blockingCounts(inv1.id);
-  assert("only the two estimates and the lab result are left for a person", open.needsConfirmation === 2 && open.missing === 1, open);
+  // (28 Nov: the COA's lab result is asked but never blocking — with no result its row is taken off)
+  assert("only the two estimates are left for a person (the lab result is asked, not blocking)", open.needsConfirmation === 2 && open.missing === 0, open);
   const profile1 = await prisma.productCertificateValue.findMany({ where: { companyId: co.id, productId: prod.id } });
   assert("profile: the five directly filled facts are kept for the product (not the estimates, not the lab result)", profile1.length === 5 && profile1.every((p) => !p.confirmedByUserId && !p.estimated) && !profile1.some((p) => /pH|Appearance|Sterility/.test(p.label)), profile1.map((p) => p.label));
 

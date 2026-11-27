@@ -189,6 +189,6 @@ export async function runPrepare(sanitizedHtml, fields, { fontCoverage = null, f
  * `groups` are group fill defs (groupFillDef); values[groupKey] is the list of rows.
  * `thumbnailScale` (e.g. 0.25) also returns a PNG of page 1 from the same render.
  */
-export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, fontFallbacks = null, label = "fill", thumbnailScale = null, groups = [] } = {}) {
-  return renderer.fill(preparedHtml, { values, defs, fontCoverage, fontFallbacks, groups, thumbnailScale, label });
+export async function renderFilled(preparedHtml, defs, values, { fontCoverage = null, fontFallbacks = null, label = "fill", thumbnailScale = null, groups = [], remove = [] } = {}) {
+  return renderer.fill(preparedHtml, { values, defs, fontCoverage, fontFallbacks, groups, remove, thumbnailScale, label });
 }

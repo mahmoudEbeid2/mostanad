@@ -14,6 +14,7 @@ import { listFields } from "../templates/fieldService.js";
 import { applyFormat, resolveField } from "./valueResolver.js";
 import { isCountryLine } from "../templates/partyBlocks.js";
 import { inSpec } from "../labResults/specCheck.js";
+import { ROW_REMOVED, rowName, removedLineAr } from "../labResults/rowRemoval.js";
 
 const ROLE_AR = { batchNo: "رقم التشغيلة", productionDate: "تاريخ الإنتاج", expiryDate: "تاريخ الانتهاء", batchSize: "حجم التشغيلة" };
 const BLOCKING = new Set(["missing", "sample_value"]);
@@ -36,7 +37,11 @@ export function fieldRole(f) {
   return { role: "other" };
 }
 
-/** The drafts' blocking places → [{ certificateId, product, code, items: [{ key, label, role, test? }] }] */
+/**
+ * The drafts' blocking places → [{ certificateId, product, code, items: [{ key, label, role, test? }], removed }]
+ * removed (28 Nov, owner): a COA's tests taken off for want of a result — never blocking, answered the same
+ * way (the row comes back with its value). A test the product type doesn't have is not listed: no result brings it back.
+ */
 export async function missingFor(certificateIds) {
   const certs = await prisma.certificate.findMany({ where: { id: { in: certificateIds } }, include: { certificateType: { select: { code: true } }, product: { select: { id: true, name: true } } } });
   const out = [];
@@ -44,12 +49,18 @@ export async function missingFor(certificateIds) {
     const v = await prisma.certificateVersion.findUnique({ where: { certificateId_versionNumber: { certificateId: c.id, versionNumber: c.currentVersion } }, select: { values: true } });
     const fields = await listFields(c.templateVersionId);
     const items = [];
+    const removed = [];
     for (const f of fields) {
       const val = v?.values?.[f.key];
-      if (!val || !(val.flags || []).some((x) => BLOCKING.has(x))) continue;
+      if (!val) continue;
+      if ((val.flags || []).includes(ROW_REMOVED)) {
+        if (!val.removedWith && val.provenance?.rule !== "not_applicable_oral") removed.push({ key: f.key, label: f.label, name: rowName(f), ...fieldRole(f) });
+        continue;
+      }
+      if (!(val.flags || []).some((x) => BLOCKING.has(x))) continue;
       items.push({ key: f.key, label: f.label, ...fieldRole(f) });
     }
-    if (items.length) out.push({ certificateId: c.id, productId: c.product?.id || null, product: c.product?.name || "—", code: c.certificateType.code, items });
+    if (items.length || removed.length) out.push({ certificateId: c.id, productId: c.product?.id || null, product: c.product?.name || "—", code: c.certificateType.code, items, removed });
   }
   return out;
 }
@@ -63,8 +74,12 @@ export function missingMessageAr(all) {
   const ask = consigneeCodes.length
     ? `المستلم (Consignee) في ${consigneeCodes.join("، ")} مش في أي فاتورة من الملفات — ومبنطبعش اللي في نموذج الشهادة. ابعته مرة واحدة في سطر، مثلاً:\nالمستلم: اسم الشركة — العنوان — الدولة — التليفون`
     : null;
+  // the COA rows taken off for want of a result: one line per product (they come back with the result)
+  const removedBy = new Map();
+  for (const m of all) for (const r of m.removed || []) removedBy.set(m.product, [...(removedBy.get(m.product) || []), r.name]);
+  const removed = [...removedBy].map(([product, names]) => `• ${product} (COA): ${removedLineAr(names)}`);
   const list = all.map((m) => ({ ...m, items: m.items.filter((i) => i.role !== "consignee") })).filter((m) => m.items.length);
-  if (!list.length) return ask;
+  if (!list.length) return [...removed, ...(removed.length && ask ? [""] : []), ...(ask ? [ask] : [])].join("\n") || null;
   const byProduct = new Map();
   for (const m of list) {
     if (!byProduct.has(m.product)) byProduct.set(m.product, []);
@@ -90,6 +105,7 @@ export function missingMessageAr(all) {
     "الشهادات اتعملت وكل البيانات اللي في الملفات اتملت. فاضل بيانات التشغيلة ونتايج التحليل — دي مبنكتبهاش من عندنا ولا من نموذج الشهادة:",
     ...lines,
     `ابعتهم في سطر واحد لكل منتج، مثلاً: ${first} باتش MADADD2610001 إنتاج 01/10/2026 حجم 1200 KG — pH 6.4 assay 99%`,
+    ...(removed.length ? ["", ...removed] : []),
     ...(ask ? ["", ask] : []),
   ].join("\n");
 }

@@ -289,7 +289,7 @@ export async function getRequest(id, companyId) {
       if (cert && cert.status === "failed") cell = { status: "awaiting_inputs", certificateId: cert.id, missing: [{ code: "failed", ar: `${MISSING_AR.failed}: ${cert.error || ""}`.trim() }] };
       else if (cert) {
         const missing = cert.status === "final" ? [] : await missingOf(cert);
-        cell = { status: missing.length ? "awaiting_inputs" : statusOf(cert), certificateId: cert.id, revision: cert.revisionNumber, shared: cert.items.length > 1, covers: cert.items.length, missing, comments: (cert.reviewComments || []).filter((c) => !c.resolvedAt) };
+        cell = { status: missing.length ? "awaiting_inputs" : statusOf(cert), certificateId: cert.id, revision: cert.revisionNumber, shared: cert.items.length > 1, covers: cert.items.length, missing, comments: (cert.reviewComments || []).filter((c) => !c.resolvedAt), ...(cert.isExperimentSample ? { experiment: true } : {}) };
       } else {
         const entry = t && plan.entries.find((e) => e.certificateTypeId === t.id && e.invoiceItemIds.includes(line.id));
         const why = !line.productId ? (line.data?.extra?.match === "new_pack" ? "new_pack" : "unmatched") : !t ? "no_type" : !entry ? "no_template" : !ready[entry.templateVersionId]?.ready ? "not_ready" : "not_generated";

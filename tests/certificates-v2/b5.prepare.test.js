@@ -89,7 +89,8 @@ try {
   assert("batch results: nothing earlier for these batches → skipped", st.batch_results.status === "skipped", st.batch_results);
   assert("supplier COA: the uploaded file read (one call), its value taken", st.supplier_coa.status === "done" && calls.coa === 1 && /1 values taken/.test(st.supplier_coa.detail), st.supplier_coa);
   const p = out.prepared;
-  assert("what still needs you: the 2 estimated values (Confirm all) and line 2's pH result", p.estimated === 2 && p.toConfirm.length === 2 && p.toConfirm.every((t) => t.estimated && t.estimateBasis) && p.missingLabResults === 1 && p.missingOther === 0 && p.canGenerate === false, p);
+  // (28 Nov: line 2's pH result is asked but never blocks a COA — with no result its row is taken off)
+  assert("what still needs you: the 2 estimated values (Confirm all); line 2's pH result asked, not blocking", p.estimated === 2 && p.toConfirm.length === 2 && p.toConfirm.every((t) => t.estimated && t.estimateBasis) && p.missingLabResults === 0 && p.missingOptional.some((m) => m.label === "pH result") && p.missingOther === 0 && p.canGenerate === false, p);
   assert("the job result carries the invoice's AI cost from the ledger", typeof out.cost?.attempts === "number" && "costUsd" in out.cost, out.cost);
 
   console.log("\n🧪 The person: Confirm all + the results grid → generation possible");

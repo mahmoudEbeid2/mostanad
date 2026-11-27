@@ -15,6 +15,7 @@ import { isProtected } from "../inference/policy.js";
 import { experimentFor, watermarkHtml, audit as experimentAudit } from "../experiment/experimentMode.js";
 import { experimentFill } from "../experiment/experimentFill.js";
 import { notApplicable } from "../labResults/applicability.js";
+import { rowsToRemove, removesRows, applyRemovedRows } from "../labResults/rowRemoval.js";
 
 // Generation (CERTIFICATES_V2_PLAN.md §10): invoice (ready) → frozen plan →
 // CertificateBatch + Certificate/CertificateItem rows in ONE transaction →
@@ -152,7 +153,7 @@ export async function loadDesign(cache, templateVersionId) {
     cache.set(
       templateVersionId,
       (async () => {
-        const v = await prisma.templateVersion.findUnique({ where: { id: templateVersionId }, include: { template: { include: { brand: { select: { id: true, name: true } } } } } });
+        const v = await prisma.templateVersion.findUnique({ where: { id: templateVersionId }, include: { template: { include: { brand: { select: { id: true, name: true } }, certificateType: { select: { code: true } } } } } });
         if (!v?.preparedFileId) throw new CertError("NOT_PREPARED", `Template version ${templateVersionId} has no prepared design`, 409);
         const [html, fields, groups] = await Promise.all([fileStore.readText(v.preparedFileId), listFields(v.id), listGroups(v.id)]);
         return { version: v, html, fields, groups };
@@ -174,8 +175,11 @@ export function renderDesign(design, values, { label, thumbnailScale = null } = 
   const groups = (design.groups || []).filter((g) => g.geometry).map((g) => groupFillDef(g, design.fields));
   const flat = Object.fromEntries(fields.map((f) => [f.key, values[f.key]?.value ?? ""]));
   for (const g of design.groups || []) flat[g.key] = values[g.key]?.rows ?? [];
-  return renderFilled(design.html, fields.map(fillDef), flat, { fontCoverage: design.version.fontCoverage, fontFallbacks: design.version.fontFallbacks, label, thumbnailScale, groups });
+  // 28 Nov (owner), COA: a test with no result — and an unknown batch size — is taken off, never printed blank
+  const remove = rowsToRemove(fields, values, typeCodeOf(design));
+  return renderFilled(design.html, fields.map(fillDef), flat, { fontCoverage: design.version.fontCoverage, fontFallbacks: design.version.fontFallbacks, label, thumbnailScale, groups, remove });
 }
+export const typeCodeOf = (design) => design?.version?.template?.certificateType?.code || null;
 
 /** A stored group value (§10.4). */
 export const groupValue = (g, resolved, out, extra = {}) => ({
@@ -214,7 +218,7 @@ async function loadProductCtx(cache, companyId, productId) {
  *          (tenant-scoped) as `product`: the rows of an `invoice_lines` group (§7.8).
  */
 export async function certificateContext(cert, base, caches, design) {
-  const ctx = { invoice: base.invoice.header || {}, company: base.company, today: base.today, ...(base.pathSynonyms ? { pathSynonyms: base.pathSynonyms } : {}) };
+  const ctx = { invoice: base.invoice.header || {}, company: base.company, today: base.today, typeCode: typeCodeOf(design), ...(base.pathSynonyms ? { pathSynonyms: base.pathSynonyms } : {}) };
   ctx.lines = [];
   for (const ci of cert.items || []) {
     const line = ci.invoiceItem;
@@ -256,16 +260,24 @@ export function guardSample(field, r) {
   return { ...r, value: "", resolved: "", flags: [...new Set([...(r.flags || []).filter((f) => f !== "empty_optional"), "sample_value", ...(field.required ? ["missing"] : [])])], blockedSample: r.value };
 }
 
+// 28 Nov (owner): "N/A" is never printed for a value nobody knows — only a person's own answer may say it
+export const isNA = (v) => /^\s*(n\s*\/\s*a|n\.a\.?|not\s+applicable|غير\s+(متاح|متوفر|منطبق)|لا\s+ينطبق)\s*$/i.test(String(v ?? ""));
 export function resolveWithNeed(field, ctx, need) {
+  const r = resolveValue(field, ctx, need);
+  if (!isNA(r.value) || (r.origin === "data_check" && need?.status === "provided")) return r;
+  return { ...r, value: "", resolved: "", flags: [...new Set([...(r.flags || []).filter((f) => f !== "empty_optional"), ...(field.required && !removesRows(ctx.typeCode) ? ["missing"] : emptyFlags(field, ""))])], provenance: { ...(r.provenance || {}), droppedNA: true } };
+}
+function resolveValue(field, ctx, need) {
   if (need && need.value !== null && need.value !== undefined) {
     const { value, flags } = applyFormat(need.value, field.format);
     // who confirmed it travels with the value (plan.md §14.4: the tier, evidence and the person, forever)
     return { value, resolved: need.value, flags: [...(flags || []), ...(AWAITING.includes(need.status) ? ["unconfirmed"] : [])], origin: "data_check", provenance: { ...(need.provenance || {}), needId: need.id, needStatus: need.status, confirmedByUserId: need.decidedByUserId ?? null, confirmedAt: need.decidedAt ?? null } };
   }
   if (field.source?.kind === "docnumber" && !ctx.docNumber && ctx.docNumberOnFinalize !== false) return { value: "", resolved: "", flags: [NUMBER_ON_FINALIZE], origin: "auto", provenance: { kind: "rule", rule: NUMBER_ON_FINALIZE } };
-  // Sterility / Pyrogen on an oral product: "N/A" by rule, shown with why — never asked every time (27 Nov QA)
+  // Sterility / Pyrogen on an oral product: not applicable by rule, shown with why — never asked every time
+  // (27 Nov QA). 28 Nov (owner): never printed as "N/A" — empty on purpose, and on a COA its row goes
   const na = notApplicable(field, ctx.product);
-  if (na) return { value: na.value, resolved: na.value, flags: [], origin: "auto", provenance: { kind: "rule", rule: "not_applicable_oral", basis: na.basis } };
+  if (na) return { value: "", resolved: "", flags: [], origin: "auto", provenance: { kind: "rule", rule: NOT_APPLICABLE, basis: na.basis } };
   const r = resolveField(field, ctx);
   const out = { value: r.value, resolved: r.resolved, flags: [...(r.flags || []), ...emptyFlags(field, r.value)], origin: "auto", ...(r.via ? { provenance: { kind: "path", path: r.via, via: "synonym" } } : {}) };
   // 28 Nov: where a product value came from travels with it — a file (the source chip: file, page,
@@ -289,7 +301,11 @@ export function resolveWithNeed(field, ctx, need) {
  * but a draft's number place (given on finalize) and a basis line its source page doesn't print are empty
  * on purpose (QA 27 Nov re-test: the regenerated CURCUMARIN COC was blocked by both).
  */
-export const emptyOnPurpose = (v) => !String(v?.value ?? "").trim() && ((v?.flags || []).includes(NUMBER_ON_FINALIZE) || v?.provenance?.rule === NUMBER_ON_FINALIZE || v?.provenance?.rule === "no_basis_on_source");
+// the certificate's own number, by source or by what the design calls it ("Certificate No.", "رقم الشهادة"):
+// given only on finalize — experiment mode included (QA 28 Nov: "ADDVET20230001" invented)
+const isNumberPlace = (f) => f.source?.kind === "docnumber" || /\b(certificate|cert|document|doc|report|coa|coc)\.?\s*(no\b|number|#)|رقم\s*(الشهادة|المستند)/i.test(String(f.label || ""));
+export const NOT_APPLICABLE = "not_applicable_oral";
+export const emptyOnPurpose = (v) => !String(v?.value ?? "").trim() && ((v?.flags || []).includes(NUMBER_ON_FINALIZE) || [NUMBER_ON_FINALIZE, "no_basis_on_source", NOT_APPLICABLE].includes(v?.provenance?.rule));
 export const engineFlags = (v, flags = []) => (emptyOnPurpose(v) ? (flags || []).filter((f) => f !== "missing") : flags || []);
 const isBasisField = (field) => field.role === "composition_basis" || (field.source?.kind === "product" && field.source.path === "compositionBasis");
 
@@ -304,12 +320,14 @@ export async function renderInitialVersion(cert, base, caches) {
   // its own document number is given on finalize, never on a draft (QA 27 Nov re-test: drafts burnt
   // the numbers — COC already at 080): the draft's number place stays empty, flagged «سيُعطى عند الاعتماد»
   const resolved = Object.fromEntries(plainFields(design).map((f) => [f.key, resolveWithNeed(f, ctx, needs?.get(f.key))]));
-  // PART 3: experiment mode — every field still empty filled by the AI (lab results, batch facts included),
-  // marked «مستنتج (تجربة)»; the certificate is a watermarked sample that can never become valid
+  // PART 3: experiment mode — every REQUIRED field still empty filled by the AI (lab results, batch facts
+  // included), marked «مستنتج (تجربة)»; the certificate is a watermarked sample that can never become valid.
+  // Never an optional place the product doesn't use (QA 28 Nov: ADDOXY's COA got 17 "N/A | 0 AA" rows), never
+  // a place empty by a rule (the number, given only on finalize; a test the product type doesn't have)
   const experiment = await experimentFor(cert.companyId);
   const aiFilled = [];
   if (experiment.on) {
-    const empty = plainFields(design).filter((f) => !resolved[f.key].value);
+    const empty = plainFields(design).filter((f) => !resolved[f.key].value && f.required && !isNumberPlace(f) && !resolved[f.key].provenance?.rule && !emptyOnPurpose(resolved[f.key]));
     let got = {};
     try {
       got = await experimentFill(empty, ctx);
@@ -359,6 +377,7 @@ export async function renderInitialVersion(cert, base, caches) {
     ])
   );
   for (const g of design.groups) values[g.key] = groupValue(g, resolvedGroups[g.key], out);
+  applyRemovedRows(values, out.rows);
   const html = await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_html", buffer: Buffer.from(experiment.on ? watermarkHtml(out.html) : out.html, "utf8"), mimeType: "text/html" });
   const thumb = out.thumbnail ? await fileStore.putFile({ companyId: cert.companyId, kind: "certificate_thumb", buffer: out.thumbnail, mimeType: "image/png" }) : null;
   const [, updated] = await prisma.$transaction([

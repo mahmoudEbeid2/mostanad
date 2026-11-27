@@ -15,6 +15,7 @@ import { MAX_GROUP_ROWS } from "../templates/fieldService.js";
 import { loadCertificate } from "./certificateService.js";
 import { assertReady } from "../templates/readinessService.js";
 import { watermarkHtml, assertNotSample } from "../experiment/experimentMode.js";
+import { applyRemovedRows } from "../labResults/rowRemoval.js";
 
 // Edit, versions, export, finalize (CERTIFICATES_V2_PLAN.md §11). Every
 // change is a NEW CertificateVersion (edits never overwrite, D8); concurrency
@@ -68,6 +69,7 @@ async function renderValues(cert, values) {
     const kept = v.origin === "manual" ? [] : (v.flags || []).filter((x) => x === "format");
     merged[g.key] = { ...v, flags: [...new Set([...kept, ...(out.flags[g.key] || [])])], rowsFit: out.geometry?.[g.key]?.rowsFit ?? null };
   }
+  applyRemovedRows(merged, out.rows); // 28 Nov: a row taken off (no result) — and back once it has one
   return { values: merged, html: out.html, thumbnail: out.thumbnail };
 }
 

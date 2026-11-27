@@ -86,7 +86,8 @@ try {
   const add = await generatedCertificate({ country: "SA", product: addProduct, line: { batchNo: "AVVS1124011", productionDate: { raw: "06/2024", iso: "2024-06" }, expiryDate: { raw: "06/2027", iso: "2027-06" } } });
   const pharma = await generatedCertificate({ country: "TR", product: pharmaProduct, line: { batchNo: "HSPhar02601001", productionDate: { raw: "01/2026", iso: "2026-01" }, expiryDate: { raw: "01/2029", iso: "2029-01" } } });
   let c = await getCert(add.certId);
-  assert("ADDVET certificate generated: v1, ph_result missing → 1 issue", c?.currentVersion === 1 && c.flagCount === 1 && c.values.ph_result.flags.includes("missing"), c?.flagCount);
+  // 28 Nov (owner): a COA's unknown result is taken off — never blank, never an issue; it comes back with a value
+  assert("ADDVET certificate generated: v1, the pH row taken off → 0 issues", c?.currentVersion === 1 && c.flagCount === 0 && c.values.ph_result.flags.includes("row_removed"), c?.values?.ph_result);
 
   console.log("\n🧪 Edit → new version (optimistic concurrency)");
   let r = await api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 2, changes: { ph_result: "4.2" } });
@@ -101,6 +102,7 @@ try {
   const html1 = (await api("GET", `/certificates/${add.certId}/html?version=1`, A)).buffer.toString("utf8");
   const html2 = (await api("GET", `/certificates/${add.certId}/html`, A)).buffer.toString("utf8");
   assert("v2 HTML re-rendered on the server; v1 kept as it was", html2 !== html1 && html2.includes("4.2") && (await api("GET", `/certificates/${add.certId}/html?version=1`, A)).status === 200);
+  assert("the pH row is back with its value (v1 doesn't print it)", html2.includes('data-field="ph_result"') && !html1.includes('data-field="ph_result"') && !c.values.ph_result.flags.includes("row_removed"));
   const [p1, p2] = await Promise.all([
     api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 2, changes: { batch_no: "AVVS1124099" } }),
     api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 2, changes: { batch_no: "AVVS1124098" } }),
@@ -127,7 +129,7 @@ try {
   r = await api("POST", `/certificates/${add.certId}/versions/1/restore`, A, { expectedVersion: 5 });
   c = await getCert(add.certId);
   const vRows = await prisma.certificateVersion.findMany({ where: { certificateId: add.certId }, orderBy: { versionNumber: "asc" } });
-  assert("restore v1 → v6 (forward-only), its values and its issue are back", r.status === 200 && c.currentVersion === 6 && c.values.ph_result.value === "" && c.values.batch_no.value === "AVVS1124011" && c.flagCount === 1);
+  assert("restore v1 → v6 (forward-only), its values are back (the pH row taken off again)", r.status === 200 && c.currentVersion === 6 && c.values.ph_result.value === "" && c.values.batch_no.value === "AVVS1124011" && c.flagCount === 0);
   assert("restored values marked origin restored; v1's render reused", c.values.batch_no.origin === "restored" && vRows[5].htmlFileId === vRows[0].htmlFileId && vRows[5].changeSource === "restore");
   r = await api("POST", `/certificates/${add.certId}/versions/6/restore`, A, { expectedVersion: 6 });
   assert("restoring the current version → 409", r.status === 409);
@@ -145,8 +147,10 @@ try {
   }
 
   console.log("\n🧪 Finalize");
-  r = await api("POST", `/certificates/${add.certId}/finalize`, A, { expectedVersion: 6 });
-  assert("finalize with an issue → 409 CERTIFICATE_FLAGGED listing the fields", r.status === 409 && r.data?.code === "CERTIFICATE_FLAGGED" && r.data.flags?.ph_result?.includes("missing"), r.data);
+  // an issue to refuse on (a character no font has): the open pH result no longer is one (28 Nov)
+  r = await api("PATCH", `/certificates/${add.certId}/values`, A, { expectedVersion: 6, changes: { product_name: "ADD-\u{13000}" } });
+  r = await api("POST", `/certificates/${add.certId}/finalize`, A, { expectedVersion: 7 });
+  assert("finalize with an issue → 409 CERTIFICATE_FLAGGED listing the fields", r.status === 409 && r.data?.code === "CERTIFICATE_FLAGGED" && r.data.flags?.product_name?.includes("glyph:\u{13000}"), r.data);
 
   console.log("\n🧪 PDF acceptance (§16.2) on both goldens — every field set back to the design's own sample");
   for (const [label, cert, file] of [

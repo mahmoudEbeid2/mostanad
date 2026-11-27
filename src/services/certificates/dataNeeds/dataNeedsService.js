@@ -23,6 +23,7 @@ import { loadProfiles, profileValue, rememberValue, profileAllowed } from "./pro
 import { publicAiError } from "../../ai/aiErrorMessage.js";
 import { loadBatchResults, batchValue, reusedProvenance, rememberBatchResult, batchOf } from "../labResults/batchResults.js";
 import { productFingerprint, knownEmpty, isKnownEmpty, rememberEmpty } from "./negativeCache.js";
+import { removesRows, isRemovableRow } from "../labResults/rowRemoval.js";
 
 // The certificate data check (plan.md §6.1, §6.2; Phase A2).
 //   plan (templateSelector) × each template field → one CertificateDataNeed:
@@ -227,7 +228,10 @@ async function computeCode(invoice, ctx) {
     // a field showing its specification follows that field, so it is computed after the others
     const versionFields = ctx.fields.get(entry.templateVersionId) || [];
     const entryRows = new Map(); // fieldKey → this entry's row
-    for (const field of [...versionFields.filter((f) => !f.showSpecInstead), ...versionFields.filter((f) => f.showSpecInstead)]) {
+    for (const rawField of [...versionFields.filter((f) => !f.showSpecInstead), ...versionFields.filter((f) => f.showSpecInstead)]) {
+      // 28 Nov (owner), COA: a test with no result (or an unknown batch size) is taken off the certificate —
+      // it is still asked, but never stops generation or finalize
+      const field = rawField.required && removesRows(entry.typeCode) && isRemovableRow(rawField) ? { ...rawField, required: false } : rawField;
       const key = `${entry.planKey}|${field.key}`;
       keep.add(key);
       const r = guardProtected(field, resolveField(field, rctx), item?.product);

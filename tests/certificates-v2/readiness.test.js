@@ -105,7 +105,8 @@ try {
   const vals = cert?.versions[0]?.values || {};
   const html = cert?.versions[0]?.htmlFileId ? (await prisma.storedFile.findUnique({ where: { id: cert.versions[0].htmlFileId } })) && (await (await import("../../src/services/certificates/storage/fileStore.js")).readText(cert.versions[0].htmlFileId)) : "";
   const blanks = Object.entries(vals).filter(([k]) => k !== "product_name");
-  assert("the draft: Product name CALCIUT; every batch / date / result blank and flagged missing", vals.product_name?.value === "CALCIUT" && blanks.length === extra.length && blanks.every(([, x]) => x.value === "" && (x.flags || []).includes("missing")), Object.fromEntries(blanks.map(([k, x]) => [k, `${x.value}|${(x.flags || []).join(",")}`])));
+  // (28 Nov: on a COA a result nobody gave is taken off with its row — row_removed — never printed blank)
+  assert("the draft: Product name CALCIUT; every batch / date blank and flagged missing, every result's row taken off", vals.product_name?.value === "CALCIUT" && blanks.length === extra.length && blanks.every(([, x]) => x.value === "" && ((x.flags || []).includes("missing") || (x.flags || []).includes("row_removed"))) && blanks.some(([, x]) => (x.flags || []).includes("row_removed")), Object.fromEntries(blanks.map(([k, x]) => [k, `${x.value}|${(x.flags || []).join(",")}`])));
   const samples = ["HSPhar02509001", "09/2028", "09/2025", "ANTIBIOTIC", "Doxycycline", "2.6", "102.0%", "1KG"];
   const shown = String(html || "").replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
   assert("…and none of the sample product's values is printed on it", shown.length > 100 && samples.every((t) => !new RegExp(`(^|[^\d.])${t.replace(/[.]/g, "\.")}(?![\d])`).test(shown)), samples.filter((t) => shown.includes(t)));

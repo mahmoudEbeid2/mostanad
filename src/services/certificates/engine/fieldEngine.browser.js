@@ -1475,6 +1475,253 @@
     }
   }
 
+  // ── row removal (28 Nov, owner) ─────────────────────────────────────────────
+  // A test whose result is unknown is taken off the certificate, never printed blank: its row —
+  // between the rules the background draws — goes, text and drawing, and what is below it moves up
+  // so the table has no gap. The rules are read from the background's pixels (PNG or SVG alike).
+  // A header line printed over its own underline (a "Batch Size:" line) goes the same way, its
+  // column closing up. The footer (below the largest whitespace under a table) stays where it is.
+  const bgImages = (pageEl) => Array.from(pageEl.querySelectorAll("img")).filter((i) => /\bb[fi]\b/.test(i.className) || svgImages(pageEl).includes(i));
+  const INK_SCALE = 2; // background samples per CSS px
+
+  async function inkMap(pageEl) {
+    const img = bgImages(pageEl)[0];
+    if (!img) return null;
+    if (!img.complete) await img.decode().catch(() => {});
+    const ir = relRect(img.getBoundingClientRect(), pageEl);
+    const W = Math.round(ir.w * INK_SCALE);
+    const H = Math.round(ir.h * INK_SCALE);
+    if (!W || !H) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const g = canvas.getContext("2d", { willReadFrequently: true });
+    g.fillStyle = "#fff";
+    g.fillRect(0, 0, W, H);
+    let data;
+    try {
+      g.drawImage(img, 0, 0, W, H);
+      data = g.getImageData(0, 0, W, H).data;
+    } catch {
+      return null; // an unreadable background: the row stays (flagged by the caller)
+    }
+    const ink = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) ink[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2] < 228 ? 1 : 0;
+    return { ink, W, H, x0: ir.x, y0: ir.y, toX: (x) => Math.round((x - ir.x) * INK_SCALE), toY: (y) => Math.round((y - ir.y) * INK_SCALE), pageX: (X) => ir.x + X / INK_SCALE, pageY: (Y) => ir.y + Y / INK_SCALE };
+  }
+
+  // the ink run through [xa, xb] on canvas row Y (gaps ≤ 2 px bridged) → { start, end } | null
+  function runThrough(m, Y, xa, xb) {
+    if (Y < 0 || Y >= m.H) return null;
+    const row = Y * m.W;
+    const inked = (X) => X >= 0 && X < m.W && m.ink[row + X] === 1;
+    let start = -1;
+    for (let X = Math.max(0, xa); X <= Math.min(m.W - 1, xb); X++) if (inked(X)) {
+      start = X;
+      break;
+    }
+    if (start < 0) return null;
+    const step = (X, d) => {
+      let gap = 0;
+      let last = X;
+      for (let x = X + d; x >= 0 && x < m.W; x += d) {
+        if (inked(x)) {
+          last = x;
+          gap = 0;
+        } else if (++gap > 2) break;
+      }
+      return last;
+    };
+    return { start: step(start, -1), end: step(start, 1) };
+  }
+  const isRule = (m, Y, xa, xb) => {
+    const r = runThrough(m, Y, xa, xb);
+    return !!r && r.start <= xa + 2 && r.end >= xb - 2;
+  };
+  // the next rule from Y going d (±1) → { first, last } canvas rows (first is the one met first) | null
+  function ruleFrom(m, Y, d, xa, xb) {
+    for (let y = Y; y >= 0 && y < m.H; y += d) {
+      if (!isRule(m, y, xa, xb)) continue;
+      let last = y;
+      while (last + d >= 0 && last + d < m.H && isRule(m, last + d, xa, xb)) last += d;
+      return { first: y, last };
+    }
+    return null;
+  }
+
+  // one row to take off → { page, cutTop, cutBottom, x0, x1, footerY } (page CSS px) | null
+  function rowCut(m, pageEl, span, texts, pageH) {
+    const keep = span.textContent;
+    span.textContent = "Ag";
+    const s = relRect(span.getBoundingClientRect(), pageEl);
+    span.textContent = keep;
+    const cy = m.toY(s.y + s.h / 2);
+    const xa = m.toX(s.x) - 2 * INK_SCALE;
+    const xb = m.toX(s.x) + 40 * INK_SCALE;
+    const B = ruleFrom(m, cy, 1, xa, xb);
+    if (!B) return null;
+    const A = ruleFrom(m, cy, -1, xa, xb);
+    const bEnd = B.last + 1;
+    const C = ruleFrom(m, bEnd + 1, 1, xa, xb);
+    const pitch = C ? C.last + 1 - bEnd : null;
+    let top = A ? A.first + 1 : null;
+    // a list of underlined lines: one line's height above its rule (never the whitespace above the list)
+    if (pitch && (top === null || bEnd - pitch > top)) top = bEnd - pitch;
+    if (top === null || m.pageY(top) > s.y + 1) top = A ? A.first + 1 : null;
+    if (top === null) return null;
+    const cutTop = m.pageY(top);
+    const cutBottom = m.pageY(bEnd);
+    // across: the rule's own extent, widened over the row's text that starts close to it (the line's label)
+    const run = runThrough(m, B.first, xa, xb);
+    // (a pixel either side: a rule's anti-aliased ends go with it)
+    let x0 = m.pageX(run.start) - 1;
+    let x1 = m.pageX(run.end + 1) + 1;
+    const onRow = texts.filter((t) => t.box.y + t.box.h / 2 > cutTop && t.box.y + t.box.h / 2 < cutBottom);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const t of onRow) {
+        if (t.box.x < x0 - 0.5 && t.box.x + t.box.w >= x0 - 60) (x0 = t.box.x - 2), (grew = true);
+        if (t.box.x + t.box.w > x1 + 0.5 && t.box.x <= x1 + 60) (x1 = t.box.x + t.box.w + 2), (grew = true);
+      }
+    }
+    // the block the row belongs to: a framed table (its left border runs on down), or a list of lines
+    // with the same rule
+    const X = run.start + 1;
+    let tableEnd = bEnd;
+    while (tableEnd < m.H && (m.ink[tableEnd * m.W + X] || m.ink[tableEnd * m.W + X - 1] || m.ink[tableEnd * m.W + X + 1])) tableEnd++;
+    let footerY;
+    if (m.pageY(tableEnd) - cutBottom > 4) {
+      const blockEnd = m.pageY(tableEnd);
+      const below = texts.filter((t) => t.box.y >= blockEnd - EPS && overlapX(t.box, { x0, x1 }) > 0).map((t) => t.box);
+      footerY = proposeFooter(below, blockEnd, pageH);
+      // what moves ends under its own last text (the note under the table) — never into a footer drawn in
+      // the background (a logo, a seal) that starts above the footer's first text
+      const end = Math.max(blockEnd, ...below.filter((b) => b.y + b.h <= footerY + EPS).map((b) => b.y + b.h));
+      let Y = m.toY(end) + 1;
+      while (Y < m.toY(footerY) && !m.ink.subarray(Y * m.W, (Y + 1) * m.W).includes(1)) Y++;
+      footerY = Math.min(footerY, m.pageY(Y) - 1);
+    } else {
+      let end = bEnd;
+      let at = bEnd;
+      for (;;) {
+        const next = ruleFrom(m, at + 1, 1, xa, xb);
+        if (!next || !pitch || next.first - at > 1.6 * pitch) break;
+        const r = runThrough(m, next.first, xa, xb);
+        if (Math.abs(r.start - run.start) > 4 * INK_SCALE || Math.abs(r.end - run.end) > 4 * INK_SCALE) break;
+        end = at = next.last + 1;
+      }
+      footerY = m.pageY(end) + 1;
+    }
+    return { cutTop: round(cutTop), cutBottom: round(cutBottom), x0: round(x0), x1: round(x1), footerY: round(footerY) };
+  }
+
+  // keys: the fields whose row goes → { removed: { key: [field keys printed in that row] }, failed: [key] }
+  async function removeRows(keys) {
+    const removed = {};
+    const failed = [];
+    const byPage = new Map();
+    for (const key of keys || []) {
+      const span = document.querySelector(`[data-field="${cssEscape(key)}"]`);
+      if (!span) {
+        failed.push(key);
+        continue;
+      }
+      const pageEl = pageOf(span);
+      if (!byPage.has(pageEl)) byPage.set(pageEl, []);
+      byPage.get(pageEl).push({ key, span });
+    }
+    for (const [pageEl, list] of byPage) {
+      const m = await inkMap(pageEl);
+      const texts = textUnits(pageEl);
+      const pageH = pageEl.getBoundingClientRect().height;
+      // regions: the same block (same across, same footer) — its cuts are made together
+      const regions = [];
+      for (const { key, span } of list) {
+        const cut = m ? rowCut(m, pageEl, span, texts, pageH) : null;
+        if (!cut) {
+          failed.push(key);
+          continue;
+        }
+        let reg = regions.find((r) => Math.abs(r.x0 - cut.x0) <= 4 && Math.abs(r.x1 - cut.x1) <= 4 && Math.abs(r.footerY - cut.footerY) <= 4);
+        if (!reg) regions.push((reg = { x0: cut.x0, x1: cut.x1, footerY: cut.footerY, cuts: [] }));
+        reg.x0 = Math.min(reg.x0, cut.x0);
+        reg.x1 = Math.max(reg.x1, cut.x1);
+        reg.cuts.push({ top: cut.cutTop, bottom: cut.cutBottom, keys: [key] });
+      }
+      for (const reg of regions) {
+        reg.cuts.sort((a, b) => a.top - b.top);
+        const merged = [];
+        for (const c of reg.cuts) {
+          const last = merged[merged.length - 1];
+          if (last && c.top <= last.bottom + 0.5) (last.bottom = Math.max(last.bottom, c.bottom)), last.keys.push(...c.keys);
+          else merged.push({ ...c });
+        }
+        reg.cuts = merged;
+        const liftAt = (y) => reg.cuts.filter((c) => c.bottom <= y + 0.5).reduce((n, c) => n + (c.bottom - c.top), 0);
+        // text: a row's text goes (its fields say which), what is below moves up
+        for (const t of texts) {
+          const cx = t.box.x + t.box.w / 2;
+          const cy = t.box.y + t.box.h / 2;
+          if (cx < reg.x0 || cx > reg.x1 || cy < reg.cuts[0].top || cy >= reg.footerY) continue;
+          const cut = reg.cuts.find((c) => cy > c.top && cy < c.bottom);
+          if (cut) {
+            for (const k of cut.keys) {
+              const inRow = Array.from(t.el.querySelectorAll("[data-field]")).map((s) => s.getAttribute("data-field"));
+              if (t.el.hasAttribute("data-field")) inRow.push(t.el.getAttribute("data-field"));
+              removed[k] = [...new Set([...(removed[k] || [k]), ...inRow])];
+            }
+            t.el.remove();
+          } else shiftEl(t.el, -liftAt(cy));
+        }
+        for (const c of reg.cuts) for (const k of c.keys) removed[k] ||= [k];
+      }
+      // the background: every region's moving part is cut out of the original once; each piece between
+      // two cuts is a copy, clipped to it and moved up by the rows cut above it
+      if (!regions.length) continue;
+      // nothing printed or drawn beside a region → its background moves the page's full width, so a
+      // watermark behind the table moves in one piece (never cut at the table's edge)
+      const pageW = pageEl.getBoundingClientRect().width;
+      for (const reg of regions) {
+        const top = reg.cuts[0].top;
+        const beside = texts.some((t) => t.box.y < reg.footerY && t.box.y + t.box.h > top && (t.box.x + t.box.w < reg.x0 - 1 || t.box.x > reg.x1 + 1));
+        let inked = false;
+        for (let Y = m.toY(top); !beside && !inked && Y < Math.min(m.H, m.toY(reg.footerY)); Y++) {
+          const row = m.ink.subarray(Y * m.W, (Y + 1) * m.W);
+          inked = row.subarray(0, Math.max(0, m.toX(reg.x0) - 1)).includes(1) || row.subarray(Math.min(m.W, m.toX(reg.x1) + 2)).includes(1);
+        }
+        if (!beside && !inked) (reg.x0 = 0), (reg.x1 = pageW);
+      }
+      for (const img of bgImages(pageEl)) {
+        const ir = relRect(img.getBoundingClientRect(), pageEl);
+        const sx = img.offsetWidth ? ir.w / img.offsetWidth : 1;
+        const sy = img.offsetHeight ? ir.h / img.offsetHeight : 1;
+        const X = (x) => ((x - ir.x) / sx).toFixed(3);
+        const Y = (y) => ((y - ir.y) / sy).toFixed(3);
+        const W = (ir.w / sx).toFixed(3);
+        const H = (ir.h / sy).toFixed(3);
+        const rect = (x0, y0, x1, y1) => `${X(x0)}px ${Y(y0)}px, ${X(x1)}px ${Y(y0)}px, ${X(x1)}px ${Y(y1)}px, ${X(x0)}px ${Y(y1)}px, ${X(x0)}px ${Y(y0)}px`;
+        const holes = regions.map((r) => `${rect(r.x0, r.cuts[0].top, r.x1, Math.min(r.footerY, ir.y + ir.h))}, 0 0`).join(", ");
+        const copies = [];
+        for (const r of regions) {
+          const bottom = Math.min(r.footerY, ir.y + ir.h);
+          let lift = 0;
+          r.cuts.forEach((c, i) => {
+            lift += c.bottom - c.top;
+            const end = i + 1 < r.cuts.length ? r.cuts[i + 1].top : bottom;
+            if (end <= c.bottom) return;
+            const piece = img.cloneNode(true);
+            piece.style.clipPath = `polygon(${rect(r.x0, c.bottom, r.x1, end)})`;
+            piece.style.transform = `translateY(${(-lift / sy).toFixed(3)}px)`;
+            copies.push(piece);
+          });
+        }
+        img.style.clipPath = `polygon(evenodd, 0 0, ${W}px 0, ${W}px ${H}px, 0 ${H}px, 0 0, ${holes})`;
+        img.after(...copies);
+      }
+    }
+    return { removed, failed };
+  }
+
   // ── fill (§7.4) ─────────────────────────────────────────────────────────────
   // values: { key: string, [groupKey]: [{ cellKey: string }] }
   // defs: [{ key, box, limits, scale, align, required, fontClass }]
@@ -1619,6 +1866,7 @@
     normalizeBackground,
     inspectGroups,
     removeGroupPlaceholders,
+    removeRows,
     backgroundUnits,
     hasSvgBackground: () => pageEls().some(pageHasSvgBackground),
     TOL,

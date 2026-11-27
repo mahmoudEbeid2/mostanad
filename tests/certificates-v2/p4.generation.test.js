@@ -152,9 +152,9 @@ try {
   assert("COA line 1: dates formatted MM/YYYY", v(c1, "expiry") === "06/2027" && v(c1, "production") === "06/2024", c1.values.expiry);
   assert("COA line 1: product relation path (activeIngredients[1])", v(c1, "constituent_2_name") === "Sodium selenite" && v(c1, "constituent_2_amount") === "60 mg");
   assert("COA line 1: template source COA{{item.batchNo}}", v(c1, "document_no") === "COAAVVS1124011");
-  assert("COA line 1: manual field empty + flagged missing (D7)", v(c1, "ph_result") === "" && c1.values.ph_result.flags.includes("missing"));
+  assert("COA line 1: a result nobody gave is taken off (28 Nov) — empty, row_removed, never missing", v(c1, "ph_result") === "" && c1.values.ph_result.flags.includes("row_removed") && !c1.values.ph_result.flags.includes("missing"), c1.values.ph_result);
   assert("value shape §10.4 (source, resolved, origin auto)", c1.values.batch_no.source.kind === "item" && c1.values.batch_no.resolved === "AVVS1124011" && c1.values.batch_no.origin === "auto");
-  assert("flagCount = blocking flags (only ph_result)", c1.flagCount === 1, c1.flagCount);
+  assert("flagCount = blocking flags (none: the open pH row is taken off)", c1.flagCount === 0, c1.flagCount);
   assert("certificate pins its template version, version 1", c1.template.id === coaAny.templateId && c1.currentVersion === 1 && c1.status === "draft");
   const c2 = await get(coaFor(2));
   assert("COA line 2 (same product): its own batch + dates", v(c2, "batch_no") === "AVVS1124012" && v(c2, "expiry") === "07/2027");
@@ -182,7 +182,8 @@ try {
   r = await api("GET", `/certificates?invoiceId=${inv.id}`, A);
   assert("list by invoice: 6", r.data?.total === 6, r.data?.total);
   r = await api("GET", `/certificates?invoiceId=${inv.id}&flagged=true`, A);
-  assert("flagged filter: the 3 COAs; the FSC's fallback character does not count", r.data?.total === 3, r.data?.total);
+  // (28 Nov: the open pH rows are taken off — only ADD ZINC stays flagged: its composition has no 2nd ingredient)
+  assert("flagged filter: only ADD ZINC (no 2nd constituent); an open pH row is no issue; the FSC's fallback character does not count", r.data?.total === 1 && r.data.data.certificates[0].product?.name === "ADD ZINC" && !r.data.data.certificates[0].flags.ph_result?.includes("missing"), JSON.stringify(r.data?.data?.certificates?.map((c) => [c.product?.name, c.flags])));
   r = await api("GET", `/certificates?q=avvs1124012`, A);
   assert("search by batch", r.data?.total >= 1 && r.data.data.certificates.every((c) => c.batchNo === "AVVS1124012"));
   r = await api("GET", `/invoices?q=0142`, A);
