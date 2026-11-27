@@ -19,6 +19,8 @@ import { enableGroups } from "../certificates/templates/templateService.js";
 import { listFields, replaceFields } from "../certificates/templates/fieldService.js";
 import { productTableFrom, numberedTable } from "../certificates/templates/productTable.js";
 import { partyFields, splitPartyBlock } from "../certificates/templates/partyBlocks.js";
+import { splitNamePack, samePack } from "../certificates/matching/packNormalizer.js";
+import { brandScore } from "../brandMatch.js";
 
 /**
  * Readiness (26 Nov): an automatic template's places that look variable and that no field
@@ -297,21 +299,85 @@ async function settleTemplates(batch, items, ex) {
 // an invoice still being read: the request waits for its lines (as long as the files' read, at most)
 const INVOICE_DONE = ["review", "ready", "generated", "partially_failed", "failed"];
 
+// ── the shipment's document (QA 27 Nov, acceptance #1 / #9) ────────────────────────────────────────────
+// The MO / invoice of THIS shipment decides the request's lines (every one of its products, with its pack)
+// and the HC's consignee. It is a document of the drop whose lines are products of the drop's files; with
+// none in the drop, a document the company filed before whose batch numbers are the ones the drop's
+// certificates print (MADADD02610001… on the COA pages = the MO's lines). An unrelated invoice (ROSHAN,
+// Pakistan) in the same drop is never it. Without any, the files' products — each page with the pack it prints.
+const baseName = (s) => splitNamePack(String(s || "")).name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/** The drop's own products (the files' links) → [{ id, name, packaging }] */
+async function dropProducts(items, companyId) {
+  const ids = [...new Set(items.filter((i) => usable(i) && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []))];
+  return ids.length ? prisma.product.findMany({ where: { id: { in: ids }, companyId }, select: { id: true, name: true, packaging: true } }) : [];
+}
+
+/** A document line → the company's product it is: matched by the filing, else the drop's product of that name and pack */
+async function lineProduct(line, companyId, mine) {
+  if (line.productId) return line.productId;
+  const name = String(line.data?.name || "").trim();
+  if (!name) return null;
+  const pack = line.data?.packing || splitNamePack(name).pack || null;
+  const close = (p) => baseName(p.name) === baseName(name) || brandScore(splitNamePack(name).name, p.name) >= 0.8 || brandScore(p.name, splitNamePack(name).name) >= 0.8;
+  // the drop's products first (the files this shipment came with), then the company's
+  for (const pool of [mine, await prisma.product.findMany({ where: { companyId }, select: { id: true, name: true, packaging: true }, take: 2000 })]) {
+    const hits = pool.filter(close);
+    // the pack decides between the packs of one product; no pack printed and several → a person does
+    const byPack = pack ? hits.filter((p) => samePack(p.packaging || splitNamePack(p.name).pack, pack)) : hits;
+    if (byPack.length === 1) return byPack[0].id;
+    if (hits.length) return null; // several, or the product but not in this pack (a person adds the pack)
+  }
+  return null;
+}
+
+/** The shipment's documents (filed invoices / MOs) → [invoice with items], or "wait" */
+async function shipmentDocs(batch, items, companyId, ex) {
+  const mine = await dropProducts(items, companyId);
+  const inDrop = items.filter((i) => usable(i) && i.result?.invoiceId && !i.result?.attached).map((i) => i.result.invoiceId);
+  let docs = inDrop.length ? await prisma.invoice.findMany({ where: { id: { in: [...new Set(inDrop)] }, companyId }, include: { items: { orderBy: { lineNo: "asc" } } } }) : [];
+  if (docs.some((v) => !INVOICE_DONE.includes(v.status)) && Date.now() - new Date(ex.startedAt || batch.createdAt).getTime() < HARVEST_WAIT_MS) return "wait";
+  // this shipment's: a line that is one of the drop's products (by the filing's match, or by name)
+  const mineIds = new Set(mine.map((p) => p.id));
+  const mineNames = new Set(mine.map((p) => baseName(p.name)));
+  const ours = (v) => v.items.some((i) => (i.productId && mineIds.has(i.productId)) || mineNames.has(baseName(i.data?.name)));
+  docs = docs.filter(ours);
+  if (docs.length) return docs;
+  // none in the drop: the filed document whose batch numbers the drop's certificates print
+  const names = items.filter((i) => !i.parentId).map((i) => i.name);
+  const printed = await prisma.harvestedFact.findMany({ where: { companyId, fileName: { in: names }, batchNo: { not: null } }, select: { batchNo: true } });
+  const batches = [...new Set(printed.map((f) => String(f.batchNo).trim().toUpperCase()).filter((b) => b.length >= 5))];
+  if (!batches.length) return [];
+  const lines = await prisma.invoiceItem.findMany({ where: { invoice: { companyId, origin: { not: "direct" } } }, select: { invoiceId: true, data: true } });
+  const hits = new Map();
+  for (const l of lines) if (batches.includes(String(l.data?.batchNo || "").trim().toUpperCase())) hits.set(l.invoiceId, (hits.get(l.invoiceId) || 0) + 1);
+  const best = [...hits.entries()].sort((a, b) => b[1] - a[1])[0];
+  // at least 2 batch numbers in common (one could be a coincidence of formats)
+  if (!best || best[1] < Math.min(2, batches.length)) return [];
+  return prisma.invoice.findMany({ where: { id: best[0] }, include: { items: { orderBy: { lineNo: "asc" } } } });
+}
+
 /**
- * The request's lines: [{ productId, packing?, quantity?, lotNo? }] in order, or "wait".
- * An invoice in the drop defines them (its matched lines, their packs, quantities and batch numbers —
- * a real document's); otherwise the products the files are about, plus those named in the message.
+ * The request's lines: [{ productId?, name?, packing?, quantity?, lotNo? }] in order, or "wait".
+ * The shipment's document defines them — every line, with its pack (a line the filing couldn't match is
+ * matched to the drop's product by name and pack, else left for a person); otherwise the products the
+ * files are about (each page with the pack it prints), plus those named in the message.
  */
-async function requestScope(batch, items, companyId, ex) {
-  const invoiceItems = items.filter((i) => usable(i) && i.result?.invoiceId && !i.result?.attached);
-  if (invoiceItems.length) {
-    const invoices = await prisma.invoice.findMany({ where: { id: { in: invoiceItems.map((i) => i.result.invoiceId) }, companyId }, include: { items: { orderBy: { lineNo: "asc" } } } });
-    const reading = invoices.some((v) => !INVOICE_DONE.includes(v.status));
-    if (reading && Date.now() - new Date(ex.startedAt || batch.createdAt).getTime() < HARVEST_WAIT_MS) return "wait";
-    const lines = invoices.flatMap((v) => v.items.filter((i) => i.productId).map((i) => ({ productId: i.productId, packing: i.data?.packing || null, quantity: i.data?.quantity || null, lotNo: i.data?.batchNo || null })));
+export async function requestScope(batch, items, companyId, ex) {
+  const docs = await shipmentDocs(batch, items, companyId, ex);
+  if (docs === "wait") return "wait";
+  if (docs.length) {
+    const mine = await dropProducts(items, companyId);
+    const lines = [];
+    for (const v of docs)
+      for (const i of v.items) {
+        const productId = await lineProduct(i, companyId, mine);
+        const packing = i.data?.packing || null;
+        lines.push(productId ? { productId, packing, quantity: i.data?.quantity || null, lotNo: i.data?.batchNo || null } : { name: i.data?.name || "", packing, quantity: i.data?.quantity || null, lotNo: i.data?.batchNo || null });
+      }
     if (lines.length) return lines;
   }
-  const fromFiles = items.filter((i) => usable(i) && i.companyId === companyId).flatMap((i) => i.result?.plan?.productIds || []);
+  const fromFiles = await printedPacks(items, companyId);
   const named = [];
   for (const n of ex.productNames || []) {
     const p = await prisma.product.findFirst({ where: { companyId, name: { equals: String(n).trim(), mode: "insensitive" } }, select: { id: true } });
@@ -321,15 +387,41 @@ async function requestScope(batch, items, companyId, ex) {
 }
 
 /**
+ * The files' products, each page's product in the pack that page prints: a COC page of OLIGOVET printing
+ * "100 mL" linked to OLIGOVET 1 L is OLIGOVET 100 mL (QA 27 Nov: the 1 L was added to the request).
+ */
+async function printedPacks(items, companyId) {
+  const out = [];
+  for (const i of items.filter((x) => usable(x) && x.companyId === companyId)) {
+    const ids = i.result?.plan?.productIds || [];
+    if (ids.length !== 1 || !i.pageFrom) {
+      out.push(...ids);
+      continue;
+    }
+    const file = i.name.split(" — ")[0];
+    const fact = await prisma.harvestedFact.findFirst({ where: { companyId, key: "packaging", fileName: file, page: { gte: i.pageFrom, lte: i.pageTo || i.pageFrom } }, select: { value: true } });
+    const printed = typeof fact?.value === "string" ? fact.value : fact?.value?.text || null;
+    const p = printed ? await prisma.product.findUnique({ where: { id: ids[0] }, select: { id: true, name: true, packaging: true } }) : null;
+    if (!p || !printed || samePack(p.packaging || splitNamePack(p.name).pack, printed)) {
+      out.push(ids[0]);
+      continue;
+    }
+    const siblings = await prisma.product.findMany({ where: { companyId, name: { startsWith: splitNamePack(p.name).name.split(/\s+/)[0], mode: "insensitive" } }, select: { id: true, name: true, packaging: true } });
+    const twin = siblings.filter((s) => baseName(s.name) === baseName(p.name) && samePack(s.packaging || splitNamePack(s.name).pack, printed));
+    out.push(twin.length === 1 ? twin[0].id : ids[0]);
+  }
+  return out;
+}
+
+/**
  * The consignee of the shipment: from an invoice of the drop whose lines are this shipment's products —
  * never an unrelated invoice's buyer (28 Nov: a Pakistani buyer's invoice in a drop for an Oman shipment).
  * → { customerName, … } | null
  */
-async function shipmentConsignee(items, companyId, productIds) {
-  const ids = items.filter((i) => usable(i) && i.result?.invoiceId && !i.result?.attached).map((i) => i.result.invoiceId);
-  if (!ids.length) return null;
-  const invoices = await prisma.invoice.findMany({ where: { id: { in: ids }, companyId }, select: { header: true, items: { select: { productId: true } } } });
-  const covering = invoices.find((v) => v.header?.customerName && v.items.some((i) => i.productId && productIds.includes(i.productId)));
+export async function shipmentConsignee(batch, items, companyId, ex) {
+  // the shipment's own document (in the drop, or filed before with these batch numbers) — never another buyer's
+  const docs = await shipmentDocs(batch, items, companyId, ex);
+  const covering = docs === "wait" ? null : docs.find((v) => v.header?.customerName);
   if (!covering) return null;
   const h = covering.header;
   const text = (x) => (typeof x === "string" ? x.trim() : "") || null;
@@ -365,8 +457,8 @@ async function generate(batch, items, ex) {
   // products of the files and those named in the message
   const scope = await requestScope(batch, items, companyId, ex);
   if (scope === "wait") throw notReady();
-  const productIds = [...new Set(scope.map((l) => l.productId))];
-  const consignee = await shipmentConsignee(items, companyId, productIds);
+  const productIds = [...new Set(scope.map((l) => l.productId).filter(Boolean))];
+  const consignee = await shipmentConsignee(batch, items, companyId, ex);
   const missingTypes = codes.filter((c) => !types.some((t) => t.code === c));
   if (!productIds.length) return { companyId, problem: "no product was found in the files", problemCode: "no_products", missingTypes };
   if (!types.length) return { companyId, problem: `no certificate type ${codes.join(", ")} for this company`, problemCode: "no_types", missingTypes };
