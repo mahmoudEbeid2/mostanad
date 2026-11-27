@@ -10,6 +10,7 @@ import { sanitizeOutput, claimsAction, isReadOnlyQuestion, preparedSomething, NO
 import { prisma } from "../../../lib/prisma.js";
 import { replayText, toolRecord } from "./history.js";
 import { stepLabelAr } from "../cardArabic.js";
+import { expressDrop, expressDropAnswer, templateToolsAllowed, TEMPLATE_TOOLS } from "./dropRoute.js";
 
 // The assistant's agent loop (C0): message + history + context + tool list →
 // model → tool calls → run them as the caller → results back → repeat until
@@ -145,7 +146,9 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
   // this message's words + the conversation's recent modules and open drafts (sticky): a follow-up
   // ("there was no card, make all seven") keeps the tools the conversation was using
   let chosen = [...new Set([...selectModules(text, ctx.page, { files: (ctx.attachments || []).length > 0 }), ...(ctx.stickyModules || [])])].filter((m) => available.includes(m)).sort();
-  const offeredTools = () => toolsFor(ctx.actor, { modules: chosen });
+  // a drop with no word about templates is never routed to template creation (QA 27 Nov)
+  const noTemplates = !templateToolsAllowed(text, ctx);
+  const offeredTools = () => toolsFor(ctx.actor, { modules: chosen }).filter((t) => !(noTemplates && TEMPLATE_TOOLS.has(t.name)));
   const declarations = () => [...describeTools(offeredTools(), ctx.actor).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(available.length ? [loadToolsDecl(available)] : [])];
 
   const contents = [
@@ -177,6 +180,25 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
     console.log(`[assistant] timing: ${t.totalMs} ms — model ${t.modelMs} ms (${t.models.join(", ") || "0"}), tools ${t.toolMs} ms (${t.tools.join(", ") || "none"})`);
     return { toolCalls, refs: [...refs.values()], modelCalls, usage, modules: chosen, blocks: [...blocks.values()], facts: facts(), timing: t, ...(guardEvents.length ? { guard: guardEvents } : {}), ...extra };
   };
+
+  // files with a short message (or none): Express by code, not by the model's reading of the words
+  const drop = expressDrop(text, ctx);
+  if (drop) {
+    const args = { attachmentIds: ctx.attachments.map((a) => a.id), express: true, ...(drop.certificateTypes.length ? { certificateTypes: drop.certificateTypes } : {}) };
+    onEvent({ type: "tool_start", tool: "start_intake", label: getTool("start_intake")?.label || "start_intake", labelAr: stepLabelAr(getTool("start_intake")?.label), args });
+    const result = await runTool("start_intake", args, { ...ctx, offered: new Set(["start_intake"]) });
+    const entry = { name: "start_intake", label: getTool("start_intake")?.label || "start_intake", labelAr: stepLabelAr(getTool("start_intake")?.label), args, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), routedByCode: true, ...(result.ok && result.data?.intakeBatchId ? { card: "intake" } : {}) };
+    toolCalls.push(entry);
+    onEvent({ type: "tool_end", ...entry });
+    if (result.ok && result.data?.intakeBatchId) {
+      guardEvents.push({ type: "express_drop_routed" });
+      turnFacts.push(...factsOf(result.data));
+      blocks.set(`intake:${result.data.intakeBatchId}`, { id: `intake-${result.data.intakeBatchId}`, type: "intake", tool: "start_intake", batchId: result.data.intakeBatchId, title: "Files" });
+      return out({ text: expressDropAnswer(text) });
+    }
+    // it failed (no files after all…): the model answers with the error in its context
+    contents.push({ role: "user", parts: [{ text: `[system] start_intake failed: ${result.error}` }] });
+  }
 
   onEvent({ type: "status", text: "Thinking…" });
   while (modelCalls < lim.maxModelCalls) {
@@ -318,7 +340,7 @@ export async function runAgent({ text, history = [], ctx, generate, onEvent = ()
           if (result.data?.intakeBatchId) blocks.set(`intake:${result.data.intakeBatchId}`, { id: `intake-${result.data.intakeBatchId}`, type: "intake", tool: name, batchId: result.data.intakeBatchId, title: "Files" });
         }
       }
-      const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, company: r.company || null })) : undefined;
+      const choices = name === "search_products" && result.ok && (result.data?.verdict === "close" || result.data?.several) && result.data.results.length ? result.data.results.map((r) => ({ id: r.productId, name: r.name, productCode: r.productCode, pack: r.pack || null, company: r.company || null })) : undefined;
       const entry = { name, label: getTool(name)?.label || name, labelAr: stepLabelAr(getTool(name)?.label), args: call.args || {}, ok: result.ok, status: result.status, error: result.error || null, companyId: result.companyId ?? null, ms: result.ms, summary: summarize(result), ...(result.ok && result.data?.nextPage ? { nextPage: result.data.nextPage } : {}), ...(choices ? { choices } : {}), ...(result.ok && result.data?.draft?.id ? { draftId: result.data.draft.id } : {}), ...(result.ok && result.data?.intakeBatchId ? { card: "intake" } : {}) };
       if (!result.ok && !result.repeat) failed.set(key, result.error);
       // a call refused for its arguments (or repeated) costs nothing from the budget

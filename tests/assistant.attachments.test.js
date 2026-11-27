@@ -41,20 +41,30 @@ async function main() {
     console.log("Attaching with no company picked");
     const [f1] = await assistant.uploadAttachments(admin, conv.id, [pdf("MAXVET COA.pdf")], { companyId: "all" });
     assert("the file is kept in the conversation, not refused", !!f1?.id && f1.companyId === null, f1);
-    const unbound = await assistant.sendMessage(admin, conv.id, { text: "دي الشهادة", companyId: "all", attachmentIds: [f1.id] }, { generate: script([[{ text: "x" }]]).generate }).catch((e) => e);
+    const unbound = await assistant.sendMessage(admin, conv.id, { text: "اعمل قالب من الشهادة دي", companyId: "all", attachmentIds: [f1.id] }, { generate: script([[{ text: "x" }]]).generate }).catch((e) => e);
     assert("sending it in \"All companies\" → sent, the file still unbound (its company is worked out from it)", unbound?.message?.role === "assistant" && (await prisma.assistantAttachment.findUnique({ where: { id: f1.id } })).companyId === null, unbound?.message || unbound);
     let err = await loadAttachment(f1.id, { conversationId: conv.id, companyId: null }).catch((e) => e);
     assert("a tool can't read a file with no company yet (it asks which company)", err.statusCode === 409 && /isn't linked to a company/.test(err.message), err.message);
 
     console.log("\nThe company picked on send");
     const m = script([[{ text: "تمام، استلمت الملف." }]]);
-    const turn = await assistant.sendMessage(admin, conv.id, { text: "دي الشهادة", companyId: coA.id, attachmentIds: [f1.id] }, { generate: m.generate });
+    const turn = await assistant.sendMessage(admin, conv.id, { text: "اعمل قالب من الشهادة دي", companyId: coA.id, attachmentIds: [f1.id] }, { generate: m.generate });
     const att = await prisma.assistantAttachment.findUnique({ where: { id: f1.id } });
     const file = await prisma.storedFile.findUnique({ where: { id: att.fileId } });
     assert("sent with a company → the file is bound to it (attachment and stored file)", att.companyId === coA.id && file.companyId === coA.id, { att: att.companyId, file: file.companyId });
     const userMsg = await prisma.assistantMessage.findFirst({ where: { conversationId: conv.id, role: "user" }, orderBy: { createdAt: "desc" } });
     assert("…and the message carries it", userMsg.attachments?.[0]?.id === f1.id && userMsg.companyId === coA.id && turn.message?.role === "assistant", userMsg.attachments);
     assert("…the model was told the file is attached", JSON.stringify(m.seen[0].contents).includes(`[attached: ${f1.id}`));
+
+    // QA 27 Nov (re-test): files + a short message go to Express by code, never to the model's choice
+    console.log("\nA drop with a short message → Express, no model call");
+    const [fx] = await assistant.uploadAttachments(admin, conv.id, [pdf("ADDVET FSC.pdf")], { companyId: coA.id });
+    const mx = script([[{ text: "should not be called" }]]);
+    const drop = await assistant.sendMessage(admin, conv.id, { text: "شهادات ADDVET", companyId: coA.id, attachmentIds: [fx.id] }, { generate: mx.generate });
+    const first = drop.message?.toolCalls?.[0];
+    assert("start_intake with express: true, routed by code", first?.name === "start_intake" && first.args?.express === true && first.routedByCode === true, drop.message?.toolCalls);
+    assert("…the model was not asked", mx.seen.length === 0, mx.seen.length);
+    assert("…the drop's card is under the answer", (drop.message?.blocks || []).some((b) => b.type === "intake"), drop.message?.blocks);
 
     console.log("\nBinding over HTTP (the company chips)");
     const r0 = await api("POST", "/assistant/conversations", asAdmin, { companyId: "all" });
